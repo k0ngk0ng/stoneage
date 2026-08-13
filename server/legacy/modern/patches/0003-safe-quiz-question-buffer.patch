@@ -1,0 +1,115 @@
+--- a/npc/npc_quiz.c
++++ b/npc/npc_quiz.c
+@@ -43,7 +43,7 @@
+ 
+ 
+ static void NPC_Quiz_selectWindow( int meindex, int talker, int num);
+-int *NPC_GetQuestion(int meindex);
++BOOL NPC_GetQuestion(int meindex, int *tbl, int capacity);
+ BOOL NPC_QuizItemFullCheck(int meindex, int talker);
+ BOOL NPC_PlayerCheck(int meindex,int talker);
+ int NPC_RealyCheack(int meindex,int talker);
+@@ -65,7 +65,7 @@
+ 
+ 	char argstr[NPC_UTIL_GETARGSTR_BUFSIZE];
+ 	char buf[1024];
+-	int *tbl;
++	int tbl[quizcnt + 1];
+ 	int i;
+ 
+ 	NPC_Util_GetArgStr( meindex, argstr, sizeof( argstr));
+@@ -85,8 +85,9 @@
+ 	for(i =0  ; i < 8 ; i++){
+ 		CHAR_setWorkInt( meindex, CHAR_WORK_PLAYER1 + i, -1);
+ 	}
+-	tbl =  NPC_GetQuestion( meindex);
++	if( !NPC_GetQuestion( meindex, tbl, arraysizeof(tbl)) ) return FALSE;
+ 
+-	if( CHAR_getWorkInt( meindex, CHAR_WORK_QUIZNUM) > ( tbl[0] - 1)){
++	if( CHAR_getWorkInt( meindex, CHAR_WORK_QUIZNUM) > OLDNO ||
++		CHAR_getWorkInt( meindex, CHAR_WORK_QUIZNUM) > ( tbl[0] - 1)){
+	 	print(
+	 	 "%s����������,ԲȦquiz��������(%d? �ȳ�����(%d��)����",
+@@ -224,6 +225,6 @@
+   		/*--���̼�--*/
+   		{
+-			int *tbl;
++			int tbl[quizcnt + 1];
+ 			int point;
+ 			int *pl_ptr;
+ 			int warp_flg = -1;
+@@ -325,9 +326,11 @@
+ 				
+ 			}
+ 
+-			tbl =  NPC_GetQuestion( meindex);
+-			
++			if( !NPC_GetQuestion( meindex, tbl, arraysizeof(tbl)) ) {
++				free(PLAYER.ptr);
++				return;
++			}
+ 			
+ 			if( CHAR_getWorkInt( meindex, CHAR_WORK_QUIZNUM) > ( tbl[0] - 1))
+ 			{
+ 				free(PLAYER.ptr);
+@@ -1005,14 +1008,13 @@
+ 
+ }
+ 
+-int *NPC_GetQuestion(int meindex)
++BOOL NPC_GetQuestion(int meindex, int *tbl, int capacity)
+ {
+ 	char argstr[NPC_UTIL_GETARGSTR_BUFSIZE];
+ 	int i,j;
+ 	int type=0;
+ 	int answer=0;
+ 	int level=0;
+-	int *tbl;
+ 	char buf[16];
+ 	NPC_Util_GetArgStr( meindex, argstr, sizeof( argstr));
+ 
+@@ -1047,31 +1049,27 @@
+ 		}
+ 		j++;
+ 	}
++	if( tbl == NULL || capacity < j + 1 ) return FALSE;
+ 
+-	{
+-		int tmp_tbl[j+1];
+-		tmp_tbl[0] = j+1;
+-		for(j=1,i=0; i < quizcnt ;i++){
+-			if( (type & (1 << (Quiz[i].type-1)))  != (1 << (Quiz[i].type-1))){
+-				continue;
+-			}
++	tbl[0] = j+1;
++	for(j=1,i=0; i < quizcnt ;i++){
++		if( (type & (1 << (Quiz[i].type-1)))  != (1 << (Quiz[i].type-1))){
++			continue;
++		}
+ 
+-			if((answer & (Quiz[i].answertype))  != Quiz[i].answertype){
+-				continue;
+-			}
++		if((answer & (Quiz[i].answertype))  != Quiz[i].answertype){
++			continue;
++		}
+ 
+-			if((level & (Quiz[i].level))  != Quiz[i].level){
+-				continue;
+-			}
+-			tmp_tbl[j] = i;
+-
+-			j++;
++		if((level & (Quiz[i].level))  != Quiz[i].level){
++			continue;
+ 		}
++		tbl[j] = i;
+ 
+-		tbl = tmp_tbl;
+-		return tbl;
++		j++;
+ 	}
++	return TRUE;
+ }
+ 
+ BOOL NPC_QuizItemFullCheck(int meindex,int talker)

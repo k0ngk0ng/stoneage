@@ -1,0 +1,50 @@
+--- a/char.c
++++ b/char.c
+@@ -586,7 +586,8 @@
+ int loadCharOne( char *id , int num, char *output , int outlen )
+ {
+ 	char fn[1024];
+ 	FILE *fp;
+-	char c_temp,*c_ptr;
++	int c_temp;
++	char *c_ptr;
+ 	c_ptr=output;
+ 	
+ 	makeCharFileName( id , fn , sizeof(fn),num );    
+@@ -596,14 +597,28 @@
+ 		return -1;
+ 	}
+ 	
+-	do{
+-		c_temp = fgetc(fp);
+-		*c_ptr=c_temp;
+-		c_ptr++;
+-	}while(c_temp != EOF);
++	/* STONEAGE_SAFE_CHARACTER_FILE_READ
++	 * fgetc() returns int so EOF can remain distinct from every byte value.
++	 * On platforms where plain char is unsigned, the historic code converted
++	 * EOF (-1) to 255 and wrote past CHARDATASIZE until SAAC crashed.
++	 */
++	while( ( c_temp = fgetc( fp )) != EOF ){
++		if( c_ptr - output >= outlen - 1 ){
++			fclose( fp );
++			output[0] = '\0';
++			return -1;
++		}
++		*c_ptr++ = (char)c_temp;
++	}
+ 	*c_ptr='\0';
++	if( ferror( fp )){
++		fclose( fp );
++		output[0] = '\0';
++		return -1;
++	}
++	fclose(fp);
+ 	
+ 	if( output[0]=='|' && output[1]=='|' ){
+ 		return -1;
+ 	}
+-	fclose(fp);
+ 	return 0;
+ }
+ 

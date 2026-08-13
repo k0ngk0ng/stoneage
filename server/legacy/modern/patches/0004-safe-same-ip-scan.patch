@@ -1,0 +1,24 @@
+--- a/net.c
++++ b/net.c
+@@ -2019,12 +2019,15 @@ int isThereThisIP(unsigned long ip)
+   int i;
+   unsigned long ipa;
+ 
+-  for ( i = 0; i < ConnectLen ; i++ )
++  /* STONEAGE_SAFE_SAME_IP_SCAN */
++  for ( i = 0; i < ConnectLen ; i++ ) {
+     if ( !Connect[ i ].use ) continue;
+ 
+-  if ( Connect[ i ].state == NOTLOGIN || Connect[ i ].state == WHILEDOWNLOADCHARLIST ) {
+-    memcpy( &ipa, &Connect[ i ].sin.sin_addr, 4 );
++    if ( Connect[ i ].state == NOTLOGIN ||
++         Connect[ i ].state == WHILEDOWNLOADCHARLIST ) {
++      memcpy( &ipa, &Connect[ i ].sin.sin_addr, 4 );
+ 
+-    if ( ipa == ip ) return 1;
++      if ( ipa == ip ) return 1;
++    }
+   }
+ 
+   return 0;
+ }

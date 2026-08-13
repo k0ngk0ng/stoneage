@@ -1,0 +1,55 @@
+--- a/char/char.c
++++ b/char/char.c
+@@ -1483,9 +1483,11 @@
+ 	charindex = CONNECT_getCharaindex( clifd );
+ 	if( !CHAR_CHECKINDEX( charindex)) {
+ 		print( "logout err : clifd[%d] charaindex[%d] %s:%d from %s:%d \n", 
+ 				clifd, charindex, __FILE__, __LINE__, file, line);
+-		ret = FALSE;
++		/* STONEAGE_SAFE_DISCONNECT_CLEANUP: never continue with an
++		 * invalid slot; slot zero may belong to another online player. */
++		return FALSE;
+ 	}
+ 	battleindex = CHAR_getWorkInt( charindex, CHAR_WORKBATTLEINDEX );
+ 	if( battleindex >= 0 ){
+ 		BATTLE_EscapeDpSend( battleindex, charindex );
+@@ -3854,16 +3856,39 @@
+ 	int     i;
+ 	int     pindex;
+ 
++	/* STONEAGE_SAFE_DISCONNECT_CLEANUP: the historic code trusted every
++	 * non-negative slot. A stale or corrupt slot can point at another player,
++	 * causing one disconnect to remove somebody else's live character. */
+ 	for( i = 0; i < CHAR_MAXPETHAVE; i ++ ) {
+ 		pindex = CHAR_getCharPet( charaindex, i);
+ 		if( CHAR_CHECKINDEX( pindex)) {
++			if( CHAR_getInt( pindex, CHAR_WHICHTYPE) != CHAR_TYPEPET ||
++				( CHAR_getWorkInt( pindex, CHAR_WORKPLAYERINDEX) != charaindex &&
++				  ( strcmp( CHAR_getChar( pindex, CHAR_OWNERCDKEY),
++						CHAR_getChar( charaindex, CHAR_CDKEY)) != 0 ||
++					strcmp( CHAR_getChar( pindex, CHAR_OWNERCHARANAME),
++						CHAR_getChar( charaindex, CHAR_NAME)) != 0 ))) {
++				print( "skip invalid pet reference: owner[%d] slot[%d] index[%d]\n",
++					charaindex, i, pindex );
++				continue;
++			}
+ 			CHAR_endCharOneArray( pindex );
+ 		}
+ 	}
+ 	for( i = 0; i < CHAR_MAXPOOLPETHAVE; i ++ ) {
+ 		pindex = CHAR_getCharPoolPet( charaindex, i);
+ 		if( CHAR_CHECKINDEX( pindex)) {
++			if( CHAR_getInt( pindex, CHAR_WHICHTYPE) != CHAR_TYPEPET ||
++				( CHAR_getWorkInt( pindex, CHAR_WORKPLAYERINDEX) != charaindex &&
++				  ( strcmp( CHAR_getChar( pindex, CHAR_OWNERCDKEY),
++						CHAR_getChar( charaindex, CHAR_CDKEY)) != 0 ||
++					strcmp( CHAR_getChar( pindex, CHAR_OWNERCHARANAME),
++						CHAR_getChar( charaindex, CHAR_NAME)) != 0 ))) {
++				print( "skip invalid pool-pet reference: owner[%d] slot[%d] index[%d]\n",
++					charaindex, i, pindex );
++				continue;
++			}
+ 			CHAR_endCharOneArray( pindex );
+ 		}
+ 	}
+ }

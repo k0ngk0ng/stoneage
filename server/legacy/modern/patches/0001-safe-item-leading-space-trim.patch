@@ -1,0 +1,28 @@
+--- a/item/item.c
++++ b/item/item.c
+@@ -1097,17 +1097,15 @@ BOOL ITEM_readItemConfFile( char* filename )
+ 		chomp( line );
+ 		replaceString( line, '\t' , ' ' );
+ 		itemnum ++;
+ {
+-		char    buf[256];
+-		for( i = 0; i < strlen( line); i ++) {
+-			if( line[i] != ' ' ) {
+-				break;
+-			}
+-			strcpy( buf, &line[i]);
+-		}
+-		if( i != 0 ) {
+-			strcpy( line, buf);
+-		}
++		/* STONEAGE_SAFE_LEADING_SPACE_TRIM: the original copied a line of
++		 * up to 512 bytes through a 256-byte stack buffer. */
++		size_t leading = 0;
++		size_t length = strlen( line );
++		while( leading < length && line[leading] == ' ' )
++			leading ++;
++		if( leading != 0 )
++			memmove( line, line + leading, length - leading + 1 );
+ }
+ {
+ 		char    token[256];

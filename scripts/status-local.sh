@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd "$(dirname "$0")/.." && pwd)"
+container_name="${STONEAGE_SERVER_CONTAINER:-stoneage-legacy-local}"
+gateway_pid_file="$project_root/runtime/gateway.pid"
+
+if docker container inspect "$container_name" >/dev/null 2>&1; then
+  docker inspect -f 'server={{.Name}} running={{.State.Running}} status={{.State.Status}}' "$container_name"
+else
+  echo "server=$container_name status=missing"
+fi
+
+gateway_reported=0
+if [[ -f "$gateway_pid_file" ]]; then
+  gateway_pid="$(tr -dc '0-9' <"$gateway_pid_file")"
+  if [[ -n "$gateway_pid" ]] && kill -0 "$gateway_pid" 2>/dev/null; then
+    echo "gateway=running pid=$gateway_pid"
+    gateway_reported=1
+  fi
+fi
+if [[ "$gateway_reported" != "1" ]]; then
+  gateway_pid="$(pgrep -f 'stoneage-gateway.*-listen' | head -n 1 || true)"
+  if [[ -n "$gateway_pid" ]]; then
+    printf '%s\n' "$gateway_pid" >"$gateway_pid_file"
+    echo "gateway=running pid=$gateway_pid recovered=true"
+  else
+    echo "gateway=stopped"
+  fi
+fi
+
+if pgrep -f 'sa_2903-local[.]exe' >/dev/null 2>&1; then
+  echo "client=running"
+else
+  echo "client=stopped"
+fi

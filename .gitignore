@@ -1,0 +1,16 @@
+.DS_Store
+.cache/
+build/
+dist/
+runtime/
+vendor/assets/
+vendor/archives/
+vendor/upstream/
+
+# Local paths and generated inventory may expose machine-specific locations.
+.env
+.env.*
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+support_root="${STONEAGE_SUPPORT_ROOT:-${HOME}/Library/Application Support/StoneAge Revival}"
+container_name="${STONEAGE_CONTAINER_NAME:-stoneage-revival-local}"
+gateway_pid_file="$support_root/gateway.pid"
+wine_prefix="$support_root/wine-prefix-cp936"
+
+find_executable()
+{
+  override="$1"
+  shift
+  if [[ -n "$override" && -x "$override" ]]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+  for candidate in "$@"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+wineserver_bin="$(find_executable "${STONEAGE_WINESERVER:-}" \
+  "$(command -v wineserver || true)" \
+  /opt/homebrew/bin/wineserver \
+  /usr/local/bin/wineserver \
+  "$HOME/Applications/Wine Stable.app/Contents/Resources/wine/bin/wineserver" \
+  "/Applications/Wine Stable.app/Contents/Resources/wine/bin/wineserver" || true)"
+docker_bin="$(find_executable "${STONEAGE_DOCKER:-}" \
+  "$(command -v docker || true)" \
+  /usr/local/bin/docker \
+  /opt/homebrew/bin/docker \
+  /Applications/Docker.app/Contents/Resources/bin/docker \
+  /Applications/OrbStack.app/Contents/MacOS/xbin/docker \
+  "$HOME/Applications/OrbStack.app/Contents/MacOS/xbin/docker" || true)"
+
+if [[ -n "$wineserver_bin" ]]; then
+  WINEPREFIX="$wine_prefix" "$wineserver_bin" -k >/dev/null 2>&1 || true
+  WINEPREFIX="$wine_prefix" "$wineserver_bin" -w >/dev/null 2>&1 || true
+fi
+if [[ -f "$gateway_pid_file" ]]; then
+  gateway_pid="$(tr -dc '0-9' <"$gateway_pid_file")"
+  if [[ -n "$gateway_pid" ]] && kill -0 "$gateway_pid" 2>/dev/null; then
+    kill "$gateway_pid" || true
+  fi
+  rm -f "$gateway_pid_file"
+fi
+if [[ -n "$docker_bin" ]] && "$docker_bin" container inspect "$container_name" >/dev/null 2>&1; then
+  "$docker_bin" stop "$container_name" >/dev/null || true
+  "$docker_bin" rm "$container_name" >/dev/null || true
+fi
+echo "StoneAge Revival 已停止。角色資料保留在："
+echo "$support_root/server/saac"
+if [[ -t 0 ]]; then
+  read -r -p "按 Enter 關閉此視窗。" _
+fi

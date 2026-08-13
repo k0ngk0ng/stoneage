@@ -1,0 +1,57 @@
+package main
+
+import (
+	"bytes"
+	"testing"
+	"time"
+
+	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
+)
+
+func TestNamedBattleCommand(t *testing.T) {
+	want := []byte("BC|0|0|ProbeHero||1234|1|35|35|5|")
+	raw, err := namedproto.RawMessage(1, "B", []string{namedproto.EncodeString(want)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := namedproto.EncodePacket(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := namedBattleCommand(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestLegacyStateTransitionDelay(t *testing.T) {
+	delay := 100 * time.Millisecond
+	tests := []struct {
+		name          string
+		direction     string
+		function      string
+		packetWritten bool
+		want          time.Duration
+	}{
+		{"client login before reply", "GMSV->client", "ClientLogin", false, delay},
+		{"client login after reply", "GMSV->client", "ClientLogin", true, 0},
+		{"character login before reply", "GMSV->client", "CharLogin", false, 0},
+		{"character login after reply", "GMSV->client", "CharLogin", true, delay},
+		{"encounter before reply", "GMSV->client", "EN", false, 0},
+		{"encounter after reply", "GMSV->client", "EN", true, delay},
+		{"gameplay response", "GMSV->client", "MC", true, 0},
+		{"client request", "client->GMSV", "CharLogin", true, 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := stateTransitionDelay(test.direction, test.function, test.packetWritten, delay)
+			if got != test.want {
+				t.Fatalf("delay = %s, want %s", got, test.want)
+			}
+		})
+	}
+}

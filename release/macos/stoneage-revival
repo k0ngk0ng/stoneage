@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+contents_root="$(cd "$(dirname "$0")/.." && pwd)"
+resources="$contents_root/Resources"
+support_root="${STONEAGE_SUPPORT_ROOT:-${HOME}/Library/Application Support/StoneAge Revival}"
+runtime_root="$support_root/server"
+client_root="$support_root/client"
+wine_prefix="$support_root/wine-prefix-cp936"
+log_root="$support_root/logs"
+container_name="${STONEAGE_CONTAINER_NAME:-stoneage-revival-local}"
+upstream_port="19065"
+gateway_port="9065"
+gateway_pid_file="$support_root/gateway.pid"
+
+show_error()
+{
+  /usr/bin/osascript -e 'on run argv' \
+    -e 'display dialog (item 1 of argv) with title "StoneAge Revival" buttons {"好"} default button 1 with icon stop' \
+    -e 'end run' -- "$1" >/dev/null 2>&1 || true
+  exit 1
+}
+
+find_executable()
+{
+  override="$1"
+  shift
+  if [[ -n "$override" && -x "$override" ]]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+  for candidate in "$@"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+wine_bin="$(find_executable "${STONEAGE_WINE:-}" \
+  "$(command -v wine || true)" \
+  /opt/homebrew/bin/wine \
+  /usr/local/bin/wine \
+  "$HOME/Applications/Wine Stable.app/Contents/Resources/wine/bin/wine" \
+  "/Applications/Wine Stable.app/Contents/Resources/wine/bin/wine" || true)"
+wineserver_bin="$(find_executable "${STONEAGE_WINESERVER:-}" \
+  "$(command -v wineserver || true)" \
+  "${wine_bin:+$(dirname "$wine_bin")/wineserver}" \
+  /opt/homebrew/bin/wineserver \
+  /usr/local/bin/wineserver || true)"
+docker_bin="$(find_executable "${STONEAGE_DOCKER:-}" \
+  "$(command -v docker || true)" \
+  /usr/local/bin/docker \
+  /opt/homebrew/bin/docker \
+  /Applications/Docker.app/Contents/Resources/bin/docker \
+  /Applications/OrbStack.app/Contents/MacOS/xbin/docker \
+  "$HOME/Applications/OrbStack.app/Contents/MacOS/xbin/docker" || true)"
+
+[[ -n "$wine_bin" && -x "$wine_bin" ]] || \
+  show_error "找不到 Wine 11。請先安裝 Wine Stable，再重新開啟本程式。"
+[[ -n "$docker_bin" && -x "$docker_bin" ]] || \
+  show_error "找不到 Docker。請先啟動 Docker Desktop 或 OrbStack。"
+"$docker_bin" info >/dev/null 2>&1 || \
+  show_error "Docker 尚未啟動。請先啟動 Docker Desktop 或 OrbStack。"
+
+mkdir -p "$support_root" "$log_root"
+if [[ ! -f "$runtime_root/.stoneage-runtime-v1" ]]; then
+  rm -rf "$runtime_root"
+  cp -R "$resources/server" "$runtime_root"
+  touch "$runtime_root/.stoneage-runtime-v1"
+fi
+if [[ ! -f "$client_root/.stoneage-client-v1" ]]; then
+  rm -rf "$client_root"
+  cp -R "$resources/client" "$client_root"
+  touch "$client_root/.stoneage-client-v1"
+fi
+
+if ! "$docker_bin" container inspect "$container_name" >/dev/null 2>&1; then
+  "$docker_bin" run --detach \
+    --name "$container_name" --init --ulimit core=-1 \
+    --publish "127.0.0.1:$upstream_port:9065" \
+    --volume "$runtime_root:/game" \
+    --volume "$resources/support/server/legacy/modern/run.sh:/modern/run.sh:ro" \
+    alpine:3.22 sh /modern/run.sh >"$log_root/container-id.txt"
+elif [[ "$("$docker_bin" inspect -f '{{.State.Running}}' "$container_name")" != "true" ]]; then
+  "$docker_bin" start "$container_name" >/dev/null
+fi
+
+ready=0
+for _ in {1..120}; do
+  if /usr/bin/nc -z 127.0.0.1 "$upstream_port" >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+[[ "$ready" == "1" ]] || show_error "伺服器啟動失敗。記錄位於 $log_root。"
+
+gateway_running=0
+if [[ -f "$gateway_pid_file" ]]; then
+  gateway_pid="$(tr -dc '0-9' <"$gateway_pid_file")"
+  if [[ -n "$gateway_pid" ]] && kill -0 "$gateway_pid" 2>/dev/null; then
+    gateway_running=1
+  fi
+fi
+if [[ "$gateway_running" != "1" ]]; then
+  nohup "$resources/bin/stoneage-gateway" \
+    -listen "127.0.0.1:$gateway_port" \
+    -upstream "127.0.0.1:$upstream_port" \
+    </dev/null >"$log_root/gateway.log" 2>&1 &
+  gateway_pid=$!
+  printf '%s\n' "$gateway_pid" >"$gateway_pid_file"
+fi
+
+client_exe="sa_2903-local.exe"
+wine_locale="zh_CN.GBK"
+export WINEPREFIX="$wine_prefix"
+export LANG="$wine_locale"
+export LC_ALL="$wine_locale"
+export WINEDEBUG="${WINEDEBUG:--all}"
+export WINEDLLOVERRIDES="ddraw=n,b${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+export MVK_CONFIG_LOG_LEVEL="${MVK_CONFIG_LOG_LEVEL:-0}"
+
+mkdir -p "$wine_prefix"
+if [[ ! -f "$wine_prefix/system.reg" ]]; then
+  "$wine_bin" wineboot -u >"$log_root/wineboot.log" 2>&1
+fi
+wine_acp="$("$wine_bin" reg query 'HKLM\System\CurrentControlSet\Control\Nls\CodePage' /v ACP 2>/dev/null | tr -d '\r' | awk '$1 == "ACP" { print $3 }')"
+[[ "$wine_acp" == "936" ]] || show_error "Wine prefix 並非 CP936（目前 ${wine_acp:-未知}）。請刪除 $wine_prefix 後重試。"
+
+font_marker="$wine_prefix/.stoneage-cjk-font-v1"
+if [[ ! -f "$font_marker" ]]; then
+  font_dir="$wine_prefix/drive_c/windows/Fonts"
+  mkdir -p "$font_dir"
+  install -m 0644 "$resources/NotoSansCJKsc-Regular.otf" "$font_dir/stoneage-cjk.otf"
+  fonts_key='HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+  substitutes_key='HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes'
+  replacements_key='HKCU\Software\Wine\Fonts\Replacements'
+  "$wine_bin" reg add "$fonts_key" /v "Noto Sans CJK SC (OpenType)" /t REG_SZ /d stoneage-cjk.otf /f >/dev/null
+  for family in SimSun NSimSun '宋体' '新宋体' 'MS Shell Dlg' 'MS Shell Dlg 2' 'MS Sans Serif' 'Microsoft Sans Serif' Tahoma Arial; do
+    "$wine_bin" reg add "$substitutes_key" /v "$family" /t REG_SZ /d "Noto Sans CJK SC" /f >/dev/null
+    "$wine_bin" reg add "$replacements_key" /v "$family" /t REG_SZ /d "Noto Sans CJK SC" /f >/dev/null
+  done
+  touch "$font_marker"
+  if [[ -n "$wineserver_bin" && -x "$wineserver_bin" ]]; then
+    "$wineserver_bin" -k
+    "$wineserver_bin" -w
+  fi
+fi
+
+cd "$client_root"
+if [[ "${STONEAGE_SKIP_CLIENT:-0}" == "1" ]]; then
+  exit 0
+fi
+exec "$wine_bin" "$client_exe" \
+  updated realbin:15 adrnbin:15 sprbin:4 spradrnbin:5 encode:108 \
+  >"$log_root/wine-client.log" 2>&1

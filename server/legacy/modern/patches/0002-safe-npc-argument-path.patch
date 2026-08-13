@@ -1,0 +1,19 @@
+--- a/npc/npcutil.c
++++ b/npc/npcutil.c
+@@ -997,10 +997,14 @@ static char *NPC_Util_MargeStrFromArgFile(char *filename, char *buf, int len)
+ 	FILE *fp;
+ 	char *cret = NULL;
+ 	char line[NPC_UTIL_GETARGSTR_LINEMAX];
+-	char opfile[32];
++	char opfile[256];
+ 
+-	sprintf(opfile, "%s/", getNpcdir());
+-	strcat(opfile, filename);
++	/* STONEAGE_SAFE_NPC_ARGUMENT_PATH: valid archive paths such as
++	 * data/npc/seimu/event/event01_2 exceed the historic 32-byte buffer. */
++	if (snprintf(opfile, sizeof(opfile), "%s/%s", getNpcdir(), filename)
++	    >= sizeof(opfile)) {
++		return NULL;
++	}
+ 	*buf = '\0';
+ 	fp = fopen(opfile, "r");
