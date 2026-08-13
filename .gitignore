@@ -1,4 +1,11 @@
+# macOS junk
 .DS_Store
+.AppleDouble
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
 .cache/
 build/
 dist/
