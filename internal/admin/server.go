@@ -31,6 +31,7 @@ type Options struct {
 	SetupToken   string
 	Operator     Operator
 	Config       ConfigManager
+	SAACConfig   ConfigManager
 	CSRFSecret   []byte
 }
 
@@ -40,7 +41,8 @@ type Server struct {
 	cookieSecure bool
 	setupToken   string
 	operator     Operator
-	config       ConfigManager
+	gmsvConfig   ConfigManager
+	saacConfig   ConfigManager
 	csrfSecret   []byte
 }
 
@@ -62,6 +64,20 @@ type pageData struct {
 	ConfigError        string
 	OperatorError      string
 	Code               int
+	ConfigService      string
+	ConfigTitle        string
+	ConfigDescription  string
+	ConfigPath         string
+	ConfigEditable     bool
+	GatewayRunning     bool
+	GatewayStopped     bool
+	GMSVRunning        bool
+	GMSVStopped        bool
+	SAACRunning        bool
+	SAACStopped        bool
+	AnyServiceRunning  bool
+	AllServicesKnown   bool
+	AllServicesStopped bool
 }
 
 func NewServer(store *auth.Store, options Options) (*Server, error) {
@@ -78,7 +94,8 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 	for name, file := range map[string]string{
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
-		"audit": "audit.html", "server": "server.html", "error": "error.html",
+		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
+		"config": "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
 		if parseErr != nil {
@@ -92,7 +109,8 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		cookieSecure: options.CookieSecure,
 		setupToken:   options.SetupToken,
 		operator:     options.Operator,
-		config:       options.Config,
+		gmsvConfig:   options.Config,
+		saacConfig:   options.SAACConfig,
 		csrfSecret:   options.CSRFSecret,
 	}, nil
 }
@@ -170,8 +188,16 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		server.audit(response, request, data)
 		return
 	}
-	if request.URL.Path == "/server" || request.URL.Path == "/server/restart" || request.URL.Path == "/server/restart-game" || request.URL.Path == "/server/restart-gateway" || request.URL.Path == "/server/config" || request.URL.Path == "/server/notify" {
+	if request.URL.Path == "/server" || request.URL.Path == "/server/restart" || request.URL.Path == "/server/restart-game" || request.URL.Path == "/server/restart-gateway" || request.URL.Path == "/server/restart-gmsv" || request.URL.Path == "/server/restart-saac" || request.URL.Path == "/server/stop" || request.URL.Path == "/server/stop-game" || request.URL.Path == "/server/stop-gateway" || request.URL.Path == "/server/stop-gmsv" || request.URL.Path == "/server/stop-saac" {
 		server.server(response, request, data)
+		return
+	}
+	if request.URL.Path == "/notifications" || request.URL.Path == "/server/notify" {
+		server.notification(response, request, data)
+		return
+	}
+	if request.URL.Path == "/server/config" || request.URL.Path == "/services/gateway/config" || request.URL.Path == "/services/gmsv/config" || request.URL.Path == "/services/saac/config" {
+		server.configPage(response, request, data)
 		return
 	}
 	server.renderError(response, http.StatusNotFound, "页面不存在")
@@ -349,7 +375,7 @@ func (server *Server) audit(response http.ResponseWriter, request *http.Request,
 
 func (server *Server) server(response http.ResponseWriter, request *http.Request, data *pageData) {
 	if request.Method == http.MethodGet {
-		server.renderServer(response, request, data)
+		server.renderService(response, request, data)
 		return
 	}
 	if request.Method != http.MethodPost || !server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {
@@ -357,12 +383,16 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 		return
 	}
 	switch request.URL.Path {
-	case "/server/restart", "/server/restart-game", "/server/restart-gateway":
+	case "/server/restart", "/server/restart-game", "/server/restart-gateway", "/server/restart-gmsv", "/server/restart-saac":
 		target := "all"
 		if request.URL.Path == "/server/restart-game" {
 			target = "game"
 		} else if request.URL.Path == "/server/restart-gateway" {
 			target = "gateway"
+		} else if request.URL.Path == "/server/restart-gmsv" {
+			target = "gmsv"
+		} else if request.URL.Path == "/server/restart-saac" {
+			target = "saac"
 		}
 		if err := server.restartTarget(request.Context(), target); err != nil {
 			server.renderError(response, http.StatusBadGateway, err.Error())
@@ -370,81 +400,176 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 		}
 		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restarted_"+target, "", requestSourceIP(request), "")
 		http.Redirect(response, request, "/server?message="+urlEscape(restartMessage(target)), http.StatusSeeOther)
-	case "/server/notify":
-		message, err := normalizeNotification(request.FormValue("message"))
-		if err != nil {
-			server.renderError(response, http.StatusBadRequest, err.Error())
-			return
+	case "/server/stop", "/server/stop-game", "/server/stop-gateway", "/server/stop-gmsv", "/server/stop-saac":
+		target := "all"
+		if request.URL.Path == "/server/stop-game" {
+			target = "game"
+		} else if request.URL.Path == "/server/stop-gateway" {
+			target = "gateway"
+		} else if request.URL.Path == "/server/stop-gmsv" {
+			target = "gmsv"
+		} else if request.URL.Path == "/server/stop-saac" {
+			target = "saac"
 		}
-		notifier, ok := server.operator.(NotifyingOperator)
-		if !ok {
-			server.renderError(response, http.StatusServiceUnavailable, "当前运维接口不支持在线通知")
-			return
-		}
-		if err := notifier.Notify(request.Context(), message); err != nil {
-			_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_failed", "", requestSourceIP(request), err.Error())
+		if err := server.stopTarget(request.Context(), target); err != nil {
 			server.renderError(response, http.StatusBadGateway, err.Error())
 			return
 		}
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", requestSourceIP(request), message)
-		http.Redirect(response, request, "/server?message="+urlEscape("通知已发送给在线玩家"), http.StatusSeeOther)
-	case "/server/config":
-		_ = request.ParseForm()
-		values := make(map[string]string, len(configFieldDefinitions))
-		for _, field := range configFieldDefinitions {
-			if field.Kind == "bool" {
-				values[field.Key] = "0"
-				if request.FormValue(field.Key) == "1" {
-					values[field.Key] = "1"
-				}
-				continue
-			}
-			if request.Form.Has(field.Key) {
-				values[field.Key] = strings.TrimSpace(request.FormValue(field.Key))
-			}
-		}
-		if err := server.config.Update(values); err != nil {
-			server.renderError(response, http.StatusBadRequest, publicError(err))
-			return
-		}
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_config_changed", "", requestSourceIP(request), configAuditDetails(values))
-		if server.operator != nil {
-			if err := server.restartTarget(request.Context(), "game"); err != nil {
-				_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restart_failed", "", requestSourceIP(request), err.Error())
-				server.renderError(response, http.StatusBadGateway, err.Error())
-				return
-			}
-		}
-		http.Redirect(response, request, "/server", http.StatusSeeOther)
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_stopped_"+target, "", requestSourceIP(request), "")
+		http.Redirect(response, request, "/server?message="+urlEscape(stopMessage(target)), http.StatusSeeOther)
 	default:
 		server.renderError(response, http.StatusNotFound, "操作不存在")
 	}
 }
 
-func (server *Server) renderServer(response http.ResponseWriter, request *http.Request, data *pageData) {
-	data.Title = "运营控制台"
+func (server *Server) notification(response http.ResponseWriter, request *http.Request, data *pageData) {
+	if request.Method == http.MethodGet {
+		data.Title = "通知"
+		data.Message = request.URL.Query().Get("message")
+		server.render(response, "notification", data)
+		return
+	}
+	if request.Method != http.MethodPost || !server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {
+		server.renderError(response, http.StatusForbidden, "请求无效")
+		return
+	}
+	if request.URL.Path != "/notifications" && request.URL.Path != "/server/notify" {
+		server.renderError(response, http.StatusNotFound, "操作不存在")
+		return
+	}
+	message, err := normalizeNotification(request.FormValue("message"))
+	if err != nil {
+		server.renderError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	notifier, ok := server.operator.(NotifyingOperator)
+	if !ok {
+		server.renderError(response, http.StatusServiceUnavailable, "当前运维接口不支持在线通知")
+		return
+	}
+	if err := notifier.Notify(request.Context(), message); err != nil {
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_failed", "", requestSourceIP(request), err.Error())
+		server.renderError(response, http.StatusBadGateway, err.Error())
+		return
+	}
+	_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", requestSourceIP(request), message)
+	http.Redirect(response, request, "/notifications?message="+urlEscape("通知已发送给在线玩家"), http.StatusSeeOther)
+}
+
+func (server *Server) configPage(response http.ResponseWriter, request *http.Request, data *pageData) {
+	service, manager, title, description, editable, ok := server.configSpec(request.URL.Path)
+	if !ok {
+		server.renderError(response, http.StatusNotFound, "配置页面不存在")
+		return
+	}
+	data.ConfigService = service
+	data.ConfigTitle = title
+	data.ConfigDescription = description
+	data.ConfigPath = configPathLabel(service)
+	data.ConfigEditable = editable
 	data.Message = request.URL.Query().Get("message")
-	data.Config = map[string]string{"enable_nu_flow_control": "0", "debuglevel": "0"}
-	if values, err := server.config.Load(); err != nil {
-		data.ConfigError = err.Error()
-	} else {
-		for key, value := range values {
-			data.Config[key] = value
+	if editable {
+		values, err := manager.Load()
+		if err != nil {
+			data.ConfigError = err.Error()
+		} else {
+			data.ConfigGroups = manager.groups(values)
 		}
 	}
-	data.ConfigGroups = BuildConfigGroups(data.Config)
+	if request.Method == http.MethodGet {
+		data.Title = title
+		server.render(response, "config", data)
+		return
+	}
+	if request.Method != http.MethodPost || !editable || !server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {
+		server.renderError(response, http.StatusForbidden, "请求无效")
+		return
+	}
+	_ = request.ParseForm()
+	values := make(map[string]string, len(manager.definitions()))
+	for _, field := range manager.definitions() {
+		if field.Kind == "bool" {
+			values[field.Key] = "0"
+			if request.FormValue(field.Key) == "1" {
+				values[field.Key] = "1"
+			}
+			continue
+		}
+		if request.Form.Has(field.Key) {
+			values[field.Key] = strings.TrimSpace(request.FormValue(field.Key))
+		}
+	}
+	if err := manager.Update(values); err != nil {
+		server.renderError(response, http.StatusBadRequest, publicError(err))
+		return
+	}
+	_ = server.store.RecordAudit(request.Context(), adminID(data), service+"_config_changed", "", requestSourceIP(request), configAuditDetailsFor(values, manager.definitions()))
+	http.Redirect(response, request, configPathForService(service)+"?message="+urlEscape("配置已保存；重启对应服务后生效"), http.StatusSeeOther)
+}
+
+func (server *Server) configSpec(path string) (string, ConfigManager, string, string, bool, bool) {
+	switch path {
+	case "/server/config", "/services/gmsv/config":
+		return "gmsv", server.gmsvConfig, "GMSV 配置", "编辑 GMSV 的 setup.cf。保存不会自动重启 GMSV。", true, true
+	case "/services/saac/config":
+		return "saac", server.saacConfig, "SAAC 配置", "编辑 SAAC 的 acserv.cf。密码、目录和协议连接参数仍保留在服务器文件中。保存不会自动重启 SAAC。", true, true
+	case "/services/gateway/config":
+		return "gateway", ConfigManager{}, "游戏网关配置", "游戏网关由启动参数和部署环境管理，目前没有可安全在线修改的配置项。", false, true
+	default:
+		return "", ConfigManager{}, "", "", false, false
+	}
+}
+
+func configPathForService(service string) string {
+	switch service {
+	case "gmsv":
+		return "/services/gmsv/config"
+	case "saac":
+		return "/services/saac/config"
+	default:
+		return "/services/gateway/config"
+	}
+}
+
+func configPathLabel(service string) string {
+	switch service {
+	case "gmsv":
+		return "setup.cf"
+	case "saac":
+		return "acserv.cf"
+	default:
+		return "启动参数"
+	}
+}
+
+func (server *Server) renderService(response http.ResponseWriter, request *http.Request, data *pageData) {
+	data.Title = "服务"
+	data.Message = request.URL.Query().Get("message")
 	if server.operator != nil {
 		status, err := server.operator.Status(request.Context())
 		if err != nil {
 			data.OperatorError = err.Error()
-			data.Status = ServiceStatus{Gateway: "未知", GMSV: "未知", Database: "未知"}
+			data.Status = ServiceStatus{Gateway: "未知", GMSV: "未知", SAAC: "未知", Database: "未知"}
 		} else {
 			data.Status = status
 		}
 	} else {
-		data.Status = ServiceStatus{Gateway: "未配置运维接口", GMSV: "未配置运维接口", Database: "正常"}
+		data.Status = ServiceStatus{Gateway: "未配置运维接口", GMSV: "未配置运维接口", SAAC: "未配置运维接口", Database: "正常"}
 	}
+	data.GatewayRunning = data.Status.Gateway == "running"
+	data.GatewayStopped = data.Status.Gateway == "stopped"
+	data.GMSVRunning = data.Status.GMSV == "running"
+	data.GMSVStopped = data.Status.GMSV == "stopped"
+	data.SAACRunning = data.Status.SAAC == "running"
+	data.SAACStopped = data.Status.SAAC == "stopped"
+	data.AnyServiceRunning = data.GatewayRunning || data.GMSVRunning || data.SAACRunning
+	data.AllServicesKnown = isServiceStatusKnown(data.Status.Gateway) && isServiceStatusKnown(data.Status.GMSV) && isServiceStatusKnown(data.Status.SAAC)
+	data.AllServicesStopped = data.AllServicesKnown && !data.AnyServiceRunning
 	server.render(response, "server", data)
+}
+
+func isServiceStatusKnown(value string) bool {
+	return value == "running" || value == "stopped"
 }
 
 func normalizeNotification(value string) (string, error) {
@@ -469,17 +594,50 @@ func (server *Server) restartTarget(ctx context.Context, target string) error {
 		switch target {
 		case "gateway":
 			return targeted.RestartGateway(ctx)
+		case "gmsv":
+			return targeted.RestartGMSV(ctx)
+		case "saac":
+			return targeted.RestartSAAC(ctx)
 		case "game":
 			return targeted.RestartGame(ctx)
 		}
 	}
+	if target == "gmsv" || target == "saac" {
+		return fmt.Errorf("当前运维接口不支持独立重启 %s", strings.ToUpper(target))
+	}
 	return server.operator.Restart(ctx)
+}
+
+func (server *Server) stopTarget(ctx context.Context, target string) error {
+	if server.operator == nil {
+		return errors.New("未配置受限运维接口")
+	}
+	stopping, ok := server.operator.(StoppingOperator)
+	if !ok {
+		return errors.New("当前运维接口不支持停止服务")
+	}
+	switch target {
+	case "gateway":
+		return stopping.StopGateway(ctx)
+	case "gmsv":
+		return stopping.StopGMSV(ctx)
+	case "saac":
+		return stopping.StopSAAC(ctx)
+	case "game":
+		return stopping.StopGame(ctx)
+	default:
+		return stopping.Stop(ctx)
+	}
 }
 
 func restartMessage(target string) string {
 	switch target {
 	case "gateway":
-		return "网关已重启"
+		return "游戏网关已重启"
+	case "gmsv":
+		return "GMSV 已重启"
+	case "saac":
+		return "SAAC 已重启"
 	case "game":
 		return "游戏服务（GMSV + SAAC）已重启"
 	default:
@@ -487,9 +645,25 @@ func restartMessage(target string) string {
 	}
 }
 
-func configAuditDetails(values map[string]string) string {
+func stopMessage(target string) string {
+	switch target {
+	case "gateway":
+		return "游戏网关已停止"
+	case "gmsv":
+		return "GMSV 已停止"
+	case "saac":
+		return "SAAC 已停止"
+	case "game":
+		return "游戏服务（GMSV + SAAC）已停止"
+	default:
+		return "全部服务已停止"
+	}
+}
+
+func configAuditDetailsFor(values map[string]string, definitions []configFieldDefinition) string {
 	parts := make([]string, 0, len(values))
-	for _, key := range editableConfigOrder {
+	for _, definition := range definitions {
+		key := definition.Key
 		if value, ok := values[key]; ok {
 			parts = append(parts, key+"="+value)
 		}

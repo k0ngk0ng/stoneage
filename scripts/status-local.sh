@@ -7,8 +7,25 @@ gateway_pid_file="$project_root/runtime/gateway.pid"
 
 if docker container inspect "$container_name" >/dev/null 2>&1; then
   docker inspect -f 'server={{.Name}} running={{.State.Running}} status={{.State.Status}}' "$container_name"
+  if [[ "$(docker inspect -f '{{.State.Running}}' "$container_name")" == "true" ]]; then
+    if docker exec "$container_name" nc -z 127.0.0.1 9065 >/dev/null 2>&1; then
+      echo "gmsv=running"
+    else
+      echo "gmsv=stopped"
+    fi
+    if docker exec "$container_name" nc -z 127.0.0.1 9300 >/dev/null 2>&1; then
+      echo "saac=running"
+    else
+      echo "saac=stopped"
+    fi
+  else
+    echo "gmsv=stopped"
+    echo "saac=stopped"
+  fi
 else
   echo "server=$container_name status=missing"
+  echo "gmsv=stopped"
+  echo "saac=stopped"
 fi
 
 gateway_reported=0

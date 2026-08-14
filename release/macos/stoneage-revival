@@ -10,6 +10,7 @@ wine_prefix="$support_root/wine-prefix-cp936"
 log_root="$support_root/logs"
 container_name="${STONEAGE_CONTAINER_NAME:-stoneage-revival-local}"
 upstream_port="19065"
+saac_port="9300"
 gateway_port="9065"
 gateway_pid_file="$support_root/gateway.pid"
 
@@ -80,8 +81,22 @@ if ! "$docker_bin" container inspect "$container_name" >/dev/null 2>&1; then
   "$docker_bin" run --detach \
     --name "$container_name" --init --ulimit core=-1 \
     --publish "127.0.0.1:$upstream_port:9065" \
+    --publish "127.0.0.1:$saac_port:9300" \
     --volume "$runtime_root:/game" \
     --volume "$resources/support/server/legacy/modern/run.sh:/modern/run.sh:ro" \
+    --volume "$resources/support/server/legacy/modern/control.sh:/modern/control.sh:ro" \
+    alpine:3.22 sh /modern/run.sh >"$log_root/container-id.txt"
+elif ! "$docker_bin" exec "$container_name" test -f /modern/control.sh >/dev/null 2>&1 || \
+  ! "$docker_bin" port "$container_name" 9300/tcp 2>/dev/null | grep -Fq "127.0.0.1:$saac_port"; then
+  "$docker_bin" stop "$container_name" >/dev/null || true
+  "$docker_bin" rm "$container_name" >/dev/null || true
+  "$docker_bin" run --detach \
+    --name "$container_name" --init --ulimit core=-1 \
+    --publish "127.0.0.1:$upstream_port:9065" \
+    --publish "127.0.0.1:$saac_port:9300" \
+    --volume "$runtime_root:/game" \
+    --volume "$resources/support/server/legacy/modern/run.sh:/modern/run.sh:ro" \
+    --volume "$resources/support/server/legacy/modern/control.sh:/modern/control.sh:ro" \
     alpine:3.22 sh /modern/run.sh >"$log_root/container-id.txt"
 elif [[ "$("$docker_bin" inspect -f '{{.State.Running}}' "$container_name")" != "true" ]]; then
   "$docker_bin" start "$container_name" >/dev/null

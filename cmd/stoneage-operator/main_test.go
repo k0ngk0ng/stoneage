@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +62,57 @@ func TestProbeDatabase(t *testing.T) {
 	}
 	if got := probeDatabase(path); got != "ready" {
 		t.Fatalf("database = %q", got)
+	}
+}
+
+func TestOperatorStatusPrefersFixedContainerStatusScript(t *testing.T) {
+	directory := t.TempDir()
+	command := filepath.Join(directory, "status-server.sh")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s\\n' 'gateway=running pid=11' 'gmsv=stopped' 'saac=running'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	value := operator{
+		packageRoot:  directory,
+		gatewayAddr:  "127.0.0.1:1",
+		upstreamAddr: "127.0.0.1:1",
+		saacAddr:     "127.0.0.1:1",
+	}
+	got := value.status()
+	if got.Gateway != "running" || got.GMSV != "stopped" || got.SAAC != "running" {
+		t.Fatalf("status = %#v", got)
+	}
+}
+
+func TestOperatorStopActionsUseFixedScripts(t *testing.T) {
+	directory := t.TempDir()
+	actions := map[string]string{
+		"stop":          "stop-server.sh",
+		"stop_game":     "stop-game.sh",
+		"stop_gateway":  "stop-gateway.sh",
+		"stop_gmsv":     "stop-gmsv.sh",
+		"stop_saac":     "stop-saac.sh",
+	}
+	for _, script := range actions {
+		path := filepath.Join(directory, script)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	value := operator{packageRoot: directory}
+	for action := range actions {
+		serverConnection, clientConnection := net.Pipe()
+		go value.handle(serverConnection)
+		if err := json.NewEncoder(clientConnection).Encode(request{Action: action}); err != nil {
+			t.Fatal(err)
+		}
+		var output response
+		if err := json.NewDecoder(clientConnection).Decode(&output); err != nil {
+			t.Fatal(err)
+		}
+		clientConnection.Close()
+		if !output.OK {
+			t.Fatalf("action %s response = %#v", action, output)
+		}
 	}
 }
 

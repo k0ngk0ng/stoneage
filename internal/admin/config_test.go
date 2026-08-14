@@ -64,3 +64,33 @@ func TestConfigManagerRejectsSymlink(t *testing.T) {
 		t.Fatal("symlink config accepted")
 	}
 }
+
+func TestSAACConfigManagerUsesSpaceDelimitedSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "acserv.cf")
+	original := "# comment\nport 9300\npass test\nrotate_interval 604800\nSameIpMun 10\n"
+	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	manager := ConfigManager{Path: path, Service: "saac"}
+	values, err := manager.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["SameIpMun"] != "10" {
+		t.Fatalf("loaded SAAC values = %#v", values)
+	}
+	if _, ok := values["pass"]; ok {
+		t.Fatal("SAAC password should not be exposed")
+	}
+	if err := manager.Update(map[string]string{"SameIpMun": "12"}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "port 9300") || !strings.Contains(text, "SameIpMun 12") || !strings.Contains(text, "pass test") {
+		t.Fatalf("updated SAAC config = %q", text)
+	}
+}

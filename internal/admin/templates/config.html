@@ -1,0 +1,33 @@
+{{define "content"}}
+<div class="page-heading">
+  <div>
+    <h1>{{.ConfigTitle}}</h1>
+    <p class="muted">{{.ConfigDescription}}</p>
+  </div>
+  <span class="page-kicker">{{.ConfigPath}}</span>
+</div>
+{{if .ConfigError}}<div class="alert error">配置文件不可用：{{.ConfigError}}</div>{{end}}
+
+<section class="card config-card standalone-card">
+  {{if .ConfigEditable}}
+  <form method="post" action="/services/{{.ConfigService}}/config">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{range .ConfigGroups}}
+      <h3 class="config-section-title">{{.Title}}</h3>
+      <div class="config-grid">
+      {{range .Fields}}
+        {{if eq .Kind "bool"}}
+        <label class="config-field checkbox"><input type="checkbox" name="{{.Key}}" value="1" {{if eq .Value "1"}}checked{{end}}> <span>{{.Label}}</span><small>{{.Hint}}</small></label>
+        {{else}}
+        <label class="config-field"><span>{{.Label}}</span><input type="number" name="{{.Key}}" value="{{.Value}}" min="{{.Min}}" max="{{.Max}}" step="1" required><small>{{.Hint}}</small></label>
+        {{end}}
+      {{end}}
+      </div>
+    {{end}}
+    <div class="form-footer config-footer"><small>保存只写入配置文件，不会自动重启服务；确认无误后请到“服务”页面手动重启对应服务。</small><div class="form-actions"><a class="button" href="/server">取消</a><button class="primary" type="submit">保存配置</button></div></div>
+  </form>
+  {{else}}
+  <div class="empty config-readonly"><p>当前没有可在线编辑的游戏网关配置项。</p><a class="button" href="/server">返回服务</a></div>
+  {{end}}
+</section>
+{{end}}

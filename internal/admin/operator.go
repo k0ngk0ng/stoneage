@@ -13,6 +13,7 @@ import (
 type ServiceStatus struct {
 	Gateway  string `json:"gateway"`
 	GMSV     string `json:"gmsv"`
+	SAAC     string `json:"saac"`
 	Database string `json:"database"`
 }
 
@@ -28,7 +29,20 @@ type Operator interface {
 // allowing older integrations to continue supporting the all-services action.
 type TargetedOperator interface {
 	RestartGateway(context.Context) error
+	RestartGMSV(context.Context) error
+	RestartSAAC(context.Context) error
 	RestartGame(context.Context) error
+}
+
+// StoppingOperator exposes the same fixed, service-scoped stop actions as the
+// restart actions. It remains optional so older test and deployment adapters
+// can continue to implement the read/restart surface only.
+type StoppingOperator interface {
+	Stop(context.Context) error
+	StopGateway(context.Context) error
+	StopGMSV(context.Context) error
+	StopSAAC(context.Context) error
+	StopGame(context.Context) error
 }
 
 // NotifyingOperator is the optional, fixed online-announcement capability.
@@ -73,6 +87,34 @@ func (operator UnixOperator) RestartGame(ctx context.Context) error {
 	return operator.restartAction(ctx, "restart_game")
 }
 
+func (operator UnixOperator) RestartGMSV(ctx context.Context) error {
+	return operator.restartAction(ctx, "restart_gmsv")
+}
+
+func (operator UnixOperator) RestartSAAC(ctx context.Context) error {
+	return operator.restartAction(ctx, "restart_saac")
+}
+
+func (operator UnixOperator) Stop(ctx context.Context) error {
+	return operator.stopAction(ctx, "stop")
+}
+
+func (operator UnixOperator) StopGateway(ctx context.Context) error {
+	return operator.stopAction(ctx, "stop_gateway")
+}
+
+func (operator UnixOperator) StopGMSV(ctx context.Context) error {
+	return operator.stopAction(ctx, "stop_gmsv")
+}
+
+func (operator UnixOperator) StopSAAC(ctx context.Context) error {
+	return operator.stopAction(ctx, "stop_saac")
+}
+
+func (operator UnixOperator) StopGame(ctx context.Context) error {
+	return operator.stopAction(ctx, "stop_game")
+}
+
 func (operator UnixOperator) Notify(ctx context.Context, message string) error {
 	response, err := operator.callWithMessage(ctx, "notify", message)
 	if err != nil {
@@ -85,6 +127,17 @@ func (operator UnixOperator) Notify(ctx context.Context, message string) error {
 }
 
 func (operator UnixOperator) restartAction(ctx context.Context, action string) error {
+	response, err := operator.call(ctx, action)
+	if err != nil {
+		return err
+	}
+	if !response.OK {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
+func (operator UnixOperator) stopAction(ctx context.Context, action string) error {
 	response, err := operator.call(ctx, action)
 	if err != nil {
 		return err
@@ -111,7 +164,7 @@ func (operator UnixOperator) callWithMessage(ctx context.Context, action, messag
 	defer connection.Close()
 	deadline := 5 * time.Second
 	switch action {
-	case "restart", "restart_server", "restart_game", "restart_gateway":
+	case "restart", "restart_server", "restart_game", "restart_gateway", "restart_gmsv", "restart_saac", "stop", "stop_server", "stop_game", "stop_gateway", "stop_gmsv", "stop_saac":
 		deadline = 100 * time.Second
 	case "notify":
 		deadline = 10 * time.Second

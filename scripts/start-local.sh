@@ -5,6 +5,7 @@ project_root="$(cd "$(dirname "$0")/.." && pwd)"
 runtime_root="$project_root/runtime/legacy-server"
 container_name="${STONEAGE_SERVER_CONTAINER:-stoneage-legacy-local}"
 upstream_port="${STONEAGE_UPSTREAM_PORT:-19065}"
+saac_port="${STONEAGE_SAAC_PORT:-9300}"
 gateway_listen="${STONEAGE_GATEWAY_LISTEN:-127.0.0.1:9065}"
 gateway_upstream="${STONEAGE_GATEWAY_UPSTREAM:-127.0.0.1:$upstream_port}"
 gateway_binary="$project_root/build/stoneage-gateway"
@@ -49,14 +50,24 @@ if [[ ! -x "$runtime_root/saac/saacjt.exe" || ! -x "$runtime_root/gmsv/gmsvjt.ex
 fi
 
 if docker container inspect "$container_name" >/dev/null 2>&1; then
-  if [[ "$(docker inspect -f '{{.State.Running}}' "$container_name")" != "true" ]]; then
+  has_saac_port=0
+  if docker port "$container_name" 9300/tcp 2>/dev/null | grep -Fq "127.0.0.1:$saac_port"; then
+    has_saac_port=1
+  fi
+  if ! docker exec "$container_name" test -f /modern/control.sh >/dev/null 2>&1 || [[ "$has_saac_port" != "1" ]]; then
+    echo "Refreshing stale server container $container_name for SAAC status/control support."
+    docker stop "$container_name" >/dev/null || true
+    docker rm "$container_name" >/dev/null || true
+    STONEAGE_UPSTREAM_PORT="$upstream_port" STONEAGE_SAAC_PORT="$saac_port" \
+      "$project_root/scripts/run-legacy-server.sh" "$runtime_root"
+  elif [[ "$(docker inspect -f '{{.State.Running}}' "$container_name")" != "true" ]]; then
     docker start "$container_name" >/dev/null
     echo "Started existing server container $container_name."
   else
     echo "Server container $container_name is already running."
   fi
 else
-  STONEAGE_UPSTREAM_PORT="$upstream_port" \
+  STONEAGE_UPSTREAM_PORT="$upstream_port" STONEAGE_SAAC_PORT="$saac_port" \
     "$project_root/scripts/run-legacy-server.sh" "$runtime_root"
 fi
 

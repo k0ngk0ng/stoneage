@@ -1,0 +1,143 @@
+services:
+  # GMSV and SAAC remain separate processes inside this legacy-server
+  # container. They share the archived runtime files, but have independent
+  # ports, configuration pages and control actions.
+  legacy-server:
+    image: alpine:3.22
+    container_name: ${STONEAGE_GAME_CONTAINER:-stoneage-legacy-server}
+    init: true
+    restart: unless-stopped
+    volumes:
+      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
+      - ./server/legacy/modern/run.sh:/modern/run.sh:ro
+      - ./server/legacy/modern/control.sh:/modern/control.sh:ro
+    command: ["sh", "/modern/run.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9300 && nc -z 127.0.0.1 9065"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/linux/Dockerfile
+    image: stoneage-control-plane:local
+    container_name: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      legacy-server:
+        condition: service_healthy
+    command:
+      - /opt/stoneage/bin/stoneage-gateway
+      - -listen
+      - 0.0.0.0:9065
+      - -upstream
+      - legacy-server:9065
+      - -auth-required
+      - -auth-db
+      - /data/stoneage-auth.db
+    environment:
+      STONEAGE_AUTH_DB: /data/stoneage-auth.db
+    volumes:
+      - auth-data:/data
+    ports:
+      - ${STONEAGE_GATEWAY_BIND:-127.0.0.1}:${STONEAGE_GATEWAY_PORT:-9065}:9065
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  # This is the privileged-but-fixed service control boundary. The web
+  # container never receives the Docker socket.
+  service-control:
+    build:
+      context: .
+      dockerfile: deploy/linux/Dockerfile
+    image: stoneage-control-plane:local
+    container_name: ${STONEAGE_OPERATOR_CONTAINER:-stoneage-service-control}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      legacy-server:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    command:
+      - /opt/stoneage/bin/stoneage-operator
+      - -package-root
+      - /opt/stoneage/compose
+      - -socket
+      - /run/stoneage/operator.sock
+      - -gateway
+      - gateway:9065
+      - -upstream
+      - legacy-server:9065
+      - -saac
+      - legacy-server:9300
+      - -auth-db
+      - /data/stoneage-auth.db
+    environment:
+      STONEAGE_GAME_CONTAINER: ${STONEAGE_GAME_CONTAINER:-stoneage-legacy-server}
+      STONEAGE_GATEWAY_CONTAINER: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
+      STONEAGE_GAME_HOST: legacy-server
+      STONEAGE_GATEWAY_HOST: gateway
+      STONEAGE_RUNTIME_MOUNT: /game
+    volumes:
+      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
+      - auth-data:/data
+      - operator-run:/run/stoneage
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /run/stoneage/operator.sock"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # The authenticated web administration site (accounts, audit, services,
+  # notifications and per-service configuration).
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/linux/Dockerfile
+    image: stoneage-control-plane:local
+    container_name: ${STONEAGE_ADMIN_CONTAINER:-stoneage-admin}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      service-control:
+        condition: service_healthy
+    command:
+      - /opt/stoneage/bin/stoneage-admin
+      - serve
+      - -db
+      - /data/stoneage-auth.db
+      - -listen
+      - 0.0.0.0:8080
+      - -config
+      - /game/gmsv/setup.cf
+      - -saac-config
+      - /game/saac/acserv.cf
+      - -operator-socket
+      - /run/stoneage/operator.sock
+    environment:
+      STONEAGE_ADMIN_USER: ${STONEAGE_ADMIN_USER:-}
+      STONEAGE_ADMIN_PASSWORD: ${STONEAGE_ADMIN_PASSWORD:-}
+      STONEAGE_ADMIN_SETUP_TOKEN: ${STONEAGE_ADMIN_SETUP_TOKEN:-}
+      STONEAGE_ADMIN_COOKIE_SECURE: ${STONEAGE_ADMIN_COOKIE_SECURE:-false}
+    volumes:
+      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
+      - auth-data:/data
+      - operator-run:/run/stoneage:ro
+    ports:
+      - ${STONEAGE_ADMIN_BIND:-127.0.0.1}:${STONEAGE_ADMIN_PORT:-8080}:8080
+
+volumes:
+  auth-data:
+    name: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
+  operator-run:
+    name: ${STONEAGE_OPERATOR_RUN_VOLUME:-stoneage-operator-run}

@@ -73,6 +73,10 @@ jobs:
                 release/linux/stop-gateway.sh \
                 release/linux/restart-server.sh \
                 release/linux/restart-game.sh \
+                release/linux/restart-gmsv.sh \
+                release/linux/restart-saac.sh \
+                release/linux/stop-gmsv.sh \
+                release/linux/stop-saac.sh \
                 release/linux/restart-gateway.sh \
                 release/linux/send-notification.sh \
                 "$package_root/"

@@ -9,7 +9,7 @@ StoneAge 2.5 Windows 客户端（named LSSPROTO，CP936）
 Go stoneage-gateway（SQLite ClientLogin 校验 + 函数名协议 ↔ 数字协议）
   │  TCP 19065，仅本机
   ▼
-Linux 2.5 GMSV 容器 ── SAAC RPC ── Linux 2.5 SAAC
+Linux 2.5 GMSV 进程 ── SAAC RPC ── Linux 2.5 SAAC 进程
                                     └─ 平面文件角色/账号数据
 
 管理员浏览器 ── HTTPS 反向代理 ── stoneage-admin（SQLite 会话/审计）
@@ -18,6 +18,15 @@ Linux 2.5 GMSV 容器 ── SAAC RPC ── Linux 2.5 SAAC
                                stoneage-operator ── 固定脚本 + 通知队列
 SQLite stoneage-auth.db ────────┘
 ```
+
+Linux 服务器也提供根目录 `docker-compose.yml`：`legacy-server` 容器运行 GMSV/SAAC，
+`gateway`、`admin` 和 `operator` 作为独立 Compose 服务运行。operator 才挂载
+Docker socket，并且只调用 `deploy/linux/compose/` 下的固定脚本；后台通过共享的
+Unix socket 请求状态、通知和服务控制。SQLite 认证库、配置和角色目录保持持久化。
+
+GMSV 与 SAAC 是独立的旧版进程，分别读取 `setup.cf` 和 `acserv.cf`。Linux
+发布包为了保持网络和数据目录简单，仍由同一个容器监督两者，但 operator 通过
+固定控制脚本支持分别重启 GMSV 或 SAAC。
 
 保存的 `sa_2903.exe` 与现有 Linux GMSV 都属于 2.5 时代，但使用两种生成版
 LSSPROTO 方言：客户端用函数名，GMSV 用数字函数号、校验和及会话密钥。Go

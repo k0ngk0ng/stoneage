@@ -6,8 +6,10 @@ admin_listen="${STONEAGE_ADMIN_LISTEN:-127.0.0.1:8080}"
 operator_socket="${STONEAGE_OPERATOR_SOCKET:-$package_root/run/operator.sock}"
 auth_database="${STONEAGE_AUTH_DB:-$package_root/runtime/stoneage-auth.db}"
 server_config="${STONEAGE_SERVER_CONFIG:-$package_root/runtime/legacy-server/gmsv/setup.cf}"
+saac_config="${STONEAGE_SAAC_CONFIG:-$package_root/runtime/legacy-server/saac/acserv.cf}"
 gateway_address="${STONEAGE_GATEWAY_ADDRESS:-127.0.0.1:9065}"
 upstream_address="${STONEAGE_UPSTREAM_ADDRESS:-127.0.0.1:19065}"
+saac_address="${STONEAGE_SAAC_ADDRESS:-127.0.0.1:9300}"
 run_root="$package_root/run"
 log_root="$package_root/logs"
 operator_pid_file="$run_root/operator.pid"
@@ -37,6 +39,7 @@ if ! running_pid "$operator_pid_file" >/dev/null; then
     -socket "$operator_socket" \
     -gateway "$gateway_address" \
     -upstream "$upstream_address" \
+    -saac "$saac_address" \
     -auth-db "$auth_database" \
     </dev/null >"$log_root/operator.log" 2>&1 &
   printf '%s\n' "$!" >"$operator_pid_file"
@@ -58,6 +61,7 @@ if ! running_pid "$admin_pid_file" >/dev/null; then
     -db "$auth_database"
     -listen "$admin_listen"
     -config "$server_config"
+    -saac-config "$saac_config"
     -operator-socket "$operator_socket"
   )
   if [[ -n "${STONEAGE_ADMIN_SETUP_TOKEN:-}" ]]; then

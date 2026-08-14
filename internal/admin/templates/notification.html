@@ -1,0 +1,21 @@
+{{define "content"}}
+<div class="page-heading">
+  <div>
+    <h1>通知</h1>
+    <p class="muted">向当前在线玩家发送红色系统消息。</p>
+  </div>
+  <span class="page-kicker">即时广播</span>
+</div>
+
+<section class="card notification-card standalone-card">
+  <div class="card-heading">
+    <div><h2>在线通知</h2><p class="muted">消息会进入受限通知队列，由 GMSV 广播给当前在线玩家。</p></div>
+    <span class="section-kicker">最多 240 字符</span>
+  </div>
+  <form method="post" action="/notifications">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="textarea-label">通知内容<textarea name="message" rows="6" maxlength="240" required placeholder="例如：今晚 23:00 进行例行维护，请提前下线。"></textarea></label>
+    <div class="form-footer"><small>单行文字；不会执行任何命令。</small><button class="primary" type="submit" data-confirm="将通知发送给当前在线玩家，确认发送？">发送通知</button></div>
+  </form>
+</section>
+{{end}}

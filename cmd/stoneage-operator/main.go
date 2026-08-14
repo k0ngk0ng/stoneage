@@ -29,6 +29,7 @@ type request struct {
 type status struct {
 	Gateway  string `json:"gateway"`
 	GMSV     string `json:"gmsv"`
+	SAAC     string `json:"saac"`
 	Database string `json:"database"`
 }
 
@@ -43,6 +44,7 @@ type operator struct {
 	socket       string
 	gatewayAddr  string
 	upstreamAddr string
+	saacAddr     string
 	databasePath string
 	restartMu    sync.Mutex
 }
@@ -53,6 +55,7 @@ func main() {
 	flag.StringVar(&value.packageRoot, "package-root", envOr("STONEAGE_PACKAGE_ROOT", "."), "Linux release package root")
 	flag.StringVar(&value.gatewayAddr, "gateway", envOr("STONEAGE_GATEWAY_ADDRESS", "127.0.0.1:9065"), "gateway status address")
 	flag.StringVar(&value.upstreamAddr, "upstream", envOr("STONEAGE_UPSTREAM_ADDRESS", "127.0.0.1:19065"), "GMSV status address")
+	flag.StringVar(&value.saacAddr, "saac", envOr("STONEAGE_SAAC_ADDRESS", "127.0.0.1:9300"), "SAAC status address")
 	flag.StringVar(&value.databasePath, "auth-db", envOr("STONEAGE_AUTH_DB", ""), "SQLite auth database path")
 	flag.Parse()
 	if err := value.listen(); err != nil {
@@ -125,6 +128,48 @@ func (value *operator) handle(connection net.Conn) {
 		} else {
 			output.OK = true
 		}
+	case "restart_gmsv":
+		if err := value.restartScript("restart-gmsv.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "restart_saac":
+		if err := value.restartScript("restart-saac.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "stop", "stop_server":
+		if err := value.restartScript("stop-server.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "stop_game":
+		if err := value.restartScript("stop-game.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "stop_gateway":
+		if err := value.restartScript("stop-gateway.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "stop_gmsv":
+		if err := value.restartScript("stop-gmsv.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "stop_saac":
+		if err := value.restartScript("stop-saac.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
 	case "restart_gateway":
 		if err := value.restartScript("restart-gateway.sh"); err != nil {
 			output.Error = err.Error()
@@ -144,11 +189,58 @@ func (value *operator) handle(connection net.Conn) {
 }
 
 func (value *operator) status() status {
-	return status{
+	fallback := status{
 		Gateway:  probeAddress(value.gatewayAddr),
 		GMSV:     probeAddress(value.upstreamAddr),
+		SAAC:     probeAddress(value.saacAddr),
 		Database: probeDatabase(value.databasePath),
 	}
+	if scripted, ok := value.statusScript(fallback); ok {
+		return scripted
+	}
+	return fallback
+}
+
+func (value *operator) statusScript(fallback status) (status, bool) {
+	command := filepath.Join(value.packageRoot, "status-server.sh")
+	info, err := os.Lstat(command)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return status{}, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, command).Output()
+	if err != nil {
+		return status{}, false
+	}
+	result := fallback
+	found := 0
+	for _, line := range strings.Split(string(output), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(value)
+		if len(fields) == 0 {
+			continue
+		}
+		value = fields[0]
+		switch key {
+		case "gateway":
+			result.Gateway = value
+			found++
+		case "gmsv":
+			result.GMSV = value
+			found++
+		case "saac":
+			result.SAAC = value
+			found++
+		}
+	}
+	if found == 0 {
+		return status{}, false
+	}
+	return result, true
 }
 
 func (value *operator) restartScript(script string) error {
@@ -179,10 +271,10 @@ func (value *operator) runScriptWithArgs(script string, timeout time.Duration, a
 	command := filepath.Join(value.packageRoot, script)
 	info, err := os.Lstat(command)
 	if err != nil {
-		return fmt.Errorf("restart command unavailable: %w", err)
+		return fmt.Errorf("operator command unavailable: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return fmt.Errorf("restart command is not a regular executable")
+		return fmt.Errorf("operator command is not a regular executable")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -190,7 +282,7 @@ func (value *operator) runScriptWithArgs(script string, timeout time.Duration, a
 		if len(output) > 2048 {
 			output = output[len(output)-2048:]
 		}
-		return fmt.Errorf("restart failed: %w: %s", err, output)
+		return fmt.Errorf("operator command failed: %w: %s", err, output)
 	}
 	return nil
 }

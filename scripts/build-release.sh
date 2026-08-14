@@ -193,8 +193,10 @@ copy_runtime_support()
     "$destination/scripts/"
   cp -R "$project_root/server/legacy/modern/patches" \
     "$destination/server/legacy/modern/"
-  cp -p "$project_root/server/legacy/modern/run.sh" \
-    "$destination/server/legacy/modern/run.sh"
+  cp -p \
+    "$project_root/server/legacy/modern/run.sh" \
+    "$project_root/server/legacy/modern/control.sh" \
+    "$destination/server/legacy/modern/"
 }
 
 echo "Assembling macOS application..."
@@ -243,6 +245,10 @@ install -m 0755 "$project_root/release/linux/stop-gateway.sh" "$linux_stage/stop
 install -m 0755 "$project_root/release/linux/status-server.sh" "$linux_stage/status-server.sh"
 install -m 0755 "$project_root/release/linux/restart-server.sh" "$linux_stage/restart-server.sh"
 install -m 0755 "$project_root/release/linux/restart-game.sh" "$linux_stage/restart-game.sh"
+install -m 0755 "$project_root/release/linux/restart-gmsv.sh" "$linux_stage/restart-gmsv.sh"
+install -m 0755 "$project_root/release/linux/restart-saac.sh" "$linux_stage/restart-saac.sh"
+install -m 0755 "$project_root/release/linux/stop-gmsv.sh" "$linux_stage/stop-gmsv.sh"
+install -m 0755 "$project_root/release/linux/stop-saac.sh" "$linux_stage/stop-saac.sh"
 install -m 0755 "$project_root/release/linux/restart-gateway.sh" "$linux_stage/restart-gateway.sh"
 install -m 0755 "$project_root/release/linux/send-notification.sh" "$linux_stage/send-notification.sh"
 install -m 0755 "$project_root/release/linux/start-admin.sh" "$linux_stage/start-admin.sh"

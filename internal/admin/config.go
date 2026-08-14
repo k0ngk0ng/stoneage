@@ -11,7 +11,8 @@ import (
 )
 
 type ConfigManager struct {
-	Path string
+	Path    string
+	Service string
 }
 
 // ConfigField is the safe, documented subset of setup.cf exposed by the web
@@ -100,34 +101,26 @@ var configFieldDefinitions = []configFieldDefinition{
 	{Group: "时间与日志", Key: "erruser_down", Label: "错误用户断开", Hint: "0 关闭，1 开启。", Kind: "bool", Default: "1"},
 }
 
-var editableConfigKeys = func() map[string]struct{} {
-	keys := make(map[string]struct{}, len(configFieldDefinitions))
-	for _, field := range configFieldDefinitions {
-		keys[field.Key] = struct{}{}
-	}
-	return keys
-}()
-
-var editableConfigOrder = func() []string {
-	keys := make([]string, 0, len(configFieldDefinitions))
-	for _, field := range configFieldDefinitions {
-		keys = append(keys, field.Key)
-	}
-	return keys
-}()
-
-var configDefinitionByKey = func() map[string]configFieldDefinition {
-	definitions := make(map[string]configFieldDefinition, len(configFieldDefinitions))
-	for _, field := range configFieldDefinitions {
-		definitions[field.Key] = field
-	}
-	return definitions
-}()
+// SAAC keeps account, character, mail and family data in its own legacy
+// service. Secrets, paths and protocol wiring stay file-only; these numeric
+// operational settings are safe to edit from the authenticated console.
+var saacConfigFieldDefinitions = []configFieldDefinition{
+	{Group: "运行", Key: "rotate_interval", Label: "日志轮换间隔", Hint: "按秒填写，0 表示不自动轮换。", Kind: "int", Default: "604800", Min: 0, Max: 31536000},
+	{Group: "运行", Key: "Total_Charlist", Label: "角色列表上限", Hint: "SAAC 角色列表缓存容量。", Kind: "int", Default: "3600", Min: 1, Max: 1000000},
+	{Group: "运行", Key: "Expired_mail", Label: "过期邮件时间", Hint: "按秒填写。", Kind: "int", Default: "600", Min: 0, Max: 31536000},
+	{Group: "运行", Key: "Del_Family_or_Member", Label: "家族清理间隔", Hint: "按秒填写。", Kind: "int", Default: "3600", Min: 0, Max: 31536000},
+	{Group: "运行", Key: "Write_Family", Label: "家族写入间隔", Hint: "按秒填写。", Kind: "int", Default: "600", Min: 0, Max: 31536000},
+	{Group: "限制", Key: "SameIpMun", Label: "同 IP 连接上限", Hint: "0 表示不额外限制。", Kind: "int", Default: "10", Min: 0, Max: 100000},
+}
 
 func BuildConfigGroups(values map[string]string) []ConfigGroup {
-	groups := make([]ConfigGroup, 0, 4)
+	return BuildConfigGroupsFor(values, configFieldDefinitions)
+}
+
+func BuildConfigGroupsFor(values map[string]string, definitions []configFieldDefinition) []ConfigGroup {
+	groups := make([]ConfigGroup, 0, len(definitions))
 	groupIndex := map[string]int{}
-	for _, definition := range configFieldDefinitions {
+	for _, definition := range definitions {
 		index, exists := groupIndex[definition.Group]
 		if !exists {
 			index = len(groups)
@@ -147,6 +140,17 @@ func BuildConfigGroups(values map[string]string) []ConfigGroup {
 	return groups
 }
 
+func (manager ConfigManager) definitions() []configFieldDefinition {
+	if strings.EqualFold(manager.Service, "saac") {
+		return saacConfigFieldDefinitions
+	}
+	return configFieldDefinitions
+}
+
+func (manager ConfigManager) groups(values map[string]string) []ConfigGroup {
+	return BuildConfigGroupsFor(values, manager.definitions())
+}
+
 func (manager ConfigManager) Load() (map[string]string, error) {
 	values := map[string]string{}
 	if manager.Path == "" {
@@ -163,11 +167,11 @@ func (manager ConfigManager) Load() (map[string]string, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
-		key, value, ok := strings.Cut(line, "=")
+		key, value, ok := manager.parseSetting(line)
 		if !ok || key == "" {
 			continue
 		}
-		if _, editable := editableConfigKeys[key]; editable {
+		if _, editable := manager.editableKeys()[key]; editable {
 			values[key] = value
 		}
 	}
@@ -181,11 +185,12 @@ func (manager ConfigManager) Update(values map[string]string) error {
 	if manager.Path == "" {
 		return errors.New("server config path is not configured")
 	}
+	definitions := manager.definitions()
 	for key, value := range values {
-		if _, ok := editableConfigKeys[key]; !ok {
+		if _, ok := manager.editableKeys()[key]; !ok {
 			return fmt.Errorf("config key %q is not editable", key)
 		}
-		if err := validateConfigValue(key, value); err != nil {
+		if err := validateConfigValueFor(definitions, key, value); err != nil {
 			return err
 		}
 	}
@@ -199,7 +204,7 @@ func (manager ConfigManager) Update(values map[string]string) error {
 	lines := strings.Split(string(input), "\n")
 	found := map[string]bool{}
 	for index, line := range lines {
-		key, _, ok := strings.Cut(line, "=")
+		key, _, ok := manager.parseSetting(line)
 		if !ok {
 			continue
 		}
@@ -207,12 +212,12 @@ func (manager ConfigManager) Update(values map[string]string) error {
 		if !exists {
 			continue
 		}
-		lines[index] = key + "=" + value
+		lines[index] = manager.formatSetting(key, value)
 		found[key] = true
 	}
-	for _, key := range editableConfigOrder {
+	for _, key := range manager.editableOrder() {
 		if value, exists := values[key]; exists && !found[key] {
-			lines = append(lines, key+"="+value)
+			lines = append(lines, manager.formatSetting(key, value))
 		}
 	}
 	content := []byte(strings.Join(lines, "\n"))
@@ -248,6 +253,46 @@ func (manager ConfigManager) Update(values map[string]string) error {
 	return nil
 }
 
+func (manager ConfigManager) editableKeys() map[string]struct{} {
+	keys := make(map[string]struct{}, len(manager.definitions()))
+	for _, definition := range manager.definitions() {
+		keys[definition.Key] = struct{}{}
+	}
+	return keys
+}
+
+func (manager ConfigManager) editableOrder() []string {
+	keys := make([]string, 0, len(manager.definitions()))
+	for _, definition := range manager.definitions() {
+		keys = append(keys, definition.Key)
+	}
+	return keys
+}
+
+func (manager ConfigManager) parseSetting(line string) (string, string, bool) {
+	if strings.EqualFold(manager.Service, "saac") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			return "", "", false
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 2 {
+			return "", "", false
+		}
+		key := fields[0]
+		value := strings.TrimSpace(strings.TrimPrefix(trimmed, key))
+		return key, value, value != ""
+	}
+	return strings.Cut(line, "=")
+}
+
+func (manager ConfigManager) formatSetting(key, value string) string {
+	if strings.EqualFold(manager.Service, "saac") {
+		return key + " " + value
+	}
+	return key + "=" + value
+}
+
 func (manager ConfigManager) validateFile() error {
 	info, err := os.Lstat(manager.Path)
 	if err != nil {
@@ -263,7 +308,11 @@ func (manager ConfigManager) validateFile() error {
 }
 
 func validateConfigValue(key, value string) error {
-	definition, ok := configDefinitionByKey[key]
+	return validateConfigValueFor(configFieldDefinitions, key, value)
+}
+
+func validateConfigValueFor(definitions []configFieldDefinition, key, value string) error {
+	definition, ok := definitionFor(definitions, key)
 	if !ok {
 		return fmt.Errorf("config key %q is not editable", key)
 	}
@@ -278,4 +327,13 @@ func validateConfigValue(key, value string) error {
 		return fmt.Errorf("%s must be between %d and %d", key, definition.Min, definition.Max)
 	}
 	return nil
+}
+
+func definitionFor(definitions []configFieldDefinition, key string) (configFieldDefinition, bool) {
+	for _, definition := range definitions {
+		if definition.Key == key {
+			return definition, true
+		}
+	}
+	return configFieldDefinition{}, false
 }

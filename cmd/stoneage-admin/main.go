@@ -56,6 +56,7 @@ func serve(arguments []string) error {
 	listenAddress := flags.String("listen", envOr("STONEAGE_ADMIN_LISTEN", "127.0.0.1:8080"), "HTTP listen address (put HTTPS proxy in front)")
 	setupToken := flags.String("setup-token", os.Getenv("STONEAGE_ADMIN_SETUP_TOKEN"), "one-time web setup token")
 	configPath := flags.String("config", os.Getenv("STONEAGE_SERVER_CONFIG"), "GMSV setup.cf path")
+	saacConfigPath := flags.String("saac-config", os.Getenv("STONEAGE_SAAC_CONFIG"), "SAAC acserv.cf path")
 	operatorSocket := flags.String("operator-socket", os.Getenv("STONEAGE_OPERATOR_SOCKET"), "restricted operator Unix socket")
 	cookieSecure := flags.Bool("cookie-secure", envBool("STONEAGE_ADMIN_COOKIE_SECURE", false), "set Secure on admin session cookies")
 	if err := flags.Parse(arguments); err != nil {
@@ -91,6 +92,7 @@ func serve(arguments []string) error {
 		SetupToken:   *setupToken,
 		Operator:     operator,
 		Config:       admin.ConfigManager{Path: *configPath},
+		SAACConfig:   admin.ConfigManager{Path: *saacConfigPath, Service: "saac"},
 	})
 	if err != nil {
 		return err
@@ -228,7 +230,7 @@ func usage() {
 serve environment:
   STONEAGE_AUTH_DB, STONEAGE_ADMIN_LISTEN, STONEAGE_ADMIN_SETUP_TOKEN,
   STONEAGE_ADMIN_USER, STONEAGE_ADMIN_PASSWORD, STONEAGE_SERVER_CONFIG,
-  STONEAGE_OPERATOR_SOCKET, STONEAGE_ADMIN_COOKIE_SECURE`)
+  STONEAGE_OPERATOR_SOCKET, STONEAGE_SAAC_CONFIG, STONEAGE_ADMIN_COOKIE_SECURE`)
 }
 
 func envOr(name, fallback string) string {

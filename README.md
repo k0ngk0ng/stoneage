@@ -41,9 +41,9 @@ Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖�
 ```
 
 本地 `start-local.sh` 默认保留无认证开发模式。部署发布包时使用 Linux 目录下的
-`start-server.sh` 和 `start-admin.sh`；网关会强制校验 SQLite 账号，后台提供
-账号创建、禁用、重置密码、审计、在线通知、GMSV 常用配置编辑，以及网关/游戏
-服务/全部服务的受限重启。首次启动后台前创建一次
+`start-server.sh` 和 `start-admin.sh`；游戏网关会强制校验 SQLite 账号，后台提供
+账号创建、禁用、重置密码、审计、独立通知页面、GMSV/SAAC 配置编辑，以及游戏
+网关/GMSV/SAAC/全部服务的受限重启。配置保存不会自动重启，首次启动后台前创建一次
 管理员：
 
 ```bash
@@ -52,6 +52,28 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 ```
 
 后台默认位于 `http://127.0.0.1:8080/`，生产环境请放在 HTTPS 反向代理后。
+
+### Linux Docker Compose
+
+Linux 也可以把旧版游戏服务、Go 网关、管理后台和受限 operator 一起交给
+Compose 编排。先准备好 `runtime/legacy-server/`（发布包已包含该目录），复制
+`.env.compose.example` 为 `.env` 并修改管理员密码，然后执行：
+
+```bash
+cp .env.compose.example .env
+docker compose up -d --build
+docker compose logs -f legacy-server
+```
+
+Compose 默认只把游戏网关 9065 和后台 8080 绑定到 `127.0.0.1`；需要局域网或
+VPN 访问时，显式设置 `STONEAGE_GATEWAY_BIND`/`STONEAGE_ADMIN_BIND` 并配合防火墙。
+GMSV 的 9065、SAAC 的 9300 只在 Compose 内网可见。operator 通过固定脚本控制
+Compose 容器，所以需要只给它挂载 `/var/run/docker.sock`；不要把该 socket 挂载到
+后台容器，也不要把后台直接暴露到公网。账号、SQLite 数据和角色目录均由卷或绑定
+目录持久化。
+
+首次启动后访问 `http://127.0.0.1:8080/`。如果没有在 `.env` 设置管理员账号密码，
+可设置一次性的 `STONEAGE_ADMIN_SETUP_TOKEN` 后从 `/setup` 初始化管理员。
 
 局域网和互联网部署见 [`docs/networking.md`](docs/networking.md)。当前本机服务
 仅绑定 `127.0.0.1`，不要把历史 SAAC/GMSV 直接暴露到公网。
