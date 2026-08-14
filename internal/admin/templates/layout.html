@@ -1,0 +1,34 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · StoneAge Revival</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">StoneAge Revival</div>
+  {{if .Session}}
+  <nav>
+    <a href="/accounts">账号</a>
+    <a href="/audit">审计</a>
+    <a href="/server">服务端</a>
+  </nav>
+  <form method="post" action="/logout" class="logout">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <span>{{.Session.Username}}</span>
+    <button type="submit">退出</button>
+  </form>
+  {{end}}
+</header>
+<main class="container">
+  {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
+  {{if .Message}}<div class="alert success">{{.Message}}</div>{{end}}
+  {{template "content" .}}
+</main>
+</body>
+</html>
+{{end}}

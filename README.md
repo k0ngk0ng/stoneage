@@ -20,8 +20,8 @@ Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖�
   回归，步骤见 [`docs/windows.md`](docs/windows.md)。
 - 界面用词虽偏繁体，二进制文本实际是 **CP936/GBK**，不是 CP950。Wine
   prefix 必须使用 ACP 936。
-- 服务端当前使用 SAAC 原生平面文件，不依赖数据库。未来账号层若改用 SQL，
-  项目只接受 **MySQL 8.0 + utf8mb4**。
+- 发布服务端使用独立 SQLite 认证库（Argon2id 密码哈希、管理员会话、审计日志），
+  SAAC 仍保存人物、邮件和家族平面文件。SQLite 不替代角色目录，也不需要 MySQL。
 
 ## macOS 一键运行
 
@@ -40,6 +40,18 @@ Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖�
 ./scripts/stop-local.sh
 ```
 
+本地 `start-local.sh` 默认保留无认证开发模式。部署发布包时使用 Linux 目录下的
+`start-server.sh` 和 `start-admin.sh`；网关会强制校验 SQLite 账号，后台提供
+账号创建、禁用、重置密码、审计、配置保存和受限重启。首次启动后台前创建一次
+管理员：
+
+```bash
+printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
+  -db runtime/stoneage-auth.db -username admin -password-stdin
+```
+
+后台默认位于 `http://127.0.0.1:8080/`，生产环境请放在 HTTPS 反向代理后。
+
 局域网和互联网部署见 [`docs/networking.md`](docs/networking.md)。当前本机服务
 仅绑定 `127.0.0.1`，不要把历史 SAAC/GMSV 直接暴露到公网。
 
@@ -57,6 +69,11 @@ Docker Desktop/OrbStack；Win11 客户端本身不需要 Wine。发布说明见
 [`docs/release-macos.md`](docs/release-macos.md)、
 [`docs/windows.md`](docs/windows.md) 和
 [`docs/verified-features.md`](docs/verified-features.md)。
+
+推送 `v*` 标签会触发 [GitHub Actions release workflow](.github/workflows/release.yml)，
+自动发布跨平台 Go 控制面（网关、后台和受限运维程序）及校验和。完整的旧版游戏
+客户端与服务端资产位于 Git 忽略目录，仍需在具备这些本地资产的环境中执行上面的
+`build-release.sh` 生成完整游戏包。
 
 ## 当前目标
 

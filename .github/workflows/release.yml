@@ -1,0 +1,97 @@
+name: Release
+
+# Releases are intentionally cut only from an explicitly pushed v* tag.  Pull
+# requests and branch pushes must never publish an artifact or mutate a GitHub
+# release.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -mod=mod
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build control-plane artifacts
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stage="${RUNNER_TEMP}/stoneage-release"
+          dist="${GITHUB_WORKSPACE}/dist"
+          rm -rf "$stage" "$dist"
+          mkdir -p "$stage" "$dist"
+
+          build_target() {
+            local goos="$1"
+            local goarch="$2"
+            local suffix="$3"
+            local package_root="$stage/stoneage-control-plane-${RELEASE_TAG}-${goos}-${goarch}"
+            local bin_root="$package_root/bin"
+
+            mkdir -p "$bin_root"
+            for command in stoneage-gateway stoneage-admin stoneage-operator; do
+              local output="$bin_root/$command$suffix"
+              CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+                go build -trimpath -ldflags='-s -w' -o "$output" "./cmd/$command"
+            done
+
+            cp README.md "$package_root/README.md"
+            mkdir -p "$package_root/docs"
+            cp docs/database.md docs/networking.md docs/development.md "$package_root/docs/"
+
+            if [[ "$goos" == linux ]]; then
+              cp release/linux/start-admin.sh \
+                release/linux/stop-admin.sh \
+                release/linux/status-admin.sh \
+                release/linux/restart-server.sh \
+                "$package_root/"
+            fi
+
+            (cd "$stage" && tar -czf "$dist/stoneage-control-plane-${RELEASE_TAG}-${goos}-${goarch}.tar.gz" \
+              "$(basename "$package_root")")
+          }
+
+          build_target linux amd64 ''
+          build_target darwin arm64 ''
+          build_target windows amd64 '.exe'
+
+          (cd "$stage" && zip -q -r -9 "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.zip" \
+            "stoneage-control-plane-${RELEASE_TAG}-windows-amd64")
+          rm -f "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.tar.gz"
+
+          (cd "$dist" && sha256sum * > SHA256SUMS)
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/stoneage-control-plane-${{ github.ref_name }}-linux-amd64.tar.gz
+            dist/stoneage-control-plane-${{ github.ref_name }}-darwin-arm64.tar.gz
+            dist/stoneage-control-plane-${{ github.ref_name }}-windows-amd64.zip
+            dist/SHA256SUMS

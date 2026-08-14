@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="page-heading">
+  <div><h1>账号管理</h1><p class="muted">共 {{len .Accounts}} 个账号（最多显示 500 个）</p></div>
+  <a class="button primary" href="/accounts/new">新建账号</a>
+</div>
+<form class="toolbar" method="get" action="/accounts">
+  <input name="q" value="{{.Query}}" placeholder="搜索账号">
+  <button type="submit">搜索</button>
+</form>
+<div class="table-wrap">
+<table>
+<thead><tr><th>账号</th><th>状态</th><th>密码状态</th><th>最后登录</th><th>操作</th></tr></thead>
+<tbody>
+{{range .Accounts}}
+<tr>
+  <td><a href="/accounts/{{.ID}}">{{.Username}}</a></td>
+  <td><span class="badge {{if eq .Status "active"}}ok{{else}}off{{end}}">{{.Status}}</span></td>
+  <td>{{if .MustChangePassword}}需要重置{{else}}已设置{{end}}</td>
+  <td>{{if .LastLoginAt}}{{.LastLoginAt.Format "2006-01-02 15:04"}}{{else}}从未登录{{end}}</td>
+  <td><a href="/accounts/{{.ID}}">管理</a></td>
+</tr>
+{{else}}<tr><td colspan="5" class="empty">没有账号</td></tr>{{end}}
+</tbody>
+</table>
+</div>
+{{end}}

@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 )
 
@@ -53,5 +55,57 @@ func TestLegacyStateTransitionDelay(t *testing.T) {
 				t.Fatalf("delay = %s, want %s", got, test.want)
 			}
 		})
+	}
+}
+
+func TestAuthenticateClientLogin(t *testing.T) {
+	store, err := auth.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateAccount(context.Background(), "probe", []byte("local")); err != nil {
+		t.Fatal(err)
+	}
+	packetFor := func(password string) []byte {
+		raw, err := namedproto.RawMessage(1, "ClientLogin", []string{
+			namedproto.EncodeString([]byte("probe")),
+			namedproto.EncodeString([]byte(password)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet, err := namedproto.EncodePacket(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return packet
+	}
+	accepted, account, err := authenticateClientLogin(packetFor("local"), store, "127.0.0.1")
+	if err != nil || !accepted || account != "probe" {
+		t.Fatalf("valid login = accepted:%v account:%q err:%v", accepted, account, err)
+	}
+	accepted, _, err = authenticateClientLogin(packetFor("wrong"), store, "127.0.0.1")
+	if err != nil || accepted {
+		t.Fatalf("invalid login = accepted:%v err:%v", accepted, err)
+	}
+	response, err := clientLoginResponse("no")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := namedproto.DecodePacket(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := namedproto.ParseMessage(raw)
+	if err != nil || message.Function != "ClientLogin" || len(message.Fields) != 1 {
+		t.Fatalf("rejection response = %#v, %v", message, err)
+	}
+	result, err := namedproto.DecodeString(message.Fields[0])
+	if err != nil || string(result) != "no" {
+		t.Fatalf("rejection result = %q, %v", result, err)
 	}
 }

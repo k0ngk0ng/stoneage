@@ -7,6 +7,7 @@ upstream_port="${STONEAGE_UPSTREAM_PORT:-19065}"
 container_name="${STONEAGE_SERVER_CONTAINER:-stoneage-revival-server}"
 gateway_pid_file="$package_root/gateway.pid"
 log_root="$package_root/logs"
+auth_database="${STONEAGE_AUTH_DB:-$package_root/runtime/stoneage-auth.db}"
 
 command -v docker >/dev/null 2>&1 || {
   echo "Docker is required." >&2
@@ -16,7 +17,7 @@ docker info >/dev/null 2>&1 || {
   echo "Docker daemon is not running." >&2
   exit 1
 }
-mkdir -p "$log_root"
+mkdir -p "$log_root" "$package_root/runtime"
 
 if ! docker container inspect "$container_name" >/dev/null 2>&1; then
   docker run --detach \
@@ -49,8 +50,8 @@ if [[ -f "$gateway_pid_file" ]]; then
 fi
 nohup "$package_root/bin/stoneage-gateway" \
   -listen "$listen_address" -upstream "127.0.0.1:$upstream_port" \
+  -auth-required -auth-db "$auth_database" \
   </dev/null >"$log_root/gateway.log" 2>&1 &
 printf '%s\n' "$!" >"$gateway_pid_file"
 echo "StoneAge server started: $listen_address"
 echo "Do not expose ports 19065 or 9300."
-

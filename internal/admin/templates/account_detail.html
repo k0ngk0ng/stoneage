@@ -1,0 +1,29 @@
+{{define "content"}}
+<div class="page-heading"><div><h1>账号：{{.Account.Username}}</h1><p class="muted">ID {{.Account.ID}}</p></div><a href="/accounts">返回列表</a></div>
+<div class="grid two">
+<section class="card">
+  <h2>账号状态</h2>
+  <dl class="details">
+    <dt>状态</dt><dd><span class="badge {{if eq .Account.Status "active"}}ok{{else}}off{{end}}">{{.Account.Status}}</span></dd>
+    <dt>密码</dt><dd>{{if .Account.MustChangePassword}}需要重置{{else}}已设置{{end}}</dd>
+    <dt>创建时间</dt><dd>{{.Account.CreatedAt.Format "2006-01-02 15:04:05"}}</dd>
+    <dt>更新时间</dt><dd>{{.Account.UpdatedAt.Format "2006-01-02 15:04:05"}}</dd>
+    <dt>最后登录</dt><dd>{{if .Account.LastLoginAt}}{{.Account.LastLoginAt.Format "2006-01-02 15:04:05"}}{{else}}从未登录{{end}}</dd>
+    <dt>锁定</dt><dd>{{if .Account.LockedUntil}}{{.Account.LockedUntil.Format "2006-01-02 15:04:05"}}{{else}}未锁定{{end}}</dd>
+  </dl>
+  <form method="post" action="/accounts/{{.Account.ID}}/status" class="inline-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{if eq .Account.Status "active"}}<input type="hidden" name="status" value="disabled"><button class="danger" type="submit">禁用账号</button>{{else}}<input type="hidden" name="status" value="active"><button class="primary" type="submit">启用账号</button>{{end}}
+  </form>
+</section>
+<section class="card">
+  <h2>重置密码</h2>
+  <form method="post" action="/accounts/{{.Account.ID}}/password">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>新密码（1–15 位）<input type="password" name="password" maxlength="15" required></label>
+    <label class="checkbox"><input type="checkbox" name="must_change" value="1"> 下次登录前标记为需重置</label>
+    <button class="primary" type="submit">保存新密码</button>
+  </form>
+</section>
+</div>
+{{end}}

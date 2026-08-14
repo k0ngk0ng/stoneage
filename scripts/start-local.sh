@@ -74,7 +74,7 @@ if [[ "$ready" != "1" ]]; then
   exit 1
 fi
 
-(cd "$project_root" && go build -o "$gateway_binary" ./cmd/stoneage-gateway)
+(cd "$project_root" && go build -mod=mod -o "$gateway_binary" ./cmd/stoneage-gateway)
 
 gateway_running=0
 if [[ -f "$gateway_pid_file" ]]; then

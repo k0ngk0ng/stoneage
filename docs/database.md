@@ -1,28 +1,61 @@
-# 数据存储与 MySQL 约束
+# 数据存储与账号库
 
-## 当前状态
+## 当前方案
 
-当前 2.5 SAAC 使用原生平面文件保存账号、人物、邮件和家族资料，运行不需要
-MySQL。角色数据位于 `runtime/legacy-server/saac/`，停止容器不会删除它。
+StoneAge Revival 的网页登录和游戏登录使用独立的 SQLite 认证库，默认路径为
+`runtime/stoneage-auth.db`。库中只保存：
 
-归档中曾有旧 MySQL 补丁，但它会拼接 SQL、保存明文密码，构建脚本已明确
-关闭 `_SASQL` / `_SQL_REGISTER`。不得重新启用该实现，也不要为了“现代化”
-接入老版本 MySQL。
+- 游戏账号、Argon2id 密码哈希和启用/禁用状态；
+- 管理员账号、会话和失败锁定状态；
+- 登录尝试与后台操作审计日志。
 
-## 未来数据库基线
+SQLite 启用 WAL、外键、`synchronous=FULL` 和 busy timeout。数据库文件会收紧为
+`0600`，运行目录应只允许服务账号访问。密码不会写入日志，也不会回传网页。
 
-若开始改写账号/角色层，唯一支持的数据库基线是：
+SAAC 仍然负责旧游戏数据：人物、邮件、家族、锁文件和其他平面文件位于
+`runtime/legacy-server/saac/`。认证库不替代这些角色数据，因此备份和迁移时要
+同时保存 SQLite 文件及 SAAC 目录；备份前先停止游戏服务，避免复制到半写入文件。
 
-- MySQL 8.0（固定最新受支持的 8.0 patch 版本）
-- 数据库、表和文本列默认 `utf8mb4`
-- 推荐排序规则 `utf8mb4_0900_ai_ci`；需字节精确的键使用 binary collation
-- 应用使用参数化查询和最小权限专用账号
-- 密码只保存 Argon2id/bcrypt 派生结果，不保存明文或可逆密文
-- schema 由版本化 migration 管理，升级前有可恢复备份
-- MySQL 仅监听私网，不向玩家或公网暴露 3306
+## 初次初始化
 
-旧客户端字符串是 CP936 字节。进入新服务边界时必须严格解码为 Unicode，写入
-MySQL 时再使用 UTF-8；发送回旧客户端时检查能否无损编码回 CP936。原始封包
-或无法转换的历史字段如需留存，应存入 `VARBINARY/BLOB`，不要伪装成 UTF-8。
+先创建管理员，再启动后台：
 
-在迁移工具经过往返校验、双写验证和备份恢复演练前，平面文件仍是权威数据源。
+```bash
+./bin/stoneage-admin create-admin \
+  -db runtime/stoneage-auth.db \
+  -username admin -password-stdin
+```
+
+密码至少 8 位。Linux 发布包也可以在首次启动后台时设置
+`STONEAGE_ADMIN_USER` / `STONEAGE_ADMIN_PASSWORD`，或临时设置
+`STONEAGE_ADMIN_SETUP_TOKEN` 通过 `/setup` 创建管理员；管理员建立后 `/setup`
+会自动关闭。
+
+旧 SAAC 中已有账号可导入为禁用账号，再在网页中逐个设置密码：
+
+```bash
+./bin/stoneage-admin import-legacy \
+  -db runtime/stoneage-auth.db \
+  -char-dir runtime/legacy-server/saac/char
+```
+
+不提供 `-default-password` 时，导入账号不会获得访问权限。
+
+## 备份与迁移
+
+停止 `stop-server.sh` 和 `stop-admin.sh` 后，完整复制：
+
+```text
+runtime/stoneage-auth.db
+runtime/stoneage-auth.db-wal（若存在）
+runtime/stoneage-auth.db-shm（若存在）
+runtime/legacy-server/saac/
+```
+
+恢复时保留文件权限，先启动后台让 SQLite migration 完成，再启动游戏网关。不要
+直接删除 WAL/SHM 文件；如果需要单文件归档，应使用 SQLite 在线备份工具或在
+服务完全停止后复制主库。
+
+MySQL 8 不再是默认依赖。只有在未来拆分成多实例、需要集中式高并发账号服务时
+才考虑迁移；迁移必须先完成 schema、备份恢复、双写和旧客户端兼容性演练，密码
+仍只保存 Argon2id 派生结果。

@@ -30,8 +30,8 @@ vendor/upstream/              （可从 archives 重建）
 PowerShell 构建网关：
 
 ```powershell
-go test ./...
-go build -o build\stoneage-gateway.exe .\cmd\stoneage-gateway
+go test -mod=mod ./...
+go build -mod=mod -o build\stoneage-gateway.exe .\cmd\stoneage-gateway
 .\build\stoneage-gateway.exe -listen 127.0.0.1:9065 -upstream 127.0.0.1:19065
 ```
 

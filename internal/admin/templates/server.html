@@ -1,0 +1,19 @@
+{{define "content"}}
+<div class="page-heading"><div><h1>服务端</h1><p class="muted">配置修改将在重启后生效。</p></div></div>
+{{if .OperatorError}}<div class="alert error">运维控制不可用：{{.OperatorError}}</div>{{end}}
+{{if .ConfigError}}<div class="alert error">配置文件不可用：{{.ConfigError}}</div>{{end}}
+<div class="grid two">
+<section class="card"><h2>运行状态</h2>
+<dl class="details"><dt>网关</dt><dd>{{.Status.Gateway}}</dd><dt>GMSV</dt><dd>{{.Status.GMSV}}</dd><dt>数据库</dt><dd>{{.Status.Database}}</dd></dl>
+<form method="post" action="/server/restart"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="danger" type="submit" data-confirm="重启会断开当前玩家，确认继续？">重启服务端</button></form>
+</section>
+<section class="card"><h2>安全配置</h2>
+<form method="post" action="/server/config">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label class="checkbox"><input type="checkbox" name="enable_nu_flow_control" value="1" {{if eq (index .Config "enable_nu_flow_control") "1"}}checked{{end}}> 启用 NU 移动流控（默认关闭）</label>
+<label>GMSV 调试级别<input name="debuglevel" value="{{index .Config "debuglevel"}}" inputmode="numeric" pattern="[0-3]"></label>
+<button class="primary" type="submit">保存配置并重启</button>
+</form>
+</section>
+</div>
+{{end}}

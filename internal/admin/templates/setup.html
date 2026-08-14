@@ -1,0 +1,24 @@
+{{define "setup"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>初始化管理员 · StoneAge Revival</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+<main class="login-card">
+  <h1>初始化管理后台</h1>
+  <p class="muted">只在还没有管理员账号时可用。</p>
+  {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
+  <form method="post" action="/setup">
+    {{if .SetupTokenRequired}}<label>初始化令牌<input type="password" name="setup_token" required></label>{{end}}
+    <label>管理员账号<input name="username" autocomplete="username" required autofocus></label>
+    <label>密码（至少 8 位）<input type="password" name="password" autocomplete="new-password" required></label>
+    <button class="primary full" type="submit">创建管理员</button>
+  </form>
+</main>
+</body>
+</html>
+{{end}}

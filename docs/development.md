@@ -53,9 +53,9 @@ Silicon 默认产出 Linux arm64 ELF，也可设
 ## 独立测试
 
 ```bash
-go test ./...
-go build -o build/stoneage-gateway ./cmd/stoneage-gateway
-go build -o build/stoneage-probe ./cmd/stoneage-probe
+go test -mod=mod ./...
+go build -mod=mod -o build/stoneage-gateway ./cmd/stoneage-gateway
+go build -mod=mod -o build/stoneage-probe ./cmd/stoneage-probe
 ```
 
 数字 GMSV 端到端探针（服务器已启动时）：
@@ -101,6 +101,34 @@ STONEAGE_UPSTREAM_PORT=19065 ./scripts/run-legacy-server.sh
   --host 127.0.0.1 --port 9065 --bypass-wgs
 ./scripts/run-legacy-client-wine.sh
 ```
+
+服务端的移动包 NU 流控由 `runtime/legacy-server/gmsv/setup.cf` 中的
+`enable_nu_flow_control` 控制：`0`（默认）关闭，`1` 开启。修改后需重启
+GMSV 才会生效。
+
+## 本地认证与管理后台
+
+开发脚本默认不加 `-auth-required`，方便复现旧 SAAC 的协议问题。需要测试发布
+账号层时，先创建临时 SQLite 库和管理员：
+
+```bash
+go run -mod=mod ./cmd/stoneage-admin create-admin \
+  -db runtime/dev-auth.db -username admin -password-stdin
+go run -mod=mod ./cmd/stoneage-admin serve \
+  -db runtime/dev-auth.db \
+  -listen 127.0.0.1:8080 \
+  -config runtime/legacy-server/gmsv/setup.cf
+```
+
+在后台创建游戏账号后，以相同数据库启动网关：
+
+```bash
+go run -mod=mod ./cmd/stoneage-gateway \
+  -listen 127.0.0.1:9065 -upstream 127.0.0.1:19065 \
+  -auth-required -auth-db runtime/dev-auth.db
+```
+
+生产部署不要把 `-auth-required` 关闭，也不要把管理后台直接绑定到公网地址。
 
 ## 构建发布包
 

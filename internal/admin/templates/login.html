@@ -1,0 +1,23 @@
+{{define "login"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理员登录 · StoneAge Revival</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+<main class="login-card">
+  <h1>StoneAge Revival</h1>
+  <p class="muted">服务器管理后台</p>
+  {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
+  <form method="post" action="/login">
+    <label>管理员账号<input name="username" autocomplete="username" required autofocus></label>
+    <label>密码<input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="primary full" type="submit">登录</button>
+  </form>
+</main>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="page-heading"><h1>新建游戏账号</h1><a href="/accounts">返回列表</a></div>
+<div class="card narrow">
+<form method="post" action="/accounts">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>账号（1–15 位 ASCII）<input name="username" value="{{.FormUsername}}" maxlength="15" pattern="[A-Za-z0-9_.-]{1,15}" required autofocus></label>
+  <label>密码（1–15 位，建议至少 8 位）<input type="password" name="password" maxlength="15" required></label>
+  <p class="hint">旧客户端协议最多传输 15 字节密码，暂不能使用更长密码。</p>
+  <button class="primary" type="submit">创建账号</button>
+</form>
+</div>
+{{end}}

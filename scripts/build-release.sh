@@ -63,16 +63,22 @@ mkdir -p \
   "$linux_stage/bin"
 
 echo "Building Go gateways..."
-(cd "$project_root" && go test ./...)
+(cd "$project_root" && go test -mod=mod ./...)
 (cd "$project_root" && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
-  go build -trimpath -ldflags "-s -w" \
+  go build -mod=mod -trimpath -ldflags "-s -w" \
   -o "$mac_resources/bin/stoneage-gateway" ./cmd/stoneage-gateway)
 (cd "$project_root" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-  go build -trimpath -ldflags "-s -w" \
+  go build -mod=mod -trimpath -ldflags "-s -w" \
   -o "$windows_stage/bin/stoneage-gateway.exe" ./cmd/stoneage-gateway)
 (cd "$project_root" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -trimpath -ldflags "-s -w" \
+  go build -mod=mod -trimpath -ldflags "-s -w" \
   -o "$linux_stage/bin/stoneage-gateway" ./cmd/stoneage-gateway)
+(cd "$project_root" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -mod=mod -trimpath -ldflags "-s -w" \
+  -o "$linux_stage/bin/stoneage-admin" ./cmd/stoneage-admin)
+(cd "$project_root" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -mod=mod -trimpath -ldflags "-s -w" \
+  -o "$linux_stage/bin/stoneage-operator" ./cmd/stoneage-operator)
 
 echo "Building Linux amd64 legacy server..."
 STONEAGE_SERVER_PLATFORM=linux/amd64 \
@@ -231,6 +237,10 @@ copy_runtime_support "$linux_stage"
 install -m 0755 "$project_root/release/linux/start-server.sh" "$linux_stage/start-server.sh"
 install -m 0755 "$project_root/release/linux/stop-server.sh" "$linux_stage/stop-server.sh"
 install -m 0755 "$project_root/release/linux/status-server.sh" "$linux_stage/status-server.sh"
+install -m 0755 "$project_root/release/linux/restart-server.sh" "$linux_stage/restart-server.sh"
+install -m 0755 "$project_root/release/linux/start-admin.sh" "$linux_stage/start-admin.sh"
+install -m 0755 "$project_root/release/linux/stop-admin.sh" "$linux_stage/stop-admin.sh"
+install -m 0755 "$project_root/release/linux/status-admin.sh" "$linux_stage/status-admin.sh"
 cp -p "$project_root/release/linux/README.md" "$linux_stage/README.md"
 cp -p "$project_root/docs/networking.md" "$linux_stage/NETWORKING.md"
 cp -p "$project_root/docs/database.md" "$linux_stage/DATABASE.md"

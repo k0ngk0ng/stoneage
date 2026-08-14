@@ -16,6 +16,7 @@ quiz_rewriter="$(cd "$(dirname "$0")" && pwd)/modernize-quiz-state.py"
 password_redactor="$(cd "$(dirname "$0")" && pwd)/redact-legacy-password-logs.py"
 character_reader_rewriter="$(cd "$(dirname "$0")" && pwd)/modernize-character-file-read.py"
 login_announcement_rewriter="$(cd "$(dirname "$0")" && pwd)/modernize-login-announcement.py"
+nu_flow_control_rewriter="$(cd "$(dirname "$0")" && pwd)/modernize-nu-flow-control.py"
 
 docker_args=(
   run --rm
@@ -25,6 +26,7 @@ docker_args=(
   --volume "$password_redactor:/redact-legacy-password-logs.py:ro"
   --volume "$character_reader_rewriter:/modernize-character-file-read.py:ro"
   --volume "$login_announcement_rewriter:/modernize-login-announcement.py:ro"
+  --volume "$nu_flow_control_rewriter:/modernize-nu-flow-control.py:ro"
   --workdir /src
 )
 

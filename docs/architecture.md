@@ -6,11 +6,17 @@
 StoneAge 2.5 Windows 客户端（named LSSPROTO，CP936）
   │  TCP 9065
   ▼
-Go stoneage-gateway（函数名协议 ↔ 数字协议）
+Go stoneage-gateway（SQLite ClientLogin 校验 + 函数名协议 ↔ 数字协议）
   │  TCP 19065，仅本机
   ▼
 Linux 2.5 GMSV 容器 ── SAAC RPC ── Linux 2.5 SAAC
                                     └─ 平面文件角色/账号数据
+
+管理员浏览器 ── HTTPS 反向代理 ── stoneage-admin（SQLite 会话/审计）
+                                      │ Unix socket：status/restart
+                                      ▼
+                               stoneage-operator ── 固定 restart-server.sh
+SQLite stoneage-auth.db ────────┘
 ```
 
 保存的 `sa_2903.exe` 与现有 Linux GMSV 都属于 2.5 时代，但使用两种生成版
@@ -40,7 +46,7 @@ LSSPROTO 方言：客户端用函数名，GMSV 用数字函数号、校验和及
 二进制，不会把游戏降级到 1.82。
 
 1. 固化网络协议、资源解码和关键流程的自动化测试。
-2. 扩展 Go 边界：现代账号、会话、审计和部署控制。
+2. 扩展 Go 边界：SQLite 账号、管理员会话、审计和受限部署控制。
 3. 建立 SDL3/CMake 客户端壳，逐步替换 DirectDraw、输入、音频和 UI。
 4. macOS arm64 与 Win11 x64 共享核心；原 2.5 客户端持续作兼容基准。
 
@@ -52,5 +58,6 @@ LSSPROTO 方言：客户端用函数名，GMSV 用数字函数号、校验和及
 - M3：真实 2.5 客户端经 Go 网关完成登录、选人、地图和移动 — 完成
 - M4：两个真实客户端同时登录、移动、聊天与断线存档 — 完成；宠物、物品和
   完整战斗已通过。登录公告 WN 已通过，真正 NPC 对话按钮仍待稳定闭环
-- M5：现代账号边界和可安全部署的朋友联机方案
+- M5：SQLite 账号边界、管理员后台和可安全部署的朋友联机方案 — 基线完成；
+  仍需真实 Linux/VPN 网络演练
 - M6：原生 macOS/Win11 客户端逐模块替代 Wine 基线

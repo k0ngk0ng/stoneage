@@ -59,6 +59,11 @@ python3 /modernize-character-file-read.py /src/saac/char.c
 # every unrelated byte and emits traditional wording in code page 936.
 python3 /modernize-login-announcement.py /src/gmsv/char/char.c
 
+# The historic movement-packet NU budget is never replenished in this build,
+# so it eventually disconnects ordinary players. Keep the check available for
+# compatibility, but make it an explicit setup.cf option that defaults off.
+python3 /modernize-nu-flow-control.py /src/gmsv
+
 # Reject invalid character/pet references so one disconnect can never delete
 # another online player through a stale legacy array index. The connection's
 # use flag intentionally remains the close-path re-entry guard in net.c.

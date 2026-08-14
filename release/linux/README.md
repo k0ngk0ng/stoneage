@@ -1,13 +1,40 @@
 # StoneAge Revival 2.5 — Linux amd64 服务端
 
-要求：x86-64 Linux、Docker Engine，以及可用的 `nc`。默认只监听
-`127.0.0.1:9065`：
+要求：x86-64 Linux、Docker Engine，以及可用的 `nc`。游戏网关默认只监听
+`127.0.0.1:9065`，管理后台默认只监听 `127.0.0.1:8080`：
 
 ```bash
 ./start-server.sh
+./start-admin.sh
 ./status-server.sh
-./stop-server.sh
+./status-admin.sh
 ```
+
+第一次使用前创建后台管理员（只需一次）：
+
+```bash
+printf '%s\n' '请替换为强密码' | \
+  ./bin/stoneage-admin create-admin \
+    -db runtime/stoneage-auth.db -username admin -password-stdin
+```
+
+然后访问 `http://127.0.0.1:8080/`。如需临时网页初始化，可在启动后台前设置
+一个随机的 `STONEAGE_ADMIN_SETUP_TOKEN`，访问 `/setup` 创建管理员；不要把该
+令牌写入公开脚本或长期保留。
+
+后台可以管理游戏账号、启用/禁用账号、重置密码、查看审计日志、修改安全配置，
+并通过受限 operator 重启游戏服务：
+
+```bash
+./stop-admin.sh       # 停后台，不删除账号
+./restart-server.sh   # 重启 GMSV 和网关，会断开玩家
+./stop-server.sh      # 停游戏服务，保留角色和账号数据
+```
+
+`runtime/stoneage-auth.db` 是 SQLite 认证库；角色、邮件和家族仍在
+`runtime/legacy-server/saac/`。备份前先停止两个服务。网关已经强制使用
+`-auth-required`，未知账号或错误密码会被拒绝；不要把它改回无认证模式后公开到
+互联网。
 
 可信局域网或 VPN 联机时，可令 Go 网关监听所有接口：
 
@@ -15,15 +42,9 @@
 STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./start-server.sh
 ```
 
-只允许受信任设备访问 TCP 9065。不要公开 GMSV 的 19065、SAAC 的 9300，
-也不要公开数据库端口。当前 SAAC 使用平面文件；若将来迁移数据库，唯一支持
-基线为 MySQL 8.0 + `utf8mb4`。
+只允许受信任设备访问 TCP 9065。不要公开 GMSV 的 19065、SAAC 的 9300、管理
+后台 8080 或 SQLite 文件。需要互联网访问时，请将后台放在 Caddy/Nginx HTTPS
+反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE=true` 传给 `start-admin.sh`；
+游戏端优先使用 Tailscale/WireGuard 等 VPN。
 
-角色数据位于 `runtime/legacy-server/saac/`。备份前先执行 `stop-server.sh`，
-然后完整复制该目录。
-
-内置开发账号为 `probe` / `local`，人物 `ProbeHero`。这是可信本地或 VPN
-测试账号，不应视作安全的公网账号系统。
-
-发布包只包含这个演示人物，不包含开发机的第二测试账号、运行日志、诊断文件
-或崩溃转储。
+发布包只包含演示人物，不包含开发机账号、运行日志、诊断文件或崩溃转储。

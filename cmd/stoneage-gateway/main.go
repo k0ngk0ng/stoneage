@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,9 +12,11 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/server/go/bridge"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 )
@@ -28,6 +31,8 @@ type options struct {
 	trace           bool
 	traceBattle     bool
 	stateDelay      time.Duration
+	authDB          string
+	authRequired    bool
 }
 
 func main() {
@@ -36,8 +41,13 @@ func main() {
 	flag.StringVar(&opts.upstreamAddress, "upstream", "127.0.0.1:19065", "numeric GMSV address")
 	flag.BoolVar(&opts.trace, "trace", false, "log translated function names (never logs password fields)")
 	flag.BoolVar(&opts.traceBattle, "trace-battle", false, "log server battle command bytes as hex (never logs password fields)")
+	flag.StringVar(&opts.authDB, "auth-db", os.Getenv("STONEAGE_AUTH_DB"), "SQLite account database (enables login authentication)")
+	flag.BoolVar(&opts.authRequired, "auth-required", envBool("STONEAGE_AUTH_REQUIRED", false), "reject game logins not accepted by the account database")
 	flag.Parse()
 	opts.stateDelay = legacyStateTransitionDelay
+	if opts.authDB != "" {
+		opts.authRequired = true
+	}
 
 	logger := log.New(os.Stdout, "stoneage-gateway: ", log.LstdFlags|log.Lmicroseconds)
 	if err := serve(opts, logger); err != nil {
@@ -46,6 +56,24 @@ func main() {
 }
 
 func serve(opts options, logger *log.Logger) error {
+	var accountStore *auth.Store
+	if opts.authRequired {
+		if opts.authDB == "" {
+			return fmt.Errorf("authentication is required but -auth-db is empty")
+		}
+		var err error
+		accountStore, err = auth.Open(opts.authDB)
+		if err != nil {
+			return err
+		}
+		defer accountStore.Close()
+		if err := accountStore.Migrate(context.Background()); err != nil {
+			return err
+		}
+		logger.Printf("game authentication required; database=%s", opts.authDB)
+	} else {
+		logger.Printf("WARNING: game authentication disabled; use -auth-required for deployment")
+	}
 	listener, err := net.Listen("tcp", opts.listenAddress)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", opts.listenAddress, err)
@@ -59,14 +87,14 @@ func serve(opts options, logger *log.Logger) error {
 			return fmt.Errorf("accept: %w", err)
 		}
 		go func() {
-			if err := handleConnection(client, opts, logger); err != nil && !errors.Is(err, io.EOF) {
+			if err := handleConnection(client, opts, accountStore, logger); err != nil && !errors.Is(err, io.EOF) {
 				logger.Printf("connection %s ended: %v", client.RemoteAddr(), err)
 			}
 		}()
 	}
 }
 
-func handleConnection(client net.Conn, opts options, logger *log.Logger) error {
+func handleConnection(client net.Conn, opts options, accountStore *auth.Store, logger *log.Logger) error {
 	defer client.Close()
 	upstream, err := net.DialTimeout("tcp", opts.upstreamAddress, 5*time.Second)
 	if err != nil {
@@ -87,11 +115,38 @@ func handleConnection(client net.Conn, opts options, logger *log.Logger) error {
 	logger.Printf("client %s connected", client.RemoteAddr())
 
 	translator := bridge.NewTranslator()
+	var clientReader *bufio.Reader
+	var firstClientPacket []byte
+	if opts.authRequired {
+		clientReader = bufio.NewReaderSize(client, 128*1024)
+		_ = client.SetReadDeadline(time.Now().Add(15 * time.Second))
+		firstClientPacket, err = readPacket(clientReader)
+		_ = client.SetReadDeadline(time.Time{})
+		if err != nil {
+			return fmt.Errorf("read login packet: %w", err)
+		}
+		accepted, account, err := authenticateClientLogin(firstClientPacket, accountStore, remoteHost(client.RemoteAddr()))
+		if err != nil {
+			return err
+		}
+		if !accepted {
+			logger.Printf("game login rejected account=%q source=%s", account, remoteHost(client.RemoteAddr()))
+			response, responseErr := clientLoginResponse("no")
+			if responseErr != nil {
+				return responseErr
+			}
+			if err := writeAll(client, response); err != nil {
+				return fmt.Errorf("write rejected login response: %w", err)
+			}
+			return nil
+		}
+		logger.Printf("game login accepted account=%q source=%s", account, remoteHost(client.RemoteAddr()))
+	}
 	var workers sync.WaitGroup
 	workers.Add(2)
 	errChannel := make(chan error, 2)
-	go translateLoop(&workers, errChannel, client, upstream, "client->GMSV", translator.ClientToServer, opts.trace, opts.traceBattle, opts.stateDelay, logger)
-	go translateLoop(&workers, errChannel, upstream, client, "GMSV->client", translator.ServerToClient, opts.trace, opts.traceBattle, opts.stateDelay, logger)
+	go translateLoop(&workers, errChannel, client, upstream, "client->GMSV", translator.ClientToServer, opts.trace, opts.traceBattle, opts.stateDelay, logger, clientReader, firstClientPacket)
+	go translateLoop(&workers, errChannel, upstream, client, "GMSV->client", translator.ServerToClient, opts.trace, opts.traceBattle, opts.stateDelay, logger, nil, nil)
 	workers.Wait()
 	close(errChannel)
 	for workerError := range errChannel {
@@ -115,11 +170,20 @@ func translateLoop(
 	traceBattle bool,
 	stateDelay time.Duration,
 	logger *log.Logger,
+	reader *bufio.Reader,
+	initialPacket []byte,
 ) {
 	defer workers.Done()
-	reader := bufio.NewReaderSize(source, 128*1024)
+	if reader == nil {
+		reader = bufio.NewReaderSize(source, 128*1024)
+	}
 	for {
-		packet, err := readPacket(reader)
+		packet := initialPacket
+		initialPacket = nil
+		var err error
+		if packet == nil {
+			packet, err = readPacket(reader)
+		}
 		if err != nil {
 			if tcp, ok := destination.(*net.TCPConn); ok {
 				_ = tcp.CloseWrite()
@@ -168,6 +232,66 @@ func translateLoop(
 		if delay := stateTransitionDelay(direction, function, true, stateDelay); delay > 0 {
 			time.Sleep(delay)
 		}
+	}
+}
+
+func authenticateClientLogin(packet []byte, accountStore *auth.Store, sourceIP string) (bool, string, error) {
+	if accountStore == nil {
+		return false, "", errors.New("authentication store is unavailable")
+	}
+	raw, err := namedproto.DecodePacket(packet)
+	if err != nil {
+		return false, "", fmt.Errorf("decode login packet: %w", err)
+	}
+	message, err := namedproto.ParseMessage(raw)
+	if err != nil {
+		return false, "", err
+	}
+	if message.Function != "ClientLogin" || len(message.Fields) != 2 {
+		return false, "", fmt.Errorf("authentication requires ClientLogin as the first packet")
+	}
+	accountBytes, err := namedproto.DecodeString(message.Fields[0])
+	if err != nil {
+		return false, "", fmt.Errorf("decode login account: %w", err)
+	}
+	passwordBytes, err := namedproto.DecodeString(message.Fields[1])
+	if err != nil {
+		return false, "", fmt.Errorf("decode login password: %w", err)
+	}
+	account := string(accountBytes)
+	if _, err := accountStore.Authenticate(context.Background(), account, passwordBytes, sourceIP); err != nil {
+		return false, account, nil
+	}
+	return true, account, nil
+}
+
+func clientLoginResponse(result string) ([]byte, error) {
+	raw, err := namedproto.RawMessage(1, "ClientLogin", []string{result})
+	if err != nil {
+		return nil, err
+	}
+	return namedproto.EncodePacket(raw)
+}
+
+func remoteHost(address net.Addr) string {
+	if address == nil {
+		return ""
+	}
+	value := address.String()
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		return host
+	}
+	return value
+}
+
+func envBool(name string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
 	}
 }
 
