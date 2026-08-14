@@ -13,9 +13,9 @@ Linux 2.5 GMSV 容器 ── SAAC RPC ── Linux 2.5 SAAC
                                     └─ 平面文件角色/账号数据
 
 管理员浏览器 ── HTTPS 反向代理 ── stoneage-admin（SQLite 会话/审计）
-                                      │ Unix socket：status/restart
+                                      │ Unix socket：status/固定重启动作/通知
                                       ▼
-                               stoneage-operator ── 固定 restart-server.sh
+                               stoneage-operator ── 固定脚本 + 通知队列
 SQLite stoneage-auth.db ────────┘
 ```
 

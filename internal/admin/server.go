@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/k0ngk0ng/stoneage/internal/auth"
 )
@@ -56,6 +58,7 @@ type pageData struct {
 	SetupTokenRequired bool
 	Status             ServiceStatus
 	Config             map[string]string
+	ConfigGroups       []ConfigGroup
 	ConfigError        string
 	OperatorError      string
 	Code               int
@@ -167,7 +170,7 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		server.audit(response, request, data)
 		return
 	}
-	if request.URL.Path == "/server" || request.URL.Path == "/server/restart" || request.URL.Path == "/server/config" {
+	if request.URL.Path == "/server" || request.URL.Path == "/server/restart" || request.URL.Path == "/server/restart-game" || request.URL.Path == "/server/restart-gateway" || request.URL.Path == "/server/config" || request.URL.Path == "/server/notify" {
 		server.server(response, request, data)
 		return
 	}
@@ -354,30 +357,59 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 		return
 	}
 	switch request.URL.Path {
-	case "/server/restart":
-		if server.operator == nil {
-			server.renderError(response, http.StatusServiceUnavailable, "未配置受限运维接口")
-			return
+	case "/server/restart", "/server/restart-game", "/server/restart-gateway":
+		target := "all"
+		if request.URL.Path == "/server/restart-game" {
+			target = "game"
+		} else if request.URL.Path == "/server/restart-gateway" {
+			target = "gateway"
 		}
-		if err := server.operator.Restart(request.Context()); err != nil {
+		if err := server.restartTarget(request.Context(), target); err != nil {
 			server.renderError(response, http.StatusBadGateway, err.Error())
 			return
 		}
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restarted", "", requestSourceIP(request), "")
-		http.Redirect(response, request, "/server", http.StatusSeeOther)
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restarted_"+target, "", requestSourceIP(request), "")
+		http.Redirect(response, request, "/server?message="+urlEscape(restartMessage(target)), http.StatusSeeOther)
+	case "/server/notify":
+		message, err := normalizeNotification(request.FormValue("message"))
+		if err != nil {
+			server.renderError(response, http.StatusBadRequest, err.Error())
+			return
+		}
+		notifier, ok := server.operator.(NotifyingOperator)
+		if !ok {
+			server.renderError(response, http.StatusServiceUnavailable, "当前运维接口不支持在线通知")
+			return
+		}
+		if err := notifier.Notify(request.Context(), message); err != nil {
+			_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_failed", "", requestSourceIP(request), err.Error())
+			server.renderError(response, http.StatusBadGateway, err.Error())
+			return
+		}
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", requestSourceIP(request), message)
+		http.Redirect(response, request, "/server?message="+urlEscape("通知已发送给在线玩家"), http.StatusSeeOther)
 	case "/server/config":
 		_ = request.ParseForm()
-		values := map[string]string{"enable_nu_flow_control": "0", "debuglevel": request.FormValue("debuglevel")}
-		if request.FormValue("enable_nu_flow_control") == "1" {
-			values["enable_nu_flow_control"] = "1"
+		values := make(map[string]string, len(configFieldDefinitions))
+		for _, field := range configFieldDefinitions {
+			if field.Kind == "bool" {
+				values[field.Key] = "0"
+				if request.FormValue(field.Key) == "1" {
+					values[field.Key] = "1"
+				}
+				continue
+			}
+			if request.Form.Has(field.Key) {
+				values[field.Key] = strings.TrimSpace(request.FormValue(field.Key))
+			}
 		}
 		if err := server.config.Update(values); err != nil {
 			server.renderError(response, http.StatusBadRequest, publicError(err))
 			return
 		}
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_config_changed", "", requestSourceIP(request), fmt.Sprintf("enable_nu_flow_control=%s debuglevel=%s", values["enable_nu_flow_control"], values["debuglevel"]))
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_config_changed", "", requestSourceIP(request), configAuditDetails(values))
 		if server.operator != nil {
-			if err := server.operator.Restart(request.Context()); err != nil {
+			if err := server.restartTarget(request.Context(), "game"); err != nil {
 				_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restart_failed", "", requestSourceIP(request), err.Error())
 				server.renderError(response, http.StatusBadGateway, err.Error())
 				return
@@ -390,7 +422,8 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 }
 
 func (server *Server) renderServer(response http.ResponseWriter, request *http.Request, data *pageData) {
-	data.Title = "服务端"
+	data.Title = "运营控制台"
+	data.Message = request.URL.Query().Get("message")
 	data.Config = map[string]string{"enable_nu_flow_control": "0", "debuglevel": "0"}
 	if values, err := server.config.Load(); err != nil {
 		data.ConfigError = err.Error()
@@ -399,6 +432,7 @@ func (server *Server) renderServer(response http.ResponseWriter, request *http.R
 			data.Config[key] = value
 		}
 	}
+	data.ConfigGroups = BuildConfigGroups(data.Config)
 	if server.operator != nil {
 		status, err := server.operator.Status(request.Context())
 		if err != nil {
@@ -411,6 +445,56 @@ func (server *Server) renderServer(response http.ResponseWriter, request *http.R
 		data.Status = ServiceStatus{Gateway: "未配置运维接口", GMSV: "未配置运维接口", Database: "正常"}
 	}
 	server.render(response, "server", data)
+}
+
+func normalizeNotification(value string) (string, error) {
+	message := strings.TrimSpace(value)
+	if message == "" {
+		return "", errors.New("通知内容不能为空")
+	}
+	if strings.ContainsAny(message, "\r\n\x00") {
+		return "", errors.New("通知请填写为单行文字")
+	}
+	if utf8.RuneCountInString(message) > 240 {
+		return "", errors.New("通知最多 240 个字符")
+	}
+	return message, nil
+}
+
+func (server *Server) restartTarget(ctx context.Context, target string) error {
+	if server.operator == nil {
+		return errors.New("未配置受限运维接口")
+	}
+	if targeted, ok := server.operator.(TargetedOperator); ok {
+		switch target {
+		case "gateway":
+			return targeted.RestartGateway(ctx)
+		case "game":
+			return targeted.RestartGame(ctx)
+		}
+	}
+	return server.operator.Restart(ctx)
+}
+
+func restartMessage(target string) string {
+	switch target {
+	case "gateway":
+		return "网关已重启"
+	case "game":
+		return "游戏服务（GMSV + SAAC）已重启"
+	default:
+		return "全部服务已重启"
+	}
+}
+
+func configAuditDetails(values map[string]string) string {
+	parts := make([]string, 0, len(values))
+	for _, key := range editableConfigOrder {
+		if value, ok := values[key]; ok {
+			parts = append(parts, key+"="+value)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func adminID(data *pageData) *int64 {

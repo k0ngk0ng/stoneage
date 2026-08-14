@@ -3,5 +3,4 @@ set -euo pipefail
 
 package_root="$(cd "$(dirname "$0")" && pwd)"
 "$package_root/stop-gateway.sh"
-"$package_root/stop-game.sh"
-echo "StoneAge server stopped; runtime data was preserved."
+"$package_root/start-gateway.sh"

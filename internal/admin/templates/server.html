@@ -1,19 +1,95 @@
 {{define "content"}}
-<div class="page-heading"><div><h1>服务端</h1><p class="muted">配置修改将在重启后生效。</p></div></div>
+<div class="page-heading">
+  <div>
+    <h1>运营控制台</h1>
+    <p class="muted">查看运行状态、发送在线通知、维护 GMSV 配置，以及执行受限服务操作。</p>
+  </div>
+  <span class="page-kicker">StoneAge 2.5</span>
+</div>
 {{if .OperatorError}}<div class="alert error">运维控制不可用：{{.OperatorError}}</div>{{end}}
 {{if .ConfigError}}<div class="alert error">配置文件不可用：{{.ConfigError}}</div>{{end}}
-<div class="grid two">
-<section class="card"><h2>运行状态</h2>
-<dl class="details"><dt>网关</dt><dd>{{.Status.Gateway}}</dd><dt>GMSV</dt><dd>{{.Status.GMSV}}</dd><dt>数据库</dt><dd>{{.Status.Database}}</dd></dl>
-<form method="post" action="/server/restart"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="danger" type="submit" data-confirm="重启会断开当前玩家，确认继续？">重启服务端</button></form>
+
+<section class="card service-panel">
+  <div class="card-heading">
+    <div><h2>服务控制</h2><p class="muted">游戏网关与游戏进程分开管理，操作前会再次确认。</p></div>
+    <span class="section-kicker">实时状态</span>
+  </div>
+  <div class="service-list">
+    <article class="service-row">
+      <div class="service-mark gateway-mark">GW</div>
+      <div class="service-copy">
+        <div class="service-title"><h3>游戏网关</h3><span class="status-pill">{{.Status.Gateway}}</span></div>
+        <p>Go 协议网关 · 对外 TCP 9065。只重启游戏网关不会重启 GMSV 或 SAAC。</p>
+      </div>
+      <form method="post" action="/server/restart-gateway"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="primary" type="submit" data-confirm="只重启游戏网关，不会重启 GMSV/SAAC，确认继续？">重启游戏网关</button></form>
+    </article>
+    <article class="service-row">
+      <div class="service-mark game-mark">GM</div>
+      <div class="service-copy">
+        <div class="service-title"><h3>游戏服务</h3><span class="status-pill">GMSV {{.Status.GMSV}}</span></div>
+        <p>GMSV 与 SAAC 是两个独立进程；当前部署脚本将二者成组监管，配置保存时会一起重启，在线玩家会断线。</p>
+      </div>
+      <form method="post" action="/server/restart-game"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="primary" type="submit" data-confirm="重启游戏服务会断开当前玩家，确认继续？">重启游戏服务</button></form>
+    </article>
+  </div>
+  <div class="service-summary">
+    <div><span>游戏网关</span><strong>{{.Status.Gateway}}</strong></div>
+    <div><span>GMSV</span><strong>{{.Status.GMSV}}</strong></div>
+    <div><span>认证库</span><strong>{{.Status.Database}}</strong></div>
+  </div>
+  <div class="full-restart">
+    <div><strong>全部重启</strong><p>依次重启游戏服务和游戏网关，适合发布配置或整体故障恢复。</p></div>
+    <form method="post" action="/server/restart"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="danger" type="submit" data-confirm="全部重启会断开当前玩家，确认继续？">全部重启</button></form>
+  </div>
 </section>
-<section class="card"><h2>安全配置</h2>
-<form method="post" action="/server/config">
-<input type="hidden" name="csrf" value="{{.CSRF}}">
-<label class="checkbox"><input type="checkbox" name="enable_nu_flow_control" value="1" {{if eq (index .Config "enable_nu_flow_control") "1"}}checked{{end}}> 启用 NU 移动流控（默认关闭）</label>
-<label>GMSV 调试级别<input name="debuglevel" value="{{index .Config "debuglevel"}}" inputmode="numeric" pattern="[0-3]"></label>
-<button class="primary" type="submit">保存配置并重启</button>
-</form>
-</section>
+
+<div class="console-grid">
+  <section class="card notification-card">
+    <div class="card-heading">
+      <div><h2>在线通知</h2><p class="muted">向当前在线玩家发送一条红色系统消息。</p></div>
+      <span class="section-kicker">即时广播</span>
+    </div>
+    <form method="post" action="/server/notify">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="textarea-label">通知内容<textarea name="message" rows="4" maxlength="240" required placeholder="例如：今晚 23:00 进行例行维护，请提前下线。"></textarea></label>
+      <div class="form-footer"><small>单行文字，最多 240 个字符；不会执行任何命令。</small><button class="primary" type="submit" data-confirm="将通知发送给当前在线玩家，确认发送？">发送通知</button></div>
+    </form>
+  </section>
+
+  <section class="card service-notes">
+    <div class="card-heading"><div><h2>服务说明</h2><p class="muted">把配置归属和重启影响写清楚，避免误操作。</p></div></div>
+    <div class="scope-note">
+      <span class="scope-badge">GMSV</span>
+      <div><strong>本页可编辑的服务</strong><p>下方字段写入 GMSV 的 <code>setup.cf</code>，玩法、容量、等级、时间和日志项均由 GMSV 读取；这些改动本身不要求 SAAC 重启。</p></div>
+    </div>
+    <div class="scope-note muted-note">
+      <span class="scope-badge secondary">SAAC</span>
+      <div><strong>账号/角色服务</strong><p>SAAC 使用独立的 <code>acserv.cf</code>；本页暂不修改端口、密码和目录。当前容器重启时会与 GMSV 一起重启，但不是这些 GMSV 配置的必需步骤。</p></div>
+    </div>
+    <p class="hint">网页账号认证使用独立 SQLite，不等同于 SAAC 的角色数据目录。</p>
+  </section>
 </div>
+
+<section class="card config-card">
+  <div class="card-heading">
+    <div><h2>GMSV 配置</h2><p class="muted">常用项分组展示；路径、端口、密码和进程连接参数仍保留在服务器文件中。</p></div>
+    <span class="scope-badge">GMSV · setup.cf</span>
+  </div>
+  <form method="post" action="/server/config">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{range .ConfigGroups}}
+      <h3 class="config-section-title">{{.Title}}</h3>
+      <div class="config-grid">
+      {{range .Fields}}
+        {{if eq .Kind "bool"}}
+        <label class="config-field checkbox"><input type="checkbox" name="{{.Key}}" value="1" {{if eq .Value "1"}}checked{{end}}> <span>{{.Label}}</span><small>{{.Hint}}</small></label>
+        {{else}}
+        <label class="config-field"><span>{{.Label}}</span><input type="number" name="{{.Key}}" value="{{.Value}}" min="{{.Min}}" max="{{.Max}}" step="1" required><small>{{.Hint}}</small></label>
+        {{end}}
+      {{end}}
+      </div>
+    {{end}}
+    <div class="form-footer config-footer"><small>保存的是 GMSV 配置；当前部署会成组重启 GMSV + SAAC，游戏网关保持在线。</small><button class="primary" type="submit">保存并重启游戏服务</button></div>
+  </form>
+</section>
 {{end}}

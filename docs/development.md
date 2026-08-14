@@ -106,6 +106,10 @@ STONEAGE_UPSTREAM_PORT=19065 ./scripts/run-legacy-server.sh
 `enable_nu_flow_control` 控制：`0`（默认）关闭，`1` 开启。修改后需重启
 GMSV 才会生效。
 
+管理后台的“GMSV 配置”页只编辑这份 `setup.cf`；SAAC 的 `acserv.cf` 仍由部署
+文件维护。在线通知通过受限 operator 写入固定通知队列，再由 GMSV 主循环广播
+给在线玩家。
+
 ## 本地认证与管理后台
 
 开发脚本默认不加 `-auth-required`，方便复现旧 SAAC 的协议问题。需要测试发布

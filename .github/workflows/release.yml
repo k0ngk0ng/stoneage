@@ -67,7 +67,14 @@ jobs:
               cp release/linux/start-admin.sh \
                 release/linux/stop-admin.sh \
                 release/linux/status-admin.sh \
+                release/linux/start-game.sh \
+                release/linux/stop-game.sh \
+                release/linux/start-gateway.sh \
+                release/linux/stop-gateway.sh \
                 release/linux/restart-server.sh \
+                release/linux/restart-game.sh \
+                release/linux/restart-gateway.sh \
+                release/linux/send-notification.sh \
                 "$package_root/"
             fi
 

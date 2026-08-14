@@ -1,6 +1,6 @@
 // stoneage-operator is the small privileged boundary used by the web console
-// for status and restart. It accepts only fixed JSON actions over a Unix socket
-// and never evaluates a command string supplied by the web process.
+// for status and fixed restart actions. It accepts only fixed JSON actions over
+// a Unix socket and never evaluates a command string supplied by the web process.
 package main
 
 import (
@@ -15,12 +15,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type request struct {
-	Action string `json:"action"`
+	Action  string `json:"action"`
+	Message string `json:"message,omitempty"`
 }
 
 type status struct {
@@ -110,8 +113,26 @@ func (value *operator) handle(connection net.Conn) {
 	case "status":
 		output.Status = value.status()
 		output.OK = true
-	case "restart":
-		if err := value.restart(); err != nil {
+	case "restart", "restart_server":
+		if err := value.restartScript("restart-server.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "restart_game":
+		if err := value.restartScript("restart-game.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "restart_gateway":
+		if err := value.restartScript("restart-gateway.sh"); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+		}
+	case "notify":
+		if err := value.notify(input.Message); err != nil {
 			output.Error = err.Error()
 		} else {
 			output.OK = true
@@ -130,10 +151,32 @@ func (value *operator) status() status {
 	}
 }
 
-func (value *operator) restart() error {
+func (value *operator) restartScript(script string) error {
+	return value.runScript(script, 90*time.Second)
+}
+
+func (value *operator) notify(message string) error {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return errors.New("notification is empty")
+	}
+	if strings.ContainsAny(message, "\r\n\x00") {
+		return errors.New("notification must be a single line")
+	}
+	if utf8.RuneCountInString(message) > 240 {
+		return errors.New("notification is limited to 240 characters")
+	}
+	return value.runScriptWithArgs("send-notification.sh", 10*time.Second, message)
+}
+
+func (value *operator) runScript(script string, timeout time.Duration) error {
+	return value.runScriptWithArgs(script, timeout)
+}
+
+func (value *operator) runScriptWithArgs(script string, timeout time.Duration, args ...string) error {
 	value.restartMu.Lock()
 	defer value.restartMu.Unlock()
-	command := filepath.Join(value.packageRoot, "restart-server.sh")
+	command := filepath.Join(value.packageRoot, script)
 	info, err := os.Lstat(command)
 	if err != nil {
 		return fmt.Errorf("restart command unavailable: %w", err)
@@ -141,15 +184,19 @@ func (value *operator) restart() error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
 		return fmt.Errorf("restart command is not a regular executable")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, command).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, command, args...).CombinedOutput(); err != nil {
 		if len(output) > 2048 {
 			output = output[len(output)-2048:]
 		}
 		return fmt.Errorf("restart failed: %w: %s", err, output)
 	}
 	return nil
+}
+
+func (value *operator) restart() error {
+	return value.restartScript("restart-server.sh")
 }
 
 func probeAddress(address string) string {

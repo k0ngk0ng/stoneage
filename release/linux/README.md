@@ -22,14 +22,20 @@ printf '%s\n' '请替换为强密码' | \
 一个随机的 `STONEAGE_ADMIN_SETUP_TOKEN`，访问 `/setup` 创建管理员；不要把该
 令牌写入公开脚本或长期保留。
 
-后台可以管理游戏账号、启用/禁用账号、重置密码、查看审计日志、修改安全配置，
-并通过受限 operator 重启游戏服务：
+后台可以管理游戏账号、启用/禁用账号、重置密码、查看审计日志、发送在线通知、
+修改 GMSV 常用配置，并通过受限 operator 重启服务：
 
 ```bash
 ./stop-admin.sh       # 停后台，不删除账号
-./restart-server.sh   # 重启 GMSV 和网关，会断开玩家
+./restart-gateway.sh  # 只重启 Go 网关，通常不会影响 GMSV 进程
+./restart-game.sh     # 只重启游戏服务（GMSV + SAAC），会断开玩家
+./restart-server.sh   # 重启游戏服务和网关，会断开玩家
 ./stop-server.sh      # 停游戏服务，保留角色和账号数据
 ```
+
+后台“GMSV 配置”页面编辑的是 `runtime/legacy-server/gmsv/setup.cf`；SAAC 的
+`acserv.cf` 仍由服务器文件维护，不会被网页表单覆盖。在线通知会写入受限的
+`admin-notice.txt` 队列，由 GMSV 主循环发送给当前在线玩家。
 
 `runtime/stoneage-auth.db` 是 SQLite 认证库；角色、邮件和家族仍在
 `runtime/legacy-server/saac/`。备份前先停止两个服务。网关已经强制使用

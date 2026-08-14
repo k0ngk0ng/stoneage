@@ -17,7 +17,10 @@ import (
 )
 
 type fakeOperator struct {
-	restarts int
+	restarts        int
+	gatewayRestarts int
+	gameRestarts    int
+	notifications   []string
 }
 
 func (operator *fakeOperator) Status(context.Context) (ServiceStatus, error) {
@@ -26,6 +29,21 @@ func (operator *fakeOperator) Status(context.Context) (ServiceStatus, error) {
 
 func (operator *fakeOperator) Restart(context.Context) error {
 	operator.restarts++
+	return nil
+}
+
+func (operator *fakeOperator) RestartGateway(context.Context) error {
+	operator.gatewayRestarts++
+	return nil
+}
+
+func (operator *fakeOperator) RestartGame(context.Context) error {
+	operator.gameRestarts++
+	return nil
+}
+
+func (operator *fakeOperator) Notify(_ context.Context, message string) error {
+	operator.notifications = append(operator.notifications, message)
 	return nil
 }
 
@@ -152,15 +170,42 @@ func TestAdminConfigAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.restarts != 1 {
-		t.Fatalf("config response=%d restarts=%d", response.StatusCode, operator.restarts)
+	if response.StatusCode != http.StatusSeeOther || operator.gameRestarts != 1 {
+		t.Fatalf("config response=%d game restarts=%d", response.StatusCode, operator.gameRestarts)
+	}
+	response, err = client.PostForm(server.URL+"/server/notify", url.Values{
+		"csrf":    {csrf[1]},
+		"message": {"今晚 23:00 维护提醒 $(not-a-command)"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther || len(operator.notifications) != 1 || operator.notifications[0] != "今晚 23:00 维护提醒 $(not-a-command)" {
+		t.Fatalf("notification response=%d notifications=%#v", response.StatusCode, operator.notifications)
 	}
 	response, err = client.PostForm(server.URL+"/server/restart", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.restarts != 2 {
+	if response.StatusCode != http.StatusSeeOther || operator.restarts != 1 {
 		t.Fatalf("restart response=%d restarts=%d", response.StatusCode, operator.restarts)
+	}
+	response, err = client.PostForm(server.URL+"/server/restart-gateway", url.Values{"csrf": {csrf[1]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther || operator.gatewayRestarts != 1 {
+		t.Fatalf("gateway restart response=%d restarts=%d", response.StatusCode, operator.gatewayRestarts)
+	}
+	response, err = client.PostForm(server.URL+"/server/restart-game", url.Values{"csrf": {csrf[1]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther || operator.gameRestarts != 2 {
+		t.Fatalf("game restart response=%d restarts=%d", response.StatusCode, operator.gameRestarts)
 	}
 }

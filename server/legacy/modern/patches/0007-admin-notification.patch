@@ -1,0 +1,41 @@
+--- a/main.c
++++ b/main.c
+@@ -24,2 +24,3 @@
+ static void ShutdownProc( void);
++static void StoneAge_ProcessAdminNotice( void);
+ void mainloop( void );
+@@ -103,2 +104,3 @@
+ 	while(1){
++		StoneAge_ProcessAdminNotice();
+ 		if(getCpuUse()!=-1){
+@@ -201,2 +202,30 @@
+ }
++
++/* STONEAGE_ADMIN_NOTICE: consume one atomic web-console announcement file. */
++static void StoneAge_ProcessAdminNotice( void )
++{
++    FILE *fp;
++    char line[1024];
++
++    fp = fopen( "./admin-notice.txt", "r" );
++    if( fp == NULL ) return;
++    while( fgets( line, sizeof( line ), fp ) != NULL ) {
++        size_t length = strlen( line );
++        while( length > 0 && (line[length - 1] == 10 || line[length - 1] == 13) ) {
++            line[--length] = 0;
++        }
++        if( line[0] == 0 ) continue;
++        {
++            int i;
++            int playernum = CHAR_getPlayerMaxNum();
++            for( i = 0 ; i < playernum ; i++ ) {
++                if( CHAR_getCharUse(i) != FALSE ) {
++                    CHAR_talkToCli( i, -1, line, CHAR_COLORRED );
++                }
++            }
++        }
++    }
++    fclose( fp );
++    remove( "./admin-notice.txt" );
++}
+ static void ShutdownProc( void)

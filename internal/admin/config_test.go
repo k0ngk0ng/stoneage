@@ -21,7 +21,13 @@ func TestConfigManagerPreservesUnknownSettings(t *testing.T) {
 	if values["debuglevel"] != "1" || values["enable_nu_flow_control"] != "0" {
 		t.Fatalf("loaded values = %#v", values)
 	}
-	if err := manager.Update(map[string]string{"debuglevel": "3", "enable_nu_flow_control": "1"}); err != nil {
+	if err := manager.Update(map[string]string{
+		"debuglevel":             "3",
+		"enable_nu_flow_control": "1",
+		"runlevel":               "2",
+		"MAXLEVEL":               "200",
+		"SAMEIPLOGIN":            "1",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -29,11 +35,18 @@ func TestConfigManagerPreservesUnknownSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(content)
-	if !strings.Contains(text, "debuglevel=3") || !strings.Contains(text, "enable_nu_flow_control=1") || !strings.Contains(text, "other=value") {
+	if !strings.Contains(text, "debuglevel=3") || !strings.Contains(text, "enable_nu_flow_control=1") || !strings.Contains(text, "runlevel=2") || !strings.Contains(text, "MAXLEVEL=200") || !strings.Contains(text, "SAMEIPLOGIN=1") || !strings.Contains(text, "other=value") {
 		t.Fatalf("updated config = %q", text)
 	}
 	if err := manager.Update(map[string]string{"debuglevel": "9"}); err == nil {
 		t.Fatal("invalid debug level accepted")
+	}
+	if err := manager.Update(map[string]string{"MAXLEVEL": "0"}); err == nil {
+		t.Fatal("invalid max level accepted")
+	}
+	groups := BuildConfigGroups(map[string]string{"debuglevel": "3", "enable_nu_flow_control": "1"})
+	if len(groups) < 4 || len(groups[0].Fields) == 0 {
+		t.Fatalf("config groups = %#v", groups)
 	}
 }
 

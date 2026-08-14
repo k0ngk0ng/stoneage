@@ -71,6 +71,14 @@ if ! grep -q 'STONEAGE_SAFE_DISCONNECT_CLEANUP' /src/gmsv/char/char.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0006-safe-disconnect-cleanup.patch
 fi
 
+# The authenticated web console writes one atomic, fixed-path notice file.
+# Let the GMSV consume it in its normal main loop and deliver it to online
+# players through the same red system-message path as the built-in announce
+# command. The file is never interpreted as a shell command.
+if ! grep -q 'STONEAGE_ADMIN_NOTICE' /src/gmsv/main.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0007-admin-notification.patch
+fi
+
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM
 # command password. The source files are GBK, so use checked, byte-preserving
