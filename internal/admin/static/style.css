@@ -71,11 +71,6 @@ tr:last-child td { border-bottom: 0; }
 .status-pill.unknown { color: #6c6f68; border-color: #9c9d92; background: #e8e5d8; }
 .service-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .service-actions form { margin: 0; }
-.service-summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-top: 14px; }
-.service-summary div { padding: 9px 11px; border-left: 3px solid #49a4be; background: rgba(255,255,255,.42); }
-.service-summary span, .service-summary strong { display: block; }
-.service-summary span { color: #69777a; font-size: 11px; }
-.service-summary strong { margin-top: 3px; color: #3d5963; font-size: 13px; }
 .full-restart { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 16px; padding: 13px 14px; border: 2px solid rgba(190,90,85,.42); border-radius: 10px 10px 5px 10px; background: rgba(244,179,157,.25); }
 .full-restart strong { color: #874b45; }
 .full-restart p { display: inline; margin: 0 0 0 8px; color: #765f5d; font-size: 12px; }
@@ -130,7 +125,6 @@ tr:last-child td { border-bottom: 0; }
   .service-actions { grid-column: 2; justify-content: stretch; }
   .service-actions form, .service-actions .button, .service-actions button { flex: 1; }
   .service-actions button { width: 100%; }
-  .service-summary { grid-template-columns: 1fr; }
   .full-restart, .full-service-actions { align-items: flex-start; flex-direction: column; }
   .full-restart p, .full-service-actions p { display: block; margin: 4px 0 0; }
   .full-restart button, .full-service-actions button { width: 100%; }
