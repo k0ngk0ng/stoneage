@@ -129,6 +129,39 @@ if [[ "$gateway_running" != "1" ]]; then
 fi
 
 client_exe="sa_2903-local.exe"
+client_host="${STONEAGE_CLIENT_HOST:-127.0.0.1}"
+client_port="${STONEAGE_CLIENT_PORT:-9065}"
+client_servers_file="${STONEAGE_CLIENT_SERVERS_FILE:-$client_root/client-servers.toml}"
+client_servers_url="${STONEAGE_CLIENT_SERVERS_URL:-}"
+client_patcher="$resources/scripts/patch-legacy-client.py"
+
+# The archived executable is copied as a read-only input. If the launcher is
+# given a local TOML file, an HTTP(S) URL, or a different endpoint, regenerate
+# only the runnable copy in Application Support before starting Wine.
+if [[ -n "$client_servers_url" || -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || \
+      -f "$client_servers_file" || "$client_host" != "127.0.0.1" || \
+      "$client_port" != "9065" || ! -f "$client_root/$client_exe" ]]; then
+  python_bin="${STONEAGE_PYTHON:-$(command -v python3 || true)}"
+  if [[ -z "$python_bin" || ! -x "$python_bin" ]]; then
+    show_error "需要 Python 3 才能从原版客户端生成启动副本。"
+  fi
+  [[ -f "$client_patcher" ]] || show_error "找不到客户端启动器组件：$client_patcher"
+  patch_args=(
+    --source "$client_root/sa_2903.exe"
+    --output "$client_root/$client_exe"
+    --host "$client_host"
+    --port "$client_port"
+    --bypass-wgs
+  )
+  if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" ]]; then
+    patch_args+=(--servers-file "$client_servers_file")
+  fi
+  if [[ -n "$client_servers_url" ]]; then
+    patch_args+=(--servers-url "$client_servers_url")
+  fi
+  "$python_bin" "$client_patcher" "${patch_args[@]}" || \
+    show_error "客户端启动器生成副本失败，请查看终端或日志。"
+fi
 wine_locale="zh_CN.GBK"
 export WINEPREFIX="$wine_prefix"
 export LANG="$wine_locale"

@@ -131,12 +131,21 @@ else
   echo "Started protocol gateway $gateway_listen -> $gateway_upstream (PID $gateway_pid, trace=$gateway_trace)."
 fi
 
-"$project_root/scripts/patch-legacy-client.py" \
-  --source "$project_root/runtime/legacy-client/sa_2903.exe" \
-  --output "$project_root/runtime/legacy-client/sa_2903-local.exe" \
-  --host "${STONEAGE_CLIENT_HOST:-127.0.0.1}" \
-  --port "${STONEAGE_CLIENT_PORT:-9065}" \
+patch_args=(
+  --source "$project_root/runtime/legacy-client/sa_2903.exe"
+  --output "$project_root/runtime/legacy-client/sa_2903-local.exe"
+  --host "${STONEAGE_CLIENT_HOST:-127.0.0.1}"
+  --port "${STONEAGE_CLIENT_PORT:-9065}"
   --bypass-wgs
+)
+client_servers_file="${STONEAGE_CLIENT_SERVERS_FILE:-$project_root/runtime/client-servers.toml}"
+if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" ]]; then
+  patch_args+=(--servers-file "$client_servers_file")
+fi
+if [[ -n "${STONEAGE_CLIENT_SERVERS_URL:-}" ]]; then
+  patch_args+=(--servers-url "$STONEAGE_CLIENT_SERVERS_URL")
+fi
+"$project_root/scripts/patch-legacy-client.py" "${patch_args[@]}"
 
 echo "Services are ready. Starting the StoneAge 2.5 client."
 exec "$project_root/scripts/run-legacy-client-wine.sh"

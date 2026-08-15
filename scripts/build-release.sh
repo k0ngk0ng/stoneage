@@ -168,6 +168,10 @@ copy_client()
       cp -p "$project_root/runtime/legacy-client/$file" "$destination/$file"
     fi
   done
+  # The launcher can regenerate sa_2903-local.exe from the immutable source
+  # when a user selects a TOML/HTTP server list at startup.
+  cp -p "$project_root/config/client-servers.toml.example" \
+    "$destination/client-servers.toml.example"
 
   # These files are recreated by the client. They can contain the last login,
   # password, chat history, mail, album and per-player preferences from the
@@ -201,6 +205,9 @@ copy_runtime_support()
 
 echo "Assembling macOS application..."
 copy_client "$mac_resources/client"
+mkdir -p "$mac_resources/scripts"
+cp -p "$project_root/scripts/patch-legacy-client.py" \
+  "$mac_resources/scripts/patch-legacy-client.py"
 cp -R "$stage_root/local-arm64-runtime" "$mac_resources/server"
 install_demo_character "$mac_resources/server"
 copy_runtime_support "$mac_resources/support"
@@ -226,6 +233,7 @@ cp -p "$project_root/release/windows/Start-StoneAge.ps1" "$windows_stage/"
 cp -p "$project_root/release/windows/Stop-StoneAge.ps1" "$windows_stage/"
 cp -p "$project_root/release/windows/Configure-Server.ps1" "$windows_stage/"
 cp -p "$project_root/scripts/patch-legacy-client.py" "$windows_stage/"
+cp -p "$project_root/config/client-servers.toml.example" "$windows_stage/"
 cp -p "$project_root/release/windows/README.txt" "$windows_stage/"
 cp -p "$project_root/vendor/upstream/cnc-ddraw-v7.1.0.0/LICENSE" \
   "$windows_stage/LICENSE-cnc-ddraw.txt"

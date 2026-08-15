@@ -26,7 +26,24 @@
 人物：ProbeHero
 ```
 
-客户端中选择“本機”→“本機一線”。状态和停止命令：
+客户端中选择“本機”→“本機一線”。服务器/线路列表默认由本地启动脚本生成；如果
+需要多个服务器或线路，可复制 [`config/client-servers.toml.example`](../config/client-servers.toml.example)
+为 `runtime/client-servers.toml`。启动脚本会在启动客户端前读取该 UTF-8 TOML，
+把列表写入旧客户端的 CP936 数据结构：
+
+```bash
+cp config/client-servers.toml.example runtime/client-servers.toml
+./scripts/start-local.sh
+```
+
+也可以用 `STONEAGE_CLIENT_SERVERS_FILE=/path/to/servers.toml` 指定其他文件，或用
+`STONEAGE_CLIENT_SERVERS_URL=https://example.com/servers.toml` 在启动时从 HTTPS
+接口获取。URL 和本地文件可以同时设置，接口失败时回退到本地文件。
+旧客户端本身不具备读取外部配置的能力，因此启动器会把配置嵌入一个临时生成的
+客户端副本；原始 `sa_2903.exe` 不会被修改。地址目前限定为 IPv4，名称会按
+CP936 编码，最多 8 个服务器组、32 条线路，实际还受旧客户端代码空间限制。
+
+状态和停止命令：
 
 ```bash
 ./scripts/status-local.sh

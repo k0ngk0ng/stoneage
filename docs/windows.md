@@ -1,6 +1,7 @@
 # Windows 11 开发与运行
 
-当前 `sa_2903-local.exe` 是原生 32 位 x86 Windows 程序，Win11 无需 Wine。
+启动器从只读的 `sa_2903.exe` 生成 `sa_2903-local.exe`；原版文件不会被改写。
+生成后的客户端是原生 32 位 x86 Windows 程序，Win11 无需 Wine。
 cnc-ddraw 负责旧 DirectDraw/调色板兼容。`dist/StoneAge-Revival-Win11-x64.zip`
 已经包含 x64 网关、客户端、PowerShell 启停器和服务器地址配置器。macOS
 链路已实机通过，Win11 仍需在真实机器完成最终回归。
@@ -24,8 +25,8 @@ vendor/upstream/              （可从 archives 重建）
 
 1. Docker 运行 Linux 2.5 SAAC/GMSV，宿主只映射 `127.0.0.1:19065`。
 2. Windows x64 Go 构建 `stoneage-gateway.exe`，监听 `127.0.0.1:9065`。
-3. `runtime/legacy-client/sa_2903-local.exe` 与 `ddraw.dll`、`ddraw.ini`、
-   `data/`、`map/` 保持同目录，直接启动。
+3. `runtime/legacy-client/sa_2903.exe` 与生成的 `sa_2903-local.exe`、
+   `ddraw.dll`、`ddraw.ini`、`data/`、`map/` 保持同目录，由启动器启动。
 
 PowerShell 构建网关：
 
@@ -43,15 +44,21 @@ go build -mod=mod -o build\stoneage-gateway.exe .\cmd\stoneage-gateway
 powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -LocalGateway
 ```
 
-连接朋友的 LAN/VPN IPv4 时先生成对应客户端（需 Python 3）：
+连接朋友的 LAN/VPN IPv4 时可直接让启动器生成对应副本（需 Python 3）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Configure-Server.ps1 -IPv4 192.168.1.50
-powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1
+powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -Server 192.168.1.50
 ```
 
-服务器地址写在客户端二进制中，因此不能只给 `Start-StoneAge.ps1` 传一个新
-地址。停止客户端与包内网关使用 `Stop-StoneAge.ps1`。
+服务器/线路列表也可以在启动时读取 TOML：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -ServersFile .\client-servers.toml
+powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -ServersUrl https://example.com/servers.toml
+```
+
+如果包目录中存在 `client-servers.toml`，启动器会自动使用它。`Configure-Server.ps1`
+仍可单独预生成副本；停止客户端与包内网关使用 `Stop-StoneAge.ps1`。
 
 服务端脚本目前是 POSIX shell，推荐从 WSL 执行：
 

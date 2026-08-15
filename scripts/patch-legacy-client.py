@@ -3,9 +3,23 @@
 
 from argparse import ArgumentParser
 from hashlib import sha256
+import json
+import os
 from pathlib import Path
 import ipaddress
 import struct
+import sys
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11 can use the optional tomli package.
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        tomllib = None
 
 
 DEFAULT_SOURCE = Path("runtime/legacy-client/sa_2903.exe")
@@ -109,13 +123,19 @@ LEGACY_PROCESS_WATCHDOGS = (
 LOCAL_INIT_FILE_OFFSET = 0x62D60
 LOCAL_INIT_VA = 0x462D60
 LOCAL_INIT_CAPACITY = 0x2A0
-LOCAL_PHASE_HELPER_OFFSET = 0x100
-LOCAL_PHASE_HELPER_VA = LOCAL_INIT_VA + LOCAL_PHASE_HELPER_OFFSET
+LOCAL_PHASE_HELPER_MIN_OFFSET = 0x100
 GROUP_COUNT_VA = 0x2AB02F0
 GROUP_RECORD_VA = 0x2F3A5A8
 GAME_RECORD_VA = 0x2B02F88
 CONNECTION_PHASE_VA = 0x2F3B588
 GATEWAY_STATE_VA = 0x2B22D78
+GROUP_RECORD_SIZE = 0x48
+GAME_RECORD_SIZE = 0x100
+GROUP_NAME_BYTES = 0x40
+GAME_NAME_BYTES = 0x40
+MAX_SERVER_GROUPS = 8
+MAX_SERVER_LINES = 32
+MAX_SERVER_LIST_BYTES = 64 * 1024
 
 
 def mov_bytes(address: int, value: bytes) -> bytes:
@@ -133,32 +153,188 @@ def mov_bytes(address: int, value: bytes) -> bytes:
     return bytes(result)
 
 
-def build_local_initializer(host: str, port: int) -> bytes:
+def legacy_text(value: object, label: str, capacity: int) -> bytes:
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit(f"{label} must be a non-empty string")
+    try:
+        encoded = value.encode("cp936")
+    except UnicodeEncodeError as error:
+        raise SystemExit(f"{label} contains characters not representable in CP936") from error
+    if len(encoded) >= capacity:
+        raise SystemExit(f"{label} is too long (maximum {capacity - 1} CP936 bytes)")
+    return encoded + b"\0"
+
+
+def normalize_server_list(raw: object) -> list[tuple[str, list[tuple[str, str, int]]]]:
+    if not isinstance(raw, dict) or not isinstance(raw.get("groups"), list):
+        raise SystemExit("server list config must contain a groups array")
+    if not raw["groups"]:
+        raise SystemExit("server list config must contain at least one group")
+    if len(raw["groups"]) > MAX_SERVER_GROUPS:
+        raise SystemExit(f"server list config supports at most {MAX_SERVER_GROUPS} groups")
+
+    groups: list[tuple[str, list[tuple[str, str, int]]]] = []
+    line_count = 0
+    for group_index, group in enumerate(raw["groups"], start=1):
+        if not isinstance(group, dict):
+            raise SystemExit(f"groups[{group_index - 1}] must be an object")
+        group_name = group.get("name")
+        legacy_text(group_name, f"groups[{group_index - 1}].name", GROUP_NAME_BYTES)
+        lines = group.get("lines")
+        if not isinstance(lines, list) or not lines:
+            raise SystemExit(f"groups[{group_index - 1}].lines must be a non-empty array")
+
+        normalized_lines: list[tuple[str, str, int]] = []
+        for line_index, line in enumerate(lines, start=1):
+            if not isinstance(line, dict):
+                raise SystemExit(
+                    f"groups[{group_index - 1}].lines[{line_index - 1}] must be an object"
+                )
+            line_name = line.get("name")
+            legacy_text(
+                line_name,
+                f"groups[{group_index - 1}].lines[{line_index - 1}].name",
+                GAME_NAME_BYTES,
+            )
+            host_value = line.get("host")
+            if not isinstance(host_value, str):
+                raise SystemExit(
+                    f"groups[{group_index - 1}].lines[{line_index - 1}].host must be an IPv4 address"
+                )
+            try:
+                host = str(ipaddress.IPv4Address(host_value))
+            except ipaddress.AddressValueError as error:
+                raise SystemExit(
+                    f"groups[{group_index - 1}].lines[{line_index - 1}].host must be an IPv4 address"
+                ) from error
+            port_value = line.get("port")
+            if isinstance(port_value, bool) or not isinstance(port_value, int):
+                raise SystemExit(
+                    f"groups[{group_index - 1}].lines[{line_index - 1}].port must be an integer"
+                )
+            if not 1 <= port_value <= 65535:
+                raise SystemExit(
+                    f"groups[{group_index - 1}].lines[{line_index - 1}].port must be between 1 and 65535"
+                )
+            normalized_lines.append((str(line_name), host, port_value))
+            line_count += 1
+        groups.append((str(group_name), normalized_lines))
+
+    if line_count > MAX_SERVER_LINES:
+        raise SystemExit(f"server list config supports at most {MAX_SERVER_LINES} lines")
+    return groups
+
+
+def parse_server_list_text(
+    text: str, source: str, format_hint: str = ""
+) -> list[tuple[str, list[tuple[str, str, int]]]]:
+    format_name = format_hint.lower()
+    if format_name == "auto":
+        errors: list[str] = []
+        for candidate in ("json", "toml"):
+            try:
+                return parse_server_list_text(text, source, candidate)
+            except SystemExit as error:
+                errors.append(str(error))
+        raise SystemExit(
+            f"invalid server list config {source}; tried JSON and TOML: "
+            + " | ".join(errors)
+        )
+    if not format_name:
+        source_name = source.split("?", 1)[0].lower()
+        format_name = "toml" if source_name.endswith(".toml") or ".toml." in source_name else "json"
+    try:
+        if format_name == "toml":
+            if tomllib is None:
+                raise SystemExit(
+                    "TOML server lists require Python 3.11+ or the optional tomli package"
+                )
+            raw = tomllib.loads(text)
+        elif format_name == "json":
+            raw = json.loads(text)
+        else:
+            raise SystemExit(f"unsupported server list format {format_name!r}")
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError if tomllib else ValueError) as error:
+        raise SystemExit(f"invalid server list config {source}: {error}") from error
+    return normalize_server_list(raw)
+
+
+def load_server_list(path: Path) -> list[tuple[str, list[tuple[str, str, int]]]]:
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError as error:
+        raise SystemExit(f"cannot read server list config {path}: {error}") from error
+    return parse_server_list_text(text, str(path))
+
+
+def load_server_list_url(url: str) -> list[tuple[str, list[tuple[str, str, int]]]]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise SystemExit("server list URL must use http:// or https://")
+    request = Request(url, headers={"Accept": "text/plain, application/toml, application/json"})
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = response.read(MAX_SERVER_LIST_BYTES + 1)
+            content_type = response.headers.get_content_type()
+    except (HTTPError, URLError, TimeoutError, OSError) as error:
+        raise SystemExit(f"cannot fetch server list {url}: {error}") from error
+    if len(payload) > MAX_SERVER_LIST_BYTES:
+        raise SystemExit(f"server list response exceeds {MAX_SERVER_LIST_BYTES} bytes")
+    try:
+        text = payload.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise SystemExit(f"server list response is not UTF-8: {error}") from error
+    if "toml" in content_type or parsed.path.lower().endswith(".toml"):
+        format_hint = "toml"
+    elif "json" in content_type or parsed.path.lower().endswith(".json"):
+        format_hint = "json"
+    else:
+        # APIs often expose `/servers` without a filename or a useful
+        # Content-Type. Try JSON first and then TOML for those endpoints.
+        format_hint = "auto"
+    return parse_server_list_text(text, url, format_hint)
+
+
+def build_local_initializer(
+    groups: list[tuple[str, list[tuple[str, str, int]]]]
+) -> tuple[bytes, int]:
     # Outer record (72 bytes): enabled, child count, first child index, name.
     # Game record (256 bytes): enabled flag, host, port and display name at
-    # offsets 0, 1, 0x80 and 0xc0 respectively.
-    group_name = "本機".encode("cp936") + b"\0"
-    game_name = "本機一線".encode("cp936") + b"\0"
+    # offsets 0, 1, 0x80 and 0xc0 respectively.  The old WGS data is copied
+    # into these globals before the normal list renderer runs.
     code = bytearray()
-    code += b"\xc7\x05" + struct.pack("<II", GROUP_COUNT_VA, 1)
-    code += mov_bytes(GROUP_RECORD_VA, b"\x01\x01\x00\x00\x00\x00\x00\x00")
-    code += mov_bytes(GROUP_RECORD_VA + 8, group_name)
-    code += mov_bytes(GAME_RECORD_VA, b"1")
-    code += mov_bytes(GAME_RECORD_VA + 1, host.encode("ascii") + b"\0")
-    code += mov_bytes(GAME_RECORD_VA + 0x80, str(port).encode("ascii") + b"\0")
-    code += mov_bytes(GAME_RECORD_VA + 0xC0, game_name)
+    code += b"\xc7\x05" + struct.pack("<II", GROUP_COUNT_VA, len(groups))
+    line_index = 0
+    for group_index, (group_name, lines) in enumerate(groups):
+        group_address = GROUP_RECORD_VA + group_index * GROUP_RECORD_SIZE
+        group_header = b"\x01" + bytes((len(lines),)) + b"\0\0" + struct.pack("<I", line_index)
+        code += mov_bytes(group_address, group_header)
+        code += mov_bytes(group_address + 8, legacy_text(group_name, "group name", GROUP_NAME_BYTES))
+        for line_name, host, port in lines:
+            game_address = GAME_RECORD_VA + line_index * GAME_RECORD_SIZE
+            code += mov_bytes(game_address, b"1")
+            code += mov_bytes(game_address + 1, host.encode("ascii") + b"\0")
+            code += mov_bytes(game_address + 0x80, str(port).encode("ascii") + b"\0")
+            code += mov_bytes(
+                game_address + 0xC0,
+                legacy_text(line_name, "line name", GAME_NAME_BYTES),
+            )
+            line_index += 1
     code += b"\xb8\x01\x00\x00\x00\xc3"  # mov eax, 1; ret
-    if len(code) > LOCAL_PHASE_HELPER_OFFSET:
-        raise SystemExit("internal error: local initializer overlaps phase helper")
-    code += b"\0" * (LOCAL_PHASE_HELPER_OFFSET - len(code))
+    phase_helper_offset = max(
+        LOCAL_PHASE_HELPER_MIN_OFFSET, (len(code) + 0x0F) & ~0x0F
+    )
+    if phase_helper_offset + 16 > LOCAL_INIT_CAPACITY:
+        raise SystemExit(
+            "server list is too large for the legacy client patch; reduce groups or lines"
+        )
+    code += b"\0" * (phase_helper_offset - len(code))
     # Restore the side effect of the WGS callback bypassed in local mode, then
     # execute the original instruction from the patched call site.
     code += b"\xc7\x05" + struct.pack("<II", CONNECTION_PHASE_VA, 3)
     code += b"\xa1" + struct.pack("<I", GATEWAY_STATE_VA)
     code += b"\xc3"
-    if len(code) > LOCAL_INIT_CAPACITY:
-        raise SystemExit("internal error: local initializer exceeds the code cave")
-    return bytes(code)
+    return bytes(code), phase_helper_offset
 
 
 def find_legacy_endpoint(source: bytes):
@@ -198,11 +374,42 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9065)
     parser.add_argument(
+        "--servers-file",
+        type=Path,
+        help="UTF-8 TOML (or JSON) file containing server groups and game lines",
+    )
+    parser.add_argument(
+        "--servers-url",
+        help="HTTP(S) URL returning a UTF-8 TOML or JSON server list",
+    )
+    parser.add_argument(
         "--bypass-wgs",
         action="store_true",
         help="skip the defunct WGS membership gateway and continue locally",
     )
     args = parser.parse_args()
+
+    if (args.servers_file or args.servers_url) and not args.bypass_wgs:
+        raise SystemExit("--servers-file/--servers-url require --bypass-wgs")
+
+    # The archived client is an immutable input.  Catch both the obvious
+    # same-path case and an existing hardlink/symlink to the source before any
+    # output bytes are written; a launcher must always produce a separate
+    # client copy.
+    try:
+        source_path = args.source.resolve(strict=True)
+    except OSError as error:
+        raise SystemExit(f"cannot read source client {args.source}: {error}") from error
+    output_path = args.output.resolve(strict=False)
+    if source_path == output_path:
+        raise SystemExit("output client must be different from the original source client")
+    try:
+        if args.output.exists() and os.path.samefile(source_path, args.output):
+            raise SystemExit("output client must not be a hardlink or symlink to the source client")
+    except OSError:
+        # A missing output (or a parent that has not been created yet) is fine;
+        # the normal write path below creates it.
+        pass
 
     # The legacy binary has a fixed-size IPv4 string slot. Restrict this tool
     # to numeric IPv4 so a replacement can never overwrite adjacent bytes.
@@ -210,7 +417,7 @@ def main() -> int:
     if not 1 <= args.port <= 65535:
         raise SystemExit("port must be between 1 and 65535")
 
-    source = args.source.read_bytes()
+    source = source_path.read_bytes()
     source_hash = digest(source)
     if args.source == DEFAULT_SOURCE and source_hash != KNOWN_SOURCE_SHA256:
         raise SystemExit(
@@ -260,7 +467,34 @@ def main() -> int:
                 "refusing to patch an unknown WGS call site: "
                 f"expected {WGS_POLL_CALL.hex()}, got {actual_call.hex()}"
             )
-        initializer = build_local_initializer(args.host, args.port)
+        if args.servers_url:
+            try:
+                groups = load_server_list_url(args.servers_url)
+            except SystemExit as error:
+                if args.servers_file is None:
+                    raise
+                print(f"warning: {error}; using local server list fallback", file=sys.stderr)
+                groups = load_server_list(args.servers_file)
+        elif args.servers_file is not None:
+            groups = load_server_list(args.servers_file)
+        else:
+            groups = normalize_server_list(
+                {
+                    "groups": [
+                        {
+                            "name": "本機",
+                            "lines": [
+                                {
+                                    "name": "本機一線",
+                                    "host": args.host,
+                                    "port": args.port,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+        initializer, phase_helper_offset = build_local_initializer(groups)
         cave = bytes(
             patched[
                 LOCAL_INIT_FILE_OFFSET : LOCAL_INIT_FILE_OFFSET + LOCAL_INIT_CAPACITY
@@ -304,7 +538,7 @@ def main() -> int:
                 f"expected {GAME_PROTOCOL_PHASE_ORIGINAL.hex()}, "
                 f"got {actual_phase.hex()}"
             )
-        phase_relative_call = LOCAL_PHASE_HELPER_VA - (
+        phase_relative_call = LOCAL_INIT_VA + phase_helper_offset - (
             GAME_PROTOCOL_PHASE_VA + len(GAME_PROTOCOL_PHASE_ORIGINAL)
         )
         patched[
@@ -353,11 +587,11 @@ def main() -> int:
     if len(patched) != len(source):
         raise SystemExit("internal error: patched executable changed size")
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_bytes(bytes(patched))
-    args.output.chmod(args.source.stat().st_mode)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(bytes(patched))
+    output_path.chmod(source_path.stat().st_mode)
     print(f"source_sha256={source_hash}")
-    print(f"output={args.output}")
+    print(f"output={output_path}")
     print(f"output_sha256={digest(patched)}")
     print(f"endpoint={args.host}:{args.port}")
     print(f"wgs={'bypassed' if args.bypass_wgs else 'enabled'}")

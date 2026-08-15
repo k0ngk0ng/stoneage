@@ -1,0 +1,22 @@
+version = 1
+
+[[groups]]
+name = "本機"
+
+[[groups.lines]]
+name = "本機一線"
+host = "127.0.0.1"
+port = 9065
+
+[[groups]]
+name = "朋友服"
+
+[[groups.lines]]
+name = "一線"
+host = "192.168.1.50"
+port = 9065
+
+[[groups.lines]]
+name = "备用线"
+host = "192.168.1.50"
+port = 9066

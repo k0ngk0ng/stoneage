@@ -7,9 +7,18 @@ StoneAge Revival 2.5 - Windows 11 x64
 
 加入朋友的伺服器：
 1. 安裝 Python 3（只在設定地址時需要）。
-2. 執行：powershell -ExecutionPolicy Bypass -File .\Configure-Server.ps1 -IPv4 192.168.1.50
-3. 執行：powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1
+2. 執行：powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -Server 192.168.1.50
+3. 啟動器會由唯讀的 sa_2903.exe 產生 sa_2903-local.exe；原版 EXE 不會被修改。
 4. 選擇「本機」與「本機一線」。VPN 聯機時請填入 VPN IPv4。
+
+要顯示多個伺服器/線路時，編輯套件內的 client-servers.toml.example，另存為
+client-servers.toml，再由啟動器讀取：
+  powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -ServersFile .\client-servers.toml
+
+也可以直接從 HTTPS 接口取得：
+  powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -ServersUrl https://example.com/servers.toml
+
+配置格式同樣適用於 macOS/Linux 的客戶端生成腳本；舊客戶端會在生成時嵌入列表。
 
 在本機跑網關（另需 Linux 伺服器已監聽 127.0.0.1:19065）：
   powershell -ExecutionPolicy Bypass -File .\Start-StoneAge.ps1 -LocalGateway

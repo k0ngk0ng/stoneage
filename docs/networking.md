@@ -22,7 +22,8 @@ GMSV   -> 容器内 127.0.0.1:9300（SAAC）
 STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./scripts/start-local.sh
 ```
 
-为每位朋友生成指向服务器 LAN IPv4 的客户端；旧二进制字段只支持 IPv4：
+为每位朋友生成指向服务器 LAN IPv4 的客户端；旧二进制字段只支持 IPv4。单个
+地址仍可直接使用：
 
 ```bash
 ./scripts/patch-legacy-client.py \
@@ -30,6 +31,20 @@ STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./scripts/start-local.sh
   --output runtime/legacy-client/sa_2903-lan.exe \
   --host 192.168.1.50 --port 9065 --bypass-wgs
 ```
+
+如果需要在客户端里显示多个服务器/线路，使用同一个启动器的 TOML 配置：
+
+```bash
+./scripts/patch-legacy-client.py \
+  --source runtime/legacy-client/sa_2903.exe \
+  --output runtime/legacy-client/sa_2903-lan.exe \
+  --servers-file runtime/client-servers.toml --bypass-wgs
+```
+
+配置格式见 [`config/client-servers.toml.example`](../config/client-servers.toml.example)。
+也可以用 `--servers-url https://example.com/servers.toml` 在启动时动态获取，
+并同时传入 `--servers-file` 作为离线回退。旧客户端不会在运行时读取文件，启动器
+会把列表嵌入一个生成的副本，原始客户端文件保持不变。
 
 把完整 `runtime/legacy-client/` 复制给朋友，并让其启动 `sa_2903-lan.exe`。
 只在主机防火墙中允许可信局域网到 TCP 9065；19065 和 9300 保持本机/容器内。

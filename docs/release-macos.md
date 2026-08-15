@@ -9,7 +9,11 @@ Linux 服务端资产。仍需预先安装并启动：
 双击应用即可启动。首次运行会在
 `~/Library/Application Support/StoneAge Revival/` 创建 CP936 Wine prefix、
 可写服务端和日志；游戏资产仍从应用内读取。客户端中选择“本機”与
-“本機一線”。
+“本機一線”。启动器以应用支持目录中的 `sa_2903.exe` 为只读输入；需要自定义
+服务器/线路时，在 `~/Library/Application Support/StoneAge Revival/client/`
+放置 `client-servers.toml`，或设置 `STONEAGE_CLIENT_SERVERS_URL` 后重新启动，
+启动器只生成 `sa_2903-local.exe` 副本，不会改写原版 EXE。TOML 示例随客户端
+一起提供为 `client-servers.toml.example`。
 
 发布包不携带开发机的登录密码、聊天记录、邮件、图鉴、日志或崩溃转储，只
 预置 `probe` / `local` 与人物 `ProbeHero` 作为可玩演示档。

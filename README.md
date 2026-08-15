@@ -33,7 +33,11 @@ Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖�
 ```
 
 测试账号为 `probe` / `local`，人物为 `ProbeHero`。在客户端中依次选择
-“本機”和“本機一線”。查看状态或停止：
+“本機”和“本機一線”。服务器/线路列表默认只有本机一线；需要自定义多个
+服务器或线路时，复制 `config/client-servers.toml.example` 为
+`runtime/client-servers.toml` 后再启动，脚本会自动嵌入旧客户端。也可以设置
+`STONEAGE_CLIENT_SERVERS_URL` 从 HTTPS 接口动态获取。启动器只生成
+`sa_2903-local.exe` 副本，原始 `sa_2903.exe` 保持不变。查看状态或停止：
 
 ```bash
 ./scripts/status-local.sh
