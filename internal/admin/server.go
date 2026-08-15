@@ -14,7 +14,6 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -91,6 +90,8 @@ type pageData struct {
 }
 
 var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
+
+const adminFlashCookieName = "stoneage_admin_flash"
 
 func NewServer(store *auth.Store, options Options) (*Server, error) {
 	if store == nil {
@@ -313,7 +314,7 @@ func (server *Server) accounts(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	data.Title, data.Query, data.Accounts = "账号管理", query, accounts
-	data.Message = request.URL.Query().Get("message")
+	data.Message = server.consumeFlash(response, request)
 	server.render(response, "accounts", data)
 }
 
@@ -329,7 +330,7 @@ func (server *Server) createAccount(response http.ResponseWriter, request *http.
 		server.render(response, "account_new", data)
 		return
 	}
-	http.Redirect(response, request, "/accounts?message="+urlEscape("账号已创建"), http.StatusSeeOther)
+	server.redirectWithMessage(response, request, "/accounts", "账号已创建")
 }
 
 func (server *Server) account(response http.ResponseWriter, request *http.Request, data *pageData) {
@@ -416,7 +417,7 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 			return
 		}
 		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restarted_"+target, "", requestSourceIP(request), "")
-		http.Redirect(response, request, "/server?message="+urlEscape(restartMessage(target)), http.StatusSeeOther)
+		server.redirectWithMessage(response, request, "/server", restartMessage(target))
 	case "/server/stop", "/server/stop-game", "/server/stop-gateway", "/server/stop-gmsv", "/server/stop-saac":
 		target := "all"
 		if request.URL.Path == "/server/stop-game" {
@@ -433,7 +434,7 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 			return
 		}
 		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_stopped_"+target, "", requestSourceIP(request), "")
-		http.Redirect(response, request, "/server?message="+urlEscape(stopMessage(target)), http.StatusSeeOther)
+		server.redirectWithMessage(response, request, "/server", stopMessage(target))
 	default:
 		server.renderError(response, http.StatusNotFound, "操作不存在")
 	}
@@ -442,7 +443,7 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 func (server *Server) notification(response http.ResponseWriter, request *http.Request, data *pageData) {
 	if request.Method == http.MethodGet {
 		data.Title = "通知"
-		data.Message = request.URL.Query().Get("message")
+		data.Message = server.consumeFlash(response, request)
 		server.render(response, "notification", data)
 		return
 	}
@@ -470,13 +471,15 @@ func (server *Server) notification(response http.ResponseWriter, request *http.R
 		return
 	}
 	_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", requestSourceIP(request), message)
-	http.Redirect(response, request, "/notifications?message="+urlEscape("通知已发送给在线玩家"), http.StatusSeeOther)
+	server.redirectWithMessage(response, request, "/notifications", "通知已发送给在线玩家")
 }
 
 func (server *Server) releases(response http.ResponseWriter, request *http.Request, data *pageData) {
 	deployer, ok := server.operator.(DeployingOperator)
 	data.Title = "版本"
-	data.Message = request.URL.Query().Get("message")
+	if request.Method == http.MethodGet {
+		data.Message = server.consumeFlash(response, request)
+	}
 	data.DeploymentAvailable = ok
 	if ok {
 		status, err := deployer.DeploymentStatus(request.Context())
@@ -515,7 +518,7 @@ func (server *Server) releases(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	_ = server.store.RecordAudit(request.Context(), adminID(data), "release_deploy_started", "", requestSourceIP(request), version)
-	http.Redirect(response, request, "/releases?message="+urlEscape("已开始下发 "+version+"，请刷新查看进度"), http.StatusSeeOther)
+	server.redirectWithMessage(response, request, "/releases", "已开始下发 "+version+"，请刷新查看进度")
 }
 
 func (server *Server) configPage(response http.ResponseWriter, request *http.Request, data *pageData) {
@@ -529,7 +532,9 @@ func (server *Server) configPage(response http.ResponseWriter, request *http.Req
 	data.ConfigDescription = description
 	data.ConfigPath = configPathLabel(service)
 	data.ConfigEditable = editable
-	data.Message = request.URL.Query().Get("message")
+	if request.Method == http.MethodGet {
+		data.Message = server.consumeFlash(response, request)
+	}
 	if editable {
 		values, err := manager.Load()
 		if err != nil {
@@ -566,7 +571,7 @@ func (server *Server) configPage(response http.ResponseWriter, request *http.Req
 		return
 	}
 	_ = server.store.RecordAudit(request.Context(), adminID(data), service+"_config_changed", "", requestSourceIP(request), configAuditDetailsFor(values, manager.definitions()))
-	http.Redirect(response, request, configPathForService(service)+"?message="+urlEscape("配置已保存；重启对应服务后生效"), http.StatusSeeOther)
+	server.redirectWithMessage(response, request, configPathForService(service), "配置已保存；重启对应服务后生效")
 }
 
 func (server *Server) configSpec(path string) (string, ConfigManager, string, string, bool, bool) {
@@ -606,7 +611,7 @@ func configPathLabel(service string) string {
 
 func (server *Server) renderService(response http.ResponseWriter, request *http.Request, data *pageData) {
 	data.Title = "服务"
-	data.Message = request.URL.Query().Get("message")
+	data.Message = server.consumeFlash(response, request)
 	if server.operator != nil {
 		status, err := server.operator.Status(request.Context())
 		if err != nil {
@@ -781,6 +786,70 @@ func (server *Server) csrfToken(sessionToken string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+// redirectWithMessage implements the POST/Redirect/GET pattern without
+// putting transient UI text in the destination URL. The message is stored in
+// a short-lived, signed, HttpOnly cookie and consumed by the next page GET.
+func (server *Server) redirectWithMessage(response http.ResponseWriter, request *http.Request, path, message string) {
+	payload := base64.RawURLEncoding.EncodeToString([]byte(path + "\x00" + message))
+	mac := hmac.New(sha256.New, server.csrfSecret)
+	_, _ = mac.Write([]byte(payload))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	http.SetCookie(response, &http.Cookie{
+		Name:     adminFlashCookieName,
+		Value:    payload + "." + signature,
+		Path:     "/",
+		MaxAge:   60,
+		HttpOnly: true,
+		Secure:   server.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(response, request, path, http.StatusSeeOther)
+}
+
+func (server *Server) consumeFlash(response http.ResponseWriter, request *http.Request) string {
+	cookie, err := request.Cookie(adminFlashCookieName)
+	if err != nil || cookie.Value == "" {
+		return ""
+	}
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		server.clearFlash(response)
+		return ""
+	}
+	mac := hmac.New(sha256.New, server.csrfSecret)
+	_, _ = mac.Write([]byte(parts[0]))
+	expected, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || !hmac.Equal(expected, mac.Sum(nil)) {
+		server.clearFlash(response)
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		server.clearFlash(response)
+		return ""
+	}
+	target, message, ok := strings.Cut(string(payload), "\x00")
+	if !ok || target != request.URL.Path {
+		// Leave a valid message for its intended destination. This matters when
+		// an administrator has several pages open at once.
+		return ""
+	}
+	server.clearFlash(response)
+	return message
+}
+
+func (server *Server) clearFlash(response http.ResponseWriter) {
+	http.SetCookie(response, &http.Cookie{
+		Name:     adminFlashCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   server.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func (server *Server) verifyCSRF(request *http.Request, sessionToken string) bool {
 	if sessionToken == "" {
 		return false
@@ -838,5 +907,3 @@ func publicError(err error) string {
 	}
 	return err.Error()
 }
-
-func urlEscape(value string) string { return url.QueryEscape(value) }

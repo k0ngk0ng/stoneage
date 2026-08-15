@@ -190,12 +190,30 @@ func TestAdminLoginAccountAndCSRF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.StatusCode != http.StatusSeeOther {
-		t.Fatalf("create account response = %d", response.StatusCode)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/accounts" {
+		t.Fatalf("create account response = %d location=%q", response.StatusCode, response.Header.Get("Location"))
 	}
 	response.Body.Close()
 	if _, err := store.GetAccountByUsername(context.Background(), "probe"); err != nil {
 		t.Fatalf("created account missing: %v", err)
+	}
+	response, err = client.Get(server.URL + "/accounts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "账号已创建") || strings.Contains(response.Request.URL.RawQuery, "message") {
+		t.Fatalf("account flash response = %d url=%s body=%s", response.StatusCode, response.Request.URL, body)
+	}
+	response, err = client.Get(server.URL + "/accounts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if strings.Contains(string(body), "账号已创建") {
+		t.Fatal("account flash message was shown more than once")
 	}
 
 	response, err = client.PostForm(server.URL+"/accounts", url.Values{"username": {"forged"}, "password": {"local"}})
@@ -236,8 +254,8 @@ func TestAdminConfigAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gameRestarts != 0 {
-		t.Fatalf("config response=%d game restarts=%d", response.StatusCode, operator.gameRestarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/services/gmsv/config" || operator.gameRestarts != 0 {
+		t.Fatalf("config response=%d location=%q game restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.gameRestarts)
 	}
 	response, err = client.Get(server.URL + "/services/saac/config")
 	if err != nil {
@@ -257,8 +275,8 @@ func TestAdminConfigAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.saacRestarts != 0 {
-		t.Fatalf("SAAC config response=%d SAAC restarts=%d", response.StatusCode, operator.saacRestarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/services/saac/config" || operator.saacRestarts != 0 {
+		t.Fatalf("SAAC config response=%d location=%q SAAC restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.saacRestarts)
 	}
 	response, err = client.PostForm(server.URL+"/notifications", url.Values{
 		"csrf":    {csrf[1]},
@@ -268,88 +286,106 @@ func TestAdminConfigAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || len(operator.notifications) != 1 || operator.notifications[0] != "今晚 23:00 维护提醒 $(not-a-command)" {
-		t.Fatalf("notification response=%d notifications=%#v", response.StatusCode, operator.notifications)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/notifications" || len(operator.notifications) != 1 || operator.notifications[0] != "今晚 23:00 维护提醒 $(not-a-command)" {
+		t.Fatalf("notification response=%d location=%q notifications=%#v", response.StatusCode, response.Header.Get("Location"), operator.notifications)
+	}
+	response, err = client.Get(server.URL + "/notifications")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "通知已发送给在线玩家") || len(operator.notifications) != 1 {
+		t.Fatalf("notification flash response=%d notifications=%d body=%s", response.StatusCode, len(operator.notifications), body)
+	}
+	response, err = client.Get(server.URL + "/notifications?message=伪造消息")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if strings.Contains(string(body), "伪造消息") || strings.Contains(string(body), "通知已发送给在线玩家") || len(operator.notifications) != 1 {
+		t.Fatalf("notification GET unexpectedly used query/message or sent a notification: %s", body)
 	}
 	response, err = client.PostForm(server.URL+"/server/restart", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.restarts != 1 {
-		t.Fatalf("restart response=%d restarts=%d", response.StatusCode, operator.restarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.restarts != 1 {
+		t.Fatalf("restart response=%d location=%q restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.restarts)
 	}
 	response, err = client.PostForm(server.URL+"/server/restart-gateway", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gatewayRestarts != 1 {
-		t.Fatalf("gateway restart response=%d restarts=%d", response.StatusCode, operator.gatewayRestarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.gatewayRestarts != 1 {
+		t.Fatalf("gateway restart response=%d location=%q restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.gatewayRestarts)
 	}
 	response, err = client.PostForm(server.URL+"/server/restart-game", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gameRestarts != 1 {
-		t.Fatalf("game restart response=%d restarts=%d", response.StatusCode, operator.gameRestarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.gameRestarts != 1 {
+		t.Fatalf("game restart response=%d location=%q restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.gameRestarts)
 	}
 	response, err = client.PostForm(server.URL+"/server/restart-gmsv", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gmsvRestarts != 1 {
-		t.Fatalf("GMSV restart response=%d restarts=%d", response.StatusCode, operator.gmsvRestarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.gmsvRestarts != 1 {
+		t.Fatalf("GMSV restart response=%d location=%q restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.gmsvRestarts)
 	}
 	response, err = client.PostForm(server.URL+"/server/restart-saac", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.saacRestarts != 1 {
-		t.Fatalf("SAAC restart response=%d restarts=%d", response.StatusCode, operator.saacRestarts)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.saacRestarts != 1 {
+		t.Fatalf("SAAC restart response=%d location=%q restarts=%d", response.StatusCode, response.Header.Get("Location"), operator.saacRestarts)
 	}
 	response, err = client.PostForm(server.URL+"/server/stop", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.stops != 1 {
-		t.Fatalf("stop response=%d stops=%d", response.StatusCode, operator.stops)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.stops != 1 {
+		t.Fatalf("stop response=%d location=%q stops=%d", response.StatusCode, response.Header.Get("Location"), operator.stops)
 	}
 	response, err = client.PostForm(server.URL+"/server/stop-gateway", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gatewayStops != 1 {
-		t.Fatalf("gateway stop response=%d stops=%d", response.StatusCode, operator.gatewayStops)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.gatewayStops != 1 {
+		t.Fatalf("gateway stop response=%d location=%q stops=%d", response.StatusCode, response.Header.Get("Location"), operator.gatewayStops)
 	}
 	response, err = client.PostForm(server.URL+"/server/stop-game", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gameStops != 1 {
-		t.Fatalf("game stop response=%d stops=%d", response.StatusCode, operator.gameStops)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.gameStops != 1 {
+		t.Fatalf("game stop response=%d location=%q stops=%d", response.StatusCode, response.Header.Get("Location"), operator.gameStops)
 	}
 	response, err = client.PostForm(server.URL+"/server/stop-gmsv", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.gmsvStops != 1 {
-		t.Fatalf("GMSV stop response=%d stops=%d", response.StatusCode, operator.gmsvStops)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.gmsvStops != 1 {
+		t.Fatalf("GMSV stop response=%d location=%q stops=%d", response.StatusCode, response.Header.Get("Location"), operator.gmsvStops)
 	}
 	response, err = client.PostForm(server.URL+"/server/stop-saac", url.Values{"csrf": {csrf[1]}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || operator.saacStops != 1 {
-		t.Fatalf("SAAC stop response=%d stops=%d", response.StatusCode, operator.saacStops)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/server" || operator.saacStops != 1 {
+		t.Fatalf("SAAC stop response=%d location=%q stops=%d", response.StatusCode, response.Header.Get("Location"), operator.saacStops)
 	}
 }
 
@@ -393,8 +429,17 @@ func TestAdminReleaseVersionValidationAndCSRF(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusSeeOther || len(operator.deployments) != 1 || operator.deployments[0] != "v1.3.0" {
-		t.Fatalf("valid release response = %d deployments=%#v", response.StatusCode, operator.deployments)
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/releases" || len(operator.deployments) != 1 || operator.deployments[0] != "v1.3.0" {
+		t.Fatalf("valid release response = %d location=%q deployments=%#v", response.StatusCode, response.Header.Get("Location"), operator.deployments)
+	}
+	response, err = client.Get(server.URL + "/releases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "已开始下发 v1.3.0") || strings.Contains(response.Request.URL.RawQuery, "message") {
+		t.Fatalf("release flash response = %d url=%s body=%s", response.StatusCode, response.Request.URL, body)
 	}
 
 	response, err = client.PostForm(server.URL+"/releases/deploy", url.Values{"version": {"v1.3.1"}})
