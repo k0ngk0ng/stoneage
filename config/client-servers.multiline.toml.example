@@ -1,0 +1,14 @@
+version = 1
+
+[[groups]]
+name = "本機多線"
+
+[[groups.lines]]
+name = "第一線（GMSV 1）"
+host = "127.0.0.1"
+port = 9066
+
+[[groups.lines]]
+name = "第二線（GMSV 2）"
+host = "127.0.0.1"
+port = 9067

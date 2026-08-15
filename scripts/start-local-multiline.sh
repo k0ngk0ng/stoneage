@@ -4,6 +4,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 runtime_root="${STONEAGE_RUNTIME_ROOT:-$project_root/runtime/legacy-server}"
 line2_runtime_root="${STONEAGE_RUNTIME_ROOT_LINE2:-$project_root/runtime/legacy-server-line2}"
+client_servers_file="${STONEAGE_CLIENT_SERVERS_FILE:-$project_root/runtime/client-servers-multiline.toml}"
 compose_project="${STONEAGE_COMPOSE_PROJECT:-stoneage-multiline-local}"
 gateway_bind="${STONEAGE_GATEWAY_BIND:-127.0.0.1}"
 gateway_port="${STONEAGE_GATEWAY_PORT:-9066}"
@@ -23,6 +24,11 @@ if [[ ! -x "$line2_runtime_root/gmsv/gmsvjt.exe" ]]; then
   STONEAGE_GMSV_SERVER_NUMBER=2 \
     "$project_root/scripts/prepare-legacy-server.sh" \
       "$project_root/vendor/upstream/2.5" "$line2_runtime_root"
+fi
+
+if [[ ! -f "$client_servers_file" ]]; then
+  mkdir -p "$(dirname "$client_servers_file")"
+  cp "$project_root/config/client-servers.multiline.toml.example" "$client_servers_file"
 fi
 
 compose_env=(
@@ -60,6 +66,7 @@ cat <<EOF
   网关线路 2：${gateway_bind}:${gateway_port_2}
   管理后台：http://127.0.0.1:${admin_port}/ （管理员：${admin_user}）
   管理员初始密码：${admin_password}
+  客户端线路配置：${client_servers_file}
 
 查看状态：
   env ${compose_env[*]} docker compose -p ${compose_project} -f docker-compose.yml -f docker-compose.multiline.yml ps
