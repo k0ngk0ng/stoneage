@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -47,44 +48,49 @@ type Server struct {
 }
 
 type pageData struct {
-	Title              string
-	Session            *auth.Session
-	CSRF               string
-	Error              string
-	Message            string
-	Query              string
-	FormUsername       string
-	Accounts           []auth.Account
-	Account            auth.Account
-	Events             []auth.AuditEvent
-	SetupTokenRequired bool
-	Status             ServiceStatus
-	Config             map[string]string
-	ConfigGroups       []ConfigGroup
-	ConfigError        string
-	OperatorError      string
-	Code               int
-	ConfigService      string
-	ConfigTitle        string
-	ConfigDescription  string
-	ConfigPath         string
-	ConfigEditable     bool
-	GatewayRunning     bool
-	GatewayStopped     bool
-	GameStatus         string
-	GameStatusLabel    string
-	GameRunning        bool
-	GameStopped        bool
-	GameAnyRunning     bool
-	GameKnown          bool
-	GMSVRunning        bool
-	GMSVStopped        bool
-	SAACRunning        bool
-	SAACStopped        bool
-	AnyServiceRunning  bool
-	AllServicesKnown   bool
-	AllServicesStopped bool
+	Title               string
+	Session             *auth.Session
+	CSRF                string
+	Error               string
+	Message             string
+	Query               string
+	FormUsername        string
+	Accounts            []auth.Account
+	Account             auth.Account
+	Events              []auth.AuditEvent
+	SetupTokenRequired  bool
+	Status              ServiceStatus
+	Config              map[string]string
+	ConfigGroups        []ConfigGroup
+	ConfigError         string
+	OperatorError       string
+	Code                int
+	ConfigService       string
+	ConfigTitle         string
+	ConfigDescription   string
+	ConfigPath          string
+	ConfigEditable      bool
+	GatewayRunning      bool
+	GatewayStopped      bool
+	GameStatus          string
+	GameStatusLabel     string
+	GameRunning         bool
+	GameStopped         bool
+	GameAnyRunning      bool
+	GameKnown           bool
+	GMSVRunning         bool
+	GMSVStopped         bool
+	SAACRunning         bool
+	SAACStopped         bool
+	AnyServiceRunning   bool
+	AllServicesKnown    bool
+	AllServicesStopped  bool
+	Deployment          DeploymentStatus
+	DeploymentError     string
+	DeploymentAvailable bool
 }
+
+var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 
 func NewServer(store *auth.Store, options Options) (*Server, error) {
 	if store == nil {
@@ -101,7 +107,8 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
-		"config": "config.html", "error": "error.html",
+		"releases": "releases.html",
+		"config":   "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
 		if parseErr != nil {
@@ -192,6 +199,10 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 	}
 	if request.URL.Path == "/audit" {
 		server.audit(response, request, data)
+		return
+	}
+	if request.URL.Path == "/releases" || request.URL.Path == "/releases/deploy" {
+		server.releases(response, request, data)
 		return
 	}
 	if request.URL.Path == "/server" || request.URL.Path == "/server/restart" || request.URL.Path == "/server/restart-game" || request.URL.Path == "/server/restart-gateway" || request.URL.Path == "/server/restart-gmsv" || request.URL.Path == "/server/restart-saac" || request.URL.Path == "/server/stop" || request.URL.Path == "/server/stop-game" || request.URL.Path == "/server/stop-gateway" || request.URL.Path == "/server/stop-gmsv" || request.URL.Path == "/server/stop-saac" {
@@ -460,6 +471,51 @@ func (server *Server) notification(response http.ResponseWriter, request *http.R
 	}
 	_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", requestSourceIP(request), message)
 	http.Redirect(response, request, "/notifications?message="+urlEscape("通知已发送给在线玩家"), http.StatusSeeOther)
+}
+
+func (server *Server) releases(response http.ResponseWriter, request *http.Request, data *pageData) {
+	deployer, ok := server.operator.(DeployingOperator)
+	data.Title = "版本"
+	data.Message = request.URL.Query().Get("message")
+	data.DeploymentAvailable = ok
+	if ok {
+		status, err := deployer.DeploymentStatus(request.Context())
+		if err != nil {
+			data.DeploymentError = err.Error()
+		} else {
+			data.Deployment = status
+		}
+	} else if server.operator == nil {
+		data.DeploymentError = "当前没有配置服务控制接口"
+	} else {
+		data.DeploymentError = "当前运维接口不支持版本下发"
+	}
+	if request.Method == http.MethodGet {
+		server.render(response, "releases", data)
+		return
+	}
+	if request.Method != http.MethodPost || request.URL.Path != "/releases/deploy" ||
+		!server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {
+		server.renderError(response, http.StatusForbidden, "请求无效")
+		return
+	}
+	version := strings.TrimSpace(request.FormValue("version"))
+	if !releaseVersionPattern.MatchString(version) {
+		data.DeploymentError = "版本号必须是 v1.2.3 格式"
+		server.render(response, "releases", data)
+		return
+	}
+	if !ok {
+		server.renderError(response, http.StatusServiceUnavailable, data.DeploymentError)
+		return
+	}
+	if err := deployer.DeployVersion(request.Context(), version); err != nil {
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "release_deploy_failed", "", requestSourceIP(request), version+": "+err.Error())
+		server.renderError(response, http.StatusBadGateway, err.Error())
+		return
+	}
+	_ = server.store.RecordAudit(request.Context(), adminID(data), "release_deploy_started", "", requestSourceIP(request), version)
+	http.Redirect(response, request, "/releases?message="+urlEscape("已开始下发 "+version+"，请刷新查看进度"), http.StatusSeeOther)
 }
 
 func (server *Server) configPage(response http.ResponseWriter, request *http.Request, data *pageData) {

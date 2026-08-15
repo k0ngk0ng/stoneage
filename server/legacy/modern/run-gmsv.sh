@@ -2,7 +2,7 @@
 set -eu
 
 game_root="${STONEAGE_GAME_ROOT:-/game}"
-log_root="$game_root/logs"
+log_root="${STONEAGE_LOG_ROOT:-$game_root/gmsv/logs}"
 saac_host="${STONEAGE_SAAC_HOST:-saac}"
 saac_port="${STONEAGE_SAAC_PORT:-9300}"
 saac_char_dir="${STONEAGE_SAAC_CHAR_DIR:-}"
@@ -29,9 +29,9 @@ cleanup()
     rm -f "$config_file"
 }
 trap cleanup EXIT INT TERM
-# Keep the archived relative storedir for the single-runtime layout. A
-# multi-line deployment can mount the shared SAAC character directory at an
-# explicit path without sharing the rest of a GMSV's runtime tree.
+# Keep the archived relative storedir for the split GMSV/SAAC layout. An
+# explicit override is available for operators that keep character files in a
+# separately mounted directory without sharing the rest of a GMSV runtime.
 if [ -n "$saac_char_dir" ]; then
     sed -e "s/^acserv=.*/acserv=$saac_host/" \
         -e "s/^acservport=.*/acservport=$saac_port/" \

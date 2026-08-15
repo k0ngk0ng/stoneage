@@ -7,13 +7,13 @@ COPY . .
 
 ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
-    go build -trimpath -ldflags='-s -w' -o /out/stoneage-gateway ./cmd/stoneage-gateway && \
-    go build -trimpath -ldflags='-s -w' -o /out/stoneage-admin ./cmd/stoneage-admin && \
-    go build -trimpath -ldflags='-s -w' -o /out/stoneage-operator ./cmd/stoneage-operator
+    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-gateway ./cmd/stoneage-gateway && \
+    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-admin ./cmd/stoneage-admin && \
+    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-operator ./cmd/stoneage-operator
 
 FROM alpine:3.22
 
-RUN apk add --no-cache bash docker-cli netcat-openbsd
+RUN apk add --no-cache bash docker-cli docker-cli-compose netcat-openbsd
 
 COPY --from=build /out/stoneage-gateway /opt/stoneage/bin/stoneage-gateway
 COPY --from=build /out/stoneage-admin /opt/stoneage/bin/stoneage-admin

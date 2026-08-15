@@ -54,7 +54,7 @@ mkdir -p "$project_root/build" "$project_root/runtime/logs"
 
 if [[ ! -x "$runtime_root/saac/saacjt.exe" || ! -x "$runtime_root/gmsv/gmsvjt.exe" ]]; then
   "$project_root/scripts/prepare-legacy-server.sh" \
-    "$project_root/vendor/upstream/2.5" "$runtime_root"
+    "$project_root/server/legacy/source/2.5" "$runtime_root"
 fi
 
 STONEAGE_UPSTREAM_PORT="$upstream_port" STONEAGE_SAAC_PORT="$saac_port" \

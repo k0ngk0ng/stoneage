@@ -50,8 +50,9 @@ printf '%s\n' '请替换为强密码' | \
 互联网。
 
 如果希望由 Docker Compose 统一编排网关、后台、operator 和旧版游戏服务，请在
-仓库根目录使用 `docker-compose.yml`；复制 `.env.compose.example` 为 `.env` 后执行
-`docker compose up -d --build`。Compose 的 operator 需要访问 Docker socket 执行
+仓库根目录使用 `docker-compose.yml`；本地镜像先执行
+`./scripts/build-local-images.sh`，生产环境则把 `.env` 指向 GHCR 的版本镜像后执行
+`docker compose up -d`。Compose 的 operator 需要访问 Docker socket 执行
 经过固定白名单的服务脚本，后台本身不挂载该 socket。默认端口仍只绑定回环地址。
 
 可信局域网或 VPN 联机时，可令 Go 网关监听所有接口：
@@ -65,16 +66,8 @@ STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./start-server.sh
 反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE=true` 传给 `start-admin.sh`；
 游戏端优先使用 Tailscale/WireGuard 等 VPN。
 
-多线路仍只需要一个网关部署单元。用 `STONEAGE_GATEWAY_ROUTES` 配置多个
-`监听地址=GMSV地址`，用分号分隔，例如：
-
-```bash
-STONEAGE_GATEWAY_ROUTES='0.0.0.0:9065=127.0.0.1:19065;0.0.0.0:9066=127.0.0.1:19066' \
-  ./start-gateway.sh
-```
-
-同时要在防火墙/Compose 端口映射中放行每个客户端入口；19065、19066 等 GMSV
-上游端口只应留在服务器私网。每条线路对应独立 GMSV 配置和数据目录，SAAC 目录
-继续共享。
+当前 Compose/发布说明只覆盖单机单线路。客户端启动器可以列出分别部署的其他
+服务器，但不要向单线路 Compose 或启动脚本追加额外 GMSV 监听端口；多节点部署
+会单独提供编排方式。
 
 发布包只包含演示人物，不包含开发机账号、运行日志、诊断文件或崩溃转储。

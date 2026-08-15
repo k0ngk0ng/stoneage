@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="page-heading">
+  <div>
+    <h1>版本下发</h1>
+    <p class="muted">选择已经由 GitHub Actions 构建并推送到 GHCR 的版本。下发任务会先停止游戏相关服务并备份 SQLite、角色和邮件数据，再拉取镜像、更新容器并等待健康检查。</p>
+  </div>
+  <span class="page-kicker">手动发布</span>
+</div>
+
+{{if .DeploymentError}}<div class="alert error">版本控制不可用：{{.DeploymentError}}</div>{{end}}
+
+<section class="card release-card">
+  <div class="card-heading">
+    <div><h2>发布任务</h2><p class="muted">只接受 <code>v1.2.3</code> 或带预发布后缀的版本号，不执行任意命令。</p></div>
+    <span class="status-pill {{.Deployment.Phase}}">{{if .Deployment.Phase}}{{.Deployment.Phase}}{{else}}未开始{{end}}</span>
+  </div>
+  <dl class="details release-details">
+    <dt>目标版本</dt><dd>{{if .Deployment.Version}}{{.Deployment.Version}}{{else}}—{{end}}</dd>
+    <dt>当前阶段</dt><dd>{{if .Deployment.Phase}}{{.Deployment.Phase}}{{else}}idle{{end}}</dd>
+    <dt>更新时间</dt><dd>{{if .Deployment.UpdatedAt}}{{.Deployment.UpdatedAt}}{{else}}—{{end}}</dd>
+    <dt>说明</dt><dd>{{if .Deployment.Message}}{{.Deployment.Message}}{{else}}尚未运行发布任务{{end}}</dd>
+    {{if .Deployment.Backup}}<dt>备份位置</dt><dd><code>{{.Deployment.Backup}}</code></dd>{{end}}
+  </dl>
+  {{if .DeploymentAvailable}}
+  <form method="post" action="/releases/deploy" class="release-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>下发版本
+      <input name="version" placeholder="v1.2.3" pattern="v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?" required autocomplete="off">
+      <small>必须是已存在于 GHCR 的版本 Tag。任务运行时服务可能会短暂中断。</small>
+    </label>
+    <div class="form-footer"><small>失败时会尝试恢复上一个正在运行的版本；备份不会自动删除。</small><button class="danger" type="submit" data-confirm="将备份数据并重启全部容器，确认下发这个版本？">开始下发</button></div>
+  </form>
+  {{else}}
+  <div class="empty config-readonly"><p>当前服务控制接口未提供版本下发能力。</p><a class="button" href="/server">返回服务</a></div>
+  {{end}}
+</section>
+{{end}}

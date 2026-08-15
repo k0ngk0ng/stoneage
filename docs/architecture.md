@@ -25,11 +25,10 @@ operator 才挂载 Docker socket，并且只调用 `deploy/linux/compose/` 下�
 后台通过共享的 Unix socket 请求状态、通知和服务控制。SQLite 认证库、配置和角色
 目录保持持久化。
 
-GMSV 与 SAAC 是独立的旧版服务，分别读取 `setup.cf` 和 `acserv.cf`。一条游戏
-线路对应一个 GMSV 容器；多条线路共享一个 SAAC 容器，而每个 GMSV 使用独立的
-游戏 ID、监听端口、配置和运行数据目录。一个 Go 网关进程可以配置多个
-“监听端口 → GMSV”路由，不需要为每条线路再部署一个网关容器。GMSV 在拆分
-容器时通过服务名 `saac:9300` 连接 SAAC，用户编辑的 `setup.cf` 不会被改写。
+GMSV 与 SAAC 是独立的旧版服务，分别读取 `setup.cf` 和 `acserv.cf`。当前 Compose
+只部署一条游戏线路：一个 GMSV、一个 SAAC 和一个网关。GMSV 在拆分容器时通过
+服务名 `saac:9300` 连接 SAAC，用户编辑的 `setup.cf` 不会被改写。未来多节点部署
+可以让其他 GMSV 连接同一 SAAC，但不属于当前单线路 Compose 的编排范围。
 
 保存的 `sa_2903.exe` 与现有 Linux GMSV 都属于 2.5 时代，但使用两种生成版
 LSSPROTO 方言：客户端用函数名，GMSV 用数字函数号、校验和及会话密钥。Go

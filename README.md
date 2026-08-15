@@ -60,14 +60,15 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 ### Linux Docker Compose
 
 Linux 也可以把旧版游戏服务、Go 网关、管理后台和受限 operator 一起交给
-Compose 编排。先准备好 `runtime/legacy-server/`（发布包已包含该目录），复制
-`.env.compose.example` 为 `.env` 并修改管理员密码，然后执行（这是单机单线路生产部署）：
+Compose 编排。复制 `.env.compose.example` 为 `.env` 并修改管理员密码；本地测试先
+构建两个镜像，然后执行（这是单机单线路部署）：
 
 ```bash
 cp .env.compose.example .env
 chmod 600 .env
 docker compose config --quiet
-docker compose up -d --build
+./scripts/build-local-images.sh
+docker compose up -d
 docker compose ps
 docker compose logs -f saac gmsv gateway
 ```
@@ -84,10 +85,16 @@ Compose 容器，所以需要只给它挂载 `/var/run/docker.sock`；不要把�
 目录持久化。网页中的网关、GMSV、SAAC 停止/重启操作分别对应各自容器；SAAC 停止
 时 GMSV 不能正常登录，生产维护时应先停止 GMSV 再停止 SAAC。
 
-多线路部署仍只保留一个网关服务：设置 `STONEAGE_GATEWAY_ROUTES`，用分号分隔
-多个 `监听地址=GMSV地址`，并为每个入口补充端口映射；每条线路对应一个独立的
-GMSV 容器和运行目录，所有 GMSV 连接同一个 SAAC 容器。客户端列表由启动器维护，
-不由网关下发。
+生产环境把 `.env` 中的 `STONEAGE_CONTROL_IMAGE` 和 `STONEAGE_LEGACY_IMAGE` 设置为
+GHCR 的镜像仓库（不带 Tag），`STONEAGE_VERSION` 设置为已发布的 `v*` Tag，并将
+`STONEAGE_GMSV_DATA_ROOT`、`STONEAGE_SAAC_DATA_ROOT`、`STONEAGE_PROJECT_ROOT`
+设置为宿主机绝对路径。这样后台“版本”页面才会启用下发；版本更新只替换镜像和
+静态资源，不覆盖这些数据目录。不要执行 `docker compose down -v`，否则会删除
+SQLite 认证卷。
+
+当前 Compose 文件只覆盖单机单线路部署。客户端启动器可以列出分别部署在其他
+服务器上的游戏入口，但不要在这份 Compose 中追加第二个 GMSV；多节点编排将在
+后续单独设计。
 
 首次启动后访问 `http://127.0.0.1:8080/`。如果没有在 `.env` 设置管理员账号密码，
 可设置一次性的 `STONEAGE_ADMIN_SETUP_TOKEN` 后从 `/setup` 初始化管理员。
@@ -111,9 +118,9 @@ Docker Desktop/OrbStack；Win11 客户端本身不需要 Wine。发布说明见
 [`docs/verified-features.md`](docs/verified-features.md)。
 
 推送 `v*` 标签会触发 [GitHub Actions release workflow](.github/workflows/release.yml)，
-自动发布跨平台 Go 控制面（网关、后台和受限运维程序）及校验和。完整的旧版游戏
-客户端与服务端资产位于 Git 忽略目录，仍需在具备这些本地资产的环境中执行上面的
-`build-release.sh` 生成完整游戏包。
+从仓库内受 Git 管理的 `server/legacy/source/2.5` 构建 amd64 GMSV/SAAC 镜像和 Go
+控制面镜像，推送到 GHCR 并发布 digest。完整的服务端版本不再依赖开发者本机的
+私有源码归档；运行中的角色、邮件、家族和账号数据仍只保存在部署机的持久化目录。
 
 ## 当前目标
 

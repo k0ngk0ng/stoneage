@@ -17,6 +17,14 @@ type ServiceStatus struct {
 	Database string `json:"database"`
 }
 
+type DeploymentStatus struct {
+	Version   string `json:"version"`
+	Phase     string `json:"phase"`
+	Message   string `json:"message,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+	Backup    string `json:"backup,omitempty"`
+}
+
 // Operator is deliberately narrow. The web process can request status and a
 // full restart, but it cannot execute arbitrary shell commands or access Docker.
 type Operator interface {
@@ -52,6 +60,13 @@ type NotifyingOperator interface {
 	Notify(context.Context, string) error
 }
 
+// DeployingOperator exposes only the fixed, version-based release operation.
+// The web process cannot provide a shell command or an image reference.
+type DeployingOperator interface {
+	DeployVersion(context.Context, string) error
+	DeploymentStatus(context.Context) (DeploymentStatus, error)
+}
+
 type UnixOperator struct {
 	Socket string
 }
@@ -59,12 +74,14 @@ type UnixOperator struct {
 type operatorRequest struct {
 	Action  string `json:"action"`
 	Message string `json:"message,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 type operatorResponse struct {
-	OK     bool          `json:"ok"`
-	Error  string        `json:"error,omitempty"`
-	Status ServiceStatus `json:"status,omitempty"`
+	OK         bool             `json:"ok"`
+	Error      string           `json:"error,omitempty"`
+	Status     ServiceStatus    `json:"status,omitempty"`
+	Deployment DeploymentStatus `json:"deployment,omitempty"`
 }
 
 func (operator UnixOperator) Status(ctx context.Context) (ServiceStatus, error) {
@@ -126,6 +143,28 @@ func (operator UnixOperator) Notify(ctx context.Context, message string) error {
 	return nil
 }
 
+func (operator UnixOperator) DeployVersion(ctx context.Context, version string) error {
+	response, err := operator.callVersion(ctx, "deploy_version", version)
+	if err != nil {
+		return err
+	}
+	if !response.OK {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
+func (operator UnixOperator) DeploymentStatus(ctx context.Context) (DeploymentStatus, error) {
+	response, err := operator.call(ctx, "deploy_status")
+	if err != nil {
+		return DeploymentStatus{}, err
+	}
+	if !response.OK {
+		return DeploymentStatus{}, errors.New(response.Error)
+	}
+	return response.Deployment, nil
+}
+
 func (operator UnixOperator) restartAction(ctx context.Context, action string) error {
 	response, err := operator.call(ctx, action)
 	if err != nil {
@@ -164,13 +203,37 @@ func (operator UnixOperator) callWithMessage(ctx context.Context, action, messag
 	defer connection.Close()
 	deadline := 5 * time.Second
 	switch action {
-	case "restart", "restart_server", "restart_game", "restart_gateway", "restart_gmsv", "restart_saac", "stop", "stop_server", "stop_game", "stop_gateway", "stop_gmsv", "stop_saac":
+	case "restart", "restart_server", "restart_game", "restart_gateway", "restart_gmsv", "restart_saac", "stop", "stop_server", "stop_game", "stop_gateway", "stop_gmsv", "stop_saac", "deploy_status":
 		deadline = 100 * time.Second
 	case "notify":
 		deadline = 10 * time.Second
 	}
 	_ = connection.SetDeadline(time.Now().Add(deadline))
 	if err := json.NewEncoder(connection).Encode(operatorRequest{Action: action, Message: message}); err != nil {
+		return operatorResponse{}, fmt.Errorf("send operator request: %w", err)
+	}
+	var response operatorResponse
+	if err := json.NewDecoder(bufio.NewReader(connection)).Decode(&response); err != nil {
+		return operatorResponse{}, fmt.Errorf("read operator response: %w", err)
+	}
+	if !response.OK && response.Error == "" {
+		response.Error = "operator rejected request"
+	}
+	return response, nil
+}
+
+func (operator UnixOperator) callVersion(ctx context.Context, action, version string) (operatorResponse, error) {
+	if operator.Socket == "" {
+		return operatorResponse{}, errors.New("operator socket is not configured")
+	}
+	dialer := net.Dialer{}
+	connection, err := dialer.DialContext(ctx, "unix", operator.Socket)
+	if err != nil {
+		return operatorResponse{}, fmt.Errorf("connect operator: %w", err)
+	}
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
+	if err := json.NewEncoder(connection).Encode(operatorRequest{Action: action, Version: version}); err != nil {
 		return operatorResponse{}, fmt.Errorf("send operator request: %w", err)
 	}
 	var response operatorResponse

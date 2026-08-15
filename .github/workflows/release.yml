@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -32,6 +33,38 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push control-plane image
+        id: control-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/linux/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}/control-plane:${{ github.ref_name }}
+          provenance: true
+
+      - name: Build and push legacy runtime image
+        id: legacy-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/linux/legacy-runtime.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}/legacy-runtime:${{ github.ref_name }}
+          provenance: true
 
       - name: Build control-plane artifacts
         env:
@@ -96,6 +129,18 @@ jobs:
 
           (cd "$dist" && sha256sum * > SHA256SUMS)
 
+      - name: Write image digest manifest
+        env:
+          CONTROL_DIGEST: ${{ steps.control-image.outputs.digest }}
+          LEGACY_DIGEST: ${{ steps.legacy-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cat > dist/IMAGE-DIGESTS <<EOF
+          ghcr.io/${{ github.repository }}/control-plane:${{ github.ref_name }}@${CONTROL_DIGEST}
+          ghcr.io/${{ github.repository }}/legacy-runtime:${{ github.ref_name }}@${LEGACY_DIGEST}
+          EOF
+          (cd dist && sha256sum $(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n') > SHA256SUMS)
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -105,4 +150,5 @@ jobs:
             dist/stoneage-control-plane-${{ github.ref_name }}-linux-amd64.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-darwin-arm64.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-windows-amd64.zip
+            dist/IMAGE-DIGESTS
             dist/SHA256SUMS

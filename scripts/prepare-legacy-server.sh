@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_root="${1:-vendor/upstream/2.5}"
+source_root="${1:-server/legacy/source/2.5}"
 runtime_root="${2:-runtime/legacy-server}"
 gmsv_name="${STONEAGE_GMSV_NAME:-stoneage-local}"
 gmsv_id="${STONEAGE_GMSV_ID:-$gmsv_name}"

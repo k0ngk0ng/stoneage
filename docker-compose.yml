@@ -2,9 +2,9 @@
 #   saac -> gmsv -> gateway
 #              └-> service-control -> admin
 #
-# Keep docker-compose.multiline.yml as an optional overlay when the same host
-# needs more than one independent GMSV line. Do not expose GMSV or SAAC ports
-# on the host; only the gateway and (optionally) the admin UI are published.
+# This file is the single-machine, single-line production deployment. Do not
+# expose GMSV or SAAC ports on the host; only the gateway and (optionally) the
+# admin UI are published.
 x-logging: &default-logging
   driver: json-file
   options:
@@ -12,10 +12,10 @@ x-logging: &default-logging
     max-file: ${STONEAGE_LOG_MAX_FILE:-5}
 
 services:
-  # SAAC is the shared account/character service. Multiple GMSV line services
-  # can point at this container when more than one game line is deployed.
+  # SAAC is the shared account/character service. Its writable data is kept
+  # outside the versioned image so a release cannot replace player records.
   saac:
-    image: alpine:3.22
+    image: ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}:${STONEAGE_VERSION:-local}
     container_name: ${STONEAGE_SAAC_CONTAINER:-stoneage-saac}
     init: true
     restart: unless-stopped
@@ -23,10 +23,11 @@ services:
     logging: *default-logging
     networks:
       - backend
+    environment:
+      STONEAGE_RUNTIME_ROLE: saac
     volumes:
-      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
-      - ./server/legacy/modern/run-saac.sh:/modern/run-saac.sh:ro
-    command: ["sh", "/modern/run-saac.sh"]
+      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
+    command: ["/opt/stoneage/bin/run-saac.sh"]
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9300"]
       interval: 5s
@@ -34,11 +35,11 @@ services:
       retries: 30
       start_period: 10s
 
-  # One GMSV is one game line. Add another GMSV service for another line while
-  # continuing to share SAAC; the single gateway process can route multiple
-  # listener ports to those GMSV services.
+  # This single GMSV is the game service for the one-line deployment. Its
+  # immutable maps/NPC definitions come from the legacy image; character
+  # snapshots and logs remain in the GMSV/SAAC data directories.
   gmsv:
-    image: alpine:3.22
+    image: ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}:${STONEAGE_VERSION:-local}
     container_name: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
     init: true
     restart: unless-stopped
@@ -50,12 +51,15 @@ services:
       saac:
         condition: service_healthy
     environment:
+      STONEAGE_RUNTIME_ROLE: gmsv
       STONEAGE_SAAC_HOST: saac
       STONEAGE_SAAC_PORT: 9300
     volumes:
-      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
-      - ./server/legacy/modern/run-gmsv.sh:/modern/run-gmsv.sh:ro
-    command: ["sh", "/modern/run-gmsv.sh"]
+      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
+      # The legacy crash-recovery path is ../saac/char. Mount the shared SAAC
+      # data explicitly without sharing the GMSV binary/static tree.
+      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
+    command: ["/opt/stoneage/bin/run-gmsv.sh"]
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
       interval: 5s
@@ -67,7 +71,7 @@ services:
     build:
       context: .
       dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane:local}
+    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
     container_name: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
     init: true
     restart: unless-stopped
@@ -80,19 +84,19 @@ services:
         condition: service_healthy
     command:
       - /opt/stoneage/bin/stoneage-gateway
-      - -routes
-      - ${STONEAGE_GATEWAY_ROUTES:-0.0.0.0:9065=gmsv:9065}
+      - -listen
+      - 0.0.0.0:9065
+      - -upstream
+      - gmsv:9065
       - -auth-required
       - -auth-db
       - /data/stoneage-auth.db
     environment:
       STONEAGE_AUTH_DB: /data/stoneage-auth.db
-      STONEAGE_GATEWAY_ROUTES: ${STONEAGE_GATEWAY_ROUTES:-0.0.0.0:9065=gmsv:9065}
     volumes:
       - auth-data:/data
     ports:
-      # Publish one host port for every listener in STONEAGE_GATEWAY_ROUTES.
-      # The default exposes the first line only.
+      # Publish the single client entry for this deployment.
       - ${STONEAGE_GATEWAY_BIND:-127.0.0.1}:${STONEAGE_GATEWAY_PORT:-9065}:9065
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
@@ -107,7 +111,7 @@ services:
     build:
       context: .
       dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane:local}
+    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
     container_name: ${STONEAGE_OPERATOR_CONTAINER:-stoneage-service-control}
     init: true
     restart: unless-stopped
@@ -131,6 +135,26 @@ services:
       - saac:9300
       - -auth-db
       - /data/stoneage-auth.db
+      - -project-root
+      - /host-project
+      - -compose-file
+      - /host-project/docker-compose.yml
+      - -project-host-root
+      - ${STONEAGE_PROJECT_ROOT:-}
+      - -control-image
+      - ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}
+      - -legacy-image
+      - ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}
+      - -state
+      - /state/deploy.status
+      - -state-volume
+      - ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
+      - -auth-volume
+      - ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
+      - -gmsv-data-root
+      - ${STONEAGE_GMSV_DATA_ROOT:-}
+      - -saac-data-root
+      - ${STONEAGE_SAAC_DATA_ROOT:-}
     environment:
       STONEAGE_GAME_CONTAINER: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
       STONEAGE_GMSV_CONTAINER: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
@@ -140,11 +164,28 @@ services:
       STONEAGE_GMSV_HOST: gmsv
       STONEAGE_SAAC_HOST: saac
       STONEAGE_GATEWAY_HOST: gateway
-      STONEAGE_RUNTIME_MOUNT: /game
+      STONEAGE_RUNTIME_MOUNT: /game/gmsv
+      STONEAGE_NOTICE_DIR: /game/gmsv
+      STONEAGE_PROJECT_ROOT: ${STONEAGE_PROJECT_ROOT:-}
+      STONEAGE_PROJECT_HOST_ROOT: ${STONEAGE_PROJECT_ROOT:-}
+      STONEAGE_COMPOSE_FILE: ${STONEAGE_COMPOSE_FILE:-}
+      STONEAGE_CONTROL_IMAGE: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}
+      STONEAGE_LEGACY_IMAGE: ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}
+      STONEAGE_OPERATOR_STATE_VOLUME: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
+      STONEAGE_GMSV_DATA_ROOT: ${STONEAGE_GMSV_DATA_ROOT:-}
+      STONEAGE_SAAC_DATA_ROOT: ${STONEAGE_SAAC_DATA_ROOT:-}
+      STONEAGE_AUTH_VOLUME: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
     volumes:
-      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
+      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
+      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
       - auth-data:/data
       - operator-run:/run/stoneage
+      - operator-state:/state
+      # The host project is mounted separately so it does not hide the
+      # operator binaries under /opt/stoneage. Release deployment additionally
+      # requires STONEAGE_PROJECT_ROOT to be an absolute host path and all
+      # data roots in the production .env to be absolute paths.
+      - ${STONEAGE_PROJECT_ROOT:-.}:/host-project:ro
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD-SHELL", "test -S /run/stoneage/operator.sock"]
@@ -158,7 +199,7 @@ services:
     build:
       context: .
       dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane:local}
+    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
     container_name: ${STONEAGE_ADMIN_CONTAINER:-stoneage-admin}
     init: true
     restart: unless-stopped
@@ -188,7 +229,8 @@ services:
       STONEAGE_ADMIN_SETUP_TOKEN: ${STONEAGE_ADMIN_SETUP_TOKEN:-}
       STONEAGE_ADMIN_COOKIE_SECURE: ${STONEAGE_ADMIN_COOKIE_SECURE:-false}
     volumes:
-      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
+      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
+      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
       - auth-data:/data
       - operator-run:/run/stoneage:ro
     ports:
@@ -205,6 +247,8 @@ volumes:
     name: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
   operator-run:
     name: ${STONEAGE_OPERATOR_RUN_VOLUME:-stoneage-operator-run}
+  operator-state:
+    name: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
 
 networks:
   # No host ports are published for GMSV/SAAC, so they remain private while

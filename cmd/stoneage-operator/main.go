@@ -24,6 +24,7 @@ import (
 type request struct {
 	Action  string `json:"action"`
 	Message string `json:"message,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 type status struct {
@@ -34,19 +35,39 @@ type status struct {
 }
 
 type response struct {
-	OK     bool   `json:"ok"`
-	Error  string `json:"error,omitempty"`
-	Status status `json:"status,omitempty"`
+	OK         bool             `json:"ok"`
+	Error      string           `json:"error,omitempty"`
+	Status     status           `json:"status,omitempty"`
+	Deployment deploymentStatus `json:"deployment,omitempty"`
+}
+
+type deploymentStatus struct {
+	Version   string `json:"version"`
+	Phase     string `json:"phase"`
+	Message   string `json:"message,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+	Backup    string `json:"backup,omitempty"`
 }
 
 type operator struct {
-	packageRoot  string
-	socket       string
-	gatewayAddr  string
-	upstreamAddr string
-	saacAddr     string
-	databasePath string
-	restartMu    sync.Mutex
+	packageRoot     string
+	socket          string
+	gatewayAddr     string
+	upstreamAddr    string
+	saacAddr        string
+	databasePath    string
+	projectRoot     string
+	projectHostRoot string
+	composeFile     string
+	controlImage    string
+	legacyImage     string
+	dockerBin       string
+	statePath       string
+	stateVolume     string
+	authVolume      string
+	gmsvDataRoot    string
+	saacDataRoot    string
+	restartMu       sync.Mutex
 }
 
 func main() {
@@ -57,6 +78,17 @@ func main() {
 	flag.StringVar(&value.upstreamAddr, "upstream", envOr("STONEAGE_UPSTREAM_ADDRESS", "127.0.0.1:19065"), "GMSV status address")
 	flag.StringVar(&value.saacAddr, "saac", envOr("STONEAGE_SAAC_ADDRESS", "127.0.0.1:9300"), "SAAC status address")
 	flag.StringVar(&value.databasePath, "auth-db", envOr("STONEAGE_AUTH_DB", ""), "SQLite auth database path")
+	flag.StringVar(&value.projectRoot, "project-root", envOr("STONEAGE_PROJECT_ROOT", "/host-project"), "project path visible inside deployment container")
+	flag.StringVar(&value.projectHostRoot, "project-host-root", os.Getenv("STONEAGE_PROJECT_HOST_ROOT"), "absolute project path on the Docker host")
+	flag.StringVar(&value.composeFile, "compose-file", envOr("STONEAGE_COMPOSE_FILE", "/host-project/docker-compose.yml"), "fixed compose file path")
+	flag.StringVar(&value.controlImage, "control-image", envOr("STONEAGE_CONTROL_IMAGE", "stoneage-control-plane"), "control-plane image repository")
+	flag.StringVar(&value.legacyImage, "legacy-image", envOr("STONEAGE_LEGACY_IMAGE", "stoneage-legacy-runtime"), "legacy runtime image repository")
+	flag.StringVar(&value.dockerBin, "docker", envOr("STONEAGE_DOCKER_BIN", "docker"), "Docker CLI path")
+	flag.StringVar(&value.statePath, "state", envOr("STONEAGE_DEPLOY_STATE", "/state/deploy.status"), "deployment state file")
+	flag.StringVar(&value.stateVolume, "state-volume", envOr("STONEAGE_OPERATOR_STATE_VOLUME", "stoneage-operator-state"), "deployment state Docker volume")
+	flag.StringVar(&value.authVolume, "auth-volume", envOr("STONEAGE_AUTH_VOLUME", "stoneage-auth"), "auth database Docker volume")
+	flag.StringVar(&value.gmsvDataRoot, "gmsv-data-root", os.Getenv("STONEAGE_GMSV_DATA_ROOT"), "absolute GMSV data path on Docker host")
+	flag.StringVar(&value.saacDataRoot, "saac-data-root", os.Getenv("STONEAGE_SAAC_DATA_ROOT"), "absolute SAAC data path on Docker host")
 	flag.Parse()
 	if err := value.listen(); err != nil {
 		log.Fatal(err)
@@ -115,6 +147,16 @@ func (value *operator) handle(connection net.Conn) {
 	switch input.Action {
 	case "status":
 		output.Status = value.status()
+		output.OK = true
+	case "deploy_version":
+		if err := value.deployVersion(input.Version); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+			output.Deployment = value.deploymentStatus()
+		}
+	case "deploy_status":
+		output.Deployment = value.deploymentStatus()
 		output.OK = true
 	case "restart", "restart_server":
 		if err := value.restartScript("restart-server.sh"); err != nil {

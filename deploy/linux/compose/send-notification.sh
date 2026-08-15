@@ -15,7 +15,7 @@ if (( ${#message} > 240 )); then
   exit 2
 fi
 
-notice_directory="${STONEAGE_RUNTIME_MOUNT:-/game}/gmsv"
+notice_directory="${STONEAGE_NOTICE_DIR:-${STONEAGE_RUNTIME_MOUNT:-/game}/gmsv}"
 mkdir -p "$notice_directory"
 temporary="$(mktemp "$notice_directory/.admin-notice.XXXXXX")"
 cleanup() { rm -f "$temporary"; }

@@ -1,0 +1,3 @@
+# The preserved 2.5 source/data comes from a byte-oriented legacy archive.
+# Do not make Git's whitespace checker reject its historical formatting.
+server/legacy/source/2.5/** -whitespace

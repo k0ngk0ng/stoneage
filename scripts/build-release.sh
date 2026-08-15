@@ -82,9 +82,9 @@ echo "Building Go gateways..."
 
 echo "Building Linux amd64 legacy server..."
 STONEAGE_SERVER_PLATFORM=linux/amd64 \
-  "$project_root/scripts/build-legacy-server.sh" "$project_root/vendor/upstream/2.5"
+  "$project_root/scripts/build-legacy-server.sh" "$project_root/server/legacy/source/2.5"
 
-server_arch="$(file "$project_root/vendor/upstream/2.5/gmsv/gmsvjt.exe")"
+server_arch="$(file "$project_root/server/legacy/source/2.5/gmsv/gmsvjt.exe")"
 if [[ "$server_arch" != *"x86-64"* ]]; then
   echo "Expected a Linux x86-64 GMSV, got: $server_arch" >&2
   exit 1
@@ -92,7 +92,7 @@ fi
 
 linux_runtime="$linux_stage/runtime/legacy-server"
 "$project_root/scripts/prepare-legacy-server.sh" \
-  "$project_root/vendor/upstream/2.5" "$linux_runtime"
+  "$project_root/server/legacy/source/2.5" "$linux_runtime"
 
 sanitize_server_runtime()
 {
@@ -140,9 +140,9 @@ sanitize_server_runtime "$linux_runtime"
 # Keep the working macOS runtime native to Apple Silicon. The release build
 # above temporarily replaces the source-tree binaries with amd64 artifacts.
 echo "Restoring local Linux arm64 legacy server..."
-"$project_root/scripts/build-legacy-server.sh" "$project_root/vendor/upstream/2.5"
+"$project_root/scripts/build-legacy-server.sh" "$project_root/server/legacy/source/2.5"
 "$project_root/scripts/prepare-legacy-server.sh" \
-  "$project_root/vendor/upstream/2.5" "$stage_root/local-arm64-runtime"
+  "$project_root/server/legacy/source/2.5" "$stage_root/local-arm64-runtime"
 install -m 0755 "$stage_root/local-arm64-runtime/gmsv/gmsvjt.exe" \
   "$project_root/runtime/legacy-server/gmsv/gmsvjt.exe"
 install -m 0755 "$stage_root/local-arm64-runtime/saac/saacjt.exe" \

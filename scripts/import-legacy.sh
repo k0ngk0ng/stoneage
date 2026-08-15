@@ -3,7 +3,7 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 archive_root="${STONEAGE_ARCHIVE:-$project_root/vendor/archives}"
-destination="${1:-vendor/upstream}"
+destination="${1:-server/legacy/source}"
 
 server_archive="$archive_root/stoneage2.5.tar.gz"
 client_archive="$archive_root/sa_182_client_code.rar"

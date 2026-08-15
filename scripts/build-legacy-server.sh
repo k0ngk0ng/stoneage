@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_root="${1:-vendor/upstream/2.5}"
+source_root="${1:-server/legacy/source/2.5}"
 image="${STONEAGE_BUILD_IMAGE:-alpine:3.22}"
 
 if [[ ! -f "$source_root/gmsv/main.c" || ! -f "$source_root/saac/main.c" ]]; then

@@ -14,7 +14,7 @@ cnc-ddraw 负责旧 DirectDraw/调色板兼容。`dist/StoneAge-Revival-Win11-x6
 runtime/legacy-client/
 runtime/legacy-server/        （可重建）
 vendor/archives/
-vendor/upstream/              （可从 archives 重建）
+server/legacy/source/        （已纳入 Git 的服务端源码）
 ```
 
 不需要移动硬盘，也没有硬编码 macOS 绝对路径。

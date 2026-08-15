@@ -35,5 +35,7 @@
 
 这里的约 51 GB 指历史移动硬盘归档，而当前可运行工作目录约 2.2 GB。大体积
 商业游戏资源不提交 Git，但已完整放在当前工作目录的 Git 忽略路径中；
-开发和运行不再挂载移动硬盘。搬迁机器时必须连同 `vendor/archives/` 与
-`runtime/legacy-client/` 一起复制。
+开发和运行不再挂载移动硬盘。GMSV/SAAC 的可构建源码已经纳入
+`server/legacy/source/2.5/` 并由 Git 跟踪；`vendor/archives/` 只作为历史原始归档
+和重新导入客户端资产的可选备份。搬迁机器时至少需要复制仓库、
+`runtime/legacy-client/` 以及部署机上的持久化运行数据。

@@ -29,8 +29,8 @@ func schema(name string, number int, fields ...fieldKind) functionSchema {
 }
 
 // These tables are derived from both preserved generated protocol sources:
-// vendor/upstream/code_sa_client/SYSTEM/LSSPROTO_CLI.CPP and
-// vendor/upstream/2.5/gmsv/lssproto_serv.c. Keeping all known gameplay
+// server/legacy/source/code_sa_client/SYSTEM/LSSPROTO_CLI.CPP and
+// server/legacy/source/2.5/gmsv/lssproto_serv.c. Keeping all known gameplay
 // messages here avoids a login-only compatibility hack.
 var clientToServerSchemas = []functionSchema{
 	schema("W", 0, fieldInt, fieldInt, fieldString),

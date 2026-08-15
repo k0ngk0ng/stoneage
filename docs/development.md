@@ -8,8 +8,8 @@
 - Wine 11（WoW64）
 - cnc-ddraw 7.1.0.0（仓库内固定版本）
 
-所有路径都以仓库根目录为基准。日常构建和运行只读取当前目录下的
-`vendor/`、`runtime/`，不依赖 `/Volumes/JElements`。
+所有路径都以仓库根目录为基准。日常构建和运行读取当前目录下的
+`server/legacy/source/`、`vendor/` 和 `runtime/`，不依赖外接硬盘。
 
 ## 一键运行
 
@@ -54,21 +54,13 @@ CP936 编码，最多 8 个服务器组、32 条线路，实际还受旧客户�
 日志位于 `runtime/logs/gateway.log`、`runtime/legacy-server/logs/` 和
 `runtime/logs/wine-client.log`。
 
-本地默认只有一条线路；需要在同一个 Go 网关进程中挂多条线路时，可设置分号分隔
-的 `STONEAGE_GATEWAY_ROUTES`。每个 `gmsv` 必须使用独立的运行目录和监听端口，
-SAAC 仍然共享：
-
-```bash
-STONEAGE_GATEWAY_ROUTES='127.0.0.1:9065=127.0.0.1:19065;127.0.0.1:9066=127.0.0.1:19066' \
-  ./scripts/start-local.sh
-```
-
-客户端服务器列表由启动器配置（TOML/HTTP）注入；它不参与服务端路由。生产 Compose
-部署时，同样把每个入口端口发布到宿主机，并让列表中的线路指向对应端口。
+本地开发和生产 Compose 示例都只启动一条线路。客户端服务器列表由启动器配置
+（TOML/HTTP）注入；它不负责在同一台机器上编排额外的 GMSV。需要多个入口时，
+应等待后续的多节点部署方案，不要向当前单线路脚本追加路由。
 
 ## 从归档重建
 
-只有 `vendor/upstream/` 丢失时才需要重新导入：
+只有 `server/legacy/source/` 丢失时才需要重新导入：
 
 ```bash
 ./scripts/import-legacy.sh
@@ -76,7 +68,7 @@ STONEAGE_GATEWAY_ROUTES='127.0.0.1:9065=127.0.0.1:19065;127.0.0.1:9066=127.0.0.1
 ./scripts/prepare-legacy-server.sh
 ```
 
-归档已复制到 `vendor/archives/`。服务端构建在 Alpine 容器中完成；Apple
+归档已复制到 `vendor/archives/`。服务端源码本身已纳入 Git，构建在 Alpine 容器中完成；Apple
 Silicon 默认产出 Linux arm64 ELF，也可设
 `STONEAGE_SERVER_PLATFORM=linux/amd64`。
 

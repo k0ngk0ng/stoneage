@@ -29,6 +29,8 @@ type fakeOperator struct {
 	saacStops       int
 	serviceStatus   ServiceStatus
 	notifications   []string
+	deployments     []string
+	deployment      DeploymentStatus
 }
 
 func (operator *fakeOperator) Status(context.Context) (ServiceStatus, error) {
@@ -91,6 +93,18 @@ func (operator *fakeOperator) StopSAAC(context.Context) error {
 func (operator *fakeOperator) Notify(_ context.Context, message string) error {
 	operator.notifications = append(operator.notifications, message)
 	return nil
+}
+
+func (operator *fakeOperator) DeployVersion(_ context.Context, version string) error {
+	operator.deployments = append(operator.deployments, version)
+	return nil
+}
+
+func (operator *fakeOperator) DeploymentStatus(context.Context) (DeploymentStatus, error) {
+	if operator.deployment.Phase == "" {
+		return DeploymentStatus{Phase: "idle"}, nil
+	}
+	return operator.deployment, nil
 }
 
 func newAdminTestServer(t *testing.T) (*auth.Store, *fakeOperator, *httptest.Server) {
@@ -336,6 +350,60 @@ func TestAdminConfigAndRestart(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusSeeOther || operator.saacStops != 1 {
 		t.Fatalf("SAAC stop response=%d stops=%d", response.StatusCode, operator.saacStops)
+	}
+}
+
+func TestAdminReleaseVersionValidationAndCSRF(t *testing.T) {
+	_, operator, server := newAdminTestServer(t)
+	operator.deployment = DeploymentStatus{Version: "v1.2.3", Phase: "succeeded", Message: "已发布"}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.PostForm(server.URL+"/login", url.Values{"username": {"admin"}, "password": {"secret123"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	response, err = client.Get(server.URL + "/releases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "v1.2.3") || !strings.Contains(string(body), "已发布") {
+		t.Fatalf("release page = %d %s", response.StatusCode, body)
+	}
+	csrf := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(string(body))
+	if len(csrf) != 2 {
+		t.Fatal("release page did not contain CSRF token")
+	}
+
+	response, err = client.PostForm(server.URL+"/releases/deploy", url.Values{"csrf": {csrf[1]}, "version": {"latest"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "版本号必须是 v1.2.3 格式") || len(operator.deployments) != 0 {
+		t.Fatalf("invalid release response = %d deployments=%#v body=%s", response.StatusCode, operator.deployments, body)
+	}
+
+	response, err = client.PostForm(server.URL+"/releases/deploy", url.Values{"csrf": {csrf[1]}, "version": {"v1.3.0"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther || len(operator.deployments) != 1 || operator.deployments[0] != "v1.3.0" {
+		t.Fatalf("valid release response = %d deployments=%#v", response.StatusCode, operator.deployments)
+	}
+
+	response, err = client.PostForm(server.URL+"/releases/deploy", url.Values{"version": {"v1.3.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("release CSRF response = %d", response.StatusCode)
 	}
 }
 
