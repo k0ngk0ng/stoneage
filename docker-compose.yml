@@ -5,6 +5,8 @@
 # This file is the single-machine, single-line production deployment. Do not
 # expose GMSV or SAAC ports on the host; only the gateway and (optionally) the
 # admin UI are published.
+name: ${STONEAGE_COMPOSE_PROJECT_NAME:-stoneage}
+
 x-logging: &default-logging
   driver: json-file
   options:
