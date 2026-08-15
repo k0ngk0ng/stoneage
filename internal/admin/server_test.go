@@ -363,6 +363,9 @@ func TestAdminServiceButtonsFollowStatus(t *testing.T) {
 	if strings.Count(page, `<article class="service-row">`) != 2 || !strings.Contains(page, "游戏服务") || !strings.Contains(page, "部分运行") {
 		t.Fatalf("service page should expose gateway and one composite game service: %s", body)
 	}
+	if !strings.Contains(page, `<details class="service-components" open>`) || !strings.Contains(page, "分别管理 GMSV 和 SAAC") {
+		t.Fatalf("service page should expose independent GMSV/SAAC controls by default: %s", body)
+	}
 	if strings.Contains(page, `action="/server/stop-gateway"`) {
 		t.Fatalf("stopped gateway should not have an enabled stop form: %s", body)
 	}

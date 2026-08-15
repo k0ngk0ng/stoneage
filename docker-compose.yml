@@ -207,5 +207,6 @@ volumes:
     name: ${STONEAGE_OPERATOR_RUN_VOLUME:-stoneage-operator-run}
 
 networks:
-  backend:
-    internal: true
+  # No host ports are published for GMSV/SAAC, so they remain private while
+  # gateway/admin mappings continue to work on Docker Desktop and Linux.
+  backend: {}

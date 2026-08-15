@@ -39,9 +39,9 @@
       <div class="service-mark game-mark">GS</div>
       <div class="service-copy">
         <div class="service-title"><h3>游戏服务</h3><span class="status-pill {{.GameStatus}}">{{.GameStatusLabel}}</span></div>
-        <p>旧版游戏服务 · GMSV 负责地图/玩法，SAAC 负责账号/角色数据；两者共享运行目录，但可独立控制。</p>
-        <details class="service-components">
-          <summary>查看内部进程与单独操作</summary>
+        <p>旧版游戏服务 · GMSV 负责地图/玩法，SAAC 负责账号/角色数据；两者是独立容器，共享角色数据，可分别配置、启动、重启和停止。</p>
+        <details class="service-components" open>
+          <summary>分别管理 GMSV 和 SAAC</summary>
           <div class="component-grid">
             <div class="component-item">
               <div><strong>GMSV</strong> <span class="status-pill {{if .GMSVRunning}}running{{else if .GMSVStopped}}stopped{{else}}unknown{{end}}">{{if .GMSVRunning}}运行中{{else if .GMSVStopped}}已停止{{else}}{{.Status.GMSV}}{{end}}</span></div>
