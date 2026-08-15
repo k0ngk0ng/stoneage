@@ -9,8 +9,11 @@
 </head>
 <body class="login-page">
 <main class="login-card">
-  <h1>StoneAge Revival</h1>
-  <p class="muted">服务器管理后台</p>
+  <div class="login-mark" aria-hidden="true">SA</div>
+  <div class="login-heading">
+    <h1>StoneAge Revival</h1>
+    <p class="muted">服务器管理后台</p>
+  </div>
   {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
   <form method="post" action="/login">
     <label>管理员账号<input name="username" autocomplete="username" required autofocus></label>
