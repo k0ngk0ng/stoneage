@@ -106,6 +106,20 @@ tr:last-child td { border-bottom: 0; }
 .standalone-card { max-width: 900px; }
 .form-actions { display: flex; align-items: center; gap: 8px; }
 .config-readonly { padding: 48px 20px; }
+.modal-open { overflow: hidden; }
+.confirm-modal { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; }
+.confirm-modal[hidden] { display: none; }
+.confirm-backdrop { position: absolute; inset: 0; background: rgba(31,55,64,.58); backdrop-filter: blur(2px); animation: confirm-fade-in .15s ease-out; }
+.confirm-dialog { position: relative; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 15px; width: min(460px,100%); padding: 25px 25px 21px; border: 3px solid #536a75; border-radius: 18px 18px 8px 18px; background: linear-gradient(145deg, rgba(255,255,250,.99), rgba(247,232,194,.98)); box-shadow: 0 14px 0 rgba(39,59,67,.28), 0 20px 45px rgba(31,55,64,.35), inset 0 0 0 2px rgba(255,255,255,.72); animation: confirm-pop-in .16s ease-out; }
+.confirm-mark { display: grid; place-items: center; width: 42px; height: 42px; border: 2px solid #9b7331; border-radius: 12px 12px 5px 12px; color: #fffbe4; background: linear-gradient(145deg,#e2bd4e,#b77c2f); box-shadow: 0 2px 0 rgba(83,106,117,.34); font-family: Georgia, serif; font-size: 25px; font-weight: 900; }
+.confirm-copy { min-width: 0; }
+.confirm-copy .section-kicker { margin-bottom: 8px; color: #795d28; border-color: #b59a62; background: #f6e9bd; }
+.confirm-copy h2 { margin: 0 0 8px; color: #3d5963; font-size: 20px; }
+.confirm-copy p { margin: 0; color: #56676d; line-height: 1.55; white-space: pre-wrap; }
+.confirm-actions { grid-column: 2; display: flex; justify-content: flex-end; gap: 8px; margin-top: 3px; }
+.confirm-actions button { min-width: 78px; }
+@keyframes confirm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes confirm-pop-in { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .restart-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .restart-actions form { margin: 0; }
 .config-section-title { margin: 20px 0 10px; padding-bottom: 6px; color: #287d9d; border-bottom: 2px solid rgba(94,116,128,.28); font-size: 15px; }
@@ -152,4 +166,7 @@ tr:last-child td { border-bottom: 0; }
   .form-footer { align-items: stretch; flex-direction: column; }
   .form-footer button { width: 100%; }
   .container { padding-top: 22px; }
+  .confirm-dialog { padding: 21px 18px 17px; }
+  .confirm-actions { grid-column: 1 / -1; }
+  .confirm-actions button { flex: 1; }
 }

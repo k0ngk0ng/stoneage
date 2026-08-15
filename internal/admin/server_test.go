@@ -139,7 +139,8 @@ func TestAdminLoginAccountAndCSRF(t *testing.T) {
 	}
 	staticBody, _ := io.ReadAll(staticResponse.Body)
 	staticResponse.Body.Close()
-	if staticResponse.StatusCode != http.StatusOK || !strings.Contains(string(staticBody), "data-confirm") {
+	staticText := string(staticBody)
+	if staticResponse.StatusCode != http.StatusOK || !strings.Contains(staticText, "data-confirm") || !strings.Contains(staticText, "confirm-modal") || strings.Contains(staticText, "window.confirm") {
 		t.Fatalf("static app response = %d %s", staticResponse.StatusCode, staticBody)
 	}
 	jar, err := cookiejar.New(nil)
@@ -163,7 +164,7 @@ func TestAdminLoginAccountAndCSRF(t *testing.T) {
 	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "没有账号") {
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "没有账号") || !strings.Contains(string(body), "id=\"confirm-modal\"") {
 		t.Fatalf("accounts page = %d %s", response.StatusCode, body)
 	}
 	csrf := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(string(body))

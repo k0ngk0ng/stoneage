@@ -30,6 +30,21 @@
   {{if .Message}}<div class="alert success">{{.Message}}</div>{{end}}
   {{template "content" .}}
 </main>
+<div class="confirm-modal" id="confirm-modal" hidden>
+  <div class="confirm-backdrop" data-confirm-cancel tabindex="-1"></div>
+  <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message" tabindex="-1">
+    <div class="confirm-mark" aria-hidden="true">!</div>
+    <div class="confirm-copy">
+      <span class="section-kicker">请确认</span>
+      <h2 id="confirm-title">确认操作</h2>
+      <p id="confirm-message"></p>
+    </div>
+    <div class="confirm-actions">
+      <button class="button" type="button" data-confirm-cancel>取消</button>
+      <button class="primary" type="button" data-confirm-accept>确认</button>
+    </div>
+  </section>
+</div>
 </body>
 </html>
 {{end}}
