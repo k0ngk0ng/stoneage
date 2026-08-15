@@ -6,7 +6,7 @@ if [[ $# -ne 1 ]]; then
   exit 2
 fi
 message="$1"
-if [[ -z "$message" || "$message" == *$'\n'* || "$message" == *$'\r'* || "$message" == *$'\0'* ]]; then
+if [[ -z "$message" || "$message" == *$'\n'* || "$message" == *$'\r'* ]]; then
   echo "notification must be a non-empty single line" >&2
   exit 2
 fi
