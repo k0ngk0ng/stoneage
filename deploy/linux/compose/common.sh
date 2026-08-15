@@ -2,9 +2,11 @@
 set -euo pipefail
 
 docker_bin="${STONEAGE_DOCKER_BIN:-docker}"
-game_container="${STONEAGE_GAME_CONTAINER:-stoneage-legacy-server}"
+gmsv_container="${STONEAGE_GMSV_CONTAINER:-${STONEAGE_GAME_CONTAINER:-stoneage-gmsv}}"
+saac_container="${STONEAGE_SAAC_CONTAINER:-stoneage-saac}"
 gateway_container="${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}"
-game_host="${STONEAGE_GAME_HOST:-legacy-server}"
+gmsv_host="${STONEAGE_GMSV_HOST:-${STONEAGE_GAME_HOST:-gmsv}}"
+saac_host="${STONEAGE_SAAC_HOST:-saac}"
 gateway_host="${STONEAGE_GATEWAY_HOST:-gateway}"
 
 container_running()

@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-container_name="${STONEAGE_SERVER_CONTAINER:-stoneage-revival-server}"
-
-if docker container inspect "$container_name" >/dev/null 2>&1; then
-  docker stop "$container_name" >/dev/null || true
-  docker rm "$container_name" >/dev/null || true
-fi
+package_root="$(cd "$(dirname "$0")" && pwd)"
+STONEAGE_SERVER_CONTAINER="${STONEAGE_SERVER_CONTAINER:-stoneage-revival-server}" \
+  "$package_root/scripts/stop-legacy-server.sh"
 echo "Game service stopped; runtime data was preserved."

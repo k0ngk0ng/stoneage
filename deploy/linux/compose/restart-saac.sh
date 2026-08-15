@@ -2,6 +2,5 @@
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 
-require_container_running "$game_container"
-"$docker_bin" exec "$game_container" sh /modern/control.sh restart-saac
-wait_tcp "$game_host" 9300 "SAAC"
+start_or_restart_container "$saac_container"
+wait_tcp "$saac_host" 9300 "SAAC"

@@ -71,6 +71,12 @@ type pageData struct {
 	ConfigEditable     bool
 	GatewayRunning     bool
 	GatewayStopped     bool
+	GameStatus         string
+	GameStatusLabel    string
+	GameRunning        bool
+	GameStopped        bool
+	GameAnyRunning     bool
+	GameKnown          bool
 	GMSVRunning        bool
 	GMSVStopped        bool
 	SAACRunning        bool
@@ -562,10 +568,32 @@ func (server *Server) renderService(response http.ResponseWriter, request *http.
 	data.GMSVStopped = data.Status.GMSV == "stopped"
 	data.SAACRunning = data.Status.SAAC == "running"
 	data.SAACStopped = data.Status.SAAC == "stopped"
-	data.AnyServiceRunning = data.GatewayRunning || data.GMSVRunning || data.SAACRunning
-	data.AllServicesKnown = isServiceStatusKnown(data.Status.Gateway) && isServiceStatusKnown(data.Status.GMSV) && isServiceStatusKnown(data.Status.SAAC)
+	data.GameStatus, data.GameStatusLabel = gameServiceStatus(data.Status.GMSV, data.Status.SAAC)
+	data.GameRunning = data.GameStatus == "running"
+	data.GameStopped = data.GameStatus == "stopped"
+	data.GameAnyRunning = data.GMSVRunning || data.SAACRunning
+	data.GameKnown = isServiceStatusKnown(data.Status.GMSV) && isServiceStatusKnown(data.Status.SAAC)
+	data.AnyServiceRunning = data.GatewayRunning || data.GameAnyRunning
+	data.AllServicesKnown = isServiceStatusKnown(data.Status.Gateway) && data.GameKnown
 	data.AllServicesStopped = data.AllServicesKnown && !data.AnyServiceRunning
 	server.render(response, "server", data)
+}
+
+// gameServiceStatus is the user-facing status of the legacy game service. The
+// implementation still probes GMSV and SAAC independently so their config and
+// emergency restart actions remain available, but they are one deployable game
+// service from an operator's point of view.
+func gameServiceStatus(gmsv, saac string) (string, string) {
+	switch {
+	case gmsv == "running" && saac == "running":
+		return "running", "运行中"
+	case gmsv == "stopped" && saac == "stopped":
+		return "stopped", "已停止"
+	case isServiceStatusKnown(gmsv) && isServiceStatusKnown(saac):
+		return "degraded", "部分运行"
+	default:
+		return "unknown", "未知"
+	}
 }
 
 func isServiceStatusKnown(value string) bool {

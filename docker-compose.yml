@@ -1,19 +1,42 @@
 services:
-  # GMSV and SAAC remain separate processes inside this legacy-server
-  # container. They share the archived runtime files, but have independent
-  # ports, configuration pages and control actions.
-  legacy-server:
+  # SAAC is the shared account/character service. Multiple GMSV line services
+  # can point at this container when more than one game line is deployed.
+  saac:
     image: alpine:3.22
-    container_name: ${STONEAGE_GAME_CONTAINER:-stoneage-legacy-server}
+    container_name: ${STONEAGE_SAAC_CONTAINER:-stoneage-saac}
     init: true
     restart: unless-stopped
     volumes:
       - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
-      - ./server/legacy/modern/run.sh:/modern/run.sh:ro
-      - ./server/legacy/modern/control.sh:/modern/control.sh:ro
-    command: ["sh", "/modern/run.sh"]
+      - ./server/legacy/modern/run-saac.sh:/modern/run-saac.sh:ro
+    command: ["sh", "/modern/run-saac.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 9300 && nc -z 127.0.0.1 9065"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9300"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
+
+  # One GMSV is one game line. Add another GMSV service for another line while
+  # continuing to share SAAC; the single gateway process can route multiple
+  # listener ports to those GMSV services.
+  gmsv:
+    image: alpine:3.22
+    container_name: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      saac:
+        condition: service_healthy
+    environment:
+      STONEAGE_SAAC_HOST: saac
+      STONEAGE_SAAC_PORT: 9300
+    volumes:
+      - ${STONEAGE_RUNTIME_ROOT:-./runtime/legacy-server}:/game
+      - ./server/legacy/modern/run-gmsv.sh:/modern/run-gmsv.sh:ro
+    command: ["sh", "/modern/run-gmsv.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
       interval: 5s
       timeout: 2s
       retries: 30
@@ -28,22 +51,23 @@ services:
     init: true
     restart: unless-stopped
     depends_on:
-      legacy-server:
+      gmsv:
         condition: service_healthy
     command:
       - /opt/stoneage/bin/stoneage-gateway
-      - -listen
-      - 0.0.0.0:9065
-      - -upstream
-      - legacy-server:9065
+      - -routes
+      - ${STONEAGE_GATEWAY_ROUTES:-0.0.0.0:9065=gmsv:9065}
       - -auth-required
       - -auth-db
       - /data/stoneage-auth.db
     environment:
       STONEAGE_AUTH_DB: /data/stoneage-auth.db
+      STONEAGE_GATEWAY_ROUTES: ${STONEAGE_GATEWAY_ROUTES:-0.0.0.0:9065=gmsv:9065}
     volumes:
       - auth-data:/data
     ports:
+      # Publish one host port for every listener in STONEAGE_GATEWAY_ROUTES.
+      # The default exposes the first line only.
       - ${STONEAGE_GATEWAY_BIND:-127.0.0.1}:${STONEAGE_GATEWAY_PORT:-9065}:9065
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
@@ -63,7 +87,9 @@ services:
     init: true
     restart: unless-stopped
     depends_on:
-      legacy-server:
+      gmsv:
+        condition: service_healthy
+      saac:
         condition: service_healthy
       gateway:
         condition: service_healthy
@@ -76,15 +102,19 @@ services:
       - -gateway
       - gateway:9065
       - -upstream
-      - legacy-server:9065
+      - gmsv:9065
       - -saac
-      - legacy-server:9300
+      - saac:9300
       - -auth-db
       - /data/stoneage-auth.db
     environment:
-      STONEAGE_GAME_CONTAINER: ${STONEAGE_GAME_CONTAINER:-stoneage-legacy-server}
+      STONEAGE_GAME_CONTAINER: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
+      STONEAGE_GMSV_CONTAINER: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
+      STONEAGE_SAAC_CONTAINER: ${STONEAGE_SAAC_CONTAINER:-stoneage-saac}
       STONEAGE_GATEWAY_CONTAINER: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
-      STONEAGE_GAME_HOST: legacy-server
+      STONEAGE_GAME_HOST: gmsv
+      STONEAGE_GMSV_HOST: gmsv
+      STONEAGE_SAAC_HOST: saac
       STONEAGE_GATEWAY_HOST: gateway
       STONEAGE_RUNTIME_MOUNT: /game
     volumes:

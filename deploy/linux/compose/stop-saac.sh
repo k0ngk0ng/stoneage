@@ -2,6 +2,5 @@
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 
-require_container_running "$game_container"
-"$docker_bin" exec "$game_container" sh /modern/control.sh stop-saac
-wait_tcp_down "$game_host" 9300 "SAAC"
+if container_running "$saac_container"; then "$docker_bin" stop "$saac_container" >/dev/null; fi
+wait_tcp_down "$saac_host" 9300 "SAAC"

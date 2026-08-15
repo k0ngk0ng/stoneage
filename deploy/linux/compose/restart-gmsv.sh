@@ -2,6 +2,5 @@
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 
-require_container_running "$game_container"
-"$docker_bin" exec "$game_container" sh /modern/control.sh restart-gmsv
-wait_tcp "$game_host" 9065 "GMSV"
+start_or_restart_container "$gmsv_container"
+wait_tcp "$gmsv_host" 9065 "GMSV"

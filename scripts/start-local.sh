@@ -3,20 +3,28 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 runtime_root="$project_root/runtime/legacy-server"
-container_name="${STONEAGE_SERVER_CONTAINER:-stoneage-legacy-local}"
 upstream_port="${STONEAGE_UPSTREAM_PORT:-19065}"
 saac_port="${STONEAGE_SAAC_PORT:-9300}"
 gateway_listen="${STONEAGE_GATEWAY_LISTEN:-127.0.0.1:9065}"
 gateway_upstream="${STONEAGE_GATEWAY_UPSTREAM:-127.0.0.1:$upstream_port}"
+gateway_routes="${STONEAGE_GATEWAY_ROUTES:-}"
 gateway_binary="$project_root/build/stoneage-gateway"
 gateway_pid_file="$project_root/runtime/gateway.pid"
 gateway_log="$project_root/runtime/logs/gateway.log"
 gateway_trace="${STONEAGE_GATEWAY_TRACE:-0}"
 gateway_trace_battle="${STONEAGE_GATEWAY_TRACE_BATTLE:-0}"
-gateway_args=(
-  -listen "$gateway_listen"
-  -upstream "$gateway_upstream"
-)
+gateway_args=()
+if [[ -n "$gateway_routes" ]]; then
+  gateway_args+=(-routes "$gateway_routes")
+  # The first listener is used for the local readiness probe and status text.
+  first_gateway_route="${gateway_routes%%;*}"
+  gateway_listen="${first_gateway_route%%=*}"
+else
+  gateway_args+=(
+    -listen "$gateway_listen"
+    -upstream "$gateway_upstream"
+  )
+fi
 
 case "$gateway_trace" in
   1|true|TRUE|yes|YES|on|ON)
@@ -49,39 +57,21 @@ if [[ ! -x "$runtime_root/saac/saacjt.exe" || ! -x "$runtime_root/gmsv/gmsvjt.ex
     "$project_root/vendor/upstream/2.5" "$runtime_root"
 fi
 
-if docker container inspect "$container_name" >/dev/null 2>&1; then
-  has_saac_port=0
-  if docker port "$container_name" 9300/tcp 2>/dev/null | grep -Fq "127.0.0.1:$saac_port"; then
-    has_saac_port=1
-  fi
-  if ! docker exec "$container_name" test -f /modern/control.sh >/dev/null 2>&1 || [[ "$has_saac_port" != "1" ]]; then
-    echo "Refreshing stale server container $container_name for SAAC status/control support."
-    docker stop "$container_name" >/dev/null || true
-    docker rm "$container_name" >/dev/null || true
-    STONEAGE_UPSTREAM_PORT="$upstream_port" STONEAGE_SAAC_PORT="$saac_port" \
-      "$project_root/scripts/run-legacy-server.sh" "$runtime_root"
-  elif [[ "$(docker inspect -f '{{.State.Running}}' "$container_name")" != "true" ]]; then
-    docker start "$container_name" >/dev/null
-    echo "Started existing server container $container_name."
-  else
-    echo "Server container $container_name is already running."
-  fi
-else
-  STONEAGE_UPSTREAM_PORT="$upstream_port" STONEAGE_SAAC_PORT="$saac_port" \
-    "$project_root/scripts/run-legacy-server.sh" "$runtime_root"
-fi
+STONEAGE_UPSTREAM_PORT="$upstream_port" STONEAGE_SAAC_PORT="$saac_port" \
+  "$project_root/scripts/run-legacy-server.sh" "$runtime_root"
 
 ready=0
 for _ in {1..100}; do
-  if nc -z 127.0.0.1 "$upstream_port" >/dev/null 2>&1; then
+  if nc -z 127.0.0.1 "$upstream_port" >/dev/null 2>&1 && \
+     nc -z 127.0.0.1 "$saac_port" >/dev/null 2>&1; then
     ready=1
     break
   fi
   sleep 0.1
 done
 if [[ "$ready" != "1" ]]; then
-  echo "GMSV did not become ready on 127.0.0.1:$upstream_port." >&2
-  echo "Inspect $runtime_root/logs/gmsv.log" >&2
+  echo "GMSV/SAAC did not become ready (GMSV 127.0.0.1:$upstream_port, SAAC 127.0.0.1:$saac_port)." >&2
+  echo "Inspect $runtime_root/logs/gmsv.log and $runtime_root/logs/saac.log" >&2
   exit 1
 fi
 
@@ -95,7 +85,7 @@ if [[ -f "$gateway_pid_file" ]]; then
   fi
 fi
 if [[ "$gateway_running" != "1" ]]; then
-  existing_gateway="$(pgrep -f 'stoneage-gateway.*-listen' | head -n 1 || true)"
+  existing_gateway="$(pgrep -f 'stoneage-gateway.*(-listen|-routes)' | head -n 1 || true)"
   if [[ -n "$existing_gateway" ]] && kill -0 "$existing_gateway" 2>/dev/null; then
     gateway_pid="$existing_gateway"
     printf '%s\n' "$gateway_pid" >"$gateway_pid_file"
@@ -128,7 +118,11 @@ else
     echo "Protocol gateway failed to start; inspect $gateway_log" >&2
     exit 1
   fi
-  echo "Started protocol gateway $gateway_listen -> $gateway_upstream (PID $gateway_pid, trace=$gateway_trace)."
+  if [[ -n "$gateway_routes" ]]; then
+    echo "Started protocol gateway routes $gateway_routes (PID $gateway_pid, trace=$gateway_trace)."
+  else
+    echo "Started protocol gateway $gateway_listen -> $gateway_upstream (PID $gateway_pid, trace=$gateway_trace)."
+  fi
 fi
 
 patch_args=(

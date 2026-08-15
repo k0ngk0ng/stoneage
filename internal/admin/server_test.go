@@ -356,8 +356,11 @@ func TestAdminServiceButtonsFollowStatus(t *testing.T) {
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
 	page := string(body)
-	if response.StatusCode != http.StatusOK || !strings.Contains(page, `action="/server/restart-gateway"`) || !strings.Contains(page, `>启动</button>`) {
+	if response.StatusCode != http.StatusOK || !strings.Contains(page, `action="/server/restart-gateway"`) || !strings.Contains(page, `action="/server/restart-game"`) || !strings.Contains(page, `>启动</button>`) {
 		t.Fatalf("stopped service page = %d %s", response.StatusCode, body)
+	}
+	if strings.Count(page, `<article class="service-row">`) != 2 || !strings.Contains(page, "游戏服务") || !strings.Contains(page, "部分运行") {
+		t.Fatalf("service page should expose gateway and one composite game service: %s", body)
 	}
 	if strings.Contains(page, `action="/server/stop-gateway"`) {
 		t.Fatalf("stopped gateway should not have an enabled stop form: %s", body)
@@ -374,7 +377,7 @@ func TestAdminServiceButtonsFollowStatus(t *testing.T) {
 	body, _ = io.ReadAll(response.Body)
 	response.Body.Close()
 	page = string(body)
-	if strings.Contains(page, `action="/server/stop-gateway"`) || strings.Contains(page, `action="/server/stop-gmsv"`) || strings.Contains(page, `action="/server/stop-saac"`) {
+	if strings.Count(page, `<article class="service-row">`) != 2 || strings.Contains(page, `action="/server/stop-gateway"`) || strings.Contains(page, `action="/server/stop-game"`) || strings.Contains(page, `action="/server/stop-gmsv"`) || strings.Contains(page, `action="/server/stop-saac"`) {
 		t.Fatalf("unknown services should not have enabled stop forms: %s", body)
 	}
 	if !strings.Contains(page, `暂时无法确认全部服务状态`) {

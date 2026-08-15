@@ -65,9 +65,17 @@ tr:last-child td { border-bottom: 0; }
 .service-title { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-bottom: 4px; }
 .service-title h3 { color: #3d5963; font-size: 16px; }
 .service-copy p { margin: 0; color: #64747a; font-size: 12px; line-height: 1.45; }
+.service-components { margin-top: 9px; color: #64747a; font-size: 12px; }
+.service-components summary { cursor: pointer; color: #496875; font-weight: 800; }
+.component-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 8px; }
+.component-item { padding: 8px 10px; border: 1px solid rgba(94,116,128,.25); border-radius: 8px; background: rgba(255,255,255,.38); }
+.component-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.component-actions form { margin: 0; }
+.component-actions .button, .component-actions button { padding: 5px 8px; font-size: 11px; }
 .status-pill { display: inline-block; border: 1px solid #66828c; border-radius: 999px; padding: 2px 8px; color: #41616c; background: #e8f1e9; font-size: 11px; font-weight: 800; }
 .status-pill.running { color: #276946; border-color: #5a9b70; background: #dff0d9; }
 .status-pill.stopped { color: #8a4d47; border-color: #bf8177; background: #f5d8c9; }
+.status-pill.degraded { color: #8a652e; border-color: #c5a25b; background: #f7e8ba; }
 .status-pill.unknown { color: #6c6f68; border-color: #9c9d92; background: #e8e5d8; }
 .service-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .service-actions form { margin: 0; }
@@ -134,6 +142,9 @@ tr:last-child td { border-bottom: 0; }
   .service-actions { grid-column: 2; justify-content: stretch; }
   .service-actions form, .service-actions .button, .service-actions button { flex: 1; }
   .service-actions button { width: 100%; }
+  .component-grid { grid-template-columns: 1fr; }
+  .component-actions .button, .component-actions form, .component-actions button { flex: 1; }
+  .component-actions button { width: 100%; }
   .full-restart, .full-service-actions { align-items: flex-start; flex-direction: column; }
   .full-restart p, .full-service-actions p { display: block; margin: 4px 0 0; }
   .full-restart button, .full-service-actions button { width: 100%; }

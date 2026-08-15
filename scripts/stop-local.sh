@@ -27,7 +27,7 @@ if [[ -f "$gateway_pid_file" ]]; then
   fi
   rm -f "$gateway_pid_file"
 else
-  gateway_pid="$(pgrep -f 'stoneage-gateway.*-listen' | head -n 1 || true)"
+  gateway_pid="$(pgrep -f 'stoneage-gateway.*(-listen|-routes)' | head -n 1 || true)"
   if [[ -n "$gateway_pid" ]] && kill -0 "$gateway_pid" 2>/dev/null; then
     kill "$gateway_pid"
     echo "Stopped protocol gateway PID $gateway_pid."

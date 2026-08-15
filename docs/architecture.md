@@ -19,14 +19,17 @@ Linux 2.5 GMSV 进程 ── SAAC RPC ── Linux 2.5 SAAC 进程
 SQLite stoneage-auth.db ────────┘
 ```
 
-Linux 服务器也提供根目录 `docker-compose.yml`：`legacy-server` 容器运行 GMSV/SAAC，
-`gateway`、`admin` 和 `operator` 作为独立 Compose 服务运行。operator 才挂载
-Docker socket，并且只调用 `deploy/linux/compose/` 下的固定脚本；后台通过共享的
-Unix socket 请求状态、通知和服务控制。SQLite 认证库、配置和角色目录保持持久化。
+Linux 服务器也提供根目录 `docker-compose.yml`：`saac` 和 `gmsv` 是两个独立的
+Compose 容器，`gateway`、`admin` 和 `operator` 作为独立 Compose 服务运行。
+operator 才挂载 Docker socket，并且只调用 `deploy/linux/compose/` 下的固定脚本；
+后台通过共享的 Unix socket 请求状态、通知和服务控制。SQLite 认证库、配置和角色
+目录保持持久化。
 
-GMSV 与 SAAC 是独立的旧版进程，分别读取 `setup.cf` 和 `acserv.cf`。Linux
-发布包为了保持网络和数据目录简单，仍由同一个容器监督两者，但 operator 通过
-固定控制脚本支持分别重启 GMSV 或 SAAC。
+GMSV 与 SAAC 是独立的旧版服务，分别读取 `setup.cf` 和 `acserv.cf`。一条游戏
+线路对应一个 GMSV 容器；多条线路共享一个 SAAC 容器，而每个 GMSV 使用独立的
+游戏 ID、监听端口、配置和运行数据目录。一个 Go 网关进程可以配置多个
+“监听端口 → GMSV”路由，不需要为每条线路再部署一个网关容器。GMSV 在拆分
+容器时通过服务名 `saac:9300` 连接 SAAC，用户编辑的 `setup.cf` 不会被改写。
 
 保存的 `sa_2903.exe` 与现有 Linux GMSV 都属于 2.5 时代，但使用两种生成版
 LSSPROTO 方言：客户端用函数名，GMSV 用数字函数号、校验和及会话密钥。Go

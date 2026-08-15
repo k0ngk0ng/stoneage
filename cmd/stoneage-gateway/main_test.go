@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -26,6 +27,39 @@ func TestNamedBattleCommand(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestConfiguredRoutes(t *testing.T) {
+	routes, err := configuredRoutes(options{
+		routes: "0.0.0.0:9065=gmsv:9065;0.0.0.0:9066=gmsv2:9065",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []gatewayRoute{
+		{listenAddress: "0.0.0.0:9065", upstreamAddress: "gmsv:9065"},
+		{listenAddress: "0.0.0.0:9066", upstreamAddress: "gmsv2:9065"},
+	}
+	if !reflect.DeepEqual(routes, want) {
+		t.Fatalf("routes = %#v, want %#v", routes, want)
+	}
+
+	routes, err = configuredRoutes(options{listenAddress: "127.0.0.1:9065", upstreamAddress: "127.0.0.1:19065"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(routes, []gatewayRoute{{listenAddress: "127.0.0.1:9065", upstreamAddress: "127.0.0.1:19065"}}) {
+		t.Fatalf("legacy route fallback = %#v", routes)
+	}
+
+	for _, value := range []string{"", "0.0.0.0:9065", "0.0.0.0:9065=", "bad=gmsv:9065"} {
+		if value == "" {
+			continue
+		}
+		if _, err := configuredRoutes(options{routes: value}); err == nil {
+			t.Fatalf("configuredRoutes(%q) unexpectedly succeeded", value)
+		}
 	}
 }
 

@@ -199,6 +199,8 @@ copy_runtime_support()
     "$destination/server/legacy/modern/"
   cp -p \
     "$project_root/server/legacy/modern/run.sh" \
+    "$project_root/server/legacy/modern/run-saac.sh" \
+    "$project_root/server/legacy/modern/run-gmsv.sh" \
     "$project_root/server/legacy/modern/control.sh" \
     "$destination/server/legacy/modern/"
 }

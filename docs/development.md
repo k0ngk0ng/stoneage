@@ -17,7 +17,8 @@
 ./scripts/start-local.sh
 ```
 
-它会按需准备 2.5 服务端运行目录、启动容器、构建并启动 Go 协议网关、重新
+它会按需准备 2.5 服务端运行目录、启动独立的 SAAC/GMSV 容器、构建并启动 Go
+协议网关、重新
 生成校验过的本机客户端，然后用 CP936 Wine prefix 启动游戏。测试账号：
 
 ```text
@@ -52,6 +53,18 @@ CP936 编码，最多 8 个服务器组、32 条线路，实际还受旧客户�
 
 日志位于 `runtime/logs/gateway.log`、`runtime/legacy-server/logs/` 和
 `runtime/logs/wine-client.log`。
+
+本地默认只有一条线路；需要在同一个 Go 网关进程中挂多条线路时，可设置分号分隔
+的 `STONEAGE_GATEWAY_ROUTES`。每个 `gmsv` 必须使用独立的运行目录和监听端口，
+SAAC 仍然共享：
+
+```bash
+STONEAGE_GATEWAY_ROUTES='127.0.0.1:9065=127.0.0.1:19065;127.0.0.1:9066=127.0.0.1:19066' \
+  ./scripts/start-local.sh
+```
+
+客户端服务器列表由启动器配置（TOML/HTTP）注入；它不参与服务端路由。生产 Compose
+部署时，同样把每个入口端口发布到宿主机，并让列表中的线路指向对应端口。
 
 ## 从归档重建
 
@@ -123,8 +136,9 @@ STONEAGE_UPSTREAM_PORT=19065 ./scripts/run-legacy-server.sh
 `enable_nu_flow_control` 控制：`0`（默认）关闭，`1` 开启。修改后需重启
 GMSV 才会生效。
 
-管理后台的“服务”页分别链接到 GMSV 的 `setup.cf` 与 SAAC 的 `acserv.cf` 配置
-页面；保存配置不会自动重启，需手动重启对应服务。在线通知位于独立的“通知”页，
+管理后台的“服务”页展示“游戏网关”和“游戏服务”两个部署服务；游戏服务内部
+仍可分别链接到 GMSV 的 `setup.cf` 与 SAAC 的 `acserv.cf` 配置页面。保存配置不会
+自动重启，需手动重启对应进程。在线通知位于独立的“通知”页，
 通过受限 operator 写入固定通知队列，再由 GMSV 主循环广播给在线玩家。
 
 ## 本地认证与管理后台

@@ -66,15 +66,21 @@ Compose 编排。先准备好 `runtime/legacy-server/`（发布包已包含该�
 ```bash
 cp .env.compose.example .env
 docker compose up -d --build
-docker compose logs -f legacy-server
+docker compose logs -f saac gmsv
 ```
 
 Compose 默认只把游戏网关 9065 和后台 8080 绑定到 `127.0.0.1`；需要局域网或
 VPN 访问时，显式设置 `STONEAGE_GATEWAY_BIND`/`STONEAGE_ADMIN_BIND` 并配合防火墙。
-GMSV 的 9065、SAAC 的 9300 只在 Compose 内网可见。operator 通过固定脚本控制
+GMSV 的 9065、SAAC 的 9300 只在 Compose 内网可见。`saac` 与 `gmsv` 是独立容器；
+operator 通过固定脚本控制
 Compose 容器，所以需要只给它挂载 `/var/run/docker.sock`；不要把该 socket 挂载到
 后台容器，也不要把后台直接暴露到公网。账号、SQLite 数据和角色目录均由卷或绑定
 目录持久化。
+
+多线路部署仍只保留一个网关服务：设置 `STONEAGE_GATEWAY_ROUTES`，用分号分隔
+多个 `监听地址=GMSV地址`，并为每个入口补充端口映射；每条线路对应一个独立的
+GMSV 容器和运行目录，所有 GMSV 连接同一个 SAAC 容器。客户端列表由启动器维护，
+不由网关下发。
 
 首次启动后访问 `http://127.0.0.1:8080/`。如果没有在 `.env` 设置管理员账号密码，
 可设置一次性的 `STONEAGE_ADMIN_SETUP_TOKEN` 后从 `/setup` 初始化管理员。

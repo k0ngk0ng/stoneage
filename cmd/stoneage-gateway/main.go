@@ -28,6 +28,7 @@ const legacyStateTransitionDelay = 100 * time.Millisecond
 type options struct {
 	listenAddress   string
 	upstreamAddress string
+	routes          string
 	trace           bool
 	traceBattle     bool
 	stateDelay      time.Duration
@@ -35,10 +36,16 @@ type options struct {
 	authRequired    bool
 }
 
+type gatewayRoute struct {
+	listenAddress   string
+	upstreamAddress string
+}
+
 func main() {
 	var opts options
 	flag.StringVar(&opts.listenAddress, "listen", "127.0.0.1:9065", "client-facing listen address")
 	flag.StringVar(&opts.upstreamAddress, "upstream", "127.0.0.1:19065", "numeric GMSV address")
+	flag.StringVar(&opts.routes, "routes", os.Getenv("STONEAGE_GATEWAY_ROUTES"), "semicolon-separated listener=GMSV route list; overrides -listen/-upstream")
 	flag.BoolVar(&opts.trace, "trace", false, "log translated function names (never logs password fields)")
 	flag.BoolVar(&opts.traceBattle, "trace-battle", false, "log server battle command bytes as hex (never logs password fields)")
 	flag.StringVar(&opts.authDB, "auth-db", os.Getenv("STONEAGE_AUTH_DB"), "SQLite account database (enables login authentication)")
@@ -56,6 +63,10 @@ func main() {
 }
 
 func serve(opts options, logger *log.Logger) error {
+	routes, err := configuredRoutes(opts)
+	if err != nil {
+		return err
+	}
 	var accountStore *auth.Store
 	if opts.authRequired {
 		if opts.authDB == "" {
@@ -74,24 +85,94 @@ func serve(opts options, logger *log.Logger) error {
 	} else {
 		logger.Printf("WARNING: game authentication disabled; use -auth-required for deployment")
 	}
-	listener, err := net.Listen("tcp", opts.listenAddress)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", opts.listenAddress, err)
+	listeners := make([]net.Listener, 0, len(routes))
+	for _, route := range routes {
+		listener, listenErr := net.Listen("tcp", route.listenAddress)
+		if listenErr != nil {
+			for _, opened := range listeners {
+				_ = opened.Close()
+			}
+			return fmt.Errorf("listen on %s: %w", route.listenAddress, listenErr)
+		}
+		listeners = append(listeners, listener)
+		logger.Printf("listening on %s -> numeric GMSV %s", route.listenAddress, route.upstreamAddress)
 	}
-	defer listener.Close()
-	logger.Printf("listening on %s -> numeric GMSV %s", opts.listenAddress, opts.upstreamAddress)
+	defer func() {
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+	}()
 
+	errorsCh := make(chan error, len(listeners))
+	for index, listener := range listeners {
+		route := routes[index]
+		go acceptConnections(listener, route, opts, accountStore, logger, errorsCh)
+	}
+	return <-errorsCh
+}
+
+func acceptConnections(
+	listener net.Listener,
+	route gatewayRoute,
+	opts options,
+	accountStore *auth.Store,
+	logger *log.Logger,
+	errorsCh chan<- error,
+) {
 	for {
 		client, err := listener.Accept()
 		if err != nil {
-			return fmt.Errorf("accept: %w", err)
+			errorsCh <- fmt.Errorf("accept on %s: %w", route.listenAddress, err)
+			return
 		}
 		go func() {
-			if err := handleConnection(client, opts, accountStore, logger); err != nil && !errors.Is(err, io.EOF) {
+			connectionOptions := opts
+			connectionOptions.upstreamAddress = route.upstreamAddress
+			if err := handleConnection(client, connectionOptions, accountStore, logger); err != nil && !errors.Is(err, io.EOF) {
 				logger.Printf("connection %s ended: %v", client.RemoteAddr(), err)
 			}
 		}()
 	}
+}
+
+func configuredRoutes(opts options) ([]gatewayRoute, error) {
+	if strings.TrimSpace(opts.routes) == "" {
+		if err := validateTCPAddress(opts.listenAddress, "listen address"); err != nil {
+			return nil, err
+		}
+		if err := validateTCPAddress(opts.upstreamAddress, "upstream address"); err != nil {
+			return nil, err
+		}
+		return []gatewayRoute{{listenAddress: opts.listenAddress, upstreamAddress: opts.upstreamAddress}}, nil
+	}
+	var routes []gatewayRoute
+	for index, raw := range strings.Split(opts.routes, ";") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return nil, fmt.Errorf("gateway route %d is empty", index+1)
+		}
+		listenAddress, upstreamAddress, ok := strings.Cut(raw, "=")
+		if !ok || strings.TrimSpace(listenAddress) == "" || strings.TrimSpace(upstreamAddress) == "" {
+			return nil, fmt.Errorf("invalid gateway route %q (want listen-address=upstream-address)", raw)
+		}
+		listenAddress = strings.TrimSpace(listenAddress)
+		upstreamAddress = strings.TrimSpace(upstreamAddress)
+		if err := validateTCPAddress(listenAddress, "listen address"); err != nil {
+			return nil, fmt.Errorf("gateway route %d: %w", index+1, err)
+		}
+		if err := validateTCPAddress(upstreamAddress, "upstream address"); err != nil {
+			return nil, fmt.Errorf("gateway route %d: %w", index+1, err)
+		}
+		routes = append(routes, gatewayRoute{listenAddress: listenAddress, upstreamAddress: upstreamAddress})
+	}
+	return routes, nil
+}
+
+func validateTCPAddress(address, label string) error {
+	if _, _, err := net.SplitHostPort(address); err != nil {
+		return fmt.Errorf("invalid %s %q: %w", label, address, err)
+	}
+	return nil
 }
 
 func handleConnection(client net.Conn, opts options, accountStore *auth.Store, logger *log.Logger) error {

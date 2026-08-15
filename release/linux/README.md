@@ -22,8 +22,8 @@ printf '%s\n' '请替换为强密码' | \
 一个随机的 `STONEAGE_ADMIN_SETUP_TOKEN`，访问 `/setup` 创建管理员；不要把该
 令牌写入公开脚本或长期保留。
 
-后台可以管理游戏账号、启用/禁用账号、重置密码、查看审计日志、发送在线通知、
-分别修改 GMSV/SAAC 常用配置，并通过受限 operator 重启服务：
+后台可以管理游戏账号、启用/禁用账号、重置密码、查看审计日志、发送在线通知，
+在“游戏服务”内部分别修改 GMSV/SAAC 常用配置，并通过受限 operator 重启服务：
 
 ```bash
 ./stop-admin.sh       # 停后台，不删除账号
@@ -37,7 +37,8 @@ printf '%s\n' '请替换为强密码' | \
 ./stop-server.sh      # 停游戏服务，保留角色和账号数据
 ```
 
-后台“服务”页面分别提供 GMSV、SAAC 和游戏网关的配置入口；GMSV 配置编辑
+后台“服务”页面展示游戏网关和游戏服务两个部署服务，游戏服务内部提供 GMSV、SAAC
+配置入口；GMSV 配置编辑
 `runtime/legacy-server/gmsv/setup.cf`，SAAC 配置编辑
 `runtime/legacy-server/saac/acserv.cf`。配置页面的保存不会自动重启服务，需回到
 “服务”页面手动重启对应进程。在线通知会写入受限的 `admin-notice.txt` 队列，
@@ -63,5 +64,17 @@ STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./start-server.sh
 后台 8080 或 SQLite 文件。需要互联网访问时，请将后台放在 Caddy/Nginx HTTPS
 反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE=true` 传给 `start-admin.sh`；
 游戏端优先使用 Tailscale/WireGuard 等 VPN。
+
+多线路仍只需要一个网关部署单元。用 `STONEAGE_GATEWAY_ROUTES` 配置多个
+`监听地址=GMSV地址`，用分号分隔，例如：
+
+```bash
+STONEAGE_GATEWAY_ROUTES='0.0.0.0:9065=127.0.0.1:19065;0.0.0.0:9066=127.0.0.1:19066' \
+  ./start-gateway.sh
+```
+
+同时要在防火墙/Compose 端口映射中放行每个客户端入口；19065、19066 等 GMSV
+上游端口只应留在服务器私网。每条线路对应独立 GMSV 配置和数据目录，SAAC 目录
+继续共享。
 
 发布包只包含演示人物，不包含开发机账号、运行日志、诊断文件或崩溃转储。
