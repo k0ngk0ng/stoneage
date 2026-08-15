@@ -3,6 +3,10 @@ set -euo pipefail
 
 source_root="${1:-vendor/upstream/2.5}"
 runtime_root="${2:-runtime/legacy-server}"
+gmsv_name="${STONEAGE_GMSV_NAME:-stoneage-local}"
+gmsv_id="${STONEAGE_GMSV_ID:-$gmsv_name}"
+gmsv_port="${STONEAGE_GMSV_PORT:-9065}"
+gmsv_server_number="${STONEAGE_GMSV_SERVER_NUMBER:-1}"
 
 required=(
   "$source_root/saac/saacjt.exe"
@@ -65,15 +69,16 @@ fi
 # Retain the archive's complete feature configuration, changing only the
 # local process identity and connection settings. awk keeps this portable
 # between the macOS and Linux implementations of sed.
-awk '
+awk -v gmsv_name="$gmsv_name" -v gmsv_id="$gmsv_id" -v gmsv_port="$gmsv_port" -v gmsv_server_number="$gmsv_server_number" '
 BEGIN {
   replacement["debuglevel"] = "1"
   replacement["acserv"] = "127.0.0.1"
   replacement["acservport"] = "9300"
   replacement["acpasswd"] = "test"
-  replacement["gameservname"] = "stoneage-local"
-  replacement["gameservid"] = "stoneage-local"
-  replacement["port"] = "9065"
+  replacement["gameservname"] = gmsv_name
+  replacement["gameservid"] = gmsv_id
+  replacement["port"] = gmsv_port
+  replacement["servernumber"] = gmsv_server_number
   # The legacy server indexes Connect[] directly by the operating-system file
   # descriptor. It opens more than twenty log files before accepting players,
   # so the archive default fdnum=10 rejects every client as "server full".
