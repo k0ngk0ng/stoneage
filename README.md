@@ -61,21 +61,28 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 
 Linux 也可以把旧版游戏服务、Go 网关、管理后台和受限 operator 一起交给
 Compose 编排。先准备好 `runtime/legacy-server/`（发布包已包含该目录），复制
-`.env.compose.example` 为 `.env` 并修改管理员密码，然后执行：
+`.env.compose.example` 为 `.env` 并修改管理员密码，然后执行（这是单机单线路生产部署）：
 
 ```bash
 cp .env.compose.example .env
+chmod 600 .env
+docker compose config --quiet
 docker compose up -d --build
-docker compose logs -f saac gmsv
+docker compose ps
+docker compose logs -f saac gmsv gateway
 ```
 
 Compose 默认只把游戏网关 9065 和后台 8080 绑定到 `127.0.0.1`；需要局域网或
-VPN 访问时，显式设置 `STONEAGE_GATEWAY_BIND`/`STONEAGE_ADMIN_BIND` 并配合防火墙。
+ VPN 访问时，显式设置 `STONEAGE_GATEWAY_BIND`/`STONEAGE_ADMIN_BIND` 并配合防火墙。
+如果玩家从公网连接，只将网关端口通过防火墙/VPN 暴露；后台应继续绑定回环地址，或
+放在带 HTTPS 和访问控制的反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE` 设为
+`true`。不要执行 `docker compose down -v`，否则会删除 SQLite 认证卷。
 GMSV 的 9065、SAAC 的 9300 只在 Compose 内网可见。`saac` 与 `gmsv` 是独立容器；
 operator 通过固定脚本控制
 Compose 容器，所以需要只给它挂载 `/var/run/docker.sock`；不要把该 socket 挂载到
 后台容器，也不要把后台直接暴露到公网。账号、SQLite 数据和角色目录均由卷或绑定
-目录持久化。
+目录持久化。网页中的网关、GMSV、SAAC 停止/重启操作分别对应各自容器；SAAC 停止
+时 GMSV 不能正常登录，生产维护时应先停止 GMSV 再停止 SAAC。
 
 多线路部署仍只保留一个网关服务：设置 `STONEAGE_GATEWAY_ROUTES`，用分号分隔
 多个 `监听地址=GMSV地址`，并为每个入口补充端口映射；每条线路对应一个独立的

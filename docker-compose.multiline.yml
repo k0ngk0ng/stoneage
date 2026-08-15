@@ -8,6 +8,14 @@ services:
     container_name: ${STONEAGE_GMSV2_CONTAINER:-stoneage-multiline-gmsv2}
     init: true
     restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: ${STONEAGE_LOG_MAX_SIZE:-10m}
+        max-file: ${STONEAGE_LOG_MAX_FILE:-5}
+    networks:
+      - backend
     depends_on:
       saac:
         condition: service_healthy

@@ -17,6 +17,7 @@ vendor/upstream/
 # Local paths and generated inventory may expose machine-specific locations.
 .env
 .env.*
+!.env.compose.example
 
 # Python bytecode
 __pycache__/
