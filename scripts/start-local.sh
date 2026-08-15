@@ -128,13 +128,18 @@ fi
 patch_args=(
   --source "$project_root/runtime/legacy-client/sa_2903.exe"
   --output "$project_root/runtime/legacy-client/sa_2903-local.exe"
-  --host "${STONEAGE_CLIENT_HOST:-127.0.0.1}"
-  --port "${STONEAGE_CLIENT_PORT:-9065}"
   --bypass-wgs
 )
 client_servers_file="${STONEAGE_CLIENT_SERVERS_FILE:-$project_root/runtime/client-servers.toml}"
-if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" ]]; then
-  patch_args+=(--servers-file "$client_servers_file")
+if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" || -n "${STONEAGE_CLIENT_SERVERS_URL:-}" ]]; then
+  if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" ]]; then
+    patch_args+=(--servers-file "$client_servers_file")
+  fi
+else
+  patch_args+=(
+    --host "${STONEAGE_CLIENT_HOST:-127.0.0.1}"
+    --port "${STONEAGE_CLIENT_PORT:-9065}"
+  )
 fi
 if [[ -n "${STONEAGE_CLIENT_SERVERS_URL:-}" ]]; then
   patch_args+=(--servers-url "$STONEAGE_CLIENT_SERVERS_URL")

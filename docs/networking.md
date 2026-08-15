@@ -32,6 +32,9 @@ STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./scripts/start-local.sh
   --host 192.168.1.50 --port 9065 --bypass-wgs
 ```
 
+上面的 `--host/--port` 仅用于没有服务器列表文件时的一次性单线路兼容用法；
+正式配置应把网关写入 TOML。
+
 如果需要在客户端里显示多个服务器/线路，使用同一个启动器的 TOML 配置：
 
 ```bash
@@ -42,6 +45,8 @@ STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./scripts/start-local.sh
 ```
 
 配置格式见 [`config/client-servers.toml.example`](../config/client-servers.toml.example)。
+网关的 `host`/`port` 统一写在 `gateways` 表中，线路通过 `gateway` ID 引用；
+新增网关或修改端口时只需修改列表文件，不需要改补丁命令。
 也可以用 `--servers-url https://example.com/servers.toml` 在启动时动态获取，
 并同时传入 `--servers-file` 作为离线回退。旧客户端不会在运行时读取文件，启动器
 会把列表嵌入一个生成的副本，原始客户端文件保持不变。

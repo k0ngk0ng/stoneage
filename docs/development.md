@@ -29,8 +29,9 @@
 
 客户端中选择“本機”→“本機一線”。服务器/线路列表默认由本地启动脚本生成；如果
 需要多个服务器或线路，可复制 [`config/client-servers.toml.example`](../config/client-servers.toml.example)
-为 `runtime/client-servers.toml`。启动脚本会在启动客户端前读取该 UTF-8 TOML，
-把列表写入旧客户端的 CP936 数据结构：
+为 `runtime/client-servers.toml`。TOML 中的 `gateways` 统一保存网关地址和端口，
+每条线路只引用一个 `gateway` ID；启动脚本会在启动客户端前读取该 UTF-8 TOML，
+把网关和线路列表写入旧客户端的 CP936 数据结构：
 
 ```bash
 cp config/client-servers.toml.example runtime/client-servers.toml
@@ -116,11 +117,11 @@ STONEAGE_UPSTREAM_PORT=19065 ./scripts/run-legacy-server.sh
   -upstream 127.0.0.1:19065 -trace
 ```
 
-客户端补丁与启动：
+客户端补丁与启动（网关地址已在 TOML 中，不再放在命令行）：
 
 ```bash
 ./scripts/patch-legacy-client.py \
-  --host 127.0.0.1 --port 9065 --bypass-wgs
+  --servers-file runtime/client-servers.toml --bypass-wgs
 ./scripts/run-legacy-client-wine.sh
 ```
 
@@ -131,7 +132,8 @@ GMSV 才会生效。
 管理后台的“服务”页展示“游戏网关”和“游戏服务”两个部署服务；游戏服务内部
 仍可分别链接到 GMSV 的 `setup.cf` 与 SAAC 的 `acserv.cf` 配置页面。保存配置不会
 自动重启，需手动重启对应进程。在线通知位于独立的“通知”页，
-通过受限 operator 写入固定通知队列，再由 GMSV 主循环广播给在线玩家。
+通过受限 operator 将 UTF-8 文本转换为 CP936 后写入固定通知队列，再由 GMSV
+主循环广播给在线玩家。
 
 ## 本地认证与管理后台
 

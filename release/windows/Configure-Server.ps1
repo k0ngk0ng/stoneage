@@ -28,10 +28,11 @@ $Patcher = Join-Path $Root "patch-legacy-client.py"
 $Arguments = @(
     "--source", $Source,
     "--output", $Output,
-    "--host", $IPv4,
-    "--port", $Port,
     "--bypass-wgs"
 )
+if (-not $ServersFile -and -not $ServersUrl) {
+    $Arguments += @("--host", $IPv4, "--port", $Port)
+}
 if ($ServersFile) {
     if (-not (Test-Path -LiteralPath $ServersFile -PathType Leaf)) {
         throw "Server list config does not exist: $ServersFile"

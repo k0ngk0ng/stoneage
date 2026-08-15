@@ -26,6 +26,8 @@ DEFAULT_SOURCE = Path("runtime/legacy-client/sa_2903.exe")
 DEFAULT_OUTPUT = Path("runtime/legacy-client/sa_2903-local.exe")
 KNOWN_SOURCE_SHA256 = "9abb989b207d2db6eeb0a95fbc13cfb681eca8a20e9ddc169edb64a03497a3ee"
 OLD_PORT = 9125
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 9065
 
 # This Taiwan-style client deliberately mixes traditional UI wording with a
 # mainland Windows code page.  The executable bytes prove that its ANSI code
@@ -165,13 +167,61 @@ def legacy_text(value: object, label: str, capacity: int) -> bytes:
     return encoded + b"\0"
 
 
-def normalize_server_list(raw: object) -> list[tuple[str, list[tuple[str, str, int]]]]:
+def parse_endpoint(raw: object, label: str) -> tuple[str, int]:
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{label} must be an object")
+    host_value = raw.get("host")
+    if not isinstance(host_value, str):
+        raise SystemExit(f"{label}.host must be an IPv4 address")
+    try:
+        host = str(ipaddress.IPv4Address(host_value))
+    except ipaddress.AddressValueError as error:
+        raise SystemExit(f"{label}.host must be an IPv4 address") from error
+    port_value = raw.get("port")
+    if isinstance(port_value, bool) or not isinstance(port_value, int):
+        raise SystemExit(f"{label}.port must be an integer")
+    if not 1 <= port_value <= 65535:
+        raise SystemExit(f"{label}.port must be between 1 and 65535")
+    return host, port_value
+
+
+def normalize_server_list(
+    raw: object,
+) -> tuple[tuple[str, int], list[tuple[str, list[tuple[str, str, int]]]]]:
     if not isinstance(raw, dict) or not isinstance(raw.get("groups"), list):
         raise SystemExit("server list config must contain a groups array")
     if not raw["groups"]:
         raise SystemExit("server list config must contain at least one group")
     if len(raw["groups"]) > MAX_SERVER_GROUPS:
         raise SystemExit(f"server list config supports at most {MAX_SERVER_GROUPS} groups")
+
+    # New configurations keep gateway addresses in one place and let each
+    # visible line reference an endpoint by ID. The old per-line host/port
+    # shape remains accepted when no gateways table is present.
+    gateways: dict[str, tuple[str, int]] = {}
+    gateways_raw = raw.get("gateways")
+    if gateways_raw is not None:
+        if not isinstance(gateways_raw, list) or not gateways_raw:
+            raise SystemExit("server list config gateways must be a non-empty array")
+        for gateway_index, gateway in enumerate(gateways_raw):
+            if not isinstance(gateway, dict):
+                raise SystemExit(f"gateways[{gateway_index}] must be an object")
+            gateway_id = gateway.get("id")
+            if not isinstance(gateway_id, str) or not gateway_id.strip():
+                raise SystemExit(f"gateways[{gateway_index}].id must be a non-empty string")
+            gateway_id = gateway_id.strip()
+            if gateway_id in gateways:
+                raise SystemExit(f"duplicate gateway id {gateway_id!r}")
+            gateways[gateway_id] = parse_endpoint(gateway, f"gateways[{gateway_index}]")
+
+    default_endpoint: tuple[str, int] | None = None
+    if gateways:
+        default_gateway = raw.get("default_gateway")
+        if default_gateway is None:
+            default_gateway = next(iter(gateways))
+        if not isinstance(default_gateway, str) or default_gateway not in gateways:
+            raise SystemExit("default_gateway must reference a configured gateway id")
+        default_endpoint = gateways[default_gateway]
 
     groups: list[tuple[str, list[tuple[str, str, int]]]] = []
     line_count = 0
@@ -196,38 +246,35 @@ def normalize_server_list(raw: object) -> list[tuple[str, list[tuple[str, str, i
                 f"groups[{group_index - 1}].lines[{line_index - 1}].name",
                 GAME_NAME_BYTES,
             )
-            host_value = line.get("host")
-            if not isinstance(host_value, str):
-                raise SystemExit(
-                    f"groups[{group_index - 1}].lines[{line_index - 1}].host must be an IPv4 address"
+            if gateways:
+                gateway_id = line.get("gateway")
+                if not isinstance(gateway_id, str) or gateway_id not in gateways:
+                    raise SystemExit(
+                        f"groups[{group_index - 1}].lines[{line_index - 1}].gateway "
+                        "must reference a configured gateway id"
+                    )
+                host, port_value = gateways[gateway_id]
+            else:
+                host, port_value = parse_endpoint(
+                    line,
+                    f"groups[{group_index - 1}].lines[{line_index - 1}]",
                 )
-            try:
-                host = str(ipaddress.IPv4Address(host_value))
-            except ipaddress.AddressValueError as error:
-                raise SystemExit(
-                    f"groups[{group_index - 1}].lines[{line_index - 1}].host must be an IPv4 address"
-                ) from error
-            port_value = line.get("port")
-            if isinstance(port_value, bool) or not isinstance(port_value, int):
-                raise SystemExit(
-                    f"groups[{group_index - 1}].lines[{line_index - 1}].port must be an integer"
-                )
-            if not 1 <= port_value <= 65535:
-                raise SystemExit(
-                    f"groups[{group_index - 1}].lines[{line_index - 1}].port must be between 1 and 65535"
-                )
+                if default_endpoint is None:
+                    default_endpoint = (host, port_value)
             normalized_lines.append((str(line_name), host, port_value))
             line_count += 1
         groups.append((str(group_name), normalized_lines))
 
     if line_count > MAX_SERVER_LINES:
         raise SystemExit(f"server list config supports at most {MAX_SERVER_LINES} lines")
-    return groups
+    if default_endpoint is None:
+        raise SystemExit("server list config could not determine a default gateway")
+    return default_endpoint, groups
 
 
 def parse_server_list_text(
     text: str, source: str, format_hint: str = ""
-) -> list[tuple[str, list[tuple[str, str, int]]]]:
+) -> tuple[tuple[str, int], list[tuple[str, list[tuple[str, str, int]]]]]:
     format_name = format_hint.lower()
     if format_name == "auto":
         errors: list[str] = []
@@ -259,7 +306,9 @@ def parse_server_list_text(
     return normalize_server_list(raw)
 
 
-def load_server_list(path: Path) -> list[tuple[str, list[tuple[str, str, int]]]]:
+def load_server_list(
+    path: Path,
+) -> tuple[tuple[str, int], list[tuple[str, list[tuple[str, str, int]]]]]:
     try:
         text = path.read_text(encoding="utf-8-sig")
     except OSError as error:
@@ -267,7 +316,9 @@ def load_server_list(path: Path) -> list[tuple[str, list[tuple[str, str, int]]]]
     return parse_server_list_text(text, str(path))
 
 
-def load_server_list_url(url: str) -> list[tuple[str, list[tuple[str, str, int]]]]:
+def load_server_list_url(
+    url: str,
+) -> tuple[tuple[str, int], list[tuple[str, list[tuple[str, str, int]]]]]:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise SystemExit("server list URL must use http:// or https://")
@@ -371,12 +422,19 @@ def main() -> int:
     parser = ArgumentParser()
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9065)
+    parser.add_argument(
+        "--host",
+        help="legacy one-line fallback IPv4 (prefer a gateway in --servers-file)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        help="legacy one-line fallback port (prefer a gateway in --servers-file)",
+    )
     parser.add_argument(
         "--servers-file",
         type=Path,
-        help="UTF-8 TOML (or JSON) file containing server groups and game lines",
+        help="UTF-8 TOML (or JSON) file containing gateways, groups and game lines",
     )
     parser.add_argument(
         "--servers-url",
@@ -391,6 +449,13 @@ def main() -> int:
 
     if (args.servers_file or args.servers_url) and not args.bypass_wgs:
         raise SystemExit("--servers-file/--servers-url require --bypass-wgs")
+    if (args.servers_file or args.servers_url) and (args.host is not None or args.port is not None):
+        raise SystemExit(
+            "put gateway host/port in the server-list config; "
+            "do not combine it with --host/--port"
+        )
+    if (args.host is None) != (args.port is None):
+        raise SystemExit("--host and --port must be provided together")
 
     # The archived client is an immutable input.  Catch both the obvious
     # same-path case and an existing hardlink/symlink to the source before any
@@ -411,10 +476,36 @@ def main() -> int:
         # the normal write path below creates it.
         pass
 
+    if args.servers_url:
+        try:
+            endpoint, groups = load_server_list_url(args.servers_url)
+        except SystemExit as error:
+            if args.servers_file is None:
+                raise
+            print(f"warning: {error}; using local server list fallback", file=sys.stderr)
+            endpoint, groups = load_server_list(args.servers_file)
+    elif args.servers_file is not None:
+        endpoint, groups = load_server_list(args.servers_file)
+    else:
+        endpoint = parse_endpoint(
+            {
+                "host": args.host if args.host is not None else DEFAULT_HOST,
+                "port": args.port if args.port is not None else DEFAULT_PORT,
+            },
+            "default gateway",
+        )
+        groups = [
+            (
+                "本機",
+                [("本機一線", endpoint[0], endpoint[1])],
+            )
+        ]
+
     # The legacy binary has a fixed-size IPv4 string slot. Restrict this tool
     # to numeric IPv4 so a replacement can never overwrite adjacent bytes.
-    host = str(ipaddress.IPv4Address(args.host)).encode("ascii")
-    if not 1 <= args.port <= 65535:
+    endpoint_host, endpoint_port = endpoint
+    host = str(ipaddress.IPv4Address(endpoint_host)).encode("ascii")
+    if not 1 <= endpoint_port <= 65535:
         raise SystemExit("port must be between 1 and 65535")
 
     source = source_path.read_bytes()
@@ -437,7 +528,7 @@ def main() -> int:
     replacement = host + b"\0" * (len(legacy_endpoint) - len(host))
     patched = bytearray(source)
     patched[endpoint_offset : endpoint_offset + len(legacy_endpoint)] = replacement
-    struct.pack_into("<H", patched, port_offset, args.port)
+    struct.pack_into("<H", patched, port_offset, endpoint_port)
 
     actual_connection_error = bytes(
         patched[
@@ -466,33 +557,6 @@ def main() -> int:
             raise SystemExit(
                 "refusing to patch an unknown WGS call site: "
                 f"expected {WGS_POLL_CALL.hex()}, got {actual_call.hex()}"
-            )
-        if args.servers_url:
-            try:
-                groups = load_server_list_url(args.servers_url)
-            except SystemExit as error:
-                if args.servers_file is None:
-                    raise
-                print(f"warning: {error}; using local server list fallback", file=sys.stderr)
-                groups = load_server_list(args.servers_file)
-        elif args.servers_file is not None:
-            groups = load_server_list(args.servers_file)
-        else:
-            groups = normalize_server_list(
-                {
-                    "groups": [
-                        {
-                            "name": "本機",
-                            "lines": [
-                                {
-                                    "name": "本機一線",
-                                    "host": args.host,
-                                    "port": args.port,
-                                }
-                            ],
-                        }
-                    ]
-                }
             )
         initializer, phase_helper_offset = build_local_initializer(groups)
         cave = bytes(
@@ -593,7 +657,7 @@ def main() -> int:
     print(f"source_sha256={source_hash}")
     print(f"output={output_path}")
     print(f"output_sha256={digest(patched)}")
-    print(f"endpoint={args.host}:{args.port}")
+    print(f"endpoint={endpoint_host}:{endpoint_port}")
     print(f"wgs={'bypassed' if args.bypass_wgs else 'enabled'}")
     return 0
 

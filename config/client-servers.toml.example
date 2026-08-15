@@ -1,22 +1,37 @@
 version = 1
+# The default gateway is used for the legacy EXE's fixed endpoint slot.
+default_gateway = "local"
+
+# Define each client-facing gateway once. Lines below only reference its id.
+[[gateways]]
+id = "local"
+host = "127.0.0.1"
+port = 9065
+
+[[gateways]]
+id = "friend"
+host = "192.168.1.50"
+port = 9065
+
+[[gateways]]
+id = "friend-alt"
+host = "192.168.1.50"
+port = 9066
 
 [[groups]]
 name = "本機"
 
 [[groups.lines]]
 name = "本機一線"
-host = "127.0.0.1"
-port = 9065
+gateway = "local"
 
 [[groups]]
 name = "朋友服"
 
 [[groups.lines]]
 name = "一線"
-host = "192.168.1.50"
-port = 9065
+gateway = "friend"
 
 [[groups.lines]]
 name = "备用线"
-host = "192.168.1.50"
-port = 9066
+gateway = "friend-alt"

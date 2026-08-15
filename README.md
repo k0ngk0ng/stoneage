@@ -111,8 +111,9 @@ SQLite 认证卷。
 ./scripts/build-release.sh
 ```
 
-现成包及 SHA-256 位于 [`dist/`](dist/)。macOS 应用仍需要外部 Wine 11 与
-Docker Desktop/OrbStack；Win11 客户端本身不需要 Wine。发布说明见
+构建输出和 SHA-256 清单会写入 [`dist/`](dist/)（该目录是本地生成目录，不随 Git
+保存）。macOS 应用仍需要外部 Wine 11 与 Docker Desktop/OrbStack；Win11 客户端
+本身不需要 Wine。发布说明见
 [`docs/release-macos.md`](docs/release-macos.md)、
 [`docs/windows.md`](docs/windows.md) 和
 [`docs/verified-features.md`](docs/verified-features.md)。

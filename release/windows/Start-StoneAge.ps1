@@ -43,10 +43,11 @@ if ($NeedsPatch) {
     $PatchArguments = @(
         "--source", $SourceExe,
         "--output", $ClientExe,
-        "--host", $Server,
-        "--port", $Port,
         "--bypass-wgs"
     )
+    if (-not $ServersFile -and -not $ServersUrl) {
+        $PatchArguments += @("--host", $Server, "--port", $Port)
+    }
     if ($ServersFile) {
         if (-not (Test-Path -LiteralPath $ServersFile -PathType Leaf)) {
             throw "Server list config does not exist: $ServersFile"

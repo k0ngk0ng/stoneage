@@ -149,12 +149,14 @@ if [[ -n "$client_servers_url" || -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || \
   patch_args=(
     --source "$client_root/sa_2903.exe"
     --output "$client_root/$client_exe"
-    --host "$client_host"
-    --port "$client_port"
     --bypass-wgs
   )
-  if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" ]]; then
-    patch_args+=(--servers-file "$client_servers_file")
+  if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" || -n "$client_servers_url" ]]; then
+    if [[ -n "${STONEAGE_CLIENT_SERVERS_FILE:-}" || -f "$client_servers_file" ]]; then
+      patch_args+=(--servers-file "$client_servers_file")
+    fi
+  else
+    patch_args+=(--host "$client_host" --port "$client_port")
   fi
   if [[ -n "$client_servers_url" ]]; then
     patch_args+=(--servers-url "$client_servers_url")

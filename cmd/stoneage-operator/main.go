@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 type request struct {
@@ -300,7 +302,24 @@ func (value *operator) notify(message string) error {
 	if utf8.RuneCountInString(message) > 240 {
 		return errors.New("notification is limited to 240 characters")
 	}
-	return value.runScriptWithArgs("send-notification.sh", 10*time.Second, message)
+	encoded, err := notificationCP936(message)
+	if err != nil {
+		return err
+	}
+	return value.runScriptWithArgs("send-notification.sh", 10*time.Second, string(encoded))
+}
+
+func notificationCP936(message string) ([]byte, error) {
+	encoded, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(message))
+	if err != nil {
+		return nil, fmt.Errorf("notification contains characters not representable in CP936: %w", err)
+	}
+	// GMSV reads the queue through a 1024-byte line buffer. Keep the encoded
+	// message within one line even when a CP936 character uses two bytes.
+	if len(encoded) > 1023 {
+		return nil, errors.New("notification is too large for the CP936 queue")
+	}
+	return encoded, nil
 }
 
 func (value *operator) runScript(script string, timeout time.Duration) error {

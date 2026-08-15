@@ -86,11 +86,11 @@ func TestOperatorStatusPrefersFixedContainerStatusScript(t *testing.T) {
 func TestOperatorStopActionsUseFixedScripts(t *testing.T) {
 	directory := t.TempDir()
 	actions := map[string]string{
-		"stop":          "stop-server.sh",
-		"stop_game":     "stop-game.sh",
-		"stop_gateway":  "stop-gateway.sh",
-		"stop_gmsv":     "stop-gmsv.sh",
-		"stop_saac":     "stop-saac.sh",
+		"stop":         "stop-server.sh",
+		"stop_game":    "stop-game.sh",
+		"stop_gateway": "stop-gateway.sh",
+		"stop_gmsv":    "stop-gmsv.sh",
+		"stop_saac":    "stop-saac.sh",
 	}
 	for _, script := range actions {
 		path := filepath.Join(directory, script)
@@ -127,8 +127,12 @@ func TestOperatorNotificationUsesFixedScriptAndLiteralArgument(t *testing.T) {
 	if err := value.notify("维护提醒 $(touch should-not-run)"); err != nil {
 		t.Fatal(err)
 	}
+	expected, err := notificationCP936("维护提醒 $(touch should-not-run)")
+	if err != nil {
+		t.Fatal(err)
+	}
 	content, err := os.ReadFile(marker)
-	if err != nil || string(content) != "维护提醒 $(touch should-not-run)" {
+	if err != nil || string(content) != string(expected) {
 		t.Fatalf("notification marker = %q, err=%v", content, err)
 	}
 	if _, err := os.Stat(filepath.Join(directory, "should-not-run")); !os.IsNotExist(err) {
@@ -140,5 +144,8 @@ func TestOperatorNotificationUsesFixedScriptAndLiteralArgument(t *testing.T) {
 	long := strings.Repeat("中", 241)
 	if err := value.notify(long); err == nil {
 		t.Fatal("oversized notification accepted")
+	}
+	if _, err := notificationCP936("StoneAge 😀"); err == nil {
+		t.Fatal("unrepresentable CP936 notification accepted")
 	}
 }
