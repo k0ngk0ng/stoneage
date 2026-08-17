@@ -53,3 +53,16 @@ server/legacy/source/2.5/saac/data/fmsmemodir/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Third-party client source consulted as read-only reference for RE.  Not
+# ours to redistribute, so it stays out of the repo.
+reference/
+
+# Mobile client generated assets and local build outputs. Keep the client
+# source, scene, tests and asset-generation tools in Git; regenerate these
+# files locally when needed.
+client/mobile/assets/generated/
+client/mobile/assets/fonts/
+client/mobile/android/.build_version
+client/mobile/builds/
+online-*.png

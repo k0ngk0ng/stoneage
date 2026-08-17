@@ -7,7 +7,27 @@
 
 typedef struct {
     HWND hwnd;
+    LONG area;
+    int occurrence;
+    int seen;
 } find_window_context;
+
+/* When two legacy clients are open at once (for example player_demo and
+   FriendHero), both surfaces have the same size and title.  The default
+   remains the first surface for backwards compatibility, while the
+   occurrence override lets the test driver address the second one without
+   changing the game client itself. */
+static int requested_window_occurrence(void)
+{
+    const char *value = getenv("STONEAGE_WINDOW_OCCURRENCE");
+    char *end = NULL;
+    long occurrence;
+
+    if (!value || !*value) return 0;
+    occurrence = strtol(value, &end, 10);
+    if (!end || *end != '\0' || occurrence < 0 || occurrence > 32) return 0;
+    return (int)occurrence;
+}
 
 static BOOL CALLBACK find_stoneage_window(HWND hwnd, LPARAM parameter)
 {
@@ -15,9 +35,13 @@ static BOOL CALLBACK find_stoneage_window(HWND hwnd, LPARAM parameter)
     char title[256] = {0};
     RECT client = {0};
 
-    if (!IsWindowVisible(hwnd) || GetWindowTextA(hwnd, title, sizeof(title)) == 0) {
+    if (!IsWindowVisible(hwnd)) {
         return TRUE;
     }
+    /* A client launched in a Wine virtual desktop can briefly expose an empty
+       title while cnc-ddraw creates the surface.  The size check below is the
+       reliable discriminator, so do not reject that window on title text. */
+    GetWindowTextA(hwnd, title, sizeof(title));
     if (!GetClientRect(hwnd, &client)) {
         return TRUE;
     }
@@ -26,11 +50,16 @@ static BOOL CALLBACK find_stoneage_window(HWND hwnd, LPARAM parameter)
        2.5 build it changes from ASCII "StoneAge" to CP936 full-width text
        after WGS login, so title-byte matching cannot be reliable.  The
        dedicated Wine prefix has one visible top-level 4:3 game surface. */
-    if (GetParent(hwnd) == NULL &&
-        client.right >= 640 && client.bottom >= 480 &&
-        client.right * 3 == client.bottom * 4) {
-        context->hwnd = hwnd;
-        return FALSE;
+    /* cnc-ddraw can expose a letterboxed 16:9 client surface on modern
+       Wine even though the legacy game itself renders a 4:3 viewport.  Do
+       not require an exact aspect ratio here; select the largest game-sized
+       top-level surface instead. */
+    if (client.right >= 640 && client.bottom >= 480) {
+        LONG area = client.right * client.bottom;
+        if (context->seen++ == context->occurrence) {
+            context->hwnd = hwnd;
+            context->area = area;
+        }
     }
     return TRUE;
 }
@@ -41,6 +70,7 @@ static HWND wait_for_stoneage_window(DWORD timeout_ms)
 
     do {
         find_window_context context = {0};
+        context.occurrence = requested_window_occurrence();
         EnumWindows(find_stoneage_window, (LPARAM)&context);
         if (context.hwnd) {
             return context.hwnd;
@@ -74,6 +104,11 @@ static void click_game(HWND hwnd, int x, int y)
         window_y = MulDiv(y, client.bottom, 480);
     }
 
+    /* The legacy hit-test code reads global mouse state during its render
+       tick. Make the selected client foreground before injecting the message
+       so a second concurrently running Wine client receives the click. */
+    SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
     LPARAM point = MAKELPARAM(window_x, window_y);
     SendMessageA(hwnd, WM_MOUSEMOVE, 0, point);
     /* HitDispNo/HitFontNo are produced by the next render tick. Old menu
@@ -100,6 +135,8 @@ static void click_game_button(HWND hwnd, int x, int y, UINT button)
         window_y = MulDiv(y, client.bottom, 480);
     }
 
+    SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
     LPARAM point = MAKELPARAM(window_x, window_y);
     SendMessageA(hwnd, WM_MOUSEMOVE, 0, point);
     Sleep(250);

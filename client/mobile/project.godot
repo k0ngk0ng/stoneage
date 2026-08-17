@@ -1,0 +1,29 @@
+; StoneAge mobile vertical client
+; Godot 4.x project.  The generated PNGs under assets/generated are checked
+; into this project, so an export never reads the 2.5 installation.
+
+config_version=5
+
+[application]
+config/name="StoneAge Mobile"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.2", "GL Compatibility")
+
+[display]
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/size/window_width_override=390
+window/size/window_height_override=844
+window/stretch/mode="canvas_items"
+; Expand the logical canvas on taller/wider portrait phones instead of adding
+; black side bars around the 390x844 design reference.
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.035, 0.047, 0.055, 1)
