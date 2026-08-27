@@ -620,6 +620,25 @@ for (const expected of [
 ]) {
   if (!expected.test(html)) throw new Error(`field HUD regression: ${expected}`);
 }
+/* BATTLEMENU.CPP::BattleTargetSelect() is used by ordinary H as well as
+   capture and actor-targeted magic.  Its MakeWindowDisp(210,356,3,2) pixels
+   begin at pActInfoWnd->x/y after the REALBIN (-32,-24) anchor is applied;
+   both prompt lines are then stocked at +38,+28 and +38,+52. */
+const battleTargetRenderStart = script.indexOf("  function renderBattleTargets(){");
+const battleTargetRenderEnd = script.indexOf("  async function sendBattleTarget", battleTargetRenderStart);
+const battleTargetRenderSource = script.slice(battleTargetRenderStart, battleTargetRenderEnd);
+if (battleTargetRenderStart < 0 || battleTargetRenderEnd <= battleTargetRenderStart ||
+    !/if\(battleUsesActorTarget\(action\)\)\{[\s\S]*panel\.classList\.add\("actor-target-prompt"\)[\s\S]*battleTargetPromptPlacement\(panel\)[\s\S]*panel\.classList\.remove\("hidden"\)/.test(battleTargetRenderSource) ||
+    /if\(action\.kind==="attack"\)[\s\S]*panel\.classList\.add\("hidden"\)/.test(battleTargetRenderSource)) {
+  throw new Error("ordinary attack must retain the native BattleTargetSelect prompt window");
+}
+for (const expected of [
+  /#battle-target-panel\.actor-target-prompt \{[^}]*width:192px;height:96px;min-height:96px;padding:0/,
+  /#battle-target-panel\.actor-target-prompt \.battle-wnd2-frame\{left:0;top:0;width:192px;height:96px\}/,
+  /#battle-target-panel\.actor-target-prompt > strong\{left:38px;top:28px;width:132px;font:11px\/24px/,
+]) {
+  if (!expected.test(html)) throw new Error(`native battle target prompt regression: ${expected}`);
+}
 /* InitBattleMenu/BattleButtonAttack keep the master's button memory
    independent from the active pet's later W menu.  A real H -> W turn must
    therefore reopen Attack on the next BP, and the opening turn starts with

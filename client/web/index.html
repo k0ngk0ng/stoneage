@@ -655,10 +655,9 @@
     #battle-menu button { position:absolute; width:52px; height:50px; padding:0; border:0; opacity:0; pointer-events:none; }
     #battle-menu button:nth-child(1){left:4px;top:22px} #battle-menu button:nth-child(2){left:57px;top:22px}
     #battle-menu button:nth-child(3){left:110px;top:22px} #battle-menu button:nth-child(4){left:163px;top:22px}
-    /* BattleTargetSelect() creates MakeWindowDisp(210,356,3,2): the
-       executable's 3x2 tile window starts at (242,380) after the 32/24
-       window inset.  Keep that small prompt at the native bottom position;
-       the actor/row hit list is the only live content inside it. */
+    /* BattleTargetSelect() creates MakeWindowDisp(210,356,3,2).  The generic
+       list surface retains its browser hit-list padding; actor targeting
+       below overrides it with the executable's exact 192x96 window. */
     #battle-target-panel{position:absolute;left:210px;top:356px;width:256px;height:124px;min-height:124px;padding:54px 32px 10px;z-index:24;pointer-events:auto;color:#f5ecd4;background:transparent;border:0;box-shadow:none;font:11px/15px Tahoma,"Microsoft YaHei",sans-serif}
     /* BattleTargetSelect() keeps this hint window out of the actor under the
        pointer.  The native coordinates are logical 640x480 pixels; the
@@ -682,11 +681,15 @@
     #battle-target-list button:hover,#battle-target-list button:focus{background:transparent;color:#ffe88b;outline:0;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
     #battle-target-list button.dead{color:#9c8b82;filter:saturate(.35)}
     #battle-target-panel #battle-target-cancel{position:absolute;left:88px;top:104px;display:block;width:80px;height:16px;margin:0;padding:0;border:0;color:transparent;background:transparent;box-shadow:none;font-size:0}
-    /* H/T and actor-targeted magic use the executable's small
-       BattleTargetSelect() information window, not a browser target list.
-       It is only a hint layer, so clicks still pass through to the actor hit
-       boxes underneath. */
-    #battle-target-panel.actor-target-prompt { pointer-events:none; }
+    /* H/T and actor-targeted magic all run BattleTargetSelect().  WindowDisp
+       submits each tile at (x+32,y+24), while CG_WND2_G_* carries the native
+       (-32,-24) anchor; decoded pixels therefore begin at pActInfoWnd->x/y,
+       not 32/24 pixels inside it.  StockFontBuffer uses (+38,+28) and
+       (+38,+52), hence the 24px two-line cadence below.  This is only a hint
+       layer, so actor hit boxes remain the actual input targets. */
+    #battle-target-panel.actor-target-prompt { width:192px;height:96px;min-height:96px;padding:0;pointer-events:none; }
+    #battle-target-panel.actor-target-prompt .battle-wnd2-frame{left:0;top:0;width:192px;height:96px}
+    #battle-target-panel.actor-target-prompt > strong{left:38px;top:28px;width:132px;font:11px/24px Tahoma,"Microsoft YaHei",sans-serif}
     #battle-target-panel.actor-target-prompt #battle-target-cancel,
     #battle-target-panel.actor-target-prompt #battle-target-list { display:none; }
     /* BattleButtonJujutsu/Item/Pet/Waza all pass native 640x480 logical
@@ -5613,20 +5616,10 @@
     if(!action){panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom");panel.classList.add("hidden");return;}
     if(!battleActionAllowed(action)){app.battleState.pendingAction=null;panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom");panel.classList.add("hidden");return;}
     if(battleUsesActorTarget(action)){
-      /* BattleTargetSelect() paints a small brown information window for
-         actor-targeted skills, but ordinary H is deliberately different in
-         the browser: the player clicks the opponent's body directly.  A
-         visible panel here looked like a second target menu and also covered
-         the lower formation on narrow screens.  Keep the native hint for
-         skills that need a row/side selector, while attack uses only the
-         actor hit-box/hover frame and the battle status line. */
-      if(action.kind==="attack"){
-        panel.dataset.promptPlacement="";
-        panel.classList.remove("actor-target-prompt","target-prompt-top","target-prompt-bottom");
-        panel.classList.add("hidden");
-        panel.setAttribute("aria-label","请直接点击攻击目标");
-        return;
-      }
+      /* BattleTargetSelect() is shared by BATTLE_ATTACK, BATTLE_CAPTURE and
+         actor-targeted magic.  The browser still selects through the actor's
+         native 48x48 hit box, but it must not drop this brown information
+         window just because the pending command is ordinary H. */
       panel.classList.add("actor-target-prompt");
       battleTargetPromptPlacement(panel);
       panel.setAttribute("aria-label",action.kind==="attack"?"请选择攻击目标":"请选择战斗目标");
