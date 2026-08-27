@@ -1760,8 +1760,16 @@
     /* MENU.CPP only paints the floor name, X/Y and one close button over
        CG_MAP_WND.  The old web diagnostic list covered the actual map art. */
     #map-screen #map-summary{left:410px;top:35px;width:204px;margin:0;text-align:left;white-space:nowrap;overflow:hidden;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
-    #map-screen #map-coordinates{left:449px;top:190px;width:146px;height:18px;display:flex;gap:20px;color:#ffe34f;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;white-space:nowrap;pointer-events:none}
-    #map-screen #map-close{left:420px;top:226px;width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none}
+    /* StockFontBuffer() places X/Y at two independent anchors.  A flex row
+       makes Y drift whenever X changes width (especially at 10/100), while
+       the native %3d fields remain fixed at x and x+73. */
+    #map-screen #map-coordinates{left:0;top:0;width:640px;height:480px;color:#ffe34f;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;white-space:pre;pointer-events:none}
+    #map-screen #map-x,#map-screen #map-y{position:absolute;top:190px}
+    #map-screen #map-x{left:449px}
+    #map-screen #map-y{left:522px}
+    /* CG_CLOSE_BTN is stocked at the window centre x=512, y=226.  Its
+       bitmap origin is (-40,-8), yielding the actual 80x16 hit rectangle. */
+    #map-screen #map-close{left:472px;top:218px;width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none}
     #album-screen #album-list{top:46px;height:358px}
     #album-screen #album-list .data-card{min-height:32px;padding:2px 5px}
     #album-screen #album-list .data-card small{display:none}
@@ -4640,8 +4648,8 @@
     /* This is the exact live text layer from MENU.CPP::mapWndNo==0.  Keep
        map geometry/resource diagnostics out of the native window. */
     summary.textContent=String(app.map.name||`楼层 ${app.map.floor}`);
-    xNode.textContent=`X ${Number(app.position[0])||0}`;
-    yNode.textContent=`Y ${Number(app.position[1])||0}`;
+    xNode.textContent=`X ${String(Number(app.position[0])||0).padStart(3," ")}`;
+    yNode.textContent=`Y ${String(Number(app.position[1])||0).padStart(3," ")}`;
     /* The map window is opened after the first M packet in normal play, but
        the DAT request is intentionally lazy so entering a field never waits
        for a whole-floor file.  Keep the current player marker useful while

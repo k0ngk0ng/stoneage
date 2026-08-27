@@ -97,6 +97,15 @@ for (let battle = 0; battle < 220; battle++) {
 
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+/* Most UI styles live inside the script's legacyStyle template literal.
+   A stray backtick in a CSS comment can therefore leave a perfectly
+   rendered static login page while preventing the complete client IIFE from
+   starting.  Parse the actual browser script before checking its features. */
+try {
+  new Function(script);
+} catch (error) {
+  throw new Error(`web client script syntax regression: ${error?.message || error}`);
+}
 /* The fish-bone is a painted legacy sprite.  A browser Pointer Lock would
    move/recapture the user's real mouse during a map fold, which is the
    opposite of the native client's behavior and makes the cursor appear to
@@ -537,6 +546,14 @@ for (const expected of [
   /function drawAutoMap\(/,
   /function requestAutoMapData\(/,
   /fetch\(`?\/maps\//,
+  /* MENU.CPP stocks the coordinate fields at independent x/x+73 anchors
+     and CG_CLOSE_BTN at (mx,my+102), whose bitmap offset is (-40,-8). */
+  /#map-screen #map-coordinates\{left:0;top:0;width:640px;height:480px;/,
+  /#map-screen #map-x\{left:449px\}/,
+  /#map-screen #map-y\{left:522px\}/,
+  /#map-screen #map-close\{left:472px;top:218px;width:80px;height:16px;/,
+  /xNode\.textContent=`X \$\{String\(Number\(app\.position\[0\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
+  /yNode\.textContent=`Y \$\{String\(Number\(app\.position\[1\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
   /* M's event layer is commonly empty in 2.5; warp/door checks must merge
      the static DAT event table without replacing live tile/object collision. */
   /const liveEvent=Number\(map\.events\?\.\[index\]\?\?0\);[\s\S]{0,900}event=Number\(full\.event\?\.\[fullIndex\]\?\?0\);[\s\S]{0,180}return \{tile:Number\(map\.tiles\?\.\[index\]\?\?0\),object:Number\(map\.objects\?\.\[index\]\?\?0\),event\};/,
