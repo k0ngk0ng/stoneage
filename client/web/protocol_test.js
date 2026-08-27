@@ -209,7 +209,7 @@ for (const expected of [
   /* The visible deadline must also gate late clicks when a background tab
      delays the setTimeout callback that submits the native wait command. */
   /function battleChoiceExpired\(state=app\.battleState,now=Date\.now\(\)\)[\s\S]{0,420}deadline>0&&deadline<=now/,
-  /if\(state\.movieActive\|\|battleChoiceExpired\(state\)\)return false;/,
+  /if\(state\.movieActive\|\|battleChoiceExpired\(state\)\|\|battleLocalDeath\(state\)\)return false;/,
   /* A floor transition can finish DAT decoding while another floor is
      visible.  A later return must reinstall that decoded cache into the
      current autoMapData back-buffer instead of suppressing the request and
@@ -337,7 +337,7 @@ for (const expected of [
   /image\.dataset\.logicalBitmap=String\(BATTLE_COUNTDOWN_LOGICAL_BASE\+digit\)/,
   /* BattleCntDownDisp() plays SE 203 exactly when the shared deadline
      expires, before the implicit N/W wait commands are sent. */
-  /function battlePlayerTimeoutDefaults\(state=app\.battleState\)[\s\S]{0,520}playSoundEffect\(203,320,240\)[\s\S]{0,780}send\("B",\["N"\]\)/,
+  /function battlePlayerTimeoutDefaults\(state=app\.battleState\)[\s\S]{0,520}playSoundEffect\(203,320,240\)[\s\S]{0,900}leaveBattleMenuMotion\(state,"player"\)[\s\S]{0,900}send\("B",\["N"\]\)/,
   /function battlePetChoiceTimeout\(state\)[\s\S]{0,760}playSoundEffect\(203,320,240\)[\s\S]{0,1200}sendBattlePetDefault\(state,\{force:true\}\)/,
   /* The player->pet hand-off can cross the shared deadline after the active
      pet has died/disappeared.  Native BattleCntDownDisp() sends no W in that
@@ -353,7 +353,7 @@ for (const expected of [
   /node\.removeAttribute\("data-seconds"\);[\s\S]{0,120}value\.removeAttribute\("aria-label"\)/,
   /* Surprise turns resolve at the CHAR_IN/action_inf==3 boundary; the web
      port must clear both bits before opening a normal command timer. */
-  /function battleOpenCommandCountdown\(state\)[\s\S]{0,1500}state\.bpFlags=flags&~\(BATTLE_BP_ENEMY_SURPRISAL\|BATTLE_BP_PLAYER_SURPRISAL\)/,
+  /function battleOpenCommandCountdown\(state\)[\s\S]{0,1900}state\.bpFlags=flags&~\(BATTLE_BP_ENEMY_SURPRISAL\|BATTLE_BP_PLAYER_SURPRISAL\)/,
   /function submitBattleSurpriseDefaults\(state,turnKey=state\?\.turnKey\?\?state\?\.turn\)[\s\S]{0,320}clearBattleChoiceTimer\(state\)/,
   /* Clearing the visual enemy-surprise bit must not let the generic
      MENU_NON path submit a second N/W pair for the same menu generation. */
@@ -364,7 +364,7 @@ for (const expected of [
   /function submitBattleSurpriseDefaults[\s\S]{0,1100}if\(battleActivePet\(state\)\)commands\.push\("W\|FF\|FF"\)/,
   /* Selecting an actor-target pet skill keeps the shared absolute deadline;
      the eventual W submission or timeout remains its only owner. */
-  /function closeBattlePopup\(options=\{\}\)[\s\S]{0,700}!options\.preserveChoiceTimer\)clearBattlePetChoiceTimer\(state\)/,
+  /function closeBattlePopup\(options=\{\}\)[\s\S]{0,700}options\.clearChoiceTimer\)clearBattlePetChoiceTimer\(state\)/,
   /beginBattleAction\(\{kind:"pet"[\s\S]{0,180}\{closePopup:\{skipDefault:true,preserveChoiceTimer:true\}\}\)/,
   /* W status records contain five fields for every native pet-skill slot,
      including empty slots.  The command must retain petskillloop instead of
@@ -377,7 +377,7 @@ for (const expected of [
   /function battleExplainUnavailable\(actionOrCommand\)[\s\S]{0,420}本回合选择时间已结束/,
   /* A PET_MENU_NON bit requires an immediate forced W after the player's
      command; it is not a local already-submitted lock. */
-  /function maybeOpenBattlePetSkillMenu\(state,command=""\)[\s\S]{0,1900}sendBattlePetDefault\(state,\{force:needsDefault\}\)[\s\S]{0,180}if\(state\.petCommandLocked\)return;/,
+  /function maybeOpenBattlePetSkillMenu\(state,command=""\)[\s\S]{0,1900}queueBattlePetMenuStage\(state,command\)/,
   /function sendBattlePetDefault[\s\S]{0,500}state\.commandPending\?\.pet/,
   /* A dead/escaped master cannot open the pet-skill chooser. */
   /function continueBattlePetAfterPlayer[\s\S]{0,1000}battleLocalDeath\(state\)\|\|state\.escapeLocalSuccess\|\|state\.escape[\s\S]{0,220}sendBattlePetDefault\(state,\{force:true,clearChoice:true\}\)/,
@@ -718,6 +718,47 @@ if (pressedStart < 0 || pressedEnd <= pressedStart ||
     !/if\(pendingPet\.startsWith\("W\|"\)\)return wanted==="PET"/.test(pressedSource)) {
   throw new Error("battle pressed flags must have one native menu owner");
 }
+/* BattleMenuProc uses one discrete buttonX/buttonA pair for both command
+   surfaces.  Prove the exact 60 Hz integer trajectory rather than accepting
+   a visually similar CSS easing, and keep the player -> pet hand-off wired
+   to the completed return path. */
+const menuAdvanceStart = script.indexOf("  function battleAdvanceMenuMotion(state)");
+const menuAdvanceEnd = script.indexOf("  function battleMenuMotionFinished", menuAdvanceStart);
+if (menuAdvanceStart < 0 || menuAdvanceEnd <= menuAdvanceStart) throw new Error("battle menu motion helper boundary missing");
+const menuAdvance = new Function(`
+  const BATTLE_MENU_START_X=815,BATTLE_MENU_START_ACCELERATION=25;
+  const battleMenuMotionShape=state=>state.menuMotion;
+  ${script.slice(menuAdvanceStart, menuAdvanceEnd)}
+  return battleAdvanceMenuMotion;
+`)();
+const enteringMenu={menuMotion:{owner:"player",phase:"entering",buttonX:815,buttonA:25}};
+const enteringFrames=[];
+for(let frame=0;frame<25;frame++){menuAdvance(enteringMenu);enteringFrames.push([enteringMenu.menuMotion.buttonX,enteringMenu.menuMotion.buttonA]);}
+if (enteringFrames[0].join(",")!=="791,24" || enteringFrames[23].join(",")!=="515,1" || enteringFrames[24].join(",")!=="515,0" || enteringMenu.menuMotion.phase!=="shown") {
+  throw new Error(`battle player-menu enter trajectory drifted: ${JSON.stringify(enteringFrames)}`);
+}
+enteringMenu.menuMotion.phase="leaving";
+const leavingFrames=[];let finishedOwner="";
+for(let frame=0;frame<27;frame++){finishedOwner=menuAdvance(enteringMenu)||finishedOwner;leavingFrames.push([enteringMenu.menuMotion.buttonX,enteringMenu.menuMotion.buttonA]);}
+if (leavingFrames[0].join(",")!=="516,1" || leavingFrames[23].join(",")!=="815,24" || leavingFrames[25].join(",")!=="866,26" || finishedOwner!=="player" || enteringMenu.menuMotion.phase!=="hidden") {
+  throw new Error(`battle player-menu return trajectory drifted: ${JSON.stringify(leavingFrames)}`);
+}
+const menuLifecycleSource=script.slice(script.indexOf("  const BATTLE_MENU_FRAME_MS"),script.indexOf("  const BATTLE_COUNTDOWN_LOGICAL_BASE"));
+for(const expected of [
+  /const BATTLE_MENU_FRAME_MS=1000\/60/,
+  /startBattleMenuMotion[\s\S]{0,1200}battleAdvanceMenuMotion\(state\);[\s\S]{0,180}scheduleBattleMenuMotion\(state\)/,
+  /battleMenuMotionFinished\(state,owner\)[\s\S]{0,260}owner==="player"&&state\.petMenuStagePending\)battleCommitPetMenuStage/,
+  /queueBattlePetMenuStage\(state=app\.battleState,command=""\)[\s\S]{0,520}leaveBattleMenuMotion\(state,"player"\)/,
+  /rememberedBattlePetAction[\s\S]{0,650}lastPetActionSlot/,
+]) if(!expected.test(menuLifecycleSource))throw new Error(`native battle menu lifecycle regression: ${expected}`);
+const closeBattlePopupSource=script.slice(script.indexOf("  function closeBattlePopup(options={})"),script.indexOf("  function openBattlePopup",script.indexOf("  function closeBattlePopup(options={})")));
+if(/sendBattlePetDefault/.test(closeBattlePopupSource)||!/options\.clearChoiceTimer/.test(closeBattlePopupSource)){
+  throw new Error("closing the native pet-skill window must keep the pet stage/countdown alive");
+}
+if(!/battlePetCommandHit\?\.addEventListener\("click",activateBattlePetCommandButton\)/.test(script)||
+   !/activateBattlePetCommandButton[\s\S]{0,700}state\.pendingAction=null[\s\S]{0,420}openBattlePetSkillPopup\(\{surfaceReady:true\}\)/.test(script)){
+  throw new Error("pet command skill/cancel bitmap lost its native click lifecycle");
+}
 /* MOUSE.CPP only reports a target after the physical pointer enters the
    48x48 foot box; the complete sprite rectangle is an outline painted after
    that hit, never a second hover-only selector. */
@@ -786,6 +827,10 @@ function cssPixel(block, property) {
 const battleLayoutRects = [
   ["#battle-ui .battle-base", 406, 1, 220, 128],
   ...[411,464,517,570,411,464,517,570].map((left,index)=>[`#battle-ui .battle-hit:nth-of-type(${index+1})`,left,index===3?23:index<4?22:75,52,50]),
+  ["#battle-pet-command-menu .battle-pet-base",405,8,220,80],
+  ["#battle-pet-command-menu .battle-pet-button-art",401,11,228,77],
+  ["#battle-pet-command-hit",401,11,228,77],
+  ["#battle-pet-selected-skill",415,41,192,16],
   ['#battle-popup[data-kind="magic"] #battle-popup-bg',360,142,272,292],
   ['#battle-popup[data-kind="magic"] #battle-popup-list',391,179,230,140],
   ['#battle-popup[data-kind="magic"] #battle-popup-close',456,408,80,16],

@@ -622,8 +622,14 @@
     #battle-countdown.is-visible { display:block; }
     #battle-countdown-value { position:absolute; left:0; top:0; display:block; width:0; height:0; color:transparent; font-size:0; }
     #battle-countdown-value img { position:absolute; display:block; max-width:none; image-rendering:pixelated; pointer-events:none; }
-    #battle-ui { position:absolute; inset:0; width:640px; height:480px; z-index:8; pointer-events:none; transform:none; }
+    #battle-ui { position:absolute; inset:0; width:640px; height:480px; z-index:8; pointer-events:none; transform:none; overflow:hidden; }
     #battle-ui img { display:block; position:absolute; image-rendering:pixelated; }
+    /* BattleMenuProc() moves one complete command surface by changing the
+       shared buttonX anchor.  Keep the outer battle back-buffer fixed and
+       move only these two 640x480 logical surfaces; moving/scaling
+       #battle-ui itself would also displace targets, actors and popups. */
+    #battle-player-menu,#battle-pet-command-menu { position:absolute; left:300px; top:0; width:640px; height:480px; pointer-events:none; will-change:left; }
+    #battle-player-menu[hidden],#battle-pet-command-menu[hidden] { display:none !important; }
     /* BattleMenuProc() owns the native 640x480 back-buffer.  Its main menu
        enters from buttonX=815 and settles at x=515 after subtracting
        24+23+...+1.  Applying the extracted REALBIN offsets at that final
@@ -646,6 +652,15 @@
     #battle-ui .battle-hit:nth-of-type(6){left:464px;top:75px}
     #battle-ui .battle-hit:nth-of-type(7){left:517px;top:75px}
     #battle-ui .battle-hit:nth-of-type(8){left:570px;top:75px}
+    /* CG_PET_BTL_BUTTON_* is the active-pet command surface at buttonY=48.
+       REALBIN's anchors put the base at (buttonX-110,8), the complete
+       skill/cancel overlay at (buttonX-114,11).  StockDispBuffer hitFlag=2
+       tests the complete bitmap rectangle for this pAct-less entry, including
+       transparent pixels, so the native hit region is the full 228x77 art. */
+    #battle-pet-command-menu .battle-pet-base { left:405px; top:8px; width:220px; height:80px; }
+    #battle-pet-command-menu .battle-pet-button-art { left:401px; top:11px; width:228px; height:77px; }
+    #battle-pet-command-hit { position:absolute; left:401px; top:11px; width:228px; height:77px; margin:0; padding:0; border:0; background:transparent; box-shadow:none; pointer-events:auto; }
+    #battle-pet-selected-skill { position:absolute; left:415px; top:41px; width:192px; height:16px; overflow:hidden; color:#f5ecd4; font:11px/16px Tahoma,"Microsoft YaHei",sans-serif; white-space:nowrap; text-shadow:1px 1px #080706; pointer-events:none; }
     #battle-menu-state,#battle-state,#battle-log,#battle-participants,#battle-command-form,#battle-actions { position:absolute; left:-10000px; }
     /* The bitmap button hit layer in #battle-ui is authoritative.  The DOM
        menu below is accessibility/state backing only; leaving its 2% opaque
@@ -908,15 +923,23 @@
     <section id="battle-screen" class="hidden">
       <h2>战斗</h2><p id="battle-state" class="status">服务器正在准备战斗。</p>
       <div id="battle-ui" aria-label="原版战斗菜单">
-        <img class="battle-base" src="/assets/bitmaps/bitmap_8700.png" alt="">
-        <button class="battle-hit" data-command="H|A"><img src="/assets/bitmaps/bitmap_8684.png" alt="攻击"></button>
-        <button class="battle-hit" data-command="J|A"><img src="/assets/bitmaps/bitmap_8686.png" alt="咒术"></button>
-        <button class="battle-hit" data-command="C|A"><img src="/assets/bitmaps/bitmap_8688.png" alt="捕捉"></button>
-        <button class="battle-hit" data-command="HELP"><img src="/assets/bitmaps/bitmap_8690.png" alt="帮助"></button>
-        <button class="battle-hit" data-command="G"><img src="/assets/bitmaps/bitmap_8692.png" alt="防御"></button>
-        <button class="battle-hit" data-command="ITEM"><img src="/assets/bitmaps/bitmap_8694.png" alt="道具"></button>
-        <button class="battle-hit" data-command="PET"><img src="/assets/bitmaps/bitmap_8696.png" alt="宠物"></button>
-        <button class="battle-hit" data-command="E"><img src="/assets/bitmaps/bitmap_8698.png" alt="逃跑"></button>
+        <div id="battle-player-menu" hidden>
+          <img class="battle-base" src="/assets/bitmaps/bitmap_8700.png" alt="">
+          <button class="battle-hit" data-command="H|A"><img src="/assets/bitmaps/bitmap_8684.png" alt="攻击"></button>
+          <button class="battle-hit" data-command="J|A"><img src="/assets/bitmaps/bitmap_8686.png" alt="咒术"></button>
+          <button class="battle-hit" data-command="C|A"><img src="/assets/bitmaps/bitmap_8688.png" alt="捕捉"></button>
+          <button class="battle-hit" data-command="HELP"><img src="/assets/bitmaps/bitmap_8690.png" alt="帮助"></button>
+          <button class="battle-hit" data-command="G"><img src="/assets/bitmaps/bitmap_8692.png" alt="防御"></button>
+          <button class="battle-hit" data-command="ITEM"><img src="/assets/bitmaps/bitmap_8694.png" alt="道具"></button>
+          <button class="battle-hit" data-command="PET"><img src="/assets/bitmaps/bitmap_8696.png" alt="宠物"></button>
+          <button class="battle-hit" data-command="E"><img src="/assets/bitmaps/bitmap_8698.png" alt="逃跑"></button>
+        </div>
+        <div id="battle-pet-command-menu" hidden>
+          <img class="battle-pet-base" src="/assets/bitmaps/bitmap_8718.png" alt="">
+          <img class="battle-pet-button-art" src="/assets/bitmaps/bitmap_8719.png" alt="">
+          <span id="battle-pet-selected-skill"></span>
+          <button id="battle-pet-command-hit" type="button" aria-label="选择宠物技能"></button>
+        </div>
       </div>
       <div id="battle-taskbar" aria-hidden="true">
         <img src="/assets/bitmaps/bitmap_9147.png" alt="">
@@ -3157,6 +3180,167 @@
        command and before the native pet menu is painted.  The native client
        does not reset the turn deadline during that hand-off. */
     return Boolean(state.choiceOwner||!state.commandLocked||app.battlePopup?.kind==="pet-skill"||state.pendingAction);
+  }
+  /* BATTLEMENU.CPP advances buttonX/buttonA once per 60 Hz main-loop frame.
+     This is deliberately a discrete simulation rather than a CSS easing:
+     entering subtracts 24..0 from the 815 anchor and leaving adds 1..26,
+     exactly matching the preserved 2.5 executable. */
+  const BATTLE_MENU_FRAME_MS=1000/60;
+  const BATTLE_MENU_START_X=815;
+  const BATTLE_MENU_ANCHOR_X=515;
+  const BATTLE_MENU_START_ACCELERATION=25;
+  function battleMenuMotionShape(state=app.battleState){
+    if(!state)return null;
+    if(!state.menuMotion||typeof state.menuMotion!=="object")state.menuMotion={owner:"",phase:"hidden",buttonX:BATTLE_MENU_START_X,buttonA:BATTLE_MENU_START_ACCELERATION,raf:0,lastAt:0,accumulator:0,generation:null};
+    return state.menuMotion;
+  }
+  function battleMenuSkillEntry(action,state=app.battleState){
+    if(!action||String(action.kind||"").toLowerCase()!=="pet")return null;
+    const slot=battleActivePetSlot(state),wanted=Number(action.index);
+    if(slot<0||!Number.isFinite(wanted))return null;
+    return (app.petSkills[slot]||[]).find(skill=>Number(skill.index??skill.skillId??0)===wanted)||null;
+  }
+  function syncBattleMenuMotion(state=app.battleState){
+    const player=$("battle-player-menu"),pet=$("battle-pet-command-menu"),motion=battleMenuMotionShape(state);
+    if(!player||!pet||!motion)return;
+    const active=Boolean(app.battle&&app.phase==="battle"&&app.battleState===state),offset=Math.trunc(Number(motion.buttonX)||BATTLE_MENU_START_X)-BATTLE_MENU_ANCHOR_X;
+    const playerVisible=active&&motion.owner==="player"&&motion.phase!=="hidden",petVisible=active&&motion.owner==="pet"&&motion.phase!=="hidden";
+    player.hidden=!playerVisible;pet.hidden=!petVisible;
+    player.style.left=`${offset}px`;pet.style.left=`${offset}px`;
+    player.dataset.menuPhase=playerVisible?motion.phase:"hidden";
+    pet.dataset.menuPhase=petVisible?motion.phase:"hidden";
+    const hit=$("battle-pet-command-hit"),art=pet.querySelector(".battle-pet-button-art"),label=$("battle-pet-selected-skill");
+    const selected=state?.pendingAction?.kind==="pet"?state.pendingAction:null,skill=battleMenuSkillEntry(selected,state),popupOpen=app.battlePopup?.kind==="pet-skill";
+    if(label)label.textContent=selected?String(skill?.name||`技能 ${selected.index??""}`):"";
+    if(art){
+      const hovered=Boolean(hit?.matches(":hover")||hit?.matches(":focus")||hit?.matches(":focus-visible"));
+      const bitmap=selected?8721:(popupOpen||hovered?8720:8719);
+      const source=`/assets/bitmaps/bitmap_${bitmap}.png`;
+      if(art.getAttribute("src")!==source)art.setAttribute("src",source);
+    }
+    if(hit){
+      const interactive=petVisible&&motion.phase!=="leaving"&&battleActionAllowed({kind:"pet"},state);
+      hit.disabled=!interactive;
+      hit.setAttribute("aria-disabled",interactive?"false":"true");
+      hit.setAttribute("aria-label",selected?"取消当前宠物技能并重新选择":"选择宠物技能");
+      if(selected||popupOpen)hit.setAttribute("aria-pressed","true");else hit.removeAttribute("aria-pressed");
+    }
+  }
+  function cancelBattleMenuMotionFrame(state=app.battleState){
+    const motion=state?.menuMotion;if(!motion)return;
+    if(Number(motion.raf))window.cancelAnimationFrame(Number(motion.raf));
+    motion.raf=0;motion.lastAt=0;motion.accumulator=0;
+  }
+  function resetBattleMenuMotion(state=app.battleState,options={}){
+    if(!state)return;
+    const motion=battleMenuMotionShape(state);cancelBattleMenuMotionFrame(state);
+    motion.owner="";motion.phase="hidden";motion.buttonX=BATTLE_MENU_START_X;motion.buttonA=BATTLE_MENU_START_ACCELERATION;motion.generation=null;
+    if(!options.keepPending){state.petMenuStagePending=false;state.pendingPetMenuCommand="";}
+    if(!options.keepGeneration)state.playerMenuOpenedTurnKey=null;
+    syncBattleMenuMotion(state);
+  }
+  function battleAdvanceMenuMotion(state){
+    const motion=battleMenuMotionShape(state);if(!motion)return "";
+    if(motion.phase==="entering"){
+      if(motion.buttonA>0){motion.buttonA--;motion.buttonX-=motion.buttonA;}
+      if(motion.buttonA<=0)motion.phase="shown";
+      return "";
+    }
+    if(motion.phase==="leaving"){
+      if(motion.buttonA<=25){motion.buttonA++;motion.buttonX+=motion.buttonA;return "";}
+      const owner=motion.owner;
+      motion.owner="";motion.phase="hidden";motion.buttonX=BATTLE_MENU_START_X;motion.buttonA=BATTLE_MENU_START_ACCELERATION;motion.generation=null;
+      return owner;
+    }
+    return "";
+  }
+  function battleMenuMotionFinished(state,owner){
+    if(!state||app.battleState!==state||!app.battle)return;
+    if(owner==="player"&&state.petMenuStagePending)battleCommitPetMenuStage(state,state.pendingPetMenuCommand||"");
+  }
+  function scheduleBattleMenuMotion(state=app.battleState){
+    const motion=battleMenuMotionShape(state);if(!motion||motion.raf||!(motion.phase==="entering"||motion.phase==="leaving"))return;
+    motion.lastAt=performance.now();
+    const frame=now=>{
+      motion.raf=0;
+      if(app.battleState!==state||!app.battle||app.phase!=="battle"){resetBattleMenuMotion(state);return;}
+      const elapsed=Math.max(0,Math.min(250,Number(now)-Number(motion.lastAt||now)));
+      motion.lastAt=Number(now);motion.accumulator=(Number(motion.accumulator)||0)+elapsed;
+      let steps=Math.floor((motion.accumulator+.25)/BATTLE_MENU_FRAME_MS),finished="";
+      if(steps>0)motion.accumulator-=steps*BATTLE_MENU_FRAME_MS;
+      while(steps-->0&&!finished)finished=battleAdvanceMenuMotion(state);
+      syncBattleMenuMotion(state);
+      if(finished){battleMenuMotionFinished(state,finished);return;}
+      if(motion.phase==="entering"||motion.phase==="leaving")motion.raf=window.requestAnimationFrame(frame);
+    };
+    motion.raf=window.requestAnimationFrame(frame);
+  }
+  function startBattleMenuMotion(state,owner,generation=state?.turnKey){
+    if(!state||app.battleState!==state||!app.battle)return false;
+    const motion=battleMenuMotionShape(state),key=Number.isFinite(Number(generation))?Number(generation):String(generation??"");
+    if(motion.owner===owner&&motion.generation===key&&motion.phase!=="hidden"){syncBattleMenuMotion(state);return false;}
+    cancelBattleMenuMotionFrame(state);
+    motion.owner=owner;motion.phase="entering";motion.buttonX=BATTLE_MENU_START_X;motion.buttonA=BATTLE_MENU_START_ACCELERATION;motion.generation=key;motion.accumulator=0;
+    playSoundEffect(202,320,240);
+    /* battleMenuFlag2/battlePetMenuFlag initialise and then fall through to
+       the matching menu block in the same native process tick. */
+    battleAdvanceMenuMotion(state);
+    syncBattleMenuMotion(state);scheduleBattleMenuMotion(state);return true;
+  }
+  function leaveBattleMenuMotion(state,owner){
+    const motion=battleMenuMotionShape(state);if(!motion||motion.owner!==owner||motion.phase==="hidden"||motion.phase==="leaving")return false;
+    motion.phase="leaving";motion.lastAt=0;motion.accumulator=0;
+    cancelBattleMenuMotionFrame(state);syncBattleMenuMotion(state);scheduleBattleMenuMotion(state);return true;
+  }
+  function openBattlePlayerMenuMotion(state=app.battleState,turnKey=state?.turnKey,force=false){
+    if(!state||app.battleState!==state||!app.battle||state.movieActive||battleEntryPending(state)||state.awaitingBattleRoster||state.commandLocked||battleLocalDeath(state)||Number(state.bpFlags)&BATTLE_BP_PLAYER_MENU_NON)return false;
+    const key=Number.isFinite(Number(turnKey))?Number(turnKey):Number(state.turn)||0;
+    if(!force&&state.playerMenuOpenedTurnKey!==null&&state.playerMenuOpenedTurnKey!==undefined&&Number(state.playerMenuOpenedTurnKey)===key)return false;
+    state.playerMenuOpenedTurnKey=key;state.petMenuStagePending=false;state.pendingPetMenuCommand="";
+    return startBattleMenuMotion(state,"player",key);
+  }
+  function rememberedBattlePetAction(state=app.battleState){
+    const slot=battleActivePetSlot(state),rememberedSlot=Number(state?.lastPetActionSlot),command=String(state?.lastPetActionCommand||"");
+    if(slot<0||rememberedSlot!==slot)return null;
+    const match=command.match(/^W\|([0-9A-F]+)\|/i);if(!match||match[1].toUpperCase()==="FF")return null;
+    const index=parseInt(match[1],16),skill=(app.petSkills[slot]||[]).find(entry=>Number(entry.index??entry.skillId??0)===index);
+    if(!battleUsablePetSkill(skill)||Number(skill.target??5)===5)return null;
+    return {kind:"pet",index,targetType:Number(skill.target??5),field:skill.field,allowDead:skill.deadTarget,remembered:true};
+  }
+  function battleCommitPetMenuStage(state=app.battleState,command=""){
+    if(!state||app.battleState!==state||!app.battle)return;
+    state.petMenuStagePending=false;state.pendingPetMenuCommand="";
+    const activePet=battleActivePet(state);
+    if(battleLocalDeath(state)){
+      clearBattleChoiceTimer(state);resetBattleMenuMotion(state,{keepGeneration:true});
+      if(activePet)sendBattlePetDefault(state,{force:true,clearChoice:true});
+      if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);
+      return;
+    }
+    if(!activePet){clearBattleChoiceTimer(state);resetBattleMenuMotion(state,{keepGeneration:true});return;}
+    const needsDefault=Boolean(Number(state.bpFlags)&BATTLE_BP_PET_MENU_NON)||/^E(?:\||$)/i.test(String(command||""));
+    if(needsDefault||app.systemSettings.autoBattle){resetBattleMenuMotion(state,{keepGeneration:true});sendBattlePetDefault(state,{force:needsDefault});return;}
+    if(state.petCommandLocked){resetBattleMenuMotion(state,{keepGeneration:true});return;}
+    startBattleMenuMotion(state,"pet",state.turnKey);
+    armBattlePetChoiceTimer(state);
+    const remembered=rememberedBattlePetAction(state);
+    if(remembered){
+      state.pendingAction=remembered;
+      app.battlePopup=null;$("battle-popup")?.classList.add("hidden");
+      renderBattleTargets();renderBattleWorld();renderBattle();
+      return;
+    }
+    openBattlePetSkillPopup({surfaceReady:true});
+  }
+  function queueBattlePetMenuStage(state=app.battleState,command=""){
+    if(!state||app.battleState!==state||!app.battle)return;
+    state.petMenuStagePending=true;state.pendingPetMenuCommand=String(command||"");
+    const motion=battleMenuMotionShape(state);
+    if(motion.owner==="player"&&motion.phase!=="hidden"){
+      leaveBattleMenuMotion(state,"player");
+      return;
+    }
+    battleCommitPetMenuStage(state,command);
   }
   const BATTLE_COUNTDOWN_LOGICAL_BASE=25900;
   const BATTLE_COUNTDOWN_PHYSICAL_BASE=8794;
@@ -5513,19 +5697,13 @@
   }
   function closeBattlePopup(options={}){
     const kind=String(app.battlePopup?.kind||""),state=app.battleState;
-    /* Choosing a pet skill is not the end of the native pet-command stage.
-       Skills that require an actor click remain under the same
-       BattleCntDown deadline while BattleTargetSelect() owns the hit boxes.
-       Only a real W submission (battleSetCommandLock("pet", true)), an
-       explicit cancel/default, or scene teardown may clear that deadline. */
-    if(kind==="pet-skill"&&!options.preserveChoiceTimer)clearBattlePetChoiceTimer(state);
+    /* BattleButtonOff() closes the large skill window but leaves the small
+       CG_PET_BTL_BUTTON surface and the shared BattleCntDown alive.  A W
+       write, timeout, or battle teardown owns that deadline; merely pressing
+       the window's close button must not silently submit W|FF|FF. */
+    if(kind==="pet-skill"&&options.clearChoiceTimer)clearBattlePetChoiceTimer(state);
     app.battlePopup=null;const popup=$("battle-popup");if(popup)popup.classList.add("hidden");
-    /* Closing the native pet-skill window returns through BattleMenuProc(),
-       which submits the explicit no-op W command when no skill was picked.
-       Preserve that rule so a user cannot strand GMSV in C_WAIT.  Internal
-       scene/turn teardown passes skipDefault because the battle is already
-       being cancelled or has moved to the next BP. */
-    if(kind==="pet-skill"&&!options.skipDefault&&state&&app.battle&&app.battleState===state&&!state.petCommandLocked)sendBattlePetDefault(state);
+    if(kind==="pet-skill"&&state&&app.battle&&app.battleState===state)syncBattleMenuMotion(state);
     syncBattleButtonVisualStates(state);
   }
   function openBattlePopup(kind){
@@ -5683,6 +5861,7 @@
       }else{
         state.lastPetActionKind=String(action.kind||"").toLowerCase()||"pet";
         state.lastPetActionCommand=command;
+        state.lastPetActionSlot=battleActivePetSlot(state);
       }
       app.battleCommands.push(`我：${command}`);if(app.battleCommands.length>64)app.battleCommands.shift();state.pendingAction=null;app.battleTarget=Number(target.battleId);$("battle-target-panel")?.classList.add("hidden");closeBattlePopup();$("battle-log").textContent+=`\n我：${command}`;$("battle-log").scrollTop=$("battle-log").scrollHeight;renderBattle();renderBattleWorld();
       /* The native BattleMenuProc() opens the pet-skill menu immediately
@@ -5727,15 +5906,20 @@
     battleSetCommandLock(state,"pet",true);battleStartCommandPending(state,"pet",command);
     send("B",[command]).then(()=>{
       if(app.battleState!==state||!app.battle)return;
-      state.lastPetActionKind="pet";state.lastPetActionCommand=command;
+      /* W|FF|FF is a disabled/timeout no-op.  BattleMenuProc does not clear
+         battleWazaTargetBak in that branch, so retain the last real skill
+         as the next-turn default while recording this wire write separately. */
+      state.lastPetWireCommand=command;
+      if(!state.lastPetActionCommand)state.lastPetActionKind="pet-default";
       app.battleCommands.push(`我：${command}`);if(app.battleCommands.length>64)app.battleCommands.shift();
       const log=$("battle-log");if(log){log.textContent+=`\n我：${command}`;log.scrollTop=log.scrollHeight;}
       renderBattle();
     }).catch(error=>{battleClearCommandPending(state,"pet");battleSetCommandLock(state,"pet",false);reportError(error);});
   }
-  function openBattlePetSkillPopup(){
+  function openBattlePetSkillPopup(options={}){
     const state=app.battleState;if(!battleActionAllowed({kind:"pet"},state))return false;
     if(!battleActivePet(state)){sendBattlePetDefault(state);return true;}
+    if(!options.surfaceReady)startBattleMenuMotion(state,"pet",state.turnKey);
     state.pendingAction=null;$("battle-target-panel")?.classList.add("hidden");
     app.battlePopup={kind:"pet-skill"};renderBattlePopup();armBattlePetChoiceTimer(state);return true;
   }
@@ -5761,14 +5945,12 @@
       if(Array.isArray(state.participants)&&state.participants.length)clearBattleChoiceTimer(state);
       return;
     }
-    const needsDefault=Boolean(Number(state.bpFlags)&BATTLE_BP_PET_MENU_NON)||/^E(?:\||$)/i.test(String(command||""));
-    /* BP_FLG_PET_MENU_NON is a server menu-disable bit, not proof that the
-       pet's command was already sent.  Native BattleMenuProc enters this
-       branch immediately after the player's command and emits W once; do
-       not leave the shared transition timer waiting until second 0. */
-    if(needsDefault||app.systemSettings.autoBattle){sendBattlePetDefault(state,{force:needsDefault});return;}
-    if(state.petCommandLocked)return;
-    openBattlePetSkillPopup();
+    /* The native player menu must finish its return trajectory before
+       BattleMenuProc installs the pet surface.  Queue the stage even for
+       PET_MENU_NON/escape: battleCommitPetMenuStage() revalidates the live
+       roster at the exact hand-off and then emits the compatible 2.5 W
+       default without ever painting a forbidden pet menu. */
+    queueBattlePetMenuStage(state,command);
   }
   function maybeAutoBattleTurn(){
     const state=app.battleState;
@@ -5851,7 +6033,7 @@
        second action while another side is resolving its movie.  A movie is a
        global visual lock, while the player/pet command locks remain separate
        until the next authoritative BP snapshot. */
-    if(state.movieActive||battleChoiceExpired(state))return false;
+    if(state.movieActive||battleChoiceExpired(state)||battleLocalDeath(state))return false;
     const kind=battleCommandKind(text);
     /* S is the native pet-out/pet-in selection command.  BattleButtonPet()
        lives in the player's command menu, so it follows the player BP bit;
@@ -5864,11 +6046,11 @@
   function battleActionAllowed(action,state=app.battleState){
     if(!app.battle||!state)return false;
     const flags=Number(state.bpFlags)||0;
-    if(state.movieActive||battleChoiceExpired(state))return false;
+    if(state.movieActive||battleChoiceExpired(state)||battleLocalDeath(state))return false;
     if(action?.kind==="pet")return !(flags&BATTLE_BP_PET_MENU_NON)&&!state.petCommandLocked;
     return !(flags&BATTLE_BP_PLAYER_MENU_NON)&&!state.commandLocked;
   }
-  function renderBattle(){const state=app.battleState,menu=$("battle-menu"),participants=$("battle-participants"),summary=$("battle-menu-state");renderBattleTaskbar();syncBattleButtonVisualStates(state);if(!menu||!participants)return;menu.replaceChildren();participants.replaceChildren();const flags=state.bpFlags;
+  function renderBattle(){const state=app.battleState,menu=$("battle-menu"),participants=$("battle-participants"),summary=$("battle-menu-state");renderBattleTaskbar();syncBattleMenuMotion(state);syncBattleButtonVisualStates(state);if(!menu||!participants)return;menu.replaceChildren();participants.replaceChildren();const flags=state.bpFlags;
     /* Player and pet command gates are independent in BP.  A dead/escaped
        pet sets bit 3 while the player is already allowed to choose the next
        action; prioritising petCommandLocked here used to label that state
@@ -6110,6 +6292,10 @@
     playSoundEffect(203,320,240);
     if(battleLocalDeath(state)){clearBattleChoiceTimer(state);if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);return;}
     battleCancelPendingUi(state);
+    /* BattleCntDownDisp() sets battleMenuReturn in the same timeout tick in
+       which it sends N/W.  The protocol write is immediate, but the visible
+       player surface still completes its native return trajectory. */
+    leaveBattleMenuMotion(state,"player");
     state.commandLocked=true;
     state.petAfterPlayerPending=true;
     battleStartCommandPending(state,"player","N");
@@ -6500,6 +6686,10 @@
   function battleSetCommandLock(state,kind,locked){
     if(!state)return;
     if(kind==="player"&&locked){
+      /* BattleButtonAttack/Guard/Escape set battleMenuReturn immediately;
+         keep the menu's visible return trajectory independent from the
+         asynchronous HTTP acknowledgement. */
+      leaveBattleMenuMotion(state,"player");
       /* BattleCntDown is started with the player menu and survives the
          animated hand-off to the pet menu.  Save the remaining time before
          clearing the player-owned timer; armBattlePetChoiceTimer() will
@@ -6525,14 +6715,16 @@
         state.playerChoiceTimer=state.choiceTimer;
       }
     }
-    if(kind==="pet"&&locked)clearBattlePetChoiceTimer(state);
+    if(kind==="pet"&&locked){leaveBattleMenuMotion(state,"pet");clearBattlePetChoiceTimer(state);}
     if(kind==="pet")state.petCommandLocked=Boolean(locked)||battleEntryPending(state);
     else if(kind==="player")state.commandLocked=Boolean(locked)||battleEntryPending(state);
+    if(kind==="player"&&!locked&&!battleEntryPending(state))openBattlePlayerMenuMotion(state,state.turnKey,true);
     renderBattleWorld();
     renderBattle();
   }
   function battleResetCommandLocks(state){
     if(!state)return;
+    resetBattleMenuMotion(state);
     clearBattlePlayerChoiceTimer(state);
     clearBattlePetChoiceTimer(state);
     battleClearCommandPending(state);
@@ -6671,6 +6863,7 @@
        pending action timers at the same boundary. */
     battleCancelPendingDamage(state);
     clearBattleChoiceTimer(state);
+    resetBattleMenuMotion(state);
     state.myNo=Number(values.myNo)||0;
     state.myNoKnown=true;
     state.bpFlags=Number(values.bpFlags)||0;
@@ -6953,7 +7146,7 @@
     if(existingKey!==null&&existingKey!==undefined&&Number(existingKey)===turnKey)return;
     const flags=Number(state.bpFlags)||0,surprise=flags&(BATTLE_BP_ENEMY_SURPRISAL|BATTLE_BP_PLAYER_SURPRISAL);
     state.choiceTurnKey=turnKey;
-    if(!surprise){armBattlePlayerChoiceTimer(state);return;}
+    if(!surprise){armBattlePlayerChoiceTimer(state);openBattlePlayerMenuMotion(state,turnKey);return;}
     /* BattleProc clears both surprise bits when CHAR_IN reaches action_inf==3.
        Reproduce that boundary before painting the command menu. */
     if(surprise&BATTLE_BP_ENEMY_SURPRISAL){
@@ -6965,7 +7158,7 @@
     /* Enemy surprise already committed the implicit N/W pair.  A player
        surprise only showed the native banner, so its normal 30-second menu
        starts as soon as the banner is dismissed. */
-    if(!(surprise&BATTLE_BP_ENEMY_SURPRISAL))armBattlePlayerChoiceTimer(state);
+    if(!(surprise&BATTLE_BP_ENEMY_SURPRISAL)){armBattlePlayerChoiceTimer(state);openBattlePlayerMenuMotion(state,turnKey);}
   }
   function armDefaultBattleAttack(state=app.battleState){
     /* BATTLEMENU.CPP carries battleButtonBak across turns.  When the last
@@ -7004,6 +7197,20 @@
        cleared flags and submits a second N/W pair for the same turn. */
     const surpriseTurn=state.surpriseAutoTurn;
     if(surpriseTurn!==null&&surpriseTurn!==undefined&&Number(surpriseTurn)===key)return;
+    /* A dead master follows a distinct native branch: it is marked command
+       complete without an N write, then a live active pet receives the
+       mandatory W|FF|FF.  Do not briefly paint/click the player menu just
+       because a gateway omitted BP_PLAYER_MENU_NON from that BC snapshot. */
+    if(battleLocalDeath(state)&&state.implicitPlayerTurn!==key){
+      state.implicitPlayerTurn=key;
+      state.commandLocked=true;
+      clearBattleChoiceTimer(state);
+      resetBattleMenuMotion(state,{keepGeneration:true});
+      state.petAfterPlayerReady=true;
+      continueBattlePetAfterPlayer(state);
+      if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);
+      return;
+    }
     const playerUnavailable=Boolean(flags&BATTLE_BP_PLAYER_MENU_NON)||Number(state.myNo)>=20;
     if(playerUnavailable&&state.implicitPlayerTurn!==key){
       state.implicitPlayerTurn=key;
@@ -12883,6 +13090,7 @@
       item.classList.toggle("battle-command-disabled",!allowed);
       item.setAttribute("aria-disabled",allowed?"false":"true");
     });
+    syncBattleMenuMotion(state);
     syncBattleButtonVisualStates(state);
     /* BC is the only authoritative source for battle participants.  Do not
        manufacture a local player or an "enemy" while the server is still in
@@ -13207,6 +13415,11 @@
        command menu therefore enters Attack exactly like every later turn
        whose remembered player command was Attack. */
     app.battleState={field:fieldNo,fieldNo,fieldAtt:0,type:type||1,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,autoTurn:-1,implicitPlayerTurn:null,implicitPetTurn:null,petAfterPlayerReady:false,petAfterPlayerPending:false,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],actorNodes:new Map(),motionQueueAt:0,movieHoldUntil:0,pendingTurnState:null,pendingBattleStatuses:[],pendingBattleControls:[],turnApplyTimer:0,entryPending:true,entryReadyAt:0,entryTimer:0,rasterStartedAt:performance.now(),deathStartedAt:new Map(),escapePending:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,battleExitTimer:0,exitPending:false,flashUntil:0,movieActive:false,movieDone:false,commandLocked:true,petCommandLocked:true,commandTimers:{player:0,pet:0},commandPending:{player:null,pet:null},choiceTimer:0,choiceDeadline:0,choiceOwner:"",playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,deathExitPending:false,deathExitTimer:0,deathExitAt:0,deathExitFromPosition:false,transientTimer:0,escapeExitTimer:0,initializationTimer:0,initializing:true,rosterBeforeBp:false,lastPlayerActionKind:"attack",lastPlayerActionCommand:"",lastPetActionKind:"",lastPetActionCommand:"",defaultAttackTurnKey:null};
+    app.battleState.lastPetActionSlot=-1;
+    app.battleState.playerMenuOpenedTurnKey=null;
+    app.battleState.petMenuStagePending=false;
+    app.battleState.pendingPetMenuCommand="";
+    battleMenuMotionShape(app.battleState);
     beginBattleMusic(type,field);$("battle-result-screen")?.classList.add("hidden");show(battleScreen);
     $("battle-state").textContent=`服务器战斗（场景 ${field}），等待 BC/BP 状态。`;$("battle-log").textContent="战斗开始。";status("战斗","good");
     scheduleBattleInitializationTimeout(app.battleState);renderBattleWorld();renderBattle();renderBattlePopup();
@@ -13234,7 +13447,10 @@
         state.lastPlayerActionKind=/^H(?:\||$)/i.test(text)?"attack":/^G(?:\||$)/i.test(text)?"guard":/^E(?:\||$)/i.test(text)?"escape":/^S(?:\||$)/i.test(text)?"pet-select":"other";
         state.lastPlayerActionCommand=text;
       }else{
-        state.lastPetActionKind="pet";state.lastPetActionCommand=text;
+        state.lastPetWireCommand=text;
+        if(!/^W\|FF\|FF$/i.test(text)){
+          state.lastPetActionKind="pet";state.lastPetActionCommand=text;state.lastPetActionSlot=battleActivePetSlot(state);
+        }else if(!state.lastPetActionCommand)state.lastPetActionKind="pet-default";
       }
       app.battleCommands.push(`我：${text}`);$("battle-log").textContent+=`\n我：${text}`;$("battle-log").scrollTop=$("battle-log").scrollHeight;
       if(kind==="player")maybeOpenBattlePetSkillMenu(state,text);
@@ -13637,16 +13853,25 @@
      cursor (which intentionally remains in the world scene) so an actor
      target click can move the hint above/below the formation just like the
      executable. */
-  battleScreen.addEventListener("pointermove",event=>{
+  function sampleBattleCursorY(event){
     const rect=battleScreen.getBoundingClientRect?.();
-    if(!rect||rect.width<=0||rect.height<=0)return;
+    if(!rect||rect.width<=0||rect.height<=0)return false;
     app.battleCursorY=Math.max(0,Math.min(480,(Number(event.clientY)-rect.top)*480/rect.height));
+    return true;
+  }
+  battleScreen.addEventListener("pointermove",event=>{
+    if(!sampleBattleCursorY(event))return;
     updateBattleHoverFromPointer(event);
     const panel=$("battle-target-panel");
     if(panel&&!panel.classList.contains("hidden")&&panel.classList.contains("actor-target-prompt"))renderBattleTargets();
   },{passive:true});
   battleScreen.addEventListener("pointerleave",()=>paintBattleHoverTarget(null));
-  battleScreen.addEventListener("pointerdown",updateBattleHoverFromPointer,{passive:true});
+  battleScreen.addEventListener("pointerdown",event=>{
+    sampleBattleCursorY(event);
+    updateBattleHoverFromPointer(event);
+    const panel=$("battle-target-panel");
+    if(panel&&!panel.classList.contains("hidden")&&panel.classList.contains("actor-target-prompt"))renderBattleTargets();
+  },{passive:true});
   document.addEventListener("pointermove",event=>{
     /* The event target becomes #map-transition while a floor fold is on top
        of the field.  Cursor painting must not depend on that target being a
@@ -13726,6 +13951,28 @@
     syncBattleButtonVisualStates();
   }
   bindBattleButtonStates();
+  function activateBattlePetCommandButton(){
+    const state=app.battleState,motion=battleMenuMotionShape(state);
+    if(!app.battle||app.phase!=="battle"||!motion||motion.owner!=="pet"||motion.phase==="leaving"||!battleActionAllowed({kind:"pet"},state))return;
+    const selected=state.pendingAction?.kind==="pet";
+    if(selected){
+      /* CG_PET_BTL_BUTTON_CANCEL_UP clears the remembered target boxes and
+         immediately reopens BattleButtonWaza's large skill window.  It is
+         not a W|FF|FF command and does not restart/clear BattleCntDown. */
+      state.pendingAction=null;
+      $("battle-target-panel")?.classList.add("hidden");
+      closeBattlePopup({skipDefault:true});
+      openBattlePetSkillPopup({surfaceReady:true});
+      renderBattleWorld();renderBattle();
+      return;
+    }
+    if(app.battlePopup?.kind==="pet-skill")closeBattlePopup({skipDefault:true});
+    else openBattlePetSkillPopup({surfaceReady:true});
+    syncBattleMenuMotion(state);
+  }
+  const battlePetCommandHit=$("battle-pet-command-hit");
+  battlePetCommandHit?.addEventListener("click",activateBattlePetCommandButton);
+  for(const eventName of ["pointerenter","pointerleave","focus","blur","pointercancel"]){battlePetCommandHit?.addEventListener(eventName,()=>syncBattleMenuMotion(app.battleState));}
   document.addEventListener("keydown",event=>{
     const activeEditor=event.target?.closest?.("input,textarea,select,[contenteditable=true]")||document.activeElement?.closest?.("input,textarea,select,[contenteditable=true]");
     if(activeEditor)return;
