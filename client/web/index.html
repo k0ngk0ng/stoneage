@@ -1821,8 +1821,10 @@
     #status-screen .status-readout .level{left:74px;top:74px}
     #status-screen .status-readout .exp{left:81px;top:95px}
     #status-screen .status-readout .next{left:81px;top:116px}
-    #status-screen .status-readout .hp{left:72px;top:137px;width:42px;text-align:right}
-    #status-screen .status-readout .max-hp{left:122px;top:137px;width:42px;text-align:right}
+    /* pc.hp/maxHp are two independent "%4d" StockFontBuffer fields at
+       x=72 and x=122, so each field is exactly four 8px cells wide. */
+    #status-screen .status-readout .hp{left:72px;top:137px;width:32px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .max-hp{left:122px;top:137px;width:32px;text-align:right;font-variant-numeric:tabular-nums}
     #status-screen .status-readout .mp{left:74px;top:158px}
     #status-screen .status-readout .atk{left:74px;top:179px}
     #status-screen .status-readout .def{left:74px;top:200px}
@@ -1976,7 +1978,14 @@
     #pets-screen .legacy-pet-row{position:absolute;left:0;top:0;width:272px;height:51px;margin:0;padding:0;pointer-events:none;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
     #pets-screen .legacy-pet-row .pet-name{position:absolute;left:73px;top:35px;width:128px;height:16px;margin:0;padding:0;overflow:hidden;text-align:center;white-space:nowrap;color:inherit;background:transparent;border:0;box-shadow:none;text-shadow:inherit;pointer-events:auto}
     #pets-screen .legacy-pet-row .pet-name:hover,#pets-screen .legacy-pet-row .pet-name:focus-visible{color:#ffe88b;filter:none;outline:0;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
-    #pets-screen .legacy-pet-row .pet-stat{position:absolute;left:123px;top:59px;width:136px;height:16px;overflow:hidden;white-space:pre;color:inherit}
+    /* MENU.CPP stocks the pet list with
+       "%3d   %4d %4d" at x=123. StockFontBuffer advances every byte on
+       an 8px cell, while proportional browser spaces are much narrower.
+       Paint the three fields at their exact byte-cell origins. */
+    #pets-screen .legacy-pet-row .pet-stat{position:absolute;top:59px;height:16px;overflow:hidden;white-space:nowrap;color:inherit;text-align:right;font-variant-numeric:tabular-nums}
+    #pets-screen .legacy-pet-row .pet-level{left:123px;width:24px}
+    #pets-screen .legacy-pet-row .pet-hp{left:171px;width:32px}
+    #pets-screen .legacy-pet-row .pet-max-hp{left:211px;width:32px}
     /* StockDispBuffer receives the button centre (43,y-14); the decoded
        56x24 CG owns a (-28,-12) anchor, hence the real top-left is (15,33). */
     #pets-screen .legacy-pet-row .pet-button{position:absolute;left:15px;top:33px;width:56px;height:24px;padding:0;pointer-events:auto}
@@ -4387,7 +4396,7 @@
       const {pet,index}=entries[rowIndex],state=petMenuState(index);
       const row=document.createElement("div");row.className=`legacy-pet-row pet-state-${state.key}`;row.style.top=`${rowIndex*51}px`;row.dataset.petSlot=String(index);
       const name=button(petDisplayName(pet),()=>openPetDetail(index));name.className="pet-name";name.setAttribute("aria-label",`查看宠物 ${petDisplayName(pet)||index+1}`);name.addEventListener("contextmenu",event=>{event.preventDefault();send("DP",[app.position[0],app.position[1],index]).catch(reportError);});row.append(name);
-      const stat=document.createElement("span");stat.className="pet-stat";stat.textContent=`${textOr(pet.level,"-").padStart(3)}   ${textOr(pet.hp,"-").padStart(4)} ${textOr(pet.maxHp,"-").padStart(4)}`;row.append(stat);
+      for(const [field,value] of [["level",pet.level],["hp",pet.hp],["max-hp",pet.maxHp]]){const stat=document.createElement("span");stat.className=`pet-stat pet-${field}`;stat.textContent=textOr(value,"-");row.append(stat);}
       const stateButton=imageButton(`宠物状态：${state.label}`,state.bitmap,()=>activatePetMenuState(index),56,24);stateButton.classList.add("pet-button");row.append(stateButton);
       const attributes=[["earth",pet.earth],["water",pet.water],["fire",pet.fire],["wind",pet.wind]].filter(([,value])=>Number(value)>0).slice(0,2);
       attributes.forEach(([kind,value],attributeIndex)=>{const icon=document.createElement("img");icon.className="pet-attribute";icon.alt="";icon.src=`/assets/bitmaps/bitmap_${petAttributeBitmap(kind,value)}.png`;icon.style.left=`${224+attributeIndex*16}px`;row.append(icon);});

@@ -662,7 +662,10 @@ if (occupiedPetsStart < 0 || renderPetsStart <= occupiedPetsStart || renderPetsE
 for (const expected of [
   /#pets-screen \.legacy-pet-row\{[^}]*height:51px/,
   /#pets-screen \.legacy-pet-row \.pet-name\{[^}]*left:73px;top:35px/,
-  /#pets-screen \.legacy-pet-row \.pet-stat\{[^}]*left:123px;top:59px/,
+  /#pets-screen \.legacy-pet-row \.pet-stat\{[^}]*top:59px/,
+  /#pets-screen \.legacy-pet-row \.pet-level\{left:123px;width:24px\}/,
+  /#pets-screen \.legacy-pet-row \.pet-hp\{left:171px;width:32px\}/,
+  /#pets-screen \.legacy-pet-row \.pet-max-hp\{left:211px;width:32px\}/,
   /#pets-screen \.legacy-pet-row \.pet-button\{[^}]*left:15px;top:33px/,
   /#pets-screen #pet-status-open\{[^}]*left:44px;top:295px[^}]*bitmap_9176\.png/,
   /#pets-screen\.pet-list-populated #pets-close\{left:156px\}/,
@@ -670,6 +673,14 @@ for (const expected of [
   /const skills=imageButton\("查看宠物技能",9166,[\s\S]{0,180}pet-detail-skills/,
 ]) {
   if (!expected.test(html)) throw new Error(`native pet-window layout regression: ${expected}`);
+}
+/* MENU.CPP uses separate 8px-cell numeric fields. A single proportional
+   padded string makes the HP columns drift because browser spaces are not
+   eight pixels wide; the status %4d fields likewise end after 32px. */
+if (!/for\(const \[field,value\] of \[\["level",pet\.level\],\["hp",pet\.hp\],\["max-hp",pet\.maxHp\]\]\)/.test(renderPetsSource) ||
+    !/#status-screen \.status-readout \.hp\{left:72px;top:137px;width:32px;text-align:right/.test(html) ||
+    !/#status-screen \.status-readout \.max-hp\{left:122px;top:137px;width:32px;text-align:right/.test(html)) {
+  throw new Error("pet/status current and maximum HP fields must keep native fixed columns");
 }
 /* IME.CPP::ImeProc() writes the closed/default input mode as
    "       abc" from x=545, so its visible suffix begins at x=601.  The
