@@ -517,7 +517,7 @@ void BATTLE_ActSettingSend( int battleindex )
 			if( CHAR_CHECKINDEX( charaindex ) == FALSE )continue;
 			if( CHAR_getInt( charaindex, CHAR_WHICHTYPE ) != CHAR_TYPEPLAYER )continue;
 			// ÎìÑ¨¼þÓñËªÔÂ
-			BATTLE_CommandSend( pindex, szBA );
+			BATTLE_CommandSend( charaindex, szBA );
 		}
 	}
 

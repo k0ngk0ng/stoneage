@@ -1,0 +1,767 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+func testConfig(upstream string) Config {
+	cfg := DefaultConfig()
+	cfg.TCPUpstream = upstream
+	cfg.PollTimeout = 200 * time.Millisecond
+	cfg.IdleTimeout = 2 * time.Second
+	cfg.DialTimeout = time.Second
+	cfg.MaxSessions = 4
+	return cfg
+}
+
+type fakeTCP struct {
+	listener net.Listener
+	accepted chan struct{}
+	received chan []byte
+	done     chan struct{}
+	online   sync.Once
+}
+
+func newFakeTCP(t *testing.T, greeting []byte, reply []byte) *fakeTCP {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeTCP{
+		listener: listener,
+		accepted: make(chan struct{}),
+		received: make(chan []byte, 1),
+		done:     make(chan struct{}),
+	}
+	go func() {
+		defer close(fake.done)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		close(fake.accepted)
+		_, _ = connection.Write(greeting)
+		reader := bufio.NewReader(connection)
+		packet, readErr := reader.ReadBytes('\n')
+		if readErr == nil {
+			fake.received <- packet
+			if reply != nil {
+				_, _ = connection.Write(reply)
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		select {
+		case <-fake.done:
+		case <-time.After(time.Second):
+			t.Error("fake TCP server did not stop")
+		}
+	})
+	return fake
+}
+
+// newGreetingThenCloseTCP models the upstream disappearing between the
+// gateway handshake and the unload-time CharLogout write.  The HTTP bridge
+// must still remove the browser session when the close=1 write cannot reach
+// the socket; otherwise a refresh would leak a session until idle expiry.
+func newGreetingThenCloseTCP(t *testing.T, greeting []byte) *fakeTCP {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeTCP{
+		listener: listener,
+		accepted: make(chan struct{}),
+		received: make(chan []byte, 1),
+		done:     make(chan struct{}),
+	}
+	go func() {
+		defer close(fake.done)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		close(fake.accepted)
+		_, _ = connection.Write(greeting)
+		_ = connection.Close()
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		select {
+		case <-fake.done:
+		case <-time.After(time.Second):
+			t.Error("fake TCP close server did not stop")
+		}
+	})
+	return fake
+}
+
+func (fake *fakeTCP) address() string { return fake.listener.Addr().String() }
+
+func TestReadDelimitedPacket(t *testing.T) {
+	packet, err := readDelimitedPacket(bufio.NewReader(strings.NewReader("abc\nrest")), 16)
+	if err != nil || string(packet) != "abc\n" {
+		t.Fatalf("packet=%q err=%v", packet, err)
+	}
+	_, err = readDelimitedPacket(bufio.NewReader(strings.NewReader("123456\n")), 5)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversize packet error=%v", err)
+	}
+	_, err = readDelimitedPacket(bufio.NewReader(strings.NewReader("partial")), 16)
+	if err == nil {
+		t.Fatal("partial packet unexpectedly accepted")
+	}
+}
+
+func TestHandlerServesPageAndHealth(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("StoneAge")) {
+		t.Fatalf("page status=%d body prefix=%q", response.StatusCode, body[:minInt(len(body), 80)])
+	}
+	response, err = http.Get(server.URL + "/manifest.webmanifest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&manifest); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || manifest["orientation"] != "any" || manifest["display"] != "fullscreen" {
+		t.Fatalf("manifest status=%d body=%v", response.StatusCode, manifest)
+	}
+	response, err = http.Get(server.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var health map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || health["status"] != "ok" {
+		t.Fatalf("health status=%d body=%v", response.StatusCode, health)
+	}
+}
+
+func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
+	body := string(page)
+	required := []string{
+		`<section id="server-screen" class="hidden" data-stage="group">`,
+		`<section id="login-screen">`,
+		`show(loginScreen);`,
+		`acceptLoginCredentials();`,
+		`serverSelectionStage==="connecting"`,
+		`app.selectedServer="local-line"`,
+		`url('/assets/bitmaps/bitmap_9094.png')`,
+		`src="/assets/bitmaps/bitmap_9103.png"`,
+		`src="/assets/bitmaps/bitmap_9111.png"`,
+		`left:256px; top:270px; width:128px; height:144px`,
+		`left:238px; top:249px; width:124px; height:68px`,
+		`left:276px; top:421px`,
+		`data-action="card" src="/assets/bitmaps/bitmap_9221.png"`,
+		`send("TK",[app.position[0],app.position[1],"P|hi",0,3])`,
+		`interactive-widget=overlays-content`,
+		`autocapitalize="none"`,
+		`maxlength="15"`,
+		`font-size:16px !important`,
+		`id="world-loading-progress"`,
+		`loadingActive=Boolean(app.mapLoading)&&app.phase==="world"`,
+		`previous window is complete`,
+		`const first=Number(parts[0])`,
+		`const charType=first,id=Protocol.base62(parts[1]||"0")`,
+		`actor.charType`,
+		`empty CD payload`,
+		`ids.forEach(id=>{const actor=app.actors.get(id);if(!actor?.staticNPC)app.actors.delete(id);});`,
+	}
+	for _, fragment := range required {
+		if !strings.Contains(body, fragment) {
+			t.Errorf("embedded page lost legacy entry fragment %q", fragment)
+		}
+	}
+	forbidden := []string{`class="server-entry`, `id="server-ok"`, `id="server-quit"`, `show(serverScreen);\n  renderWorld()`, `if(!ids.length)app.actors.clear()`}
+	for _, fragment := range forbidden {
+		if strings.Contains(body, fragment) {
+			t.Errorf("embedded page contains obsolete server-first UI fragment %q", fragment)
+		}
+	}
+}
+
+func TestHandlerServesConfiguredAssets(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	assets := t.TempDir()
+	if err := os.WriteFile(filepath.Join(assets, "manifest.json"), []byte(`{"format":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(fake.address())
+	cfg.AssetsDirectory = assets
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Get(server.URL + "/assets/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || string(body) != `{"format":1}` {
+		t.Fatalf("asset status=%d body=%q", response.StatusCode, body)
+	}
+}
+
+func TestHandlerServesConfiguredMaps(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	maps := t.TempDir()
+	if err := os.WriteFile(filepath.Join(maps, "1011.DAT"), []byte("map-data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(fake.address())
+	cfg.MapDirectory = maps
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Get(server.URL + "/maps/1011.DAT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || string(body) != "map-data" {
+		t.Fatalf("map status=%d body=%q", response.StatusCode, body)
+	}
+	if !strings.Contains(response.Header.Get("Cache-Control"), "immutable") {
+		t.Fatalf("map cache header=%q", response.Header.Get("Cache-Control"))
+	}
+}
+
+func TestHandlerServesConfiguredAudio(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	audio := t.TempDir()
+	if err := os.Mkdir(filepath.Join(audio, "bgm"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(audio, "bgm", "test.wav"), []byte("RIFF-test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(fake.address())
+	cfg.AudioDirectory = audio
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Get(server.URL + "/audio/bgm/test.wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || string(body) != "RIFF-test" {
+		t.Fatalf("audio status=%d body=%q", response.StatusCode, body)
+	}
+}
+
+func TestHTTPSessionForwardsGreetingPacketsAndClose(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, []byte("reply\n"))
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated || created.ID == "" || created.Greeting != "TAA=" {
+		t.Fatalf("create status=%d response=%+v", response.StatusCode, created)
+	}
+	packet := []byte("client-packet\n")
+	encoded, _ := json.Marshal(sendRequest{Packet: base64.StdEncoding.EncodeToString(packet)})
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/sessions/"+created.ID+"/send", bytes.NewReader(encoded))
+	request.Header.Set("Content-Type", "application/json")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("send status=%d", response.StatusCode)
+	}
+	select {
+	case received := <-fake.received:
+		if !bytes.Equal(received, packet) {
+			t.Fatalf("upstream received=%q want=%q", received, packet)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("upstream did not receive packet")
+	}
+	response, err = http.Get(server.URL + "/api/sessions/" + created.ID + "/events?timeout=1000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events struct {
+		Events []eventResponse `json:"events"`
+		Closed bool            `json:"closed"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&events); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || len(events.Events) == 0 || events.Events[0].Packet == "" {
+		t.Fatalf("events status=%d response=%+v", response.StatusCode, events)
+	}
+	if got, _ := base64.StdEncoding.DecodeString(events.Events[0].Packet); !bytes.Equal(got, []byte("reply\n")) {
+		t.Fatalf("reply=%q", got)
+	}
+	closedEvent := false
+	for _, event := range events.Events {
+		closedEvent = closedEvent || event.Closed
+	}
+	if !closedEvent && !events.Closed {
+		t.Fatalf("upstream close was not forwarded: %+v", events)
+	}
+	request, _ = http.NewRequest(http.MethodDelete, server.URL+"/api/sessions/"+created.ID, nil)
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete status=%d", response.StatusCode)
+	}
+}
+
+func TestHTTPSessionGracefulDeleteWaitsForPeerClose(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerSawEOF := make(chan struct{})
+	releasePeer := make(chan struct{})
+	peerDone := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releasePeer) }) }
+	t.Cleanup(func() {
+		release()
+		_ = listener.Close()
+		select {
+		case <-peerDone:
+		case <-time.After(time.Second):
+			t.Error("graceful-close TCP peer did not stop")
+		}
+	})
+	go func() {
+		defer close(peerDone)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		_, _ = connection.Write([]byte{'L', 0})
+		_, _ = io.Copy(io.Discard, connection)
+		close(peerSawEOF)
+		<-releasePeer
+	}()
+
+	handler, err := NewHandler(testConfig(listener.Addr().String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("create status=%d", response.StatusCode)
+	}
+
+	deleteDone := make(chan error, 1)
+	go func() {
+		request, requestErr := http.NewRequest(http.MethodDelete, server.URL+"/api/sessions/"+created.ID+"?wait=1", nil)
+		if requestErr != nil {
+			deleteDone <- requestErr
+			return
+		}
+		deleted, requestErr := http.DefaultClient.Do(request)
+		if requestErr == nil {
+			defer deleted.Body.Close()
+			if deleted.StatusCode != http.StatusNoContent {
+				requestErr = fmt.Errorf("delete status=%d", deleted.StatusCode)
+			}
+		}
+		deleteDone <- requestErr
+	}()
+
+	select {
+	case <-peerSawEOF:
+	case <-time.After(time.Second):
+		t.Fatal("upstream did not observe the graceful TCP FIN")
+	}
+	select {
+	case err := <-deleteDone:
+		t.Fatalf("graceful delete returned before the 2.5 peer closed: %v", err)
+	default:
+	}
+	release()
+	releasedAt := time.Now()
+	select {
+	case err := <-deleteDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(releasedAt); elapsed < defaultLegacyLogoutSaveDrain-50*time.Millisecond {
+			t.Fatalf("graceful delete returned before the legacy SAAC save drain: %v", elapsed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("graceful delete did not finish after peer close")
+	}
+}
+
+func TestTCPSessionGracefulCloseReportsPeerTimeout(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			accepted <- connection
+		}
+	}()
+	client, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := <-accepted
+	defer peer.Close()
+
+	session := newTCPSession("peer-timeout", client, 1024)
+	err = session.closeGracefully(25 * time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("graceful close error=%v", err)
+	}
+	if !session.isClosed() {
+		t.Fatal("timed-out graceful close left the bridge session open")
+	}
+}
+
+func TestHTTPSessionCloseAfterPacketIsAtomic(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("create status=%d", response.StatusCode)
+	}
+
+	packet := []byte("logout-packet\n")
+	encoded, _ := json.Marshal(sendRequest{Packet: base64.StdEncoding.EncodeToString(packet)})
+	response, err = http.Post(server.URL+"/api/sessions/"+created.ID+"/send?close=1", "application/json", bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("close-after send status=%d", response.StatusCode)
+	}
+	select {
+	case received := <-fake.received:
+		if !bytes.Equal(received, packet) {
+			t.Fatalf("upstream received=%q want=%q", received, packet)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("upstream did not receive close-after packet")
+	}
+	response, err = http.Get(server.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var health map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if health["sessions"] != float64(0) {
+		t.Fatalf("close-after left sessions=%v", health["sessions"])
+	}
+}
+
+func TestHTTPSessionCloseAfterPacketFailureStillCleansSession(t *testing.T) {
+	fake := newGreetingThenCloseTCP(t, []byte{'L', 0})
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("create status=%d", response.StatusCode)
+	}
+	select {
+	case <-fake.accepted:
+	case <-time.After(time.Second):
+		t.Fatal("fake TCP server did not accept")
+	}
+
+	packet := []byte("logout-packet\n")
+	encoded, _ := json.Marshal(sendRequest{Packet: base64.StdEncoding.EncodeToString(packet)})
+	response, err = http.Post(server.URL+"/api/sessions/"+created.ID+"/send?close=1", "application/json", bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode == http.StatusAccepted {
+		t.Fatal("close-after write unexpectedly succeeded after upstream close")
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		response, err = http.Get(server.URL + "/healthz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var health map[string]any
+		if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if health["sessions"] == float64(0) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("close-after failure leaked sessions=%v", health["sessions"])
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestHandlerRejectsInvalidGreetingAndUnknownSession(t *testing.T) {
+	fake := newFakeTCP(t, []byte("NO"), nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("invalid greeting status=%d", response.StatusCode)
+	}
+	response, err = http.Get(server.URL + "/api/sessions/no-such/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown session status=%d", response.StatusCode)
+	}
+}
+
+func TestHandlerValidatesConfigAndPacketFraming(t *testing.T) {
+	if _, err := NewHandler(Config{TCPUpstream: "not-an-address"}); err == nil {
+		t.Fatal("invalid upstream address accepted")
+	}
+	left, right := net.Pipe()
+	session := newTCPSession("test", left, 64)
+	defer right.Close()
+	if err := session.write([]byte("missing delimiter")); err == nil {
+		t.Fatal("packet without newline accepted")
+	}
+	readDone := make(chan struct{})
+	go func() {
+		_, _ = io.ReadFull(right, make([]byte, 3))
+		close(readDone)
+	}()
+	if err := session.write([]byte("ok\n")); err != nil {
+		t.Fatal(err)
+	}
+	<-readDone
+}
+
+func TestSessionAllowsOnlyOneConcurrentPoll(t *testing.T) {
+	left, right := net.Pipe()
+	session := newTCPSession("test", left, 64)
+	defer right.Close()
+	result := make(chan error, 1)
+	go func() {
+		_, err := session.poll(time.Second)
+		result <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		session.mu.Lock()
+		polling := session.polling
+		session.mu.Unlock()
+		if polling {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first poll did not become pending")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, err := session.poll(time.Millisecond); err == nil {
+		t.Fatal("concurrent poll unexpectedly accepted")
+	}
+	session.finish("test complete")
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHandlerLimitsSessionsAndPackets(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	defer func() {
+		close(stop)
+		_ = listener.Close()
+	}()
+	go func() {
+		for {
+			connection, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			_, _ = connection.Write([]byte{'L', 0})
+			go func() {
+				select {
+				case <-stop:
+					_ = connection.Close()
+				}
+			}()
+		}
+	}()
+	cfg := testConfig(listener.Addr().String())
+	cfg.MaxSessions = 1
+	cfg.PacketLimit = 8
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("first create status=%d", response.StatusCode)
+	}
+	response, err = http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("second create status=%d", response.StatusCode)
+	}
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/sessions/"+created.ID+"/send", strings.NewReader("too-long\n"))
+	request.Header.Set("Content-Type", "application/octet-stream")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("oversize send status=%d", response.StatusCode)
+	}
+}

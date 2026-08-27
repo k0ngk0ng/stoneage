@@ -52,6 +52,21 @@ func ValidateGameUsername(username []byte) error {
 	return nil
 }
 
+// CanonicalGameUsername returns the stable account key used by the 2.5 game
+// boundary.  Legacy account buffers are ASCII identifiers; only A–Z are
+// folded so passwords and non-ASCII bytes are never silently changed.  Trim
+// the same outer whitespace the web login form removes before the value is
+// looked up or sent to GMSV.
+func CanonicalGameUsername(username string) string {
+	value := []byte(strings.TrimSpace(username))
+	for index, character := range value {
+		if character >= 'A' && character <= 'Z' {
+			value[index] = character + ('a' - 'A')
+		}
+	}
+	return string(value)
+}
+
 func ValidateGamePassword(password []byte) error {
 	if len(password) < MinGamePasswordBytes || len(password) > MaxGamePasswordBytes {
 		return ErrInvalidPassword

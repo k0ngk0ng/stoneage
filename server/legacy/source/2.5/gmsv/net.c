@@ -707,6 +707,38 @@ ANYTHREAD BOOL initConnectOne( int sockfd, struct sockaddr_in* sin ,int len )
   return TRUE;
 }
 
+/* STONEAGE_DURABLE_EOF_LOGOUT
+ * A clean client EOF is the stock 2.5 "logout here" path. CHAR_logout()
+ * sends ACCharSave asynchronously, so closing this socket immediately makes
+ * the TCP peer-close race the SAAC character-file write. Keep the connection
+ * slot alive in WHILELOGOUTSAVE until saacproto_ACCharSave_recv() changes it
+ * back to NOTLOGIN; the next EOF read then performs the ordinary final close.
+ *
+ * This is an internal lifecycle fix only. It does not add the later
+ * CharLogout(Flg) field, so the 2.5 wire protocol stays unchanged.
+ */
+static BOOL CONNECT_beginEOFLogoutSave( int sockfd )
+{
+  char cdkey[CDKEYLEN];
+
+  if( CONNECT_isCLI( sockfd ) == FALSE ||
+      CONNECT_isLOGIN( sockfd ) == FALSE ||
+      CONNECT_getCharaindex( sockfd ) < 0 ) {
+    return FALSE;
+  }
+
+  CONNECT_getCdkey( sockfd, cdkey, sizeof( cdkey ) );
+  CONNECT_setState( sockfd, WHILELOGOUTSAVE );
+  if( !CHAR_logout( sockfd, TRUE ) ) {
+    print( "EOF logout save start failed: fd=%d account=%s\n",
+           sockfd, cdkey );
+    return FALSE;
+  }
+  CONNECT_setCharaindex( sockfd, -1 );
+  print( "EOF logout save pending: fd=%d account=%s\n", sockfd, cdkey );
+  return TRUE;
+}
+
 ANYTHREAD BOOL _CONNECT_endOne( char *file, int fromline, int sockfd , int line )
 {
 //	if(errno==113 || errno==104){
@@ -2438,6 +2470,11 @@ SINGLETHREAD BOOL netloop_faster( void )
 
     if ( Connect[ fdremember ].state == WHILECLOSEALLSOCKETSSAVE ) continue;
 
+    /* Do not consume EOF again while ACCharSave is still in flight. Packet
+       logout also uses this state and likewise has nothing more to read until
+       its existing SAAC callback changes the state. */
+    if ( Connect[ fdremember ].state == WHILELOGOUTSAVE ) continue;
+
 #ifdef _AC_PIORITY
     totalfd++;
 
@@ -2476,6 +2513,10 @@ SINGLETHREAD BOOL netloop_faster( void )
 					  	print( "¶ÁÈ¡·µ»Ø: %d %s \n", errno, strerror( errno));
 					  }
 				  }
+          if( ret == 0 && CONNECT_beginEOFLogoutSave( fdremember ) ) {
+            print( "\nRCL_SAVE " );
+            continue;
+          }
           print( "\nRCL " );
           CONNECT_endOne_debug(fdremember );
           continue;

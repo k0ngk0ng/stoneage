@@ -157,6 +157,34 @@ int lssproto_ServerDispatchMessage(int fd, char *encoded)
 		return 0;
 	}
 
+	/*
+	 * EN is the client request used for an immediate random encounter.  The
+	 * generated dispatcher in the archived 2.5 source omitted this case, so a
+	 * valid EN packet fell through to the unknown-function path and the client
+	 * waited forever for EN_SEND.  Keep the same checksum/discard handling as
+	 * the neighbouring two-coordinate DU request and route to the battle entry.
+	 */
+	if (func==LSSPROTO_EN_RECV) {
+		int checksum=0, checksumrecv;
+		int x;
+		int y;
+
+		checksum += util_deint(2, &x);
+		checksum += util_deint(3, &y);
+		util_deint(4, &checksumrecv);
+		if (checksum!=checksumrecv) {
+			util_DiscardMessage();
+			logHack(fd, HACK_CHECKSUMERROR);
+			DME(); return -1;
+		}
+#ifdef _DEBUG_RET_CLI
+		printf("LSSPROTO_EN_RECV-x:%d,y:%d\\n", x, y);
+#endif
+		lssproto_EN_recv(fd, x, y);
+		util_DiscardMessage();
+		return 0;
+	}
+
 	if (func==LSSPROTO_DU_RECV) {
 		int checksum=0, checksumrecv;
 		int x;

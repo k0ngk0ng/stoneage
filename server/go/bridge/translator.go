@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 	"github.com/k0ngk0ng/stoneage/server/go/protocol"
 )
@@ -238,6 +239,9 @@ func (translator *Translator) ClientToServer(packet []byte) ([]byte, string, err
 			value, err := namedproto.DecodeString(message.Fields[index])
 			if err != nil {
 				return nil, message.Function, fmt.Errorf("decode string field %d: %w", index, err)
+			}
+			if definition.number == protocol.FunctionClientLoginRequest && index == 0 {
+				value = []byte(auth.CanonicalGameUsername(string(value)))
 			}
 			fields.String(value)
 			if definition.number == protocol.FunctionClientLoginRequest && index == 0 {

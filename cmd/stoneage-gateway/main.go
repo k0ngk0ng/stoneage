@@ -339,7 +339,7 @@ func authenticateClientLogin(packet []byte, accountStore *auth.Store, sourceIP s
 	if err != nil {
 		return false, "", fmt.Errorf("decode login password: %w", err)
 	}
-	account := string(accountBytes)
+	account := auth.CanonicalGameUsername(string(accountBytes))
 	if _, err := accountStore.Authenticate(context.Background(), account, passwordBytes, sourceIP); err != nil {
 		return false, account, nil
 	}

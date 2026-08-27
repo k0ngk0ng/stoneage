@@ -40,6 +40,42 @@ func TestCapturedLoginTranslation(t *testing.T) {
 	}
 }
 
+func TestLoginAccountIsCanonicalisedByGateway(t *testing.T) {
+	// The browser disables mobile auto-capitalisation, but the gateway must
+	// enforce the same key for native/embedded clients and direct callers.
+	translator := NewTranslator()
+	raw, err := namedproto.RawMessage(1, "ClientLogin", []string{
+		namedproto.EncodeString([]byte("ProBe")),
+		namedproto.EncodeString([]byte("local")),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := namedproto.EncodePacket(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric, function, err := translator.ClientToServer(packet)
+	if err != nil || function != "ClientLogin" {
+		t.Fatalf("translation = function:%q err:%v", function, err)
+	}
+	if translator.Account() != "probe" {
+		t.Fatalf("translator account = %q, want probe", translator.Account())
+	}
+	message, _, err := protocol.DecodeResponse(numeric, protocol.FunctionClientLoginRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := protocol.NewFieldDecoder(message, protocol.DefaultKey)
+	account, err := fields.String()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(account) != "probe" {
+		t.Fatalf("numeric account = %q, want probe", account)
+	}
+}
+
 func TestLoginResponseTranslation(t *testing.T) {
 	translator := NewTranslator()
 	if _, _, err := translator.ClientToServer([]byte("HBZovLTemtm8s7fgadloSK8dIILiINuPLPGzJ-8\n")); err != nil {
@@ -76,6 +112,42 @@ func TestLoginResponseTranslation(t *testing.T) {
 	}
 	if !bytes.Equal(value, []byte("ok")) {
 		t.Fatalf("result = %q", value)
+	}
+}
+
+func TestRejects85OnlyClientFunctions(t *testing.T) {
+	for _, function := range []string{"SaMenu", "RideQuery", "SignDay", "STREET_VENDOR"} {
+		raw, err := namedproto.RawMessage(1, function, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet, err := namedproto.EncodePacket(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, got, err := NewTranslator().ClientToServer(packet); err == nil || got != function {
+			t.Fatalf("ClientToServer(%s) = function %q, error %v; want a strict 2.5 rejection", function, got, err)
+		}
+	}
+}
+
+func TestRejectsClientFieldCountDrift(t *testing.T) {
+	// CharLogin is a one-string 2.5 request.  Accepting a missing or extra
+	// field would let the numeric dispatcher consume the checksum as a game
+	// value and desynchronise the connection, which is exactly the failure
+	// caused by copying an 8.5 schema into the 2.5 client.
+	for _, fields := range [][]string{nil, {"Hero", "unexpected"}} {
+		raw, err := namedproto.RawMessage(1, "CharLogin", fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet, err := namedproto.EncodePacket(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, function, err := NewTranslator().ClientToServer(packet); err == nil || function != "CharLogin" {
+			t.Fatalf("CharLogin fields %q = function %q, error %v; want field-count rejection", fields, function, err)
+		}
 	}
 }
 

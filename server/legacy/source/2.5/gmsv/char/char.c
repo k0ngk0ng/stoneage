@@ -684,6 +684,8 @@ void CHAR_login( int clifd, char* data, int saveindex )
 		CHAR_endCharData(&ch);
 		goto MAKECHARDATAERROR;
 	}
+	/* setup.cf is authoritative for live players; old character files may retain a stale wint value. */
+	CHAR_setInt( charaindex, CHAR_WALKINTERVAL, getWalksendinterval() );
 #ifdef _NEWSAVE
 	CHAR_setInt( charaindex, CHAR_SAVEINDEXNUMBER, saveindex);
 	print("´æµµ×°ÔØË÷Òý:%d\n", CHAR_getInt( charaindex, CHAR_SAVEINDEXNUMBER) );

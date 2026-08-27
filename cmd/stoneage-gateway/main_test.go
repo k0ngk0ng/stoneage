@@ -104,9 +104,9 @@ func TestAuthenticateClientLogin(t *testing.T) {
 	if _, err := store.CreateAccount(context.Background(), "probe", []byte("local")); err != nil {
 		t.Fatal(err)
 	}
-	packetFor := func(password string) []byte {
+	packetFor := func(account, password string) []byte {
 		raw, err := namedproto.RawMessage(1, "ClientLogin", []string{
-			namedproto.EncodeString([]byte("probe")),
+			namedproto.EncodeString([]byte(account)),
 			namedproto.EncodeString([]byte(password)),
 		})
 		if err != nil {
@@ -118,11 +118,11 @@ func TestAuthenticateClientLogin(t *testing.T) {
 		}
 		return packet
 	}
-	accepted, account, err := authenticateClientLogin(packetFor("local"), store, "127.0.0.1")
+	accepted, account, err := authenticateClientLogin(packetFor("PROBE", "local"), store, "127.0.0.1")
 	if err != nil || !accepted || account != "probe" {
 		t.Fatalf("valid login = accepted:%v account:%q err:%v", accepted, account, err)
 	}
-	accepted, _, err = authenticateClientLogin(packetFor("wrong"), store, "127.0.0.1")
+	accepted, _, err = authenticateClientLogin(packetFor("PrObE", "wrong"), store, "127.0.0.1")
 	if err != nil || accepted {
 		t.Fatalf("invalid login = accepted:%v err:%v", accepted, err)
 	}

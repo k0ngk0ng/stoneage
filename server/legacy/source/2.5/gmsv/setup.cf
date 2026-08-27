@@ -433,15 +433,16 @@ npccreatenum=8192
 
 # Walk Send Interval
 # 走路间隔 (在GMSV没开启MUTLITHREAD模式时 无作用)
-walkinterval=2500
+# 与原版 setup.cf 一致；单位为毫秒。
+walkinterval=10
 
 # ?CA send interval (ms)
 # CleanAll间隔 (在GMSV没开启MUTLITHREAD模式时 无作用)
-CAinterval=2500
+CAinterval=10
 
 # ?CD send interval (ms)
 # CleanDest间隔 (在GMSV没开启MUTLITHREAD模式时 无作用)
-CDinterval=2500
+CDinterval=10
 
 # Character data save interval(数据存储间隔?)
 CharSaveinterval=86400

@@ -292,6 +292,7 @@ func (store *Store) CreateAccount(ctx context.Context, username string, password
 // action to actorID when it was initiated from the web console. A nil actor is
 // used by command-line imports and the game service itself.
 func (store *Store) CreateAccountAs(ctx context.Context, actorID *int64, username string, password []byte) (Account, error) {
+	username = CanonicalGameUsername(username)
 	if err := ValidateGameUsername([]byte(username)); err != nil {
 		return Account{}, err
 	}
@@ -323,6 +324,7 @@ VALUES(?,?,?,0,?,?)`, username, hash, AccountActive, now, now)
 // character owner. Without a supplied password it is disabled and receives an
 // unusable random hash, so migration can never silently grant access.
 func (store *Store) ImportLegacyAccount(ctx context.Context, username string, password []byte) (bool, error) {
+	username = CanonicalGameUsername(username)
 	if err := ValidateGameUsername([]byte(username)); err != nil {
 		return false, err
 	}
@@ -354,7 +356,11 @@ func (store *Store) GetAccount(ctx context.Context, id int64) (Account, error) {
 }
 
 func (store *Store) GetAccountByUsername(ctx context.Context, username string) (Account, error) {
-	row := store.db.QueryRowContext(ctx, `SELECT id,username,status,must_change_password,created_at,updated_at,last_login_at,failed_attempts,locked_until FROM accounts WHERE username=?`, username)
+	username = CanonicalGameUsername(username)
+	// New rows are stored canonically.  The lower() fallback keeps accounts
+	// imported by older gateway builds reachable without requiring a destructive
+	// database rewrite; ASCII is guaranteed by ValidateGameUsername.
+	row := store.db.QueryRowContext(ctx, `SELECT id,username,status,must_change_password,created_at,updated_at,last_login_at,failed_attempts,locked_until FROM accounts WHERE lower(username)=? ORDER BY id LIMIT 1`, username)
 	return scanAccount(row)
 }
 
@@ -432,6 +438,7 @@ func (store *Store) SetAccountStatusAs(ctx context.Context, actorID *int64, id i
 func (store *Store) Authenticate(ctx context.Context, username string, password []byte, sourceIP string) (Account, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	username = CanonicalGameUsername(username)
 	if ValidateGameUsername([]byte(username)) != nil || ValidateGamePassword(password) != nil {
 		_ = store.recordLoginAttempt(ctx, username, sourceIP, false)
 		return Account{}, ErrInvalidCredentials

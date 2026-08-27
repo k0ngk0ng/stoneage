@@ -59,6 +59,21 @@ func TestAccountAuthenticationAndLockout(t *testing.T) {
 	}
 }
 
+func TestGameAccountNamesAreCaseInsensitive(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	account, err := store.CreateAccount(ctx, "  ProBe  ", []byte("local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Username != "probe" {
+		t.Fatalf("stored username = %q, want probe", account.Username)
+	}
+	if _, err := store.Authenticate(ctx, "PROBE", []byte("local"), "127.0.0.1"); err != nil {
+		t.Fatalf("uppercase account login failed: %v", err)
+	}
+}
+
 func TestAdminAuthenticationLockoutAndSession(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

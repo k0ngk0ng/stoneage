@@ -85,9 +85,9 @@ var configFieldDefinitions = []configFieldDefinition{
 	{Group: "奖励与等级", Key: "battleexp", Label: "战斗经验倍率", Hint: "按服务端原始倍率填写。", Kind: "int", Default: "300", Min: 0, Max: 100000000},
 	{Group: "奖励与等级", Key: "GOLD", Label: "初始金币", Hint: "新角色初始金币。", Kind: "int", Default: "1000000", Min: 0, Max: 2147483647},
 
-	{Group: "时间与日志", Key: "walkinterval", Label: "移动间隔", Hint: "按服务端原始单位填写。", Kind: "int", Default: "2500", Min: 0, Max: 600000},
-	{Group: "时间与日志", Key: "CAinterval", Label: "角色动作间隔", Hint: "按服务端原始单位填写。", Kind: "int", Default: "2500", Min: 0, Max: 600000},
-	{Group: "时间与日志", Key: "CDinterval", Label: "角色删除间隔", Hint: "按服务端原始单位填写。", Kind: "int", Default: "2500", Min: 0, Max: 600000},
+	{Group: "时间与日志", Key: "walkinterval", Label: "移动间隔", Hint: "原版默认 10ms；按服务端原始单位填写。", Kind: "int", Default: "10", Min: 0, Max: 600000},
+	{Group: "时间与日志", Key: "CAinterval", Label: "角色动作间隔", Hint: "原版默认 10ms；按服务端原始单位填写。", Kind: "int", Default: "10", Min: 0, Max: 600000},
+	{Group: "时间与日志", Key: "CDinterval", Label: "角色删除间隔", Hint: "原版默认 10ms；按服务端原始单位填写。", Kind: "int", Default: "10", Min: 0, Max: 600000},
 	{Group: "时间与日志", Key: "CharSaveinterval", Label: "角色保存间隔", Hint: "按服务端原始单位填写。", Kind: "int", Default: "86400", Min: 0, Max: 604800},
 	{Group: "时间与日志", Key: "Onelooptime", Label: "主循环间隔", Hint: "按服务端原始单位填写。", Kind: "int", Default: "5", Min: 0, Max: 3600},
 	{Group: "时间与日志", Key: "Petdeletetime", Label: "宠物清理时间", Hint: "按服务端原始单位填写。", Kind: "int", Default: "1800", Min: 0, Max: 604800},

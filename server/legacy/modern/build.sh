@@ -71,6 +71,15 @@ if ! grep -q 'STONEAGE_SAFE_DISCONNECT_CLEANUP' /src/gmsv/char/char.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0006-safe-disconnect-cleanup.patch
 fi
 
+# A clean client EOF is the 2.5 in-place logout path. GMSV historically
+# closed that socket before SAAC acknowledged the asynchronous character save,
+# allowing an immediate relogin to load the previous coordinates. Keep the fd
+# slot until the existing WHILELOGOUTSAVE callback has completed; no newer
+# CharLogout field is added to the 2.5 wire protocol.
+if ! grep -q 'STONEAGE_DURABLE_EOF_LOGOUT' /src/gmsv/net.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0008-durable-eof-logout.patch
+fi
+
 # The authenticated web console writes one atomic, fixed-path notice file.
 # Let the GMSV consume it in its normal main loop and deliver it to online
 # players through the same red system-message path as the built-in announce

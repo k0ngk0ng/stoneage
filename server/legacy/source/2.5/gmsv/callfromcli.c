@@ -29,6 +29,20 @@
 
 BOOL checkStringErr( char * );
 
+/* Account identifiers are historical ASCII keys.  Normalize them at the
+ * first GMSV boundary so every downstream 2.5 path (SAAC lookup, character
+ * files, connection locks, and saved ownership fields) uses one key.  The
+ * password remains untouched and therefore stays case-sensitive. */
+static void StoneAgeCanonicalizeAccount( char *account )
+{
+	unsigned char *cursor = (unsigned char *)account;
+	if( cursor == NULL ) return;
+	while( *cursor != '\0' ) {
+		if( *cursor >= 'A' && *cursor <= 'Z' ) *cursor = (unsigned char)(*cursor + ('a' - 'A'));
+		cursor++;
+	}
+}
+
 // shan add
 extern struct FM_PKFLOOR fmpkflnum[FAMILY_FMPKFLOOR];
 
@@ -68,6 +82,7 @@ void lssproto_ClientLogin_recv( int fd,char* cdkey, char* passwd )
 			}
     }
     //print( "CliLogin cdkey=%s\n" , cdkey );
+    StoneAgeCanonicalizeAccount( cdkey );
     /* connect±åÎìñâ¡õÔÊÔÂ */
     CONNECT_setCdkey( fd, cdkey );
     CONNECT_setPasswd( fd, passwd );

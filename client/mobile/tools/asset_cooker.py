@@ -46,6 +46,12 @@ class AdrRecord:
     yoffset: int
     width: int
     height: int
+    # MAP_ATTR.atari_x/atari_y are the hit-box extents used by the native
+    # setPartsPrio()/checkPrioPartsVsChar() depth test.  They live directly
+    # before the packed ``hit`` word in ADRN and are needed by the web
+    # renderer as well as the offline compositor.
+    hit_x: int
+    hit_y: int
     hit: int
     bmp_number: int
 
@@ -99,8 +105,10 @@ def parse_adrn(path: Path) -> tuple[dict[int, AdrRecord], dict[int, list[int]]]:
         bitmap_no, image_offset, size, xoffset, yoffset, width, height = struct.unpack_from(
             "<IIIiiII", record, 0
         )
-        # MAP_ATTR starts at byte 28.  The final unsigned int is aligned to
-        # byte 48 within MAP_ATTR, hence byte 76 in the complete record.
+        # MAP_ATTR starts at byte 28.  The first two bytes are the native
+        # hit-box extents; the final unsigned int is aligned to byte 48
+        # within MAP_ATTR, hence byte 76 in the complete record.
+        hit_x, hit_y = struct.unpack_from("<BB", record, 28)
         hit = struct.unpack_from("<H", record, 30)[0]
         bmp_number = struct.unpack_from("<I", record, 76)[0]
         item = AdrRecord(
@@ -111,6 +119,8 @@ def parse_adrn(path: Path) -> tuple[dict[int, AdrRecord], dict[int, list[int]]]:
             yoffset=yoffset,
             width=width,
             height=height,
+            hit_x=hit_x,
+            hit_y=hit_y,
             hit=hit,
             bmp_number=bmp_number,
         )
@@ -385,6 +395,7 @@ def paint_isometric(
     extra_bitmaps: dict[int, Bitmap],
     overlay_ids: list[list[int | None]] | None = None,
     extra_layers: list[list[list[int | None]]] | None = None,
+    crop_rect: tuple[int, int, int, int] | None = None,
 ) -> tuple[int, int]:
     height = len(bitmap_ids)
     width = len(bitmap_ids[0]) if height else 0
@@ -417,7 +428,10 @@ def paint_isometric(
                 pixels[destination : destination + 4] = bytes((red, green, blue, 255))
 
     def get_bitmap(bitmap_no: int | None) -> Bitmap | None:
-        if bitmap_no is None or bitmap_no <= 0:
+        # At this point the caller has already resolved the logical map image
+        # number to an ADRN record number.  Record zero is a real bitmap slot;
+        # only ``None`` (or a malformed negative value) means "no picture".
+        if bitmap_no is None or bitmap_no < 0:
             return None
         if bitmap_no in extra_bitmaps:
             return extra_bitmaps[bitmap_no]
@@ -431,11 +445,14 @@ def paint_isometric(
     # The legacy renderer walks a rectangle in the same diagonal order as
     # drawMap(): start at (x=0,y=height-1), walk down-left diagonals, then
     # continue from the right edge.  It submits every tile first and every
-    # parts/object layer afterwards (DISP_PRIO_TILE=0, DISP_PRIO_PARTS=10),
-    # so keep those as separate passes instead of interleaving layers per
-    # cell.  This matters for tall parts that overlap neighbouring ground.
+    # parts/object layer afterwards (DISP_PRIO_TILE=1, DISP_PRIO_PARTS=10).
+    # SortComp() then puts the later display-buffer entry first when two
+    # records have the same priority.  Keep the layers separate and reverse
+    # each submission list before blitting; otherwise the near edge of a
+    # cliff/roof is painted underneath its far edge (the old static PNGs had
+    # exactly that mismatch with drawMap()).
     layers: list[list[list[int | None]]] = [
-        [[value if value is not None and value > 0 else None for value in row] for row in bitmap_ids]
+        [[value if value is not None and value >= 0 else None for value in row] for row in bitmap_ids]
     ]
     if overlay_ids is not None:
         layers.append(overlay_ids)
@@ -444,6 +461,7 @@ def paint_isometric(
     for layer in layers:
         if len(layer) != height or any(len(layer_row) != width for layer_row in layer):
             raise AssetError("isometric layer dimensions do not match the tile layer")
+        draw_list: list[tuple[Bitmap, int, int]] = []
         ti = height - 1
         tj = 0
         while ti >= 0:
@@ -451,33 +469,47 @@ def paint_isometric(
             column = tj
             while row >= 0 and column >= 0:
                 value = layer[row][column]
-                # Values up to CG_INVISIBLE are collision/ambient controls in
-                # the original client, not drawable graphics.
-                if value is not None and value > CG_INVISIBLE:
+                # Logical values up to CG_INVISIBLE were removed before the
+                # matrix was resolved.  ``value`` is now a physical ADRN
+                # record number, where 0..99 are perfectly valid pictures.
+                # Filtering those a second time punched transparent holes in
+                # battle and field maps whenever (for example) logical tile
+                # 205 resolved to physical record 66.
+                if value is not None and value >= 0:
                     bitmap = get_bitmap(value)
                     if bitmap is not None:
                         anchor_x = origin_x + (column + row) * 32
                         anchor_y = origin_y + (row - column) * 24
-                        blit(bitmap, anchor_x + bitmap.xoffset, anchor_y + bitmap.yoffset)
+                        draw_list.append((bitmap, anchor_x + bitmap.xoffset, anchor_y + bitmap.yoffset))
                 row -= 1
                 column -= 1
             if tj < width - 1:
                 tj += 1
             else:
                 ti -= 1
+        for bitmap, left, top in reversed(draw_list):
+            blit(bitmap, left, top)
     # Write the already composited RGBA canvas without going through indexed
     # conversion again.
+    write_left, write_top, write_width, write_height = 0, 0, canvas_width, canvas_height
+    if crop_rect is not None:
+        write_left, write_top, write_width, write_height = crop_rect
+        if write_left < 0 or write_top < 0 or write_width <= 0 or write_height <= 0:
+            raise AssetError("invalid isometric crop rectangle")
+        if write_left + write_width > canvas_width or write_top + write_height > canvas_height:
+            raise AssetError("isometric crop rectangle exceeds rendered canvas")
     rows = bytearray()
-    for y in range(canvas_height):
+    for y in range(write_top, write_top + write_height):
         rows.append(0)
-        rows.extend(pixels[y * canvas_width * 4 : (y + 1) * canvas_width * 4])
+        start = (y * canvas_width + write_left) * 4
+        rows.extend(pixels[start : start + write_width * 4])
     payload = b"\x89PNG\r\n\x1a\n"
-    payload += png_chunk(b"IHDR", struct.pack(">IIBBBBB", canvas_width, canvas_height, 8, 6, 0, 0, 0))
+    payload += png_chunk(b"IHDR", struct.pack(">IIBBBBB", write_width, write_height, 8, 6, 0, 0, 0))
     payload += png_chunk(b"IDAT", zlib.compress(bytes(rows), 9))
     payload += png_chunk(b"IEND", b"")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(payload)
-    return canvas_width, canvas_height
+    return write_width, write_height
 
 
 def main() -> int:
