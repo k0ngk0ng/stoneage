@@ -13195,6 +13195,16 @@
     app.pointerGestureMapToken=mapTransitionToken;
     app.pointerGestureSceneToken=sceneTransitionToken;
     if(event.button===0){
+      /* UI hit regions are siblings above the map.  Check them before the
+         NPC lookup: an NPC can legitimately be painted underneath the
+         top-left/right field controls, and the native client always gives
+         the control the first mouse-down.  Looking up the covered actor here
+         used to set pointerLookTargetId and prevent the button's own click,
+         which made the left menu appear intermittently broken. */
+      if(worldPointerIsUiTarget(event)){
+        app.pointerLookTargetId=null;app.pointerLookPointerId=null;
+        return;
+      }
       /* MAP.CPP::lookAtAround() consumes a one-tile click on a
          CHAROBJ_TYPE_LOOKAT object before the movement sampler starts.  Do
          the same at pointerdown so the subsequent pointerup can send L

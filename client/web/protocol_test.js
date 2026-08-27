@@ -278,6 +278,11 @@ for (const expected of [
      must talk/approach the object, never install its occupied cell as a W
      destination (which made the web client overlap the NPC). */
   /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,620}if\(targetDistance>2\)[\s\S]{0,180}return approachNPC\(current\)/,
+  /* A map actor may be painted underneath one of the fixed field controls.
+     Native display priority gives the control the click, so keep the UI hit
+     guard before actorAtTile() instead of letting the covered NPC consume
+     pointerdown and make the toolbar look intermittently unresponsive. */
+  /function handleWorldPointerDown\(event\)\{[\s\S]{0,900}if\(event\.button===0\)\{[\s\S]{0,900}if\(worldPointerIsUiTarget\(event\)\)\{[\s\S]{0,240}return;[\s\S]{0,900}const tile=worldTileFromPointer\(event\),actor=tile\?actorAtTile\(tile,isTalkableActor\):null;/,
   /const tile=worldTileFromPointer\(event\),actor=tile\?actorAtTile\(tile,isTalkableActor\):null;\s*if\(actor\)\{[\s\S]{0,900}app\.pointerLookTargetId=Number\(actor\.id\)[\s\S]{0,500}event\.preventDefault\(\);renderWorldOverlay\(\);return;/,
   /if\(distance>0&&distance<=2\)\{[\s\S]{0,220}talkToTarget\(clickedActor\)\.catch\(reportError\);[\s\S]{0,180}return;/,
   /if\(distance===0\)\{[\s\S]{0,120}approachNPC\(clickedActor\);[\s\S]{0,80}return;/,
