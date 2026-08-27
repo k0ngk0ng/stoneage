@@ -11238,6 +11238,44 @@
       drawActorSpeech(ctx,actor,point);
     }
   }
+  /* A large M window can contain hundreds of drawable ground cells.  The
+     native DirectDraw client rasterises those cells over several process
+     ticks; doing every drawImage() in one browser task can monopolise a
+     mobile main thread long enough to miss pointer samples and a walk frame.
+     Keep the completed cache visible while the replacement is painted, then
+     publish it only after the final cell has been committed. */
+  const MAP_LAYER_ASYNC_RASTER_THRESHOLD=240;
+  const MAP_LAYER_ASYNC_RASTER_BATCH=72;
+  const MAP_LAYER_ASYNC_RASTER_BUDGET_MS=6;
+  function scheduleMapLayerRaster(cache){
+    if(!cache||cache.rasterScheduled||cache.rasterComplete)return;
+    cache.rasterScheduled=true;cache.rasterIndex=0;
+    /* This is part of the loading critical path, not optional background
+       warming.  requestIdleCallback can be deferred indefinitely by a
+       throttled/hidden mobile WebView (or by headless Chrome), leaving the
+       curtain parked after the first batch.  A zero-delay task still yields
+       between batches while guaranteeing forward progress. */
+    const enqueue=typeof window.setTimeout==="function"
+      ?(fn=>window.setTimeout(fn,0))
+      :(fn=>fn());
+    const pump=()=>{
+      if(app.mapLayerCache!==cache){cache.rasterScheduled=false;cache.groundCells=null;return;}
+      const ctx=cache.context||getMap2DContext(cache.canvas),cells=cache.groundCells||[];
+      if(!ctx){cache.rasterScheduled=false;cache.rasterFailed=true;cache.groundCells=null;return;}
+      const started=typeof performance?.now==="function"?performance.now():Date.now();let drawn=0;
+      while(cache.rasterIndex<cells.length){
+        const cell=cells[cache.rasterIndex++];drawBitmapAt(ctx,cell.image,cell.info,cell.anchor,1);drawn++;
+        const elapsed=(typeof performance?.now==="function"?performance.now():Date.now())-started;
+        if(drawn>=MAP_LAYER_ASYNC_RASTER_BATCH||elapsed>=MAP_LAYER_ASYNC_RASTER_BUDGET_MS)break;
+      }
+      if(cache.rasterIndex<cells.length){enqueue(pump);return;}
+      cache.groundCells=null;cache.rasterScheduled=false;cache.rasterComplete=true;
+      cache.dirty=cache.pending.size>0||cache.failed.size>0||cache.missing.size>0;
+      cache.ready=!cache.dirty;
+      if(cache.ready){app.mapLayerFallback=null;renderMapLoadingProgress("正在解码地图贴片…");scheduleAssetRefresh(true);}
+    };
+    enqueue(pump);
+  }
   function mapLayerCacheKey(map){
     if(!map)return "";
     /* M packets create a fresh object even when the 37x37 window is byte-for-
@@ -11253,7 +11291,7 @@
     /* A live M window can reference many images.  While those images are
        loading, keep the last completed cache and wait for the final pending
        asset instead of rebuilding the whole 29×37 layer once per onload. */
-    if(current&&current.key===key&&(!current.dirty||current.pending.size>0||current.failed.size>0||current.missing.size>0))return current;
+    if(current&&current.key===key&&(!current.dirty||current.pending.size>0||current.failed.size>0||current.missing.size>0||current.rasterScheduled))return current;
     const corners=[[map.x1,map.y1],[map.x1+map.width-1,map.y1],[map.x1,map.y1+map.height-1],[map.x1+map.width-1,map.y1+map.height-1]].map(point=>mapPixel(point[0],point[1]));
     if(corners.some(point=>!point))return null;
     let minX=Math.min(...corners.map(point=>point[0]))-512,minY=Math.min(...corners.map(point=>point[1]))-512;
@@ -11262,13 +11300,13 @@
     /* Keep ground and parts separate. The native drawMap() queues parts with
        setPartsPrio() and interleaves them with characters; baking both layers
        into one bitmap forces every actor above every tree/roof. */
-    const cache={key,canvas,minX,minY,parts:[],dirty:false,ready:false,required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map()};
+    const cache={key,canvas,minX,minY,parts:[],dirty:false,ready:false,required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map(),context:null,rasterScheduled:false,rasterComplete:false,rasterFailed:false,rasterIndex:0,groundCells:null};
     /* While a same-floor M window is downloading, the last completed cache is
        exposed by renderWorld() as a fallback.  Never alias its Canvas here:
        image onload callbacks rasterise the new window asynchronously, and
        drawing into the old visible Canvas would make the current frame change
        underneath the compositor (the one-cell walking flicker). */
-    app.mapLayerCache=cache;const ctx=getMap2DContext(canvas);if(!ctx)return cache;ctx.imageSmoothingEnabled=false;
+    app.mapLayerCache=cache;const ctx=getMap2DContext(canvas);cache.context=ctx;if(!ctx)return cache;ctx.imageSmoothingEnabled=false;
     const groundCells=[];
     const drawCell=(row,column,layer,isPart=false)=>{if(row<0||row>=map.height||column<0||column>=map.width)return;const value=Number(layer[row*map.width+column])||0;
       /* map.cpp::drawMap() treats CG_INVISIBLE (99) and every lower value as
@@ -11303,12 +11341,21 @@
        nearer tile and was the subtle global layer inversion seen on roofs and
        stairs.  Parts stay in their original traversal order because they are
        inserted into the character/part priority chain below. */
-    for(let index=groundCells.length-1;index>=0;index--){const cell=groundCells[index];drawBitmapAt(ctx,cell.image,cell.info,cell.anchor,1);}
+    const shouldRasterAsync=groundCells.length>MAP_LAYER_ASYNC_RASTER_THRESHOLD&&cache.pending.size===0&&cache.failed.size===0&&cache.missing.size===0;
+    if(shouldRasterAsync){
+      /* Keep the cell list only until the yielded raster pass completes.  A
+         large replacement cache remains not-ready during this interval, so
+         renderWorld() continues to use mapLayerFallback instead of exposing
+         a half-painted canvas. */
+      cache.groundCells=groundCells.slice().reverse();cache.rasterComplete=false;cache.dirty=true;cache.ready=false;scheduleMapLayerRaster(cache);
+    }else{
+      for(let index=groundCells.length-1;index>=0;index--){const cell=groundCells[index];drawBitmapAt(ctx,cell.image,cell.info,cell.anchor,1);}
+    }
     /* Keep the original diagonal map traversal order.  map.cpp feeds parts
        to setPartsPrio() in that order and only compares them against
        characters; sorting this list by anchor Y first changes which side of
        a roof/tree is painted when two parts overlap. */
-    cache.dirty=cache.pending.size>0;cache.ready=cache.pending.size===0&&cache.failed.size===0&&cache.missing.size===0;
+    if(!shouldRasterAsync){cache.dirty=cache.pending.size>0;cache.ready=cache.pending.size===0&&cache.failed.size===0&&cache.missing.size===0;}
     if(cache.ready){cache.canvas=canvas;cache.minX=minX;cache.minY=minY;app.mapLayerFallback=null;}
     return cache;
   }
