@@ -6052,7 +6052,16 @@
       const active=battleButtonPressed(node.dataset.command,state),image=node.querySelector("img");
       node.classList.toggle("battle-command-active",active);
       const normal=node.dataset.normalSrc,down=node.dataset.pressedSrc;
-      if(image&&normal&&down&&!node.matches(":hover")&&!node.matches(":focus-visible"))image.setAttribute("src",active?down:normal);
+      /* A command can become active while the physical pointer is still over
+         its hit box (the usual click->target-selection path).  The previous
+         hover guard skipped this update, leaving the normal bitmap visible
+         even though aria-pressed/pendingAction had already switched on.  Let
+         the active state win over hover/focus; otherwise preserve the native
+         hover-down art for an inactive button. */
+      if(image&&normal&&down){
+        const hovered=node.matches(":hover")||node.matches(":focus")||node.matches(":focus-visible");
+        image.setAttribute("src",active||hovered?down:normal);
+      }
       if(active)node.setAttribute("aria-pressed","true");else node.removeAttribute("aria-pressed");
     });
   }
