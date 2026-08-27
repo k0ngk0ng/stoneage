@@ -603,6 +603,86 @@ for (const expected of [
 ]) {
   if (!expected.test(html)) throw new Error(`field HUD regression: ${expected}`);
 }
+/* InitBattleMenu/BattleButtonAttack keep the master's button memory
+   independent from the active pet's later W menu.  A real H -> W turn must
+   therefore reopen Attack on the next BP, and the opening turn starts with
+   that same native button-0 default. */
+if (!script.includes('rosterBeforeBp:false,lastPlayerActionKind:"attack",lastPlayerActionCommand:"",lastPetActionKind:"",lastPetActionCommand:"",defaultAttackTurnKey:null')) {
+  throw new Error("battle opening menu must default to the native Attack button");
+}
+/* The field-visible PME/C pet cache is not the player's owned-pet roster.
+   Rendering app.pets can repeat one pet across all five menu rows; the native
+   menu instead walks each occupied CHAR_getCharPet slot exactly once. */
+const occupiedPetsStart = script.indexOf("  function occupiedPetEntries()");
+const renderPetsStart = script.indexOf("  function renderPets() {");
+const renderPetsEnd = script.indexOf("  function renderStatus()", renderPetsStart);
+const renderPetsSource = script.slice(occupiedPetsStart, renderPetsEnd);
+if (occupiedPetsStart < 0 || renderPetsStart <= occupiedPetsStart || renderPetsEnd <= renderPetsStart ||
+    !/function occupiedPetEntries\(\)\{return app\.petSlots\.map\(\(pet,index\)=>\(\{pet,index\}\)\)\.filter\(entry=>Boolean\(entry\.pet\)\);\}/.test(renderPetsSource) ||
+    !/row\.style\.top=`\$\{rowIndex\*51\}px`/.test(renderPetsSource) ||
+    /app\.pets\.length\?app\.pets/.test(renderPetsSource)) {
+  throw new Error("pet menu must render each occupied owned-pet slot exactly once");
+}
+for (const expected of [
+  /#pets-screen \.legacy-pet-row\{[^}]*height:51px/,
+  /#pets-screen \.legacy-pet-row \.pet-name\{[^}]*left:73px;top:35px/,
+  /#pets-screen \.legacy-pet-row \.pet-stat\{[^}]*left:123px;top:59px/,
+  /#pets-screen \.legacy-pet-row \.pet-button\{[^}]*left:15px;top:33px/,
+  /#pets-screen #pet-status-open\{[^}]*left:44px;top:295px[^}]*bitmap_9176\.png/,
+  /#pets-screen\.pet-list-populated #pets-close\{left:156px\}/,
+  /surface=\{list:\{bitmap:9164,height:320\},detail:\{bitmap:9165,height:332\},skills:\{bitmap:9238,height:348\}\}/,
+  /const skills=imageButton\("查看宠物技能",9166,[\s\S]{0,180}pet-detail-skills/,
+]) {
+  if (!expected.test(html)) throw new Error(`native pet-window layout regression: ${expected}`);
+}
+const sendBattleTargetStart = script.indexOf("  async function sendBattleTarget(target)");
+const sendBattleTargetEnd = script.indexOf("  function battleActivePet(", sendBattleTargetStart);
+const sendBattleTargetSource = script.slice(sendBattleTargetStart, sendBattleTargetEnd);
+if (sendBattleTargetStart < 0 || sendBattleTargetEnd <= sendBattleTargetStart ||
+    (sendBattleTargetSource.match(/lastPlayerActionKind/g) || []).length !== 1 ||
+    !/if\(kind==="player"\)\{[\s\S]{0,320}lastPlayerActionKind[\s\S]{0,220}\}else\{[\s\S]{0,220}lastPetActionKind/.test(sendBattleTargetSource)) {
+  throw new Error("pet actor-target W must not overwrite the player's remembered command");
+}
+const rawBattleCommandStart = script.indexOf("  async function battleCommand(command)");
+const rawBattleCommandEnd = script.indexOf("  function parseFormBytes", rawBattleCommandStart);
+const rawBattleCommandSource = script.slice(rawBattleCommandStart, rawBattleCommandEnd);
+if (rawBattleCommandStart < 0 || rawBattleCommandEnd <= rawBattleCommandStart ||
+    (rawBattleCommandSource.match(/lastPlayerActionKind/g) || []).length !== 1 ||
+    !/if\(kind==="player"\)\{[\s\S]{0,480}lastPlayerActionKind[\s\S]{0,220}\}else\{[\s\S]{0,180}lastPetActionKind/.test(rawBattleCommandSource)) {
+  throw new Error("raw pet W must keep the player's battleButtonBak memory");
+}
+/* BattleButtonOff clears all old flags before one target/submenu owner is
+   activated.  Selector, popup and pet-W stages must short-circuit stale
+   player commandPending state instead of painting two buttons down. */
+const pressedStart = script.indexOf("  function battleButtonPressed(command,state=app.battleState)");
+const pressedEnd = script.indexOf("  function syncBattleButtonVisualStates", pressedStart);
+const pressedSource = script.slice(pressedStart, pressedEnd);
+if (pressedStart < 0 || pressedEnd <= pressedStart ||
+    !/if\(pendingCommand\)return pendingCommand\.toUpperCase\(\)===wanted/.test(pressedSource) ||
+    !/if\(popupCommand\)return popupCommand\.toUpperCase\(\)===wanted/.test(pressedSource) ||
+    !/if\(pendingPet\.startsWith\("W\|"\)\)return wanted==="PET"/.test(pressedSource)) {
+  throw new Error("battle pressed flags must have one native menu owner");
+}
+/* MOUSE.CPP only reports a target after the physical pointer enters the
+   48x48 foot box; the complete sprite rectangle is an outline painted after
+   that hit, never a second hover-only selector. */
+const battleHoverStart = script.indexOf("  function updateBattleHoverFromPointer(event)");
+const battleHoverEnd = script.indexOf("  battleScreen.addEventListener(\"pointermove\"", battleHoverStart);
+const battleHoverSource = script.slice(battleHoverStart, battleHoverEnd);
+if (battleHoverStart < 0 || battleHoverEnd <= battleHoverStart ||
+    !/querySelectorAll\("#battle-target-overlay \.battle-target-hit"\)/.test(battleHoverSource) ||
+    /querySelectorAll\("#battle-target-overlay \[data-battle-target\] > \.battle-target-frame"\)/.test(battleHoverSource)) {
+  throw new Error("battle hover and click must share the native 48x48 hit box");
+}
+/* The smooth local walker is a shallow fractional-position copy.  Persist
+   its decoded frame back to the real C actor so the next render cannot lose
+   the fallback bitmap and blank the player for one tick. */
+const worldActorPaintStart = script.indexOf("  function renderSceneActorsAndParts(");
+const worldActorPaintEnd = script.indexOf("  const MAP_LAYER_ASYNC_RASTER_THRESHOLD", worldActorPaintStart);
+const worldActorPaintSource = script.slice(worldActorPaintStart, worldActorPaintEnd);
+if (!/if\(renderActor!==actor&&renderActor\?\._lastFrame\)actor\._lastFrame=renderActor\._lastFrame/.test(worldActorPaintSource)) {
+  throw new Error("walking actor must retain its last decoded frame");
+}
 if (/requestPointerLock|exitPointerLock/.test(script)) {
   throw new Error("field cursor must never lock or move the browser's real pointer");
 }

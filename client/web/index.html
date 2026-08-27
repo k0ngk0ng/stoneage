@@ -1257,7 +1257,7 @@
   ]);
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
   const STONEAGE_25=Object.freeze({version:"2.5",executable:"sa_2903.exe",runningKey:"cary"});
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* A normal 2.5 owner walk has no per-tile self echo.  This latch limits
      the optional post-route S:c probe to one request per prediction epoch;
      otherwise a missing self C packet would schedule an endless one-second
@@ -1955,14 +1955,52 @@
        cover the original PET title or labels. */
     #pets-screen #pets-status,#pets-screen #pet-skills-list{display:none}
     #pets-screen #pets-list{left:0!important;top:0!important;width:272px!important;height:320px!important;overflow:visible!important;pointer-events:none}
-    #pets-screen .legacy-pet-row{position:absolute;left:0;top:0;width:272px;height:27px;margin:0;padding:0;pointer-events:none;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
-    #pets-screen .legacy-pet-row .pet-name{position:absolute;left:73px;top:31px;width:112px;height:16px;overflow:hidden;text-align:left;white-space:nowrap;color:#f5ecd4}
-    #pets-screen .legacy-pet-row .pet-stat{position:absolute;left:123px;top:55px;width:136px;height:16px;overflow:hidden;white-space:nowrap;color:#f5ecd4}
-    #pets-screen .legacy-pet-row .pet-button{position:absolute;left:43px;top:41px;width:56px;height:24px;padding:0;pointer-events:auto}
-    #pets-screen .legacy-pet-row .pet-skill{position:absolute;left:160px;top:42px;width:96px;height:16px;padding:0;pointer-events:auto}
-    #pets-screen .legacy-pet-row:nth-child(1){top:0}#pets-screen .legacy-pet-row:nth-child(2){top:27px}#pets-screen .legacy-pet-row:nth-child(3){top:54px}#pets-screen .legacy-pet-row:nth-child(4){top:81px}#pets-screen .legacy-pet-row:nth-child(5){top:108px}
-    #pets-screen #pets-list .legacy-pet-empty{position:absolute;left:0;top:31px;width:272px;height:200px;pointer-events:none}
-    #pets-screen #pets-close{left:100px;top:299px;width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none}
+    #pets-screen.pet-page-detail #pets-list{height:332px!important}
+    #pets-screen.pet-page-skills #pets-list{height:348px!important}
+    /* MENU.CPP case 0 starts y at window.y+31 (35) and advances 24+27
+       pixels per occupied pet.  The old 27px web row stride overlaid every
+       following name on the preceding HP line. */
+    #pets-screen .legacy-pet-row{position:absolute;left:0;top:0;width:272px;height:51px;margin:0;padding:0;pointer-events:none;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
+    #pets-screen .legacy-pet-row .pet-name{position:absolute;left:73px;top:35px;width:128px;height:16px;margin:0;padding:0;overflow:hidden;text-align:center;white-space:nowrap;color:inherit;background:transparent;border:0;box-shadow:none;text-shadow:inherit;pointer-events:auto}
+    #pets-screen .legacy-pet-row .pet-name:hover,#pets-screen .legacy-pet-row .pet-name:focus-visible{color:#ffe88b;filter:none;outline:0;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
+    #pets-screen .legacy-pet-row .pet-stat{position:absolute;left:123px;top:59px;width:136px;height:16px;overflow:hidden;white-space:pre;color:inherit}
+    /* StockDispBuffer receives the button centre (43,y-14); the decoded
+       56x24 CG owns a (-28,-12) anchor, hence the real top-left is (15,33). */
+    #pets-screen .legacy-pet-row .pet-button{position:absolute;left:15px;top:33px;width:56px;height:24px;padding:0;pointer-events:auto}
+    #pets-screen .legacy-pet-row .pet-attribute{position:absolute;top:35px;width:16px;height:16px;image-rendering:pixelated;pointer-events:none}
+    #pets-screen .legacy-pet-row.pet-state-standby{color:#65f4f0}
+    #pets-screen .legacy-pet-row.pet-state-battle{color:#ffe95f}
+    #pets-screen .legacy-pet-row.pet-state-mail{color:#6df47c}
+    #pets-screen #pets-list .legacy-pet-empty{position:absolute;left:80px;top:35px;width:176px;height:16px;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
+    #pets-screen #pet-status-open,#pets-screen #pets-close,#pets-screen .pet-detail-button,#pets-screen .pet-skill-nav{position:absolute;padding:0;color:transparent;font-size:0;border:0;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:100% 100%;box-shadow:none;pointer-events:auto}
+    #pets-screen #pet-status-open{left:44px;top:295px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9176.png')}
+    #pets-screen #pets-close{left:100px;top:295px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9134.png')}
+    #pets-screen.pet-list-populated #pets-close{left:156px}
+    #pets-screen .pet-detail{position:absolute;inset:0;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
+    #pets-screen .pet-detail span{position:absolute;white-space:pre;pointer-events:none}
+    #pets-screen .pet-detail-name{left:17px;top:39px;width:128px;text-align:center;overflow:hidden}
+    #pets-screen .pet-detail-level{left:74px;top:86px}#pets-screen .pet-detail-exp{left:81px;top:110px}#pets-screen .pet-detail-next{left:81px;top:134px}
+    #pets-screen .pet-detail-hp{left:70px;top:158px}#pets-screen .pet-detail-max-hp{left:117px;top:158px}
+    #pets-screen .pet-detail-atk{left:74px;top:182px}#pets-screen .pet-detail-def{left:74px;top:206px}#pets-screen .pet-detail-quick{left:74px;top:230px}#pets-screen .pet-detail-ai{left:74px;top:254px}
+    #pets-screen .pet-detail-attr{position:absolute;left:183px;height:10px;max-width:80px;box-shadow:1px 1px #ddd8,2px 2px #2228;pointer-events:none}
+    #pets-screen .pet-detail-attr.earth{top:187px;background:#3caa58}#pets-screen .pet-detail-attr.water{top:211px;background:#41a8ae}#pets-screen .pet-detail-attr.fire{top:235px;background:#c74736}#pets-screen .pet-detail-attr.wind{top:259px;background:#c2a72f}
+    #pets-screen .pet-detail-sprite{position:absolute;image-rendering:pixelated;pointer-events:none}
+    #pets-screen .pet-detail-name-change{left:42px;top:62px;width:96px;height:16px;background-image:url('/assets/bitmaps/bitmap_9177.png')}
+    #pets-screen .pet-detail-snapshot{left:36px;top:282px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9263.png')}
+    #pets-screen .pet-detail-skills{left:154px;top:282px;width:96px;height:16px;background-image:url('/assets/bitmaps/bitmap_9166.png')}
+    #pets-screen .pet-detail-return{left:154px;top:313px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9135.png')}
+    #pets-screen .pet-detail-prev,#pets-screen .pet-skill-prev{left:48px;width:32px;height:16px;background-image:url('/assets/bitmaps/bitmap_9270.png')}
+    #pets-screen .pet-detail-next-button,#pets-screen .pet-skill-next{left:92px;width:32px;height:16px;background-image:url('/assets/bitmaps/bitmap_9272.png')}
+    #pets-screen .pet-detail-prev,#pets-screen .pet-detail-next-button{top:313px}
+    #pets-screen .pet-skill-page{position:absolute;inset:0;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
+    #pets-screen .pet-skill-capacity{position:absolute;left:4px;top:4px;width:272px;height:348px;image-rendering:pixelated;pointer-events:none}
+    #pets-screen .pet-skill-name{position:absolute;left:16px;top:36px;width:128px;text-align:center;white-space:nowrap;overflow:hidden}
+    #pets-screen .pet-skill-row{position:absolute;left:19px;width:220px;height:22px;margin:0;padding:0;color:#f5ecd4;background:transparent;border:0;box-shadow:none;text-align:left;text-shadow:inherit;pointer-events:auto}
+    #pets-screen .pet-skill-row.battle-only{color:#969696}
+    #pets-screen .pet-skill-row:hover,#pets-screen .pet-skill-row:focus-visible{color:#ffe88b;filter:none;outline:0;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
+    #pets-screen .pet-skill-memo{position:absolute;left:36px;top:256px;width:200px;height:60px;overflow:hidden;white-space:pre-wrap;line-height:20px;pointer-events:none}
+    #pets-screen .pet-skill-return{left:154px;top:326px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9135.png')}
+    #pets-screen .pet-skill-prev,#pets-screen .pet-skill-next{top:326px}
     #pets-screen #pet-skills-list{display:none!important}
     #pets-screen .toolbar-row{display:none!important}
     #party-screen #party-status{top:18px;left:18px;width:220px;text-align:left}
@@ -3058,7 +3096,7 @@
      submit.  This makes a fresh page and a logout back to the title follow
      the same music lifecycle. */
   setMusicMode("title",2);
-  function openPanel(name){ if(app.phase!=="world"&&name!=="journal")return; advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`)); syncFieldOverlayVisibility(); setActivePanelButton(name); if(name==="inventory")renderInventory(); if(name==="pets")renderPets(); if(name==="status")renderStatus(); if(name==="party")renderPartyFixed(); if(name==="map")renderMapDetails(); if(name==="social")renderSocial(); if(name==="titles")renderTitles(); if(name==="album")renderAlbumFixed(); if(name==="system"){app.systemPage="menu";renderSystem();} if(name==="actions")renderProtocolFields(); if(name==="journal")renderJournal(); if(name==="help"){app.helpPage=0;renderHelp();} }
+  function openPanel(name){ if(app.phase!=="world"&&name!=="journal")return; advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`)); syncFieldOverlayVisibility(); setActivePanelButton(name); if(name==="inventory")renderInventory(); if(name==="pets"){app.petMenuPage="list";app.petSkillHover=-1;renderPets();} if(name==="status")renderStatus(); if(name==="party")renderPartyFixed(); if(name==="map")renderMapDetails(); if(name==="social")renderSocial(); if(name==="titles")renderTitles(); if(name==="album")renderAlbumFixed(); if(name==="system"){app.systemPage="menu";renderSystem();} if(name==="actions")renderProtocolFields(); if(name==="journal")renderJournal(); if(name==="help"){app.helpPage=0;renderHelp();} }
   function status(text,kind="") { $("connection").textContent=text; $("connection").style.color=kind==="error"?"var(--danger)":kind==="good"?"var(--good)":"var(--muted)"; }
   function loginStatus(text,kind="") { const element=$("login-status"); element.textContent=text; element.className="status"+(kind?" "+kind:""); }
   function characterStatus(text,kind="") { const element=$("character-status"); element.textContent=text; element.className="status"+(kind?" "+kind:""); }
@@ -3167,7 +3205,7 @@
     const petChoice=choiceActive&&(state.choiceOwner==="pet"||state.choiceOwner==="transition"||app.battlePopup?.kind==="pet-skill"||Number(state.petChoiceDeadline)>now);
     const targetChoice=state.pendingAction&&battleUsesActorTarget(state.pendingAction);
     line.textContent=targetChoice
-      ? "请选择敌方角色"
+      ? (state.pendingAction?.kind==="attack"?"请选择攻击目标":"请选择战斗目标")
       : petChoice
         ? `宠物请选择行动（${seconds}秒）`
         : choiceActive&&!state.commandLocked
@@ -4244,26 +4282,150 @@
   }
   function toggleStandbyPet(index){ const current=Number(app.status.standbyPetMask)||0,next=current^(1<<Math.max(0,index));app.status.standbyPetMask=next;renderPets();send("SPET",[next]).catch(reportError); }
   function togglePetStatus(index){ const states=app.status.petStatus||{};const next=states[index]?0:1;states[index]=next;app.status.petStatus=states;renderPets();send("PETST",[index,next]).catch(reportError); }
+  function occupiedPetEntries(){return app.petSlots.map((pet,index)=>({pet,index})).filter(entry=>Boolean(entry.pet));}
+  function setPetMenuSurface(page){
+    const screen=$("pets-screen"),surface={list:{bitmap:9164,height:320},detail:{bitmap:9165,height:332},skills:{bitmap:9238,height:348}}[page]||{bitmap:9164,height:320};
+    if(!screen)return;
+    screen.classList.remove("pet-page-list","pet-page-detail","pet-page-skills","pet-list-populated");
+    screen.classList.add(`pet-page-${page}`);
+    screen.style.setProperty("--legacy-bg",`url('/assets/bitmaps/bitmap_${surface.bitmap}.png')`);
+    screen.style.setProperty("--legacy-h",`${surface.height}px`);
+  }
+  function petDisplayName(pet){return String(pet?.freeName||pet?.userPetName||pet?.name||"");}
+  function petMenuState(index){
+    const standby=Boolean((Number(app.status.standbyPetMask)||0)&(1<<index));
+    let key="rest",bitmap=9172,label="休息";
+    if(standby){key="standby";bitmap=9174;label="待机";}
+    if(Number(app.selectedPet)===index){key="battle";bitmap=9173;label="战斗";}
+    if(Number(app.petMailNo)===index){key="mail";bitmap=9175;label="邮件";}
+    return {key,bitmap,label,standby};
+  }
+  function setPetStandby(index,enabled){
+    const bit=1<<Math.max(0,Math.min(4,Number(index)||0)),mask=Number(app.status.standbyPetMask)||0;
+    app.status.standbyPetMask=enabled?(mask|bit):(mask&~bit);
+  }
+  function activatePetMenuState(index){
+    const pet=app.petSlots[index];if(!pet)return;
+    const state=petMenuState(index);
+    if(state.key==="mail"){
+      app.petMailNo=-1;renderPets();return;
+    }
+    if(state.key==="battle"){
+      setPetStandby(index,false);
+      if(Number(app.petMailNo)<0)app.petMailNo=index;
+      renderPets();send("KS",[-1]).catch(reportError);return;
+    }
+    if(state.key==="standby"){
+      if(Number(app.selectedPet)<0){
+        if(Number(pet.hp??0)>0)send("KS",[index]).catch(reportError);
+        else setWorldState("这只宠物已经无法战斗。","error");
+      }else{
+        setPetStandby(index,false);
+        if(Number(app.petMailNo)<0)app.petMailNo=index;
+        renderPets();
+      }
+      return;
+    }
+    const standbyCount=[0,1,2,3,4].filter(slot=>Boolean((Number(app.status.standbyPetMask)||0)&(1<<slot))).length;
+    if(standbyCount<3)setPetStandby(index,true);
+    else if(Number(app.petMailNo)<0)app.petMailNo=index;
+    else {setWorldState("最多只能选择三只待机宠物。","error");return;}
+    renderPets();
+  }
+  function petAttributeBitmap(kind,value){
+    const big=Number(value)>50;
+    return {earth:big?8702:8704,water:big?8705:8707,fire:big?8708:8710,wind:big?8711:8713}[kind]||0;
+  }
+  function openPetDetail(index,page="detail"){
+    if(!app.petSlots[index])return;
+    app.petDetailIndex=index;app.petMenuPage=page;app.petSkillHover=-1;renderPets();
+  }
+  function cyclePetDetail(delta){
+    const entries=occupiedPetEntries();if(!entries.length){app.petMenuPage="list";renderPets();return;}
+    let position=entries.findIndex(entry=>entry.index===Number(app.petDetailIndex));if(position<0)position=0;
+    position=(position+(Number(delta)<0?-1:1)+entries.length)%entries.length;
+    app.petDetailIndex=entries[position].index;app.petSkillHover=-1;renderPets();
+  }
+  function openPetNameDialog(index){
+    const pet=app.petSlots[index];if(!pet)return;
+    if(!Number(pet.changeNameFlag)){setWorldState("这只宠物目前不能改名。","error");return;}
+    openLocalDialog("宠物改名","请输入新的宠物名称：",[{label:"确定",kind:"yes",handler:value=>{const name=String(value||"").trim();if(!name)return;closeLocalDialog();send("KN",[index,name]).catch(reportError);}},{label:"取消",kind:"no",handler:closeLocalDialog}],petDisplayName(pet));
+  }
+  function snapshotPetToAlbum(pet){
+    if(!pet)return;
+    const changed=markAlbumPet(pet);saveAlbumState();
+    addChat("图鉴",`${petDisplayName(pet)||"宠物"} 已记录到宠物图鉴。`);
+    if(changed)renderAlbumFixed();
+  }
+  function petDetailSprite(pet){
+    const actor={graphic:pet.graphic??pet.graNo,direction:0,action:3};
+    const entry=spriteEntryForActor(actor),animation=entry?.sprite?.actions?.find(item=>Number(item.direction)===0&&Number(item.action)===3)||entry?.sprite?.actions?.find(item=>Number(item.action)===3)||entry?.sprite?.actions?.[0];
+    const frame=animation?.frames?.[0];if(!frame?.file){if(!assetState.spritesReady)loadSpriteManifest().then(sprites=>{if(sprites&&app.petMenuPage==="detail")renderPets();});return null;}
+    const image=document.createElement("img");image.className="pet-detail-sprite";image.alt="";image.src=`/assets/${frame.file}`;
+    image.style.left=`${204+(Number(frame.x)||0)+(Number(frame.xoffset)||0)}px`;
+    image.style.top=`${148+(Number(frame.y)||0)+(Number(frame.yoffset)||0)}px`;
+    return image;
+  }
+  function appendPetDetailValue(root,className,value){const node=document.createElement("span");node.className=className;node.textContent=textOr(value,"-");root.append(node);}
+  function renderPetList(list,entries){
+    const screen=$("pets-screen");screen?.classList.toggle("pet-list-populated",entries.length>0);
+    for(let rowIndex=0;rowIndex<entries.length;rowIndex++){
+      const {pet,index}=entries[rowIndex],state=petMenuState(index);
+      const row=document.createElement("div");row.className=`legacy-pet-row pet-state-${state.key}`;row.style.top=`${rowIndex*51}px`;row.dataset.petSlot=String(index);
+      const name=button(petDisplayName(pet),()=>openPetDetail(index));name.className="pet-name";name.setAttribute("aria-label",`查看宠物 ${petDisplayName(pet)||index+1}`);name.addEventListener("contextmenu",event=>{event.preventDefault();send("DP",[app.position[0],app.position[1],index]).catch(reportError);});row.append(name);
+      const stat=document.createElement("span");stat.className="pet-stat";stat.textContent=`${textOr(pet.level,"-").padStart(3)}   ${textOr(pet.hp,"-").padStart(4)} ${textOr(pet.maxHp,"-").padStart(4)}`;row.append(stat);
+      const stateButton=imageButton(`宠物状态：${state.label}`,state.bitmap,()=>activatePetMenuState(index),56,24);stateButton.classList.add("pet-button");row.append(stateButton);
+      const attributes=[["earth",pet.earth],["water",pet.water],["fire",pet.fire],["wind",pet.wind]].filter(([,value])=>Number(value)>0).slice(0,2);
+      attributes.forEach(([kind,value],attributeIndex)=>{const icon=document.createElement("img");icon.className="pet-attribute";icon.alt="";icon.src=`/assets/bitmaps/bitmap_${petAttributeBitmap(kind,value)}.png`;icon.style.left=`${224+attributeIndex*16}px`;row.append(icon);});
+      list.append(row);
+    }
+    if(!entries.length){const empty=document.createElement("span");empty.className="legacy-pet-empty";empty.textContent="没有宠物";list.append(empty);}
+    if(entries.length){const detail=imageButton("查看宠物状态",9176,()=>openPetDetail(entries[0].index),80,16);detail.id="pet-status-open";list.append(detail);}
+    const close=imageButton("关闭宠物窗口",9134,()=>show(worldScreen),80,16);close.id="pets-close";list.append(close);
+  }
+  function renderPetDetail(list,pet,index){
+    const root=document.createElement("div");root.className="pet-detail";
+    appendPetDetailValue(root,"pet-detail-name",petDisplayName(pet));appendPetDetailValue(root,"pet-detail-level",pet.level);appendPetDetailValue(root,"pet-detail-exp",pet.exp);appendPetDetailValue(root,"pet-detail-next",pet.maxExp);
+    appendPetDetailValue(root,"pet-detail-hp",pet.hp);appendPetDetailValue(root,"pet-detail-max-hp",pet.maxHp);appendPetDetailValue(root,"pet-detail-atk",pet.atk);appendPetDetailValue(root,"pet-detail-def",pet.def);appendPetDetailValue(root,"pet-detail-quick",pet.quick);appendPetDetailValue(root,"pet-detail-ai",pet.ai);
+    for(const kind of ["earth","water","fire","wind"]){const bar=document.createElement("i");bar.className=`pet-detail-attr ${kind}`;bar.style.width=`${Math.max(0,Math.min(80,Number(pet[kind])*.8||0))}px`;root.append(bar);}
+    const sprite=petDetailSprite(pet);if(sprite)root.append(sprite);
+    const change=imageButton("更改宠物姓名",9177,()=>openPetNameDialog(index),96,16);change.classList.add("pet-detail-button","pet-detail-name-change");root.append(change);
+    const snapshot=imageButton("记录到宠物图鉴",9263,()=>snapshotPetToAlbum(pet),80,16);snapshot.classList.add("pet-detail-button","pet-detail-snapshot");root.append(snapshot);
+    const skills=imageButton("查看宠物技能",9166,()=>openPetDetail(index,"skills"),96,16);skills.classList.add("pet-detail-button","pet-detail-skills");root.append(skills);
+    const back=imageButton("返回宠物列表",9135,()=>{app.petMenuPage="list";renderPets();},80,16);back.classList.add("pet-detail-button","pet-detail-return");root.append(back);
+    const previous=imageButton("上一只宠物",9270,()=>cyclePetDetail(-1),32,16);previous.classList.add("pet-detail-button","pet-detail-prev");root.append(previous);
+    const next=imageButton("下一只宠物",9272,()=>cyclePetDetail(1),32,16);next.classList.add("pet-detail-button","pet-detail-next-button");root.append(next);
+    list.append(root);
+  }
+  function renderPetSkills(list,pet,index){
+    const root=document.createElement("div");root.className="pet-skill-page";
+    const skills=(app.petSkills[index]||[]).slice(0,7),capacity=Math.max(skills.length,Math.min(7,Math.max(0,decimal(pet.maxSkill??pet.slot,0))));
+    for(let i=0;i<capacity;i++){const bar=document.createElement("img");bar.className="pet-skill-capacity";bar.alt="";bar.src=`/assets/bitmaps/bitmap_${9239+i}.png`;root.append(bar);}
+    const name=document.createElement("span");name.className="pet-skill-name";name.textContent=petDisplayName(pet);root.append(name);
+    const memo=document.createElement("div");memo.className="pet-skill-memo";memo.textContent=skills.find(skill=>Number(skill.index)===Number(app.petSkillHover))?.memo||"";root.append(memo);
+    skills.forEach((skill,rowIndex)=>{const row=button(skill.name||`技能 ${rowIndex+1}`,()=>{});row.className=`pet-skill-row${Number(skill.field)===1?" battle-only":""}`;row.style.top=`${62+rowIndex*25}px`;row.addEventListener("pointerenter",()=>{app.petSkillHover=Number(skill.index);memo.textContent=skill.memo||"";});row.addEventListener("focus",()=>{app.petSkillHover=Number(skill.index);memo.textContent=skill.memo||"";});root.append(row);});
+    const back=imageButton("返回宠物状态",9135,()=>openPetDetail(index,"detail"),80,16);back.classList.add("pet-skill-nav","pet-skill-return");root.append(back);
+    const previous=imageButton("上一只宠物",9270,()=>cyclePetDetail(-1),32,16);previous.classList.add("pet-skill-nav","pet-skill-prev");root.append(previous);
+    const next=imageButton("下一只宠物",9272,()=>cyclePetDetail(1),32,16);next.classList.add("pet-skill-nav","pet-skill-next");root.append(next);
+    list.append(root);
+  }
   function renderPets() {
     syncAlbumFromPets();
     const list=$("pets-list"); if(!list)return; list.replaceChildren();
-    const pets=(app.pets.length?app.pets:app.petSlots.filter(Boolean)).slice(0,5);
-    /* MENU.CPP starts the first name at (73,35) and advances 27 pixels per
-       row. The PET bitmap already supplies LV/HP captions and separators. */
-    for(const pet of pets){
-      const index=decimal(pet.index??pet.slot??pet.id,-1);if(index<0||index>4)continue;
-      const title=pet.name||pet.freeName||"";
-      const standby=Boolean((Number(app.status.standbyPetMask)||0)&(1<<index));
-      const row=document.createElement("div");row.className="legacy-pet-row";
-      const name=document.createElement("span");name.className="pet-name";name.textContent=title;row.append(name);
-      const stat=document.createElement("span");stat.className="pet-stat";stat.textContent=`${textOr(pet.level,"-")}   ${textOr(pet.hp,"-")} ${textOr(pet.maxHp,"-")}`;row.append(stat);
-      row.addEventListener("contextmenu",event=>{event.preventDefault();send("DP",[app.position[0],app.position[1],index]).catch(reportError);});
-      const petMode=app.selectedPet===index?1:(standby?2:0);
-      const stateButton=imageButton("切换宠物状态",9172+petMode,()=>send("KS",[index]).then(()=>{app.selectedPet=index;renderPets();}).catch(reportError),56,24);stateButton.classList.add("pet-button");row.append(stateButton);
-      const skillButton=imageButton("宠物技能",9171,()=>{app.selectedPet=index;renderPets();},96,16);skillButton.classList.add("pet-skill");row.append(skillButton);
-      list.append(row);
-    }
-    const close=imageButton("关闭宠物窗口",9134,()=>show(worldScreen),80,16);close.id="pets-close";list.append(close);
+    /* app.pets also contains visible field pet actors (PME/C records).  It is
+       not the player's five-slot roster and can contain several records for
+       the same named pet.  MENU.CPP paints exactly one row for each occupied
+       CHAR_getCharPet() slot, so derive both the row and command index only
+       from petSlots. */
+    const pets=occupiedPetEntries();
+    let standbyMask=Number(app.status.standbyPetMask)||0;for(let slot=0;slot<5;slot++)if(!app.petSlots[slot])standbyMask&=~(1<<slot);app.status.standbyPetMask=standbyMask;
+    if(!app.petSlots[Number(app.petMailNo)])app.petMailNo=-1;
+    if(!pets.length){app.petMenuPage="list";app.petDetailIndex=0;app.petSkillHover=-1;}
+    if(app.petMenuPage!=="list"&&!app.petSlots[Number(app.petDetailIndex)]){app.petMenuPage="list";app.petDetailIndex=pets[0]?.index??0;}
+    const page=app.petMenuPage==="detail"?"detail":app.petMenuPage==="skills"?"skills":"list";setPetMenuSurface(page);
+    if(page==="detail")renderPetDetail(list,app.petSlots[app.petDetailIndex],app.petDetailIndex);
+    else if(page==="skills")renderPetSkills(list,app.petSlots[app.petDetailIndex],app.petDetailIndex);
+    else renderPetList(list,pets);
     $("pets-status").textContent="";
   }
   function renderStatus() {
@@ -5498,8 +5660,17 @@
     try{
       await send("B",[command]);
       if(app.battleState!==state||!app.battle)return;
-      state.lastPlayerActionKind=String(action.kind||"").toLowerCase()||"other";
-      state.lastPlayerActionCommand=command;
+      /* battleButtonBak belongs to the master's eight-button menu.  The
+         active pet's later W selection has its own menu and must never
+         overwrite the remembered player Attack; otherwise a real
+         player-H -> pet-W turn loses the native next-round default attack. */
+      if(kind==="player"){
+        state.lastPlayerActionKind=String(action.kind||"").toLowerCase()||"other";
+        state.lastPlayerActionCommand=command;
+      }else{
+        state.lastPetActionKind=String(action.kind||"").toLowerCase()||"pet";
+        state.lastPetActionCommand=command;
+      }
       app.battleCommands.push(`我：${command}`);if(app.battleCommands.length>64)app.battleCommands.shift();state.pendingAction=null;app.battleTarget=Number(target.battleId);$("battle-target-panel")?.classList.add("hidden");closeBattlePopup();$("battle-log").textContent+=`\n我：${command}`;$("battle-log").scrollTop=$("battle-log").scrollHeight;renderBattle();renderBattleWorld();
       /* The native BattleMenuProc() opens the pet-skill menu immediately
          after the player's command.  A web client that only sends H/G/E
@@ -5543,6 +5714,7 @@
     battleSetCommandLock(state,"pet",true);battleStartCommandPending(state,"pet",command);
     send("B",[command]).then(()=>{
       if(app.battleState!==state||!app.battle)return;
+      state.lastPetActionKind="pet";state.lastPetActionCommand=command;
       app.battleCommands.push(`我：${command}`);if(app.battleCommands.length>64)app.battleCommands.shift();
       const log=$("battle-log");if(log){log.textContent+=`\n我：${command}`;log.scrollTop=log.scrollHeight;}
       renderBattle();
@@ -6031,18 +6203,23 @@
        target mode owns the battle input.  This is the same battleButtonFlag
        that BATTLEMENU.CPP paints into CG_BTL_BUTTON_*_DOWN. */
     const pendingCommand=battleButtonCommandForAction(state.pendingAction);
-    if(pendingCommand&&pendingCommand.toUpperCase()===wanted)return true;
+    /* BattleButtonOff() clears every old flag before a target/submenu owner
+       turns on its one button.  Treat an active selector as authoritative,
+       rather than falling through to a stale in-flight player command and
+       painting two native buttons down at once. */
+    if(pendingCommand)return pendingCommand.toUpperCase()===wanted;
     const popup=String(app.battlePopup?.kind||"").toLowerCase();
     const popupCommand=popup==="magic"?"J|A":popup==="item"?"ITEM":(popup==="pet"||popup==="pet-skill")?"PET":"";
-    if(popupCommand&&popupCommand.toUpperCase()===wanted)return true;
+    if(popupCommand)return popupCommand.toUpperCase()===wanted;
     const pendingPlayer=String(state.commandPending?.player||"").trim().toUpperCase();
     const pendingPet=String(state.commandPending?.pet||"").trim().toUpperCase();
+    if(pendingPet.startsWith("W|"))return wanted==="PET";
     const commandHead=pendingPlayer.split("|",1)[0];
     if(wanted==="H|A"&&commandHead==="H")return true;
     if(wanted==="C|A"&&(commandHead==="C"||commandHead==="T"))return true;
     if(wanted==="J|A"&&commandHead==="J")return true;
     if(wanted==="ITEM"&&commandHead==="I")return true;
-    if(wanted==="PET"&&(commandHead==="S"||pendingPet.startsWith("W|")))return true;
+    if(wanted==="PET"&&commandHead==="S")return true;
     if(wanted==="G"&&commandHead==="G")return true;
     if(wanted==="E"&&commandHead==="E")return true;
     return false;
@@ -11182,6 +11359,12 @@
       const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:1}):actor;
       const anchor=mapPixel(Number(renderActor.x)||0,Number(renderActor.y)||0);
       const frame=actorFrame(renderActor),info=frame?.frame||frame?.info||{};
+      /* The local smooth-walk actor is a shallow presentation copy with a
+         fractional position.  actorFrame() stores its last decoded bitmap on
+         the object it receives; carry that cache back to the authoritative
+         actor so the next animation tick cannot lose it and briefly blank
+         the player while a new direction/action frame is decoding. */
+      if(renderActor!==actor&&renderActor?._lastFrame)actor._lastFrame=renderActor._lastFrame;
       /* Items and gold are still display-priority objects, but they are not
          characters: keeping their semantic kind here lets the final font
          pass omit fake names such as “100 Stone” and prevents NPC-only status
@@ -13007,7 +13190,10 @@
     app.battleCommands=[];
     app.battle=true;app.phase="battle";app.pendingTalk=null;app.battlePopup=null;app.battleFailureNoticeUntil=0;app.ignoreBattlePacketsUntil=0;
     const fieldNo=Math.max(0,Math.trunc(Number(field)||0));
-    app.battleState={field:fieldNo,fieldNo,fieldAtt:0,type:type||1,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,autoTurn:-1,implicitPlayerTurn:null,implicitPetTurn:null,petAfterPlayerReady:false,petAfterPlayerPending:false,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],actorNodes:new Map(),motionQueueAt:0,movieHoldUntil:0,pendingTurnState:null,pendingBattleStatuses:[],pendingBattleControls:[],turnApplyTimer:0,entryPending:true,entryReadyAt:0,entryTimer:0,rasterStartedAt:performance.now(),deathStartedAt:new Map(),escapePending:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,battleExitTimer:0,exitPending:false,flashUntil:0,movieActive:false,movieDone:false,commandLocked:true,petCommandLocked:true,commandTimers:{player:0,pet:0},commandPending:{player:null,pet:null},choiceTimer:0,choiceDeadline:0,choiceOwner:"",playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,deathExitPending:false,deathExitTimer:0,deathExitAt:0,deathExitFromPosition:false,transientTimer:0,escapeExitTimer:0,initializationTimer:0,initializing:true,rosterBeforeBp:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null};
+    /* InitBattleMenu() starts battleButtonBak at button 0.  The opening
+       command menu therefore enters Attack exactly like every later turn
+       whose remembered player command was Attack. */
+    app.battleState={field:fieldNo,fieldNo,fieldAtt:0,type:type||1,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,autoTurn:-1,implicitPlayerTurn:null,implicitPetTurn:null,petAfterPlayerReady:false,petAfterPlayerPending:false,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],actorNodes:new Map(),motionQueueAt:0,movieHoldUntil:0,pendingTurnState:null,pendingBattleStatuses:[],pendingBattleControls:[],turnApplyTimer:0,entryPending:true,entryReadyAt:0,entryTimer:0,rasterStartedAt:performance.now(),deathStartedAt:new Map(),escapePending:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,battleExitTimer:0,exitPending:false,flashUntil:0,movieActive:false,movieDone:false,commandLocked:true,petCommandLocked:true,commandTimers:{player:0,pet:0},commandPending:{player:null,pet:null},choiceTimer:0,choiceDeadline:0,choiceOwner:"",playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,deathExitPending:false,deathExitTimer:0,deathExitAt:0,deathExitFromPosition:false,transientTimer:0,escapeExitTimer:0,initializationTimer:0,initializing:true,rosterBeforeBp:false,lastPlayerActionKind:"attack",lastPlayerActionCommand:"",lastPetActionKind:"",lastPetActionCommand:"",defaultAttackTurnKey:null};
     beginBattleMusic(type,field);$("battle-result-screen")?.classList.add("hidden");show(battleScreen);
     $("battle-state").textContent=`服务器战斗（场景 ${field}），等待 BC/BP 状态。`;$("battle-log").textContent="战斗开始。";status("战斗","good");
     scheduleBattleInitializationTimeout(app.battleState);renderBattleWorld();renderBattle();renderBattlePopup();
@@ -13031,8 +13217,12 @@
     try{
       await send("B",[text]);
       if(app.battleState!==state||!app.battle)return;
-      state.lastPlayerActionKind=kind==="player"?(/^H(?:\||$)/i.test(text)?"attack":/^G(?:\||$)/i.test(text)?"guard":/^E(?:\||$)/i.test(text)?"escape":/^S(?:\||$)/i.test(text)?"pet-select":"other"):"pet";
-      state.lastPlayerActionCommand=text;
+      if(kind==="player"){
+        state.lastPlayerActionKind=/^H(?:\||$)/i.test(text)?"attack":/^G(?:\||$)/i.test(text)?"guard":/^E(?:\||$)/i.test(text)?"escape":/^S(?:\||$)/i.test(text)?"pet-select":"other";
+        state.lastPlayerActionCommand=text;
+      }else{
+        state.lastPetActionKind="pet";state.lastPetActionCommand=text;
+      }
       app.battleCommands.push(`我：${text}`);$("battle-log").textContent+=`\n我：${text}`;$("battle-log").scrollTop=$("battle-log").scrollHeight;
       if(kind==="player")maybeOpenBattlePetSkillMenu(state,text);
       renderBattle();renderBattleWorld();
@@ -13423,25 +13613,10 @@
       const button=buttons[index],rect=button.getBoundingClientRect();
       if(rect.width>0&&rect.height>0&&x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom){hit=button;break;}
     }
-    /* MOUSE.CPP deliberately keeps the selectable ACT_ATR_HIT_BOX at the
-       actor's feet (48×48), but its hover outline is based on the complete
-       bitmap.  A character graphic can be 80px or taller, so a pointer over
-       the head/torso is outside the click rectangle even though it is plainly
-       over the target on screen.  The transparent proxy has a pointer-events
-       none frame for exactly this visual outline; use that frame as a
-       compositor-independent hover fallback without widening the native
-       click hit box or stealing clicks from a nearer actor.
-    */
-    if(!hit){
-      const frames=[...document.querySelectorAll("#battle-target-overlay [data-battle-target] > .battle-target-frame")];
-      for(let index=frames.length-1;index>=0;index--){
-        const frame=frames[index],rect=frame.getBoundingClientRect();
-        if(rect.width>0&&rect.height>0&&x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom){
-          const proxy=frame.parentElement,button=proxy?.querySelector(":scope > .battle-target-hit");
-          if(button){hit=button;break;}
-        }
-      }
-    }
+    /* Native MOUSE.CPP first requires the pointer to enter the 48×48 foot
+       hit box and only then paints a frame around the complete bitmap.  Do
+       not infer hover from that larger visual frame: it advertises a target
+       in the actor's head/torso area where the native click cannot select it. */
     paintBattleHoverTarget(hit?Number(hit._battleItem?.battleId):null);
   }
   /* BattleTargetSelect() positions its native brown hint from the logical
