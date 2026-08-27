@@ -607,8 +607,11 @@
     #battle-taskbar img { position:absolute; inset:0; display:block; width:640px; height:24px; image-rendering:pixelated; }
     #battle-taskbar span { position:absolute; top:2px; height:18px; color:#fff7d0; font:11px/18px Tahoma,"Microsoft YaHei",sans-serif; white-space:nowrap; text-shadow:1px 1px #3b2111,-1px 0 #3b2111; }
     #battle-taskbar-line { left:8px; max-width:420px; overflow:hidden; text-overflow:ellipsis; }
-    #battle-taskbar-mode { left:540px; }
-    #battle-taskbar-ping { left:605px; min-width:26px; text-align:left; }
+    /* IME.CPP::ImeProc() paints "       abc" at (545,460) while the
+       legacy IME is closed.  Seven 8px glyph cells put the visible `abc`
+       at x=601.  The previous web-only diagnostic labels had no native
+       source and occupied this exact input-mode area. */
+    #battle-taskbar-ime { left:601px; }
     /* BattleCntDownDisp() paints the remaining seconds at (320 - 16, 240)
        in the native 640×480 back-buffer.  Keep this as a small, compositor
        friendly overlay instead of rebuilding the actor layer every frame.
@@ -915,8 +918,7 @@
       <div id="battle-taskbar" aria-hidden="true">
         <img src="/assets/bitmaps/bitmap_9147.png" alt="">
         <span id="battle-taskbar-line"></span>
-        <span id="battle-taskbar-mode">玩家模式</span>
-        <span id="battle-taskbar-ping">0</span>
+        <span id="battle-taskbar-ime">abc</span>
       </div>
       <div id="battle-chat-layer" aria-hidden="true"><div id="battle-chat-log"></div></div>
       <div id="battle-countdown" aria-live="polite" aria-atomic="true"><span id="battle-countdown-value"></span></div>
@@ -3198,8 +3200,8 @@
     node.dataset.seconds=String(seconds);
   }
   function renderBattleTaskbar(){
-    const line=$("battle-taskbar-line"),mode=$("battle-taskbar-mode"),ping=$("battle-taskbar-ping");
-    if(!line||!mode||!ping)return;
+    const line=$("battle-taskbar-line"),ime=$("battle-taskbar-ime");
+    if(!line||!ime)return;
     const state=app.battleState||{};
     const now=Date.now(),remaining=battleChoiceRemaining(state,now),seconds=Math.max(0,Math.floor(remaining/1000)),choiceActive=battleChoiceActive(state,now);
     const petChoice=choiceActive&&(state.choiceOwner==="pet"||state.choiceOwner==="transition"||app.battlePopup?.kind==="pet-skill"||Number(state.petChoiceDeadline)>now);
@@ -3211,10 +3213,11 @@
         : choiceActive&&!state.commandLocked
           ? `请选择行动（${seconds}秒）`
           : String(state.oneLineInfo||state.statusLine||"");
-    const ai=String(state.aiMode||"").trim();
-    mode.textContent=ai||"玩家模式";
-    const value=Number(app.status?.ping??app.status?.serverPing??0);
-    ping.textContent=Number.isFinite(value)&&value>0?` ${Math.trunc(value)}`:" 0";
+    /* The stock 2.5 task bar has no web latency/AI label here.  ImeProc()
+       owns the far-right text and, with IME closed, displays only the
+       keyboard case marker.  Browser composition state is not the Windows
+       IMM conversion index, so keep the native closed/default marker. */
+    ime.textContent="abc";
     renderBattleCountdown(state,now);
   }
   function battleExplainUnavailable(actionOrCommand){

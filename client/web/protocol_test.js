@@ -635,6 +635,14 @@ for (const expected of [
 ]) {
   if (!expected.test(html)) throw new Error(`native pet-window layout regression: ${expected}`);
 }
+/* IME.CPP::ImeProc() writes the closed/default input mode as
+   "       abc" from x=545, so its visible suffix begins at x=601.  The
+   legacy client has no web-only "player mode" or ping counter in this bar. */
+if (!/#battle-taskbar-ime\s*\{\s*left:601px/.test(html) ||
+    !/<span id="battle-taskbar-ime">abc<\/span>/.test(html) ||
+    /<span id="battle-taskbar-(?:mode|ping)"|(?:mode|ping)\.textContent|>玩家模式</.test(html)) {
+  throw new Error("battle task bar must keep the native 2.5 IME marker only");
+}
 const sendBattleTargetStart = script.indexOf("  async function sendBattleTarget(target)");
 const sendBattleTargetEnd = script.indexOf("  function battleActivePet(", sendBattleTargetStart);
 const sendBattleTargetSource = script.slice(sendBattleTargetStart, sendBattleTargetEnd);
