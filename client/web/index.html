@@ -4435,14 +4435,32 @@
      when the menu opens; this matches the native scene's small working set
      while keeping the request count bounded on phones. */
   function preloadFieldActionFrames(actor){
-    const entry=spriteEntryForActor(actor);if(!entry)return false;
+    const entry=spriteEntryForActor(actor);if(!entry)return Promise.resolve(false);
     const direction=((Number(actor?.direction)||0)%8+8)%8,files=new Set();
     for(const animation of entry.sprite.actions||[]){
       if(Number(animation.direction)!==direction)continue;
       for(const frame of animation.frames||[])if(frame?.file)files.add(frame.file);
     }
-    for(const file of files)loadAsset(file);
-    return files.size>0;
+    if(!files.size)return Promise.resolve(false);
+    /* Image.decode() waits for the bitmap to be usable by drawImage(), not
+       merely for the HTTP response to finish.  The native client has all
+       REALBIN frames resident before the Action window runs; starting the
+       short 2/3-tick rows while Chromium is still decoding them skips
+       directly to the terminal frame and looks like a static action. */
+    const decoded=[...files].map(file=>{
+      const image=loadAsset(file);if(!image)return Promise.resolve(false);
+      if(image.complete&&image.naturalWidth)return Promise.resolve(true);
+      return new Promise(resolve=>{
+        let settled=false;
+        const finish=ok=>{if(settled)return;settled=true;image.removeEventListener("load",onload);image.removeEventListener("error",onerror);resolve(Boolean(ok&&image.naturalWidth));};
+        const onload=()=>finish(true),onerror=()=>finish(false);
+        image.addEventListener("load",onload,{once:true});image.addEventListener("error",onerror,{once:true});
+        if(typeof image.decode==="function")image.decode().then(()=>finish(true)).catch(()=>{});
+        /* A broken/blocked bitmap must not hold the Action state forever. */
+        window.setTimeout(()=>finish(Boolean(image.complete&&image.naturalWidth)),2000);
+      });
+    });
+    return Promise.all(decoded).then(result=>result.some(Boolean));
   }
   function spriteAnimationTiming(animation){
     const frames=Array.isArray(animation?.frames)?animation.frames:[];
@@ -11880,10 +11898,22 @@
   function receiveActions(text) {
     for(const record of String(text||"").split(",")){
       const parts=record.split("|");if(parts.length<5)continue;
-      const id=Protocol.base62(parts[0]||"0"),wireDirection=stateNumber(parts[4]),actor=app.actors.get(id)||{id,kind:"character",objectType:1};
+      const id=Protocol.base62(parts[0]||"0"),wireDirection=stateNumber(parts[4]),existing=app.actors.get(id),actor=existing||{id,kind:"character",objectType:1};
       const action=stateNumber(parts[3]),x=stateNumber(parts[1]),y=stateNumber(parts[2]);
       if(isInsideFloor(x,y,app.floor)===false)continue;
-      actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;actor.animationLoop=fieldActionLoops(CA_TO_SPRITE_ACTION[action]??3);actor.animationStartedAt=performance.now();actor.direction=(wireDirection+3)%8;actor.wireDirection=wireDirection;actor.effect=stateNumber(parts[5]);
+      /* PATTERN.CPP resets ATR_CHR_TIM/ATR_CHR_CNT only when the action,
+         facing, or graphic changes.  GMSV may repeat an unchanged CA record
+         while the character remains visible; restarting the browser clock on
+         every repeat pins the actor to its first bitmap and makes all 13
+         field actions look static.  Preserve the running clock for an
+         identical action/facing update, while still restarting a new actor or
+         a genuine action/direction change. */
+      const nextDirection=(wireDirection+3)%8;
+      const actionChanged=!existing||Number(existing.caAction)!==action||Number(existing.wireDirection)!==wireDirection||Number(existing.direction)!==nextDirection;
+      const hadAnimationStart=Number.isFinite(Number(actor.animationStartedAt))&&Number(actor.animationStartedAt)>0;
+      actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;actor.animationLoop=fieldActionLoops(CA_TO_SPRITE_ACTION[action]??3);
+      if(actionChanged||!hadAnimationStart)actor.animationStartedAt=performance.now();
+      actor.direction=nextDirection;actor.wireDirection=wireDirection;actor.effect=stateNumber(parts[5]);
       actor.effectParam1=stateNumber(parts[6]);actor.effectParam2=stateNumber(parts[7]);app.actors.set(id,actor);
       /* CA action 20/22 is how the 2.5 field client decorates a character
          with CHR_STATUS_BATTLE / CHR_STATUS_WATCH.  Keep those flags on the
@@ -14566,20 +14596,20 @@
        instead of being hidden behind the still-open menu on narrow screens. */
     closeFieldWindow();
     renderWorld(true);scheduleWorldAnimation();
-    if(!assetState.spritesReady){
-      loadSpriteManifest().then(sprites=>{
-        if(!sprites||app.phase!=="world"||app.battle)return;
-        const current=app.actors.get(actor.id);
-        if(current!==actor||Number(actor.action)!==actionNo||Number(actor.animationStartedAt)!==actionStartedAt)return;
-        /* No action row exists while the table is absent, so the native
-           clock could not have advanced a meaningful frame during the
-           download.  Restart this still-selected action at the first real
-           sprite frame; otherwise a slow one-shot download would resolve
-           after its old timestamp and paint only the terminal frame. */
-        setLocalActorAction(actor,actionNo);actor.walking=false;
-        renderWorld(true);scheduleWorldAnimation();
-      });
-    }
+    /* The SPR table and its PNGs are separate resources.  Even when the
+       manifest itself is already resident, the first click can still race
+       image decoding.  Wait for the current-facing rows in either case and
+       restart this action from frame zero once drawImage() can use them. */
+    const prepare=assetState.spritesReady
+      ? preloadFieldActionFrames(actor)
+      : loadSpriteManifest().then(sprites=>sprites?preloadFieldActionFrames(actor):false);
+    Promise.resolve(prepare).then(()=>{
+      if(app.phase!=="world"||app.battle)return;
+      const current=app.actors.get(actor.id);
+      if(current!==actor||Number(actor.action)!==actionNo||Number(actor.animationStartedAt)!==actionStartedAt)return;
+      setLocalActorAction(actor,actionNo);actor.walking=false;
+      renderWorld(true);scheduleWorldAnimation();
+    });
     fieldSend("AC",[x,y,actionNo]).catch(reportError);
   }));
   $("field-settings-close")?.addEventListener("click",closeFieldWindow);

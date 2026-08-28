@@ -368,9 +368,22 @@ if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:
    !/actor\.animationStartedAt=/.test(localActionAnimationSource)) {
   throw new Error("field Action selection must start the native per-frame animation clock");
 }
+if(!/function preloadFieldActionFrames\(actor\)[\s\S]{0,2200}image\.decode\(\)/.test(localActionAnimationSource) ||
+   !/const prepare=assetState\.spritesReady[\s\S]{0,420}preloadFieldActionFrames\(actor\)/.test(script) ||
+   !/Promise\.resolve\(prepare\)\.then\(\(\)=>/.test(script)) {
+  throw new Error("field Action selection must wait for decoded SPR frames before replaying from frame zero");
+}
 if(!/const LEGACY_FIELD_ANIMATION_TICK_MS=1000\/60/.test(script) ||
    !/const animationTick=actor\?\.walking\?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS/.test(localActionAnimationSource)) {
   throw new Error("field Action animation must use the native 60 Hz clock without changing walk speed");
+}
+const receiveActionsStart = script.indexOf("  function receiveActions(text)");
+const receiveActionsEnd = script.indexOf("  function updateHUD()", receiveActionsStart);
+const receiveActionsSource = script.slice(receiveActionsStart, receiveActionsEnd);
+if(receiveActionsStart < 0 || receiveActionsEnd <= receiveActionsStart ||
+   !/const actionChanged=!existing\|\|Number\(existing\.caAction\)!==action\|\|Number\(existing\.wireDirection\)!==wireDirection\|\|Number\(existing\.direction\)!==nextDirection/.test(receiveActionsSource) ||
+   !/if\(actionChanged\|\|!hadAnimationStart\)actor\.animationStartedAt=performance\.now\(\)/.test(receiveActionsSource)) {
+  throw new Error("repeated CA packets must not restart an unchanged field action");
 }
 if(!/function fieldActorAnimationActive\(now=performance\.now\(\)\)[\s\S]{0,1300}spriteAnimationForAction\(actor,actor\.direction,action\)[\s\S]{0,900}frames\.length<2/.test(localActionAnimationSource)) {
   throw new Error("field Action renderer must keep a live animation loop while frames remain");
