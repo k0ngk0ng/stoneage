@@ -3105,6 +3105,15 @@
     advancedScreens.forEach(screen=>screen.classList.toggle("hidden",screen!==target));
     syncFieldOverlayVisibility();setActivePanelButton("");
     if(name==="settings")renderFieldSettings();
+    else if(name==="actions"){
+      /* The action list is a native field window, so make its current
+         character's directional rows resident while the player is choosing.
+         If the split SPR manifest is still downloading, retry after it is
+         ready; the selection handler has the same guard for a fast tap. */
+      const actor=ensureOwnFieldActor();
+      if(assetState.spritesReady)preloadFieldActionFrames(actor);
+      else loadSpriteManifest().then(()=>{if(app.phase==="world"&&!app.battle&&!target.classList.contains("hidden"))preloadFieldActionFrames(actor);});
+    }
   }
   function closeFieldWindow(){if(app.phase==="world")show(worldScreen);}
   function renderFieldSettings(){
@@ -4410,6 +4419,23 @@
        direction, however, so callers can explicitly allow that safe timing
        fallback without changing the frame selected by actorFrame(). */
     return allowDirectionFallback?entry.sprite.actions.find(item=>Number(item.action)===requested)||null:null;
+  }
+  /* FIELD.CPP has already loaded the selected character's SPR/REALBIN data
+     before the Action window is usable.  The browser keeps bitmap decoding
+     lazy, so the first tap on an action could otherwise spend its whole
+     one-shot duration waiting for later frames and look like a still image.
+     Warm only the current facing's 13 action rows (not all eight directions)
+     when the menu opens; this matches the native scene's small working set
+     while keeping the request count bounded on phones. */
+  function preloadFieldActionFrames(actor){
+    const entry=spriteEntryForActor(actor);if(!entry)return false;
+    const direction=((Number(actor?.direction)||0)%8+8)%8,files=new Set();
+    for(const animation of entry.sprite.actions||[]){
+      if(Number(animation.direction)!==direction)continue;
+      for(const frame of animation.frames||[])if(frame?.file)files.add(frame.file);
+    }
+    for(const file of files)loadAsset(file);
+    return files.size>0;
   }
   function spriteAnimationTiming(animation){
     const frames=Array.isArray(animation?.frames)?animation.frames:[];
