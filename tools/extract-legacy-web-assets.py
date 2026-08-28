@@ -22,6 +22,10 @@ sys.path.insert(0, str(COOKER))
 import asset_cooker as legacy  # noqa: E402  (the decoder is shared, output is not)
 
 
+CREATION_SPRITES = tuple(100000 + index * 20 for index in range(12))
+CREATION_SPRITE_ACTIONS = frozenset((3, 4))  # ANIM_STAND / ANIM_WALK
+
+
 UI_BITMAPS = {
     # field chrome
     **{f"window_{i}": 26001 + i for i in range(9)},
@@ -507,7 +511,17 @@ def map_pack(map_number, records, by_number, real_path, palette, output, manifes
     }
 
 
-def sprite_pack(sprite_numbers, records, real_path, palette, output, manifest, spr_path, spradrn_path):
+def sprite_pack(
+    sprite_numbers,
+    records,
+    real_path,
+    palette,
+    output,
+    manifest,
+    spr_path,
+    spradrn_path,
+    animation_filter=None,
+):
     index = legacy.read_sprite_index(spradrn_path)
     sprites = manifest.setdefault("sprites", {})
     for sprite_no in sprite_numbers:
@@ -516,6 +530,8 @@ def sprite_pack(sprite_numbers, records, real_path, palette, output, manifest, s
         animations = legacy.read_sprite_animations(spr_path, index[sprite_no])
         out = []
         for animation in animations:
+            if animation_filter is not None and not animation_filter(animation):
+                continue
             # pattern.cpp selects the requested action directly from the
             # SPRADRNBIN table.  Field actors normally use STAND/WALK, while
             # battle movies and skill effects use ATTACK/DAMAGE/DEAD and the
@@ -687,6 +703,11 @@ def main() -> int:
     parser.add_argument("--battle", type=int, default=0)
     parser.add_argument("--all-battles", action="store_true", help="extract every original battleMap/*.sab viewport")
     parser.add_argument("--battles-only", action="store_true", help="refresh battle PNGs in an existing browser asset pack")
+    parser.add_argument(
+        "--creation-sprites-only",
+        action="store_true",
+        help="refresh the small pre-world character-selection SPR pack",
+    )
     parser.add_argument("--sprite", type=int, action="append", default=[100000, 100025, 100250])
     args = parser.parse_args()
 
@@ -716,6 +737,32 @@ def main() -> int:
         temporary_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary_manifest.replace(manifest_path)
         print(json.dumps({"output": str(args.output), "battles": len(battle_numbers)}, ensure_ascii=False))
+        return 0
+    if args.creation_sprites_only:
+        creation_manifest = {"format": 2, "sprites": {}}
+        sprite_pack(
+            CREATION_SPRITES,
+            records,
+            real_path,
+            palette,
+            args.output,
+            creation_manifest,
+            data / "spr_4.bin",
+            data / "spradrn_5.bin",
+            animation_filter=lambda animation: (
+                animation.direction == 0 and animation.action in CREATION_SPRITE_ACTIONS
+            ),
+        )
+        (args.output / "creation-sprites.json").write_text(
+            json.dumps(creation_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            json.dumps(
+                {"output": str(args.output), "creation_sprites": sorted(creation_manifest["sprites"])},
+                ensure_ascii=False,
+            )
+        )
         return 0
     manifest = {
         "format": 2,
@@ -808,8 +855,27 @@ def main() -> int:
         "format": manifest.get("format", 2),
         "sprites": manifest.pop("sprites", {}),
     }
+    creation_sprite_manifest = {
+        "format": sprite_manifest["format"],
+        "sprites": {
+            str(sprite_no): {
+                "actions": [
+                    animation
+                    for animation in sprite_manifest["sprites"].get(str(sprite_no), {}).get("actions", [])
+                    if animation.get("direction") == 0
+                    and animation.get("action") in CREATION_SPRITE_ACTIONS
+                ]
+            }
+            for sprite_no in CREATION_SPRITES
+            if str(sprite_no) in sprite_manifest["sprites"]
+        },
+    }
     (args.output / "sprites.json").write_text(
         json.dumps(sprite_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    (args.output / "creation-sprites.json").write_text(
+        json.dumps(creation_sprite_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
     (args.output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

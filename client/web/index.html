@@ -284,57 +284,32 @@
     #field-ui { position:absolute; left:0; top:0; width:640px; height:480px; z-index:9; pointer-events:none; overflow:hidden; }
     #field-ui img,#field-ui canvas { position:absolute; display:block; pointer-events:none; image-rendering:pixelated; }
     #field-ui .click { pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    /* The VER25 client switches to CG_FIELD_MENU_LEFT_NEW (26236) when
-       _SPECIAL_LOGO is enabled.  Its anchor is (148,27), with ADRN offset
-       (-86,-28), so the 172×54 panel starts at (62,-1); the old 104×54
-       panel was the pre-2.5 layout and left every added button missing. */
-    /* _SA_VERSION_25 uses CG_FIELD_MENU_LEFT_NEW (26236).  The extracted
-       surface is bitmap_126243 and its ADRN record is 172x54 with
-       xoffset=-86/yoffset=-28.  StockDispBuffer() is anchored at (148,27),
-       therefore the visible surface starts at (62,-1).  The old 104px CG
-       here was the unrelated Mail plate and made the corner look doubled. */
-    #field-ui #field-left-bg { display:block; left:62px; top:-1px; width:172px; height:54px; z-index:1; }
-    #field-ui #field-left-bg-25 { display:none !important; }
-    /* The extracted 2.5 left plate is already positioned at its native
-       visible top-left (62,-1).  The three controls belong to that plate,
-       not to the old 104px mail plate: keep their visible pixels at
-       (67,4)/(98,4)/(129,4).  The previous raw StockDispBuffer anchor math
-       left them at (5,4)/(36,4)/(67,4), outside the new plate and visibly
-       overlapping the map. */
-    #field-left-menu { left:67px; top:4px; width:32px; height:30px; z-index:4; }
-    #field-left-card { left:98px; top:4px; width:32px; height:30px; z-index:4; }
-    #field-left-group { left:129px; top:4px; width:32px; height:30px; z-index:4; }
-    #field-left-trade,#field-left-trade-hit { display:none !important; }
-    /* These four 2.5 controls are direct ADRN sprites.  The unusually tall
-       transparent canvases and negative y offsets are intentional: the
-       native StockDispBuffer call clips them against the 640×480 backbuffer
-       instead of cropping the source bitmap first. */
-    /* The 2.5 build uses CG_FIELD_HELP_BTN_ON/OFF (26248/26249).  The
-       55237/55238 pair belongs to the optional 8.5 change-help build and is
-       a tall character/pet image; drawing it here was the extra lower-half
-       figure visible below the time panel. */
-    #field-right-help { left:550px; top:5px; width:28px; height:28px; z-index:4; }
-    #field-right-help-hit { left:550px; top:5px; width:28px; height:28px; }
-    #field-ui .field-extra-hit { appearance:none; -webkit-appearance:none; position:absolute; display:block; margin:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; opacity:0.01; z-index:4; pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    /* FIELD.CPP stocks these sprites at anchors (558,33), (542,32),
-       (542,32), (572,32) and (572,32).  Apply each ADRN x/y offset to the
-       anchor instead of positioning the bitmap's top-left by eye; the right
-       panel's rounded mask and the lower Action button then line up with the
-       original 640×480 back-buffer. */
+    /* FIELD.CPP's VER25 field controls are stocked at the shared anchor
+       (52,28). In the normal (non _SPECIAL_LOGO) build the 172×54
+       CG_FIELD_MENU_LEFT_NEW plate is anchored at (84,28), so its ADRN
+       origin is visible at (-2,0). The three 32×30 controls use the same
+       anchor and therefore land at (5,4), (36,4), and (67,4). Keeping the
+       plate and controls in one logical back-buffer space prevents the old
+       62px right-shift/doubled corner. */
+    #field-ui #field-left-bg { display:block; left:-2px; top:0; width:172px; height:54px; z-index:1; }
+    #field-left-menu { left:5px; top:4px; width:32px; height:30px; z-index:4; }
+    #field-left-card { left:36px; top:4px; width:32px; height:30px; z-index:4; }
+    #field-left-group { left:67px; top:4px; width:32px; height:30px; z-index:4; }
     /* FIELD.CPP composites the sliding AM/PM strip into the field buffer and
        then stocks CG_FIELD_MENU_RIGHT over it.  The panel is mostly opaque
        and its transparent diagonal aperture is the only place where the
        time strip should remain visible.  Keep the DOM order equivalent:
        panel above the sliding frames, IME3 buttons above both. */
-    /* FIELD.CPP's 2.5 build stocks CG_FIELD_MENU_RIGHT (26260), not the
-       legacy 26110 panel.  The extracted ADRN surface is bitmap_232650.png
-       (164x63, xoffset=-82,yoffset=-33); its visible top-left is therefore
-       (558-82,33-33) = (476,0).  Keeping the actual surface here is
-       important: the older 132px panel leaves the AM/PM aperture in the
-       wrong place and makes the day/night strip look like a topmost mask. */
+    /* VER25 uses CG_FIELD_MENU_RIGHT (26260) at anchor (558,33). Its
+       -82/-33 ADRN origin gives the 164×63 panel visible top-left (476,0);
+       join, duel, help and action remain at the native (488,5), (519,5),
+       (550,5), and (583,42) pixels. */
     #field-right-bg { left:476px; top:0; width:164px; height:63px; z-index:2; }
     #field-right-join { left:488px; top:5px; width:28px; height:28px; z-index:4; }
     #field-right-duel { left:519px; top:5px; width:28px; height:28px; z-index:4; }
+    #field-right-help { left:550px; top:5px; width:28px; height:28px; z-index:4; }
+    #field-right-help-hit { left:550px; top:5px; width:28px; height:28px; }
+    #field-ui .field-extra-hit { appearance:none; -webkit-appearance:none; position:absolute; display:block; margin:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; opacity:0.01; z-index:4; pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
     #field-right-action { left:583px; top:42px; width:56px; height:14px; z-index:4; }
     #field-right-back { left:585px; top:5px; width:52px; height:32px; z-index:2; }
     /* FIELD.CPP queues the animated day/night strip after the panel.  The web
@@ -1707,19 +1682,19 @@
     .legacy-screen #titles-close,.legacy-screen #album-close,.legacy-screen #events-close,.legacy-screen #journal-close{left:96px;top:var(--toolbar-y,310px)}
     .legacy-screen .legacy-input{background:#e7e2d3;color:#1d1710;border:1px solid #5a4a32;padding:2px 4px;box-shadow:inset 1px 1px #fff,inset -1px -1px #76694f}
 
-    /* FIELD.CPP's two small field windows are not web cards.  MakeWindowDisp
-       receives (16,16) and (440,16), then WindowDisp adds the 32×24 logical
-       inset before painting the 64×48 CG_WND2 tiles.  Keep the hit/text layer
-       in the same 640×480 back buffer so it scales with the map exactly once. */
+    /* FIELD.CPP's two small field windows are not web cards.  WindowDisp
+       submits each CG_WND2 tile at x+32/y+24, while every tile carries a
+       -32/-24 ADRN origin, so their visible frame still begins at the exact
+       MakeWindowDisp coordinates (16,16) and (440,16). */
     .field-window-screen{position:absolute!important;left:50%!important;top:50%!important;width:640px!important;height:480px!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:translate(-50%,-50%) scale(var(--scene-scale,1))!important;transform-origin:center center!important;color:#f5ecd4!important;z-index:31!important;pointer-events:none}
     .field-window-screen h2{position:absolute!important;left:-10000px!important;top:0!important;width:1px!important;height:1px!important;overflow:hidden!important}
     .field-window-screen .field-window-frame{position:absolute;z-index:0;pointer-events:none;overflow:hidden;width:192px}
-    #field-settings-screen .field-window-frame{left:48px;top:40px;height:240px}
-    #field-actions-screen .field-window-frame{left:472px;top:40px;height:288px}
+    #field-settings-screen .field-window-frame{left:16px;top:16px;height:240px}
+    #field-actions-screen .field-window-frame{left:440px;top:16px;height:288px}
     .field-window-screen #field-settings-list,.field-window-screen #field-actions-list{position:absolute;z-index:2;display:block;margin:0;padding:0;overflow:visible;pointer-events:auto}
     #field-settings-screen #field-settings-list{left:34px;top:39px;width:157px;height:172px}
     #field-actions-screen #field-actions-list{left:458px;top:37px;width:157px;height:232px}
-    .field-window-screen .field-setting-row,.field-window-screen .field-action-row{display:block;position:absolute;left:0;width:157px;height:22px;margin:0;padding:0 2px;color:#f0e5c6;background:transparent;border:0;border-radius:0;box-shadow:none;outline:0;font:12px/22px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;font-weight:400;text-align:left;text-shadow:1px 1px #080706;white-space:pre;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
+    .field-window-screen .field-setting-row,.field-window-screen .field-action-row{box-sizing:border-box;display:block;position:absolute;left:0;width:157px;height:22px;margin:0;padding:3px 0 0 2px;color:#f0e5c6;background:transparent;border:0;border-radius:0;box-shadow:none;outline:0;font:12px/12px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;font-weight:400;text-align:left;text-shadow:1px 1px #080706;white-space:pre;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
     /* field.cpp::charActionAnimeChange() creates two 73×22 hit boxes at
        x+18 and x+102 (the 84px column step).  The settings list is a single
        157px row, but reusing that width for action rows made the second
@@ -1737,11 +1712,13 @@
     .field-window-screen #field-actions-list .field-action-row:nth-child(9){left:0;top:120px}.field-window-screen #field-actions-list .field-action-row:nth-child(10){left:84px;top:120px}
     .field-window-screen #field-actions-list .field-action-row:nth-child(11){left:0;top:150px}.field-window-screen #field-actions-list .field-action-row:nth-child(12){left:84px;top:150px}
     .field-window-screen #field-actions-list .field-action-row:nth-child(13){left:42px;top:180px}
-    .field-window-screen .field-setting-row span{display:inline-block;width:82px}.field-window-screen .field-setting-row b{display:inline-block;color:#f0e5c6;font-weight:400}
+    .field-window-screen .field-setting-row span{display:inline-block;width:85px}.field-window-screen .field-setting-row b{display:inline-block;color:#f0e5c6;font-weight:400}
     .field-window-screen .field-setting-row:hover,.field-window-screen .field-setting-row:focus-visible,.field-window-screen .field-action-row:hover,.field-window-screen .field-action-row:focus-visible{color:#ffe88b;text-shadow:0 0 3px #ffe88b,1px 1px #080706;filter:none;outline:0}
     .field-window-screen #field-settings-close,.field-window-screen #field-actions-close{position:absolute;z-index:3;width:80px;height:16px;padding:0;border:0;border-radius:0;color:transparent;background:transparent url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none;outline:0;font-size:0;pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
-    #field-settings-screen #field-settings-close{left:112px;top:232px}
-    #field-actions-screen #field-actions-close{left:536px;top:274px}
+    /* StockDispBuffer receives the centre anchors (112,178)/(536,274);
+       CG_CLOSE_BTN itself is 80×16 with ADRN offset -40/-8. */
+    #field-settings-screen #field-settings-close{left:72px;top:208px}
+    #field-actions-screen #field-actions-close{left:496px;top:266px}
     .field-window-screen #field-settings-close:hover,.field-window-screen #field-settings-close:focus-visible,.field-window-screen #field-actions-close:hover,.field-window-screen #field-actions-close:focus-visible{filter:brightness(1.12);outline:0}
     #status-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:360px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:310px;--toolbar-x:18px;--toolbar-y:338px}
     #pets-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:320px;--content-x:13px;--content-y:38px;--content-w:246px;--content-h:260px;--toolbar-x:72px;--toolbar-y:296px}
@@ -2514,19 +2491,19 @@
         <h2>人物动作</h2>
         <div class="field-window-frame wnd2-frame" aria-hidden="true"><i class="wnd2-tl"></i><i class="wnd2-t"></i><i class="wnd2-tr"></i><i class="wnd2-l"></i><i class="wnd2-c"></i><i class="wnd2-r"></i><i class="wnd2-bl"></i><i class="wnd2-b"></i><i class="wnd2-br"></i></div>
         <div id="field-actions-list" aria-label="人物动作">
-          <button type="button" class="field-action-row" data-action-no="5">坐  下</button>
-          <button type="button" class="field-action-row" data-action-no="3">站  立</button>
-          <button type="button" class="field-action-row" data-action-no="6">挥  手</button>
-          <button type="button" class="field-action-row" data-action-no="4">走  动</button>
-          <button type="button" class="field-action-row" data-action-no="11">点  头</button>
-          <button type="button" class="field-action-row" data-action-no="2">晕  倒</button>
-          <button type="button" class="field-action-row" data-action-no="7">高  兴</button>
-          <button type="button" class="field-action-row" data-action-no="0">攻  击</button>
-          <button type="button" class="field-action-row" data-action-no="8">生  气</button>
-          <button type="button" class="field-action-row" data-action-no="10">防  御</button>
-          <button type="button" class="field-action-row" data-action-no="9">悲  伤</button>
-          <button type="button" class="field-action-row" data-action-no="1">受  伤</button>
-          <button type="button" class="field-action-row field-action-last" data-action-no="12">投  掷</button>
+          <button type="button" class="field-action-row" data-action-no="5"> 坐  下 </button>
+          <button type="button" class="field-action-row" data-action-no="3"> 站  立 </button>
+          <button type="button" class="field-action-row" data-action-no="6"> 挥  手 </button>
+          <button type="button" class="field-action-row" data-action-no="4"> 走  动 </button>
+          <button type="button" class="field-action-row" data-action-no="11"> 点  头 </button>
+          <button type="button" class="field-action-row" data-action-no="2"> 晕  倒 </button>
+          <button type="button" class="field-action-row" data-action-no="7"> 高  兴 </button>
+          <button type="button" class="field-action-row" data-action-no="0"> 攻  击 </button>
+          <button type="button" class="field-action-row" data-action-no="8"> 生  气 </button>
+          <button type="button" class="field-action-row" data-action-no="10"> 防  御 </button>
+          <button type="button" class="field-action-row" data-action-no="9"> 悲  伤 </button>
+          <button type="button" class="field-action-row" data-action-no="1"> 受  伤 </button>
+          <button type="button" class="field-action-row field-action-last" data-action-no="12"> 投  掷 </button>
         </div>
         <button id="field-actions-close" type="button" aria-label="关闭动作视窗"></button>
       </section>
@@ -3014,7 +2991,7 @@
      the request. Keep the native wire bits here instead of the labels'
      display order. */
   const FIELD_SETTING_BITS=Object.freeze({party:1,duel:4,mail:16,chat:8,trade:32});
-  const FIELD_SETTING_LABELS=Object.freeze({party:["组    队：","ＮＯ","ＹＥＳ"],duel:["决    斗：","ＮＯ","ＹＥＳ"],mail:["交换名片：","ＮＯ","ＹＥＳ"],chat:["聊    天：","队  伍","全  员"],trade:["交    易：","ＮＯ","ＹＥＳ"]});
+  const FIELD_SETTING_LABELS=Object.freeze({party:["组    队："," Ｎ  Ｏ"," ＹＥＳ"],duel:["决    斗："," Ｎ  Ｏ"," ＹＥＳ"],mail:["交换名片："," Ｎ  Ｏ"," ＹＥＳ"],chat:["聊    天："," 全  员"," 队  伍"],trade:["交    易："," Ｎ  Ｏ"," ＹＥＳ"]});
   function openFieldWindow(name){
     if(app.phase!=="world"||app.battle)return;
     show(worldScreen);
@@ -3743,7 +3720,7 @@
   const MAP_DATA_CACHE_PREFIX="stoneage25.v1.map-data.";
   const MAP_TILE_CACHE_MAX_BYTES=768*1024;
   const MAP_DATA_CACHE_MAX_BYTES=2*1024*1024;
-  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
   function rememberAssetResourceSize(file,entryOrSize){
     const key=String(file||"").replace(/^\//,"");if(!key)return 0;
     const size=typeof entryOrSize==="number"
@@ -3875,6 +3852,7 @@
      old installed tab can keep serving a manifest without 25900..25909 and
      the timer appears as an empty space even though the code is present. */
   const ASSET_MANIFEST_URL="/assets/manifest.json?v=20260825-core-sprites";
+  const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json?v=20260828-character-create";
   const SPRITE_MANIFEST_URL="/assets/sprites.json?v=20260825-core-sprites";
   function mapCacheKey(file){return `${MAP_TILE_CACHE_PREFIX}${String(file||"")}`;}
   function mapDataCacheKey(map){return `${MAP_DATA_CACHE_PREFIX}${Number(map?.floor)||0}.${Number(map?.x1)||0}.${Number(map?.y1)||0}.${Number(map?.width)||0}.${Number(map?.height)||0}`;}
@@ -4071,6 +4049,7 @@
       if(app.map)attachMapImage();
       if(document.getElementById("map-screen")&&!document.getElementById("map-screen").classList.contains("hidden"))renderMapDetails();
       if(app.phase==="character-list")renderCharacterFaces();
+      if(app.phase==="character-create")renderCreation();
       renderWorld();renderBattleWorld();
       if(document.getElementById("inventory-screen")&&!document.getElementById("inventory-screen").classList.contains("hidden"))renderInventory();
       if(document.getElementById("status-screen")&&!document.getElementById("status-screen").classList.contains("hidden"))renderStatus();
@@ -4086,6 +4065,28 @@
       window.clearTimeout(timeout);
     });
     return assetState.loading;
+  }
+  function loadCreationSpriteManifest(){
+    if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
+    if(assetState.creationSpritesReady)return Promise.resolve(assetState.creationSprites);
+    if(assetState.creationSpriteLoading)return assetState.creationSpriteLoading;
+    assetState.creationSpritesFailed=false;
+    assetState.creationSpriteLoading=fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"force-cache"}).then(async response=>{
+      if(!response.ok)throw new Error(`人物精灵资源 HTTP ${response.status}`);
+      return response.json();
+    }).then(payload=>{
+      const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
+      if(!sprites||typeof sprites!=="object")throw new Error("人物精灵资源清单为空");
+      assetState.creationSprites=sprites;assetState.creationSpritesReady=true;assetState.creationSpritesFailed=false;
+      if(app.phase==="character-create"&&creationState.stage==="select")renderCreation();
+      return sprites;
+    }).catch(error=>{
+      assetState.creationSprites=null;assetState.creationSpritesReady=false;assetState.creationSpritesFailed=true;assetState.creationSpriteLoading=null;
+      addEvent(`人物精灵资源加载失败：${error?.message||error}`);
+      window.setTimeout(()=>{if(!assetState.creationSpritesReady&&app.phase==="character-create")loadCreationSpriteManifest();},1500);
+      return null;
+    });
+    return assetState.creationSpriteLoading;
   }
   function loadSpriteManifest(){
     if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
@@ -4113,6 +4114,7 @@
       if(!sprites||typeof sprites!=="object")throw new Error("精灵资源清单为空");
       assetState.sprites=sprites;assetState.spritesReady=true;assetState.spritesFailed=false;
       renderWorld(true);renderBattleWorld();
+      if(app.phase==="character-create"&&creationState.stage==="select")renderCreation();
       if(app.phase==="character-list")renderCharacterFaces();
       return sprites;
     }).catch(error=>{
@@ -4227,7 +4229,7 @@
      compatible while the split mobile pack can populate the same lookup
      lazily. */
   function spriteManifest(){
-    return assetState.sprites||assetState.manifest?.sprites||null;
+    return assetState.sprites||assetState.creationSprites||assetState.manifest?.sprites||null;
   }
   function actorGraphicValue(actor){
     const key=actor?.graphicKey;
@@ -4382,7 +4384,7 @@
   }
   loadAssetManifest();
   loadAutoMapColors();
-  function reportError(error) { const message=String(error?.message||error||"网络错误"); addWire(`发送失败：${message}`); status("网络错误","error"); $("event-status").textContent=message; if(app.phase==="world"&&/closed|disconnect|network|fetch|HTTP 4|HTTP 5|连接|socket/i.test(message))handleConnectionLost(message); else if(["connecting","server-line","character-list","login-error"].includes(app.phase))showConnectionFailure(message); }
+  function reportError(error) { const message=String(error?.message||error||"网络错误"); addWire(`发送失败：${message}`); status("网络错误","error"); $("event-status").textContent=message; if(app.phase==="world"&&/closed|disconnect|network|fetch|HTTP 4|HTTP 5|连接|socket/i.test(message))handleConnectionLost(message); else if(["connecting","server-line","character-list","character-create","login-error"].includes(app.phase))showConnectionFailure(message); }
   function textOr(value,fallback="") { return value===undefined||value===null?fallback:String(value); }
   function decimal(value,fallback=0) { const n=Number.parseInt(String(value),10); return Number.isFinite(n)?n:fallback; }
   function addEvent(text) { app.events.push(`${new Date().toLocaleTimeString()} ${text}`); if(app.events.length>160)app.events.shift(); if($("event-journal"))renderJournal(); }
@@ -10429,7 +10431,7 @@
          expected close differently from a dropped game connection. */
       app.logoutPending="";closeTransport();app.battle=false;returnToLogin("已原地登出，当前位置已保存。");status("已原地登出","good");return;
     }
-    const wasSelectingServer=app.phase==="connecting"||app.phase==="server-line"||app.phase==="character-list"||app.phase==="login-error";
+    const wasSelectingServer=app.phase==="connecting"||app.phase==="server-line"||app.phase==="character-list"||app.phase==="character-create"||app.phase==="login-error";
     const wasWorld=app.phase==="world"||app.battle||worldScreen?.classList.contains("hidden")===false;
     closeTransport(sourceTransport||null);app.phase="disconnected";app.battle=false;setWorldState("连接已中断","error");status("连接中断","error");
     if(wasWorld){show(worldScreen);openLocalDialog("连接中断",`${reason}\n服务器连接已断开。`,[{label:"重新连接",kind:"yes",handler:retryAfterDisconnect},{label:"返回登录",kind:"no",handler:()=>returnToLogin("连接已断开，请重新登录。" )}]);}
@@ -10665,24 +10667,42 @@
       if(face&&info?.file){const source=`/assets/${info.file}`;if(face.getAttribute("src")!==source)face.src=source;}
     });
   }
-  const creationState={stage:"select",selected:-1,color:0,eye:0,mouth:0,status:[0,0,0,0],attrs:[0,0,0,0],statusPoints:20,attrPoints:10,name:"",home:0};
+  const creationState={stage:"select",selected:-1,hovered:-1,hoverStartedAt:0,color:0,eye:0,mouth:0,status:[0,0,0,0],attrs:[0,0,0,0],statusPoints:20,attrPoints:10,name:"",home:0};
   const creationGraphics=[100000,100020,100040,100060,100080,100100,100120,100140,100160,100180,100200,100220];
   const creationLocate=[[198,301],[113,258],[248,396],[130,370],[137,160],[343,379],[479,371],[420,310],[376,231],[297,198],[381,146],[242,116]];
   const creationHit=[[-32,-56,63,65],[-21,-72,42,88],[-19,-78,38,94],[-20,-67,41,80],[-30,-80,60,100],[-36,-84,72,100],[-30,-51,59,64],[-19,-77,40,88],[-18,-72,34,83],[-22,-72,43,89],[-18,-78,35,90],[-20,-76,40,90]];
   function creationImage(file){return loadAsset(`bitmaps/${file}`);}
-  function renderCreation(){
+  let creationAnimationFrame=0;
+  function cancelCreationAnimation(){if(creationAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(creationAnimationFrame);creationAnimationFrame=0;}
+  function scheduleCreationAnimation(){
+    if(creationAnimationFrame||creationState.stage!=="select"||creationState.hovered<0||app.phase!=="character-create"||creationScreen.classList.contains("hidden"))return;
+    creationAnimationFrame=window.requestAnimationFrame(()=>{creationAnimationFrame=0;paintCreationCanvas();scheduleCreationAnimation();});
+  }
+  function paintCreationCanvas(){
     const canvas=$("creation-canvas");if(!canvas)return;const ctx=getCanvas2DContext(canvas,{alpha:true,desynchronized:true,willReadFrequently:false});if(!ctx)return;ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,640,480);
     const bg=creationState.stage==="select"?creationImage("bitmap_9116.png"):creationState.stage==="settings"?creationImage("bitmap_9117.png"):creationImage("bitmap_9125.png");
     if(bg?.complete&&bg.naturalWidth)ctx.drawImage(bg,0,0,640,480);
+    if(creationState.stage!=="select")return true;
+    const sprites=spriteManifest(),ready=creationGraphics.every(graphic=>sprites?.[String(graphic)]);
+    if(!ready)return false;
+    for(let i=0;i<creationGraphics.length;i++){
+      const walking=creationState.hovered===i;
+      const frame=actorFrame({graphic:creationGraphics[i],direction:0,action:walking?4:3,walking,animationStartedAt:walking?creationState.hoverStartedAt:0});
+      if(frame?.image?.complete&&frame.image.naturalWidth){const scale=Math.min(1,120/Math.max(1,frame.image.naturalHeight)),w=frame.image.naturalWidth*scale,h=frame.image.naturalHeight*scale;ctx.drawImage(frame.image,creationLocate[i][0]-w/2,creationLocate[i][1]-h+4,w,h);}
+    }
+    return true;
+  }
+  function renderCreation(){
+    const creationSpritesReady=paintCreationCanvas();
     const hitLayer=$("creation-hit-layer"),settings=$("creation-settings"),home=$("creation-home");
     if(hitLayer)hitLayer.replaceChildren(); settings?.classList.toggle("hidden",creationState.stage!=="settings"); home?.classList.toggle("hidden",creationState.stage!=="home");
     if(creationState.stage==="select"){
       for(let i=0;i<creationGraphics.length;i++){
-        const frame=actorFrame({graphic:creationGraphics[i],direction:0,action:3});if(frame?.image?.complete&&frame.image.naturalWidth){const scale=Math.min(1,120/Math.max(1,frame.image.naturalHeight)),w=frame.image.naturalWidth*scale,h=frame.image.naturalHeight*scale;ctx.drawImage(frame.image,creationLocate[i][0]-w/2,creationLocate[i][1]-h+4,w,h);}
-        if(hitLayer){const [hx,hy,hw,hh]=creationHit[i],button=document.createElement("button");button.type="button";button.dataset.index=String(i);button.style.left=`${creationLocate[i][0]+hx}px`;button.style.top=`${creationLocate[i][1]+hy}px`;button.style.width=`${hw}px`;button.style.height=`${hh}px`;if(i===creationState.selected)button.classList.add("selected");button.addEventListener("click",()=>{creationState.selected=i;creationState.stage="settings";creationState.status=[0,0,0,0];creationState.attrs=[0,0,0,0];creationState.statusPoints=20;creationState.attrPoints=10;renderCreation();});hitLayer.append(button);}
+        if(hitLayer){const [hx,hy,hw,hh]=creationHit[i],button=document.createElement("button");button.type="button";button.dataset.index=String(i);button.style.left=`${creationLocate[i][0]+hx}px`;button.style.top=`${creationLocate[i][1]+hy}px`;button.style.width=`${hw}px`;button.style.height=`${hh}px`;if(i===creationState.selected)button.classList.add("selected");button.addEventListener("pointerenter",()=>{if(creationState.hovered===i)return;creationState.hovered=i;creationState.hoverStartedAt=performance.now();paintCreationCanvas();scheduleCreationAnimation();});button.addEventListener("pointerleave",()=>{if(creationState.hovered!==i)return;creationState.hovered=-1;cancelCreationAnimation();paintCreationCanvas();});button.addEventListener("click",()=>{creationState.hovered=-1;cancelCreationAnimation();creationState.selected=i;creationState.stage="settings";creationState.status=[0,0,0,0];creationState.attrs=[0,0,0,0];creationState.statusPoints=20;creationState.attrPoints=10;renderCreation();});hitLayer.append(button);}
       }
-      $("creation-status").textContent="请选择要创建的人物。";
+      $("creation-status").textContent=creationSpritesReady?"请选择要创建的人物。":"正在读取人物贴图…";
     }else if(creationState.stage==="settings"){
+      cancelCreationAnimation();
       const name=$("creation-name");if(name&&name.value!==creationState.name)name.value=creationState.name;
       $("creation-status-points").textContent=String(creationState.statusPoints);$("creation-attr-points").textContent=String(creationState.attrPoints);
       const values=$("creation-stat-values"),attrs=$("creation-attr-values");values.replaceChildren();attrs.replaceChildren();for(const value of creationState.status){const span=document.createElement("span");span.textContent=String(value);values.append(span);}for(const value of creationState.attrs){const span=document.createElement("span");span.textContent=String(value);attrs.append(span);}
@@ -10723,7 +10743,7 @@
       if(faceInfo?.file)face.src=`/assets/${faceInfo.file}`;settings.append(face);
       const bars=$("creation-attr-values");if(bars){bars.replaceChildren();for(const [name,value] of [["earth",creationState.attrs[0]],["water",creationState.attrs[1]],["fire",creationState.attrs[2]],["wind",creationState.attrs[3]]]){const bar=document.createElement("i");bar.className=`creation-attr-bar ${name}`;bar.style.setProperty("--attr-value",String(Math.max(0,Math.min(10,value))));bars.append(bar);}}
       $("creation-status").textContent=`剩余能力点 ${creationState.statusPoints} · 属性点 ${creationState.attrPoints}`;
-    }else{$("creation-status").textContent="请选择出生地。";}
+    }else{cancelCreationAnimation();$("creation-status").textContent="请选择出生地。";}
   }
   function creationAdjust(kind,index,delta){
     if(kind==="eye"||kind==="mouth"){
@@ -10735,7 +10755,7 @@
     if(delta<0&&values[index]<=0)return;
     values[index]+=delta;creationState[pointsKey]-=delta;renderCreation();
   }
-  function openCreation(){if(app.phase!=="character-list")return;app.phase="character-create";creationState.stage="select";creationState.selected=-1;creationState.name="";creationState.status=[0,0,0,0];creationState.attrs=[0,0,0,0];creationState.statusPoints=20;creationState.attrPoints=10;$("creation-name").value="";show(creationScreen);renderCreation();status("创建人物","good");}
+  function openCreation(){if(app.phase!=="character-list")return;app.phase="character-create";creationState.stage="select";creationState.selected=-1;creationState.hovered=-1;creationState.hoverStartedAt=0;creationState.name="";creationState.status=[0,0,0,0];creationState.attrs=[0,0,0,0];creationState.statusPoints=20;creationState.attrPoints=10;$("creation-name").value="";show(creationScreen);renderCreation();if(!assetState.spritesReady&&!assetState.creationSpritesReady)loadCreationSpriteManifest();status("创建人物","good");}
   function finishCreation(){const name=$("creation-name").value.trim();creationState.name=name;if(!name){$("creation-status").textContent="请输入人物名称。";$("creation-name").focus();return;}if(creationState.statusPoints||creationState.attrPoints){$("creation-status").textContent="请分配完所有能力点和属性点。";return;}creationState.stage="home";renderCreation();}
   async function submitCreation(home){creationState.home=home;const name=String(creationState.name||$("creation-name").value||"").trim();if(!name)return;const index=Math.max(0,creationState.selected),img=creationGraphics[index],face=30000+index*100+creationState.color*25+creationState.eye*5+creationState.mouth;try{await send("CreateNewChar",[0,name,img,face,creationState.status[0],creationState.status[1],creationState.status[2],creationState.status[3],creationState.attrs[0],creationState.attrs[1],creationState.attrs[2],creationState.attrs[3],home]);$("creation-status").textContent="已提交创建请求，等待服务器…";}catch(error){$("creation-status").textContent=error.message;reportError(error);}}
   function appendCharacterValue(container,className,value) { const node=document.createElement("span");node.className=className;node.textContent=textOr(value,"-");container.append(node); }
@@ -12117,7 +12137,7 @@
     const first=$("field-right-time-a"),second=$("field-right-time-b"),panel=$("field-right-bg");
     /* Keep the DOM images as decoded sources, but never present them as
        independent compositor layers.  The AM/PM frames are drawn first;
-       the 26260 panel is drawn last so its opaque body masks the frames and
+       the 26110 panel is drawn last so its opaque body masks the frames and
        only its transparent diagonal aperture reveals them.  Drawing into
        one canvas preserves that native order at every CSS scale. */
     if(!first?.complete||!first.naturalWidth||!second?.complete||!second.naturalWidth||!panel?.complete||!panel.naturalWidth){
@@ -14005,7 +14025,7 @@
       if(app.activeWindow){event.preventDefault();closeServerWindow();return;}
       const active=document.querySelector(".advanced-screen:not(.hidden)");
       if(active){event.preventDefault();show(worldScreen);return;}
-      if(app.phase==="character-create"){event.preventDefault();app.phase="character-list";show(characterScreen);}
+      if(app.phase==="character-create"){event.preventDefault();creationState.hovered=-1;cancelCreationAnimation();app.phase="character-list";show(characterScreen);}
     }
   });
   function toggleWorldPanel(name){
@@ -14089,14 +14109,13 @@
   $("battle-command-form").addEventListener("submit",event=>{event.preventDefault();const value=$("battle-command-input").value.trim();if(value){battleCommand(value);$("battle-command-input").value="";}});
   populateProtocolFunctions(); renderJournal(); renderInventory(); renderPets(); renderStatus(); renderSocial();
   setInterval(()=>{ if(app.pendingMove&&app.pendingMoveAt>0&&Date.now()-app.pendingMoveAt>10000) cancelPendingMove("服务器没有确认这次移动，请稍后重试。"); },250);
-  /* The native client keeps its TCP session warm while the field is idle.
-     Browsers otherwise have no outbound traffic between map actions, and a
-     quiet gateway/GMSV can reap that socket even though the long-poll is
-     still healthy.  Echo is a real 2.5 protocol entry (not an invented
-     heartbeat), so it is safe in both world and battle and is ignored during
-     title/character screens. */
+  /* NETMAIN.CPP sends Echo whenever the connected socket has had no outbound
+     write for 30 seconds.  That loop is global: it also runs on character
+     selection and creation screens.  Keep the browser's slightly earlier
+     safety tick global as well; limiting it to field/battle lets the 2.5
+     GMSV reap a new account while the player is still assigning points. */
   setInterval(()=>{
-    if(!app.transport||!(app.phase==="world"||app.phase==="battle")||app.logoutPending)return;
+    if(!app.transport||app.logoutPending)return;
     send("Echo",[`web-${Date.now()}`]).catch(()=>{});
   },20000);
   /* Keep the FIELD.CPP day/night strip moving even when the map is idle. */

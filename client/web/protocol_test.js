@@ -106,6 +106,66 @@ try {
 } catch (error) {
   throw new Error(`web client script syntax regression: ${error?.message || error}`);
 }
+/* LOGIN.CPP selects these twelve base SPR numbers, but the core REALBIN has
+   unrelated static bitmaps at the same decimal keys (100000 is the blue pet
+   that previously covered the character-selection scene).  The pre-world
+   page therefore needs its own tiny SPR table instead of waiting for the
+   complete 44 MB field/battle table or borrowing the static bitmap. */
+const expectedCreationSprites = Array.from({length: 12}, (_, index) => String(100000 + index * 20));
+const creationSpriteFilename = path.join(__dirname, "assets", "original", "creation-sprites.json");
+const creationSpriteBytes = fs.statSync(creationSpriteFilename).size;
+const creationSpritePayload = JSON.parse(fs.readFileSync(creationSpriteFilename, "utf8"));
+if (Object.keys(creationSpritePayload.sprites || {}).sort().join(",") !== expectedCreationSprites.sort().join(",") ||
+    creationSpriteBytes > 64 * 1024) {
+  throw new Error(`character-selection SPR pack shape/size regression: ${creationSpriteBytes}`);
+}
+for (const graphic of expectedCreationSprites) {
+  const actions = creationSpritePayload.sprites?.[graphic]?.actions || [];
+  if (actions.length !== 2 || actions.some(action => Number(action.direction) !== 0) ||
+      actions.map(action => Number(action.action)).sort((a, b) => a - b).join(",") !== "3,4" ||
+      actions.some(action => !Array.isArray(action.frames) || !action.frames.length)) {
+    throw new Error(`character-selection SPR rows drifted for ${graphic}`);
+  }
+}
+if (creationSpritePayload.sprites["100000"].actions.find(action => action.action === 3)?.frames?.[0]?.file !== "bitmaps/bitmap_10201.png" ||
+    creationSpritePayload.sprites["100220"].actions.find(action => action.action === 4)?.frames?.[0]?.file !== "bitmaps/bitmap_77443.png") {
+  throw new Error("character-selection SPR pack no longer resolves the native first/last player graphics");
+}
+const creationLoaderStart = script.indexOf("  function loadCreationSpriteManifest");
+const creationLoaderEnd = script.indexOf("  function loadSpriteManifest", creationLoaderStart);
+const creationPaintStart = script.indexOf("  function paintCreationCanvas");
+const creationPaintEnd = script.indexOf("  function renderCreation", creationPaintStart);
+const openCreationStart = script.indexOf("  function openCreation");
+const openCreationEnd = script.indexOf("  function finishCreation", openCreationStart);
+if (creationLoaderStart < 0 || creationLoaderEnd <= creationLoaderStart ||
+    !script.slice(creationLoaderStart, creationLoaderEnd).includes("creation-sprites.json") &&
+    !script.includes('const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json')) {
+  throw new Error("character selection must load its pre-world SPR resource");
+}
+if (creationPaintStart < 0 || creationPaintEnd <= creationPaintStart ||
+    !script.slice(creationPaintStart, creationPaintEnd).includes("creationGraphics.every") ||
+    !script.slice(creationPaintStart, creationPaintEnd).includes("walking?4:3") ||
+    !script.includes("return assetState.sprites||assetState.creationSprites||assetState.manifest?.sprites||null") ||
+    !script.slice(openCreationStart, openCreationEnd).includes("loadCreationSpriteManifest()")) {
+  throw new Error("character selection must wait for native SPR rows and animate hover with ANIM_WALK");
+}
+/* NETMAIN.CPP runs its idle Echo check for every connected state, including
+   LOGIN.CPP's character creation.  Restricting the browser timer to world /
+   battle lets the local 2.5 GMSV close a new account before point assignment
+   finishes. */
+const nativeNetMain = fs.readFileSync(__dirname + "/../../vendor/upstream/code_sa_client/SYSTEM/NETMAIN.CPP", "latin1");
+if (!/writetime\s*\+\s*30\s*\*\s*1000\s*<\s*GetTickCount\(\)[\s\S]{0,180}lssproto_Echo_send\(sockfd,\s*"hoge"\)/.test(nativeNetMain)) {
+  throw new Error("unexpected native global Echo contract");
+}
+const heartbeatStart = script.indexOf("  /* NETMAIN.CPP sends Echo");
+const heartbeatEnd = script.indexOf("  /* Keep the FIELD.CPP", heartbeatStart);
+const heartbeatSource = script.slice(heartbeatStart, heartbeatEnd);
+if (heartbeatStart < 0 || heartbeatEnd <= heartbeatStart ||
+    !heartbeatSource.includes('if(!app.transport||app.logoutPending)return;') ||
+    heartbeatSource.includes('app.phase==="world"') ||
+    !script.includes('app.phase==="character-create"||app.phase==="login-error"')) {
+  throw new Error("connected title/character screens must retain the native global Echo and disconnect UI");
+}
 /* The fish-bone is a painted legacy sprite.  A browser Pointer Lock would
    move/recapture the user's real mouse during a map fold, which is the
    opposite of the native client's behavior and makes the cursor appear to
@@ -163,33 +223,57 @@ if (!/function getWorld2DContext\([\s\S]{0,1200}getCanvas2DContext\(canvas,\{alp
     !/ctx\.globalCompositeOperation="copy";ctx\.fillStyle="#000";ctx\.fillRect\(0,0,canvas\.width,canvas\.height\);ctx\.globalCompositeOperation="source-over"/.test(script)) {
   throw new Error("world back-buffer must use an opaque native-style clear before presenting");
 }
-/* Keep the field HUD's native display-priority contract covered by the
-   protocol smoke test as well.  The composite paints the AM/PM strip first
-   and the 26260 panel last, so the panel's transparent aperture is the only
-   part of the strip that remains visible; the three IME3 controls remain on
-   top. */
+/* Keep the preserved VER25 FIELD.CPP coordinates covered by the protocol
+   smoke test as well.  The web surface follows the 8.5 visual branch while
+   retaining only 2.5-safe protocol actions.  The optional _SPECIAL_LOGO
+   macro aliases the left plate to a character sprite in that source tree;
+   the web client deliberately uses the normal 172px plate to avoid painting
+   that unrelated character over the HUD. */
+const nativeField = fs.readFileSync(__dirname + "/../../vendor/upstream/code_sa_client/SYSTEM/FIELD.CPP", "latin1");
+const nativeField85 = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/field.cpp", "latin1");
+if (!/leftUpPanelX\+52,\s*leftUpPanelY\+28,[\s\S]{0,180}CG_FIELD_MENU_LEFT/.test(nativeField) ||
+    !/rightUpPanelX\+68,\s*rightUpPanelY\+32,[\s\S]{0,180}CG_FIELD_MENU_RIGHT/.test(nativeField) ||
+    !/leftUpPanelX \+ 26 \+ 58, leftUpPanelY \+ 28,[\s\S]{0,120}CG_FIELD_MENU_LEFT_NEW/.test(nativeField85) ||
+    !/rightUpPanelX \+ 54, rightUpPanelY \+ 33,[\s\S]{0,180}CG_FIELD_MENU_RIGHT/.test(nativeField85) ||
+    !/w\s*=\s*3;\s*h\s*=\s*5;[\s\S]{0,120}x\s*=\s*16;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField85) ||
+    !/w\s*=\s*3;\s*h\s*=\s*6;[\s\S]{0,120}x\s*=\s*440;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField85)) {
+  throw new Error("unexpected native VER25 field-control/window coordinate contract");
+}
+const fieldSettingsMarkup = html.match(/<div id="field-settings-list"[\s\S]*?<\/div>/)?.[0] || "";
+if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 5 ||
+    !/data-field-setting="trade"/.test(fieldSettingsMarkup) ||
+    !/<span>组    队：<\/span>/.test(fieldSettingsMarkup) ||
+    !/<span>决    斗：<\/span>/.test(fieldSettingsMarkup) ||
+    !/<span>交换名片：<\/span>/.test(fieldSettingsMarkup) ||
+    !/<span>聊    天：<\/span>/.test(fieldSettingsMarkup) ||
+    !/<span>交    易：<\/span>/.test(fieldSettingsMarkup)) {
+  throw new Error("field settings must contain the five native VER25 rows");
+}
 for (const expected of [
   /#field-right-composite\s*\{[^}]*z-index:2/,
   /ctx\.drawImage\(first,100-offset,5,64,32\);\s*ctx\.drawImage\(second,164-offset,5,64,32\);[\s\S]{0,220}ctx\.drawImage\(panel,0,0,164,63\)/,
   /#field-right-join\s*\{[^}]*z-index:4/,
   /#field-right-duel\s*\{[^}]*z-index:4/,
-  /* The 2.5 left plate is 172px wide at x=62; its three visible controls
-     sit inside that plate at x=67/98/129. */
-  /#field-left-menu\s*\{[^}]*left:67px; top:4px; width:32px; height:30px; z-index:4/,
-  /#field-left-card\s*\{[^}]*left:98px; top:4px; width:32px; height:30px; z-index:4/,
-  /#field-left-group\s*\{[^}]*left:129px; top:4px; width:32px; height:30px; z-index:4/,
-  /#field-right-help\s*\{[^}]*left:550px; top:5px; width:28px; height:28px; z-index:4/,
-  /#field-right-action\s*\{[^}]*z-index:4/,
+  /#field-left-menu\s*\{[^}]*left:5px; top:4px; width:32px; height:30px; z-index:4/,
+  /#field-left-card\s*\{[^}]*left:36px; top:4px; width:32px; height:30px; z-index:4/,
+  /#field-left-group\s*\{[^}]*left:67px; top:4px; width:32px; height:30px; z-index:4/,
+  /#field-right-join\s*\{[^}]*left:488px; top:5px; width:28px; height:28px; z-index:4/,
+  /#field-right-duel\s*\{[^}]*left:519px; top:5px; width:28px; height:28px; z-index:4/,
+  /#field-right-action\s*\{[^}]*left:583px; top:42px; width:56px; height:14px; z-index:4/,
   /* field.cpp::charActionAnimeChange() uses 73px-wide action hit boxes;
      keeping the settings-row width on these buttons pushes the right column
      outside the native 192px action window. */
   /\.field-window-screen \.field-action-row\{width:73px!important\}/,
-  /* _SA_VERSION_25 uses the 172px CG_FIELD_MENU_LEFT_NEW plate; the old
-     9218 bitmap is the unrelated Mail surface and must never return to the
-     field toolbar. */
-  /#field-ui #field-left-bg\s*\{[^}]*left:62px; top:-1px; width:172px; height:54px/,
+  /#field-ui #field-left-bg\s*\{[^}]*left:-2px; top:0; width:172px; height:54px/,
+  /#field-right-bg\s*\{[^}]*left:476px; top:0; width:164px; height:63px/,
   /id="field-left-bg" src="\/assets\/bitmaps\/bitmap_126243\.png"/,
-  /id="field-right-help"[^>]*src="\/assets\/bitmaps\/bitmap_232638\.png"/,
+  /id="field-right-bg" src="\/assets\/bitmaps\/bitmap_232650\.png"/,
+  /id="field-right-help" class="click" data-field-action="help" src="\/assets\/bitmaps\/bitmap_232638\.png"/,
+  /#field-settings-screen \.field-window-frame\{left:16px;top:16px;height:240px\}/,
+  /#field-actions-screen \.field-window-frame\{left:440px;top:16px;height:288px\}/,
+  /#field-settings-screen #field-settings-close\{left:72px;top:208px\}/,
+  /#field-actions-screen #field-actions-close\{left:496px;top:266px\}/,
+  /FIELD_SETTING_LABELS=Object\.freeze\(\{[\s\S]{0,420}chat:\["聊    天："," 全  员"," 队  伍"\]/,
   /id="help-frame" src="\/assets\/bitmaps\/bitmap_234545\.png"/,
   /#help-screen #help-frame\s*\{[^}]*left:110px; top:50px; width:420px; height:376px/,
   /function renderHelp\(\)/,
@@ -896,9 +980,9 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
    the list after the next successful login. */
 const failureSource = script.slice(script.indexOf("function showConnectionFailure"), script.indexOf("function returnToAccountLogin"));
 if (/addEvent\(/.test(failureSource)) throw new Error("connection failure leaked into the event list");
-/* CHAR_FS_* is sparse in the 2.5 server (bit 1 is the internal battle flag;
-   duel is bit 2).  Keep the browser's visible field toggles tied to those
-   wire values so a future UI reorder cannot make DU silently return EN=0. */
+/* CHAR_FS_* is sparse in the 2.5 server.  The preserved VER25 FIELD.CPP
+   exposes the trade flag as the fifth row in etcSwitch(); keep the wire bit
+   mapping explicit so the visual row cannot drift from FS payloads. */
 for (const expected of [
   /FIELD_SETTING_BITS=Object\.freeze\(\{party:1,duel:4,mail:16,chat:8,trade:32\}\)/,
   /setStatus\("duelAllowed",Boolean\(flags&4\)\)/,
