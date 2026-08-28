@@ -4352,6 +4352,14 @@
   }
   function spriteActionForActor(actor){
     if(actor?.battle)return Number.isFinite(Number(actor.action))?Number(actor.action):3;
+    /* The native PC path applies setPcAction() immediately after AC_send().
+       The owner deliberately does not receive its own CA echo (the server
+       calls CHAR_sendAction(..., FALSE)), but a queued C/CA delta from the
+       previous process tick can still arrive while the HTTP bridge is
+       draining.  Keep that locally selected ANIM_LIST row authoritative until
+       the next local walk/action replaces it; otherwise the old stand row
+       wins for one or more paints and the action looks static. */
+    if(Number.isFinite(Number(actor?.localActionNo)))return Math.trunc(Number(actor.localActionNo));
     if(Number.isFinite(Number(actor?.caAction)))return CA_TO_SPRITE_ACTION[Number(actor.caAction)]??3;
     /* setPcAction() in the native field client stores the selected AC menu
        number directly as its ANIM_LIST row (0 attack ... 12 throw).  Local
@@ -4364,6 +4372,7 @@
     if(!actor)return;
     const actionNo=Number(action);
     actor.action=Number.isFinite(actionNo)?Math.trunc(actionNo):3;
+    actor.localActionNo=actor.action;
     actor.animationLoop=fieldActionLoops(actor.action);
     actor.animationStartedAt=typeof performance!=="undefined"&&typeof performance.now==="function"?performance.now():0;
     /* A locally predicted walk/stand must not keep an older CA attack or
@@ -4482,16 +4491,11 @@
     const actor={graphicKey:item.graphicKey,graphic:Number(item.graphic)||0};
     /* The renderer never borrows an action from another direction: when the
        requested row is absent actorFrame() falls back to this direction's
-       standing row.  Timing must use that same bitmap decision.  Borrowing
-       (for example) direction 0's attack duration while direction 3 paints a
-       standing frame made the logical contact happen on an image that the
-       player never saw. */
+       standing row.  Timing must use that same bitmap decision. */
     let animation=spriteAnimationForAction(actor,direction,action);
     /* actorFrame() paints the requested action first, then this direction's
-       standing row when the action is absent.  Keep the timing lookup on the
-       same decision tree: using a guessed 240 ms attack duration while the
-       renderer is actually painting a one-frame stand made the contact/hold
-       callback land on a frame the player never saw. */
+       standing row when the action is absent.  Keep timing on that decision
+       tree so contact callbacks line up with the image being shown. */
     if(!animation)animation=spriteAnimationForAction(actor,direction,3);
     if(!animation){
       const entry=spriteEntryForActor(actor),normalized=((Number(direction)||0)%8+8)%8;
@@ -4534,7 +4538,12 @@
          tables call the corresponding looping frames action 4; action 3 is
          the single standing frame. */
       const requested=spriteActionForActor(actor);
-      const candidates=sprite.actions.filter(item=>Number(item.direction)===direction); const animation=candidates.find(item=>Number(item.action)===requested)||candidates.find(item=>Number(item.action)===3)||candidates[0]||sprite.actions[0];
+      const candidates=sprite.actions.filter(item=>Number(item.direction)===direction);
+      /* PATTERN.CPP does not prefer STAND when a directional row is absent:
+         it resets the animation-list index to zero.  Preserve that exact
+         fallback so a partial SPR table cannot turn a selected action into a
+         still standing bitmap. */
+      const animation=candidates.find(item=>Number(item.action)===requested)||sprite.actions[0]||candidates[0];
       const frames=Array.isArray(animation?.frames)&&animation.frames.length?animation.frames:[ ]; if(!frames.length)return previousFrame||null;
       /* A locally predicted tile walk uses the web field's 96 ms step
          duration.  Keep its six walk frames on the same 8 ms cadence that
@@ -4710,10 +4719,13 @@
       const action=spriteActionForActor(actor);
       /* Mirror actorFrame()'s fallback for partial legacy SPR rows. */
       let animation=spriteAnimationForAction(actor,actor.direction,action),resolvedAction=action;
-      if(!animation){animation=spriteAnimationForAction(actor,actor.direction,3);resolvedAction=3;}
+      /* Match PATTERN.CPP's lookup exactly: a missing direction/action pair
+         falls back to the first SPR animation, not to STAND.  The latter is
+         often a single bitmap for NPC resources and made the animation
+         scheduler conclude that an action was static. */
       if(!animation){
-        const entry=spriteEntryForActor(actor),direction=((Number(actor.direction)||0)%8+8)%8;
-        animation=entry?.sprite?.actions?.find(item=>Number(item.direction)===direction)||entry?.sprite?.actions?.[0]||null;
+        const entry=spriteEntryForActor(actor);
+        animation=entry?.sprite?.actions?.[0]||null;
         resolvedAction=Number(animation?.action);
       }
       const frames=Array.isArray(animation?.frames)?animation.frames:[];
@@ -11730,7 +11742,7 @@
            sprite is still decoding.  Carry transient presentation state too,
            otherwise a movement C packet discards the last frame and the
            character can blink out until the new image finishes decoding. */
-        for(const key of ["inBattle","battleNo","battleSide","battleHelp","watching","leader","action","caAction","animationLoop","animationStartedAt","walking","_lastFrame","_lastPaintKey"])if(previousActor[key]!==undefined)actor[key]=previousActor[key];
+        for(const key of ["inBattle","battleNo","battleSide","battleHelp","watching","leader","action","caAction","localActionNo","animationLoop","animationStartedAt","walking","_lastFrame","_lastPaintKey"])if(previousActor[key]!==undefined)actor[key]=previousActor[key];
       }
       if(actor.kind==="character"){
         const ownId=app.pc&&app.pc.id!==undefined&&app.pc.id!==null?Number(app.pc.id):NaN;
