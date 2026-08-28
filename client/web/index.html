@@ -284,14 +284,12 @@
     #field-ui { position:absolute; left:0; top:0; width:640px; height:480px; z-index:9; pointer-events:none; overflow:hidden; }
     #field-ui img,#field-ui canvas { position:absolute; display:block; pointer-events:none; image-rendering:pixelated; }
     #field-ui .click { pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    /* FIELD.CPP's VER25 field controls are stocked at the shared anchor
-       (52,28). In the normal (non _SPECIAL_LOGO) build the 172×54
-       CG_FIELD_MENU_LEFT_NEW plate is anchored at (84,28), so its ADRN
-       origin is visible at (-2,0). The three 32×30 controls use the same
-       anchor and therefore land at (5,4), (36,4), and (67,4). Keeping the
-       plate and controls in one logical back-buffer space prevents the old
-       62px right-shift/doubled corner. */
-    #field-ui #field-left-bg { display:block; left:-2px; top:0; width:172px; height:54px; z-index:1; }
+    /* sa_2903/2.5 FIELD.CPP uses the original 104×54 left plate
+       (CG_FIELD_MENU_LEFT, anchor 52,28, ADRN -52,-28).  The three core
+       controls share that anchor and their own ADRN offsets, so their visible
+       slots are (5,4), (36,4), and (67,4).  The 8.5 _SPECIAL_LOGO plate is
+       an optional extension and must not leave a 62px blank strip in 2.5. */
+    #field-ui #field-left-bg { display:block; left:0; top:0; width:104px; height:54px; z-index:1; }
     #field-left-menu { left:5px; top:4px; width:32px; height:30px; z-index:4; }
     #field-left-card { left:36px; top:4px; width:32px; height:30px; z-index:4; }
     #field-left-group { left:67px; top:4px; width:32px; height:30px; z-index:4; }
@@ -300,22 +298,21 @@
        and its transparent diagonal aperture is the only place where the
        time strip should remain visible.  Keep the DOM order equivalent:
        panel above the sliding frames, IME3 buttons above both. */
-    /* VER25 uses CG_FIELD_MENU_RIGHT (26260) at anchor (558,33). Its
-       -82/-33 ADRN origin gives the 164×63 panel visible top-left (476,0);
-       join, duel, help and action remain at the native (488,5), (519,5),
-       (550,5), and (583,42) pixels. */
-    #field-right-bg { left:476px; top:0; width:164px; height:63px; z-index:2; }
-    #field-right-join { left:488px; top:5px; width:28px; height:28px; z-index:4; }
-    #field-right-duel { left:519px; top:5px; width:28px; height:28px; z-index:4; }
-    #field-right-help { left:550px; top:5px; width:28px; height:28px; z-index:4; }
-    #field-right-help-hit { left:550px; top:5px; width:28px; height:28px; }
+    /* The 2.5 client uses CG_FIELD_MENU_RIGHT (26110), anchor (572,32),
+       ADRN (-64,-32), yielding a 132×63 plate at (508,0).  It exposes only
+       join, duel and action; the 8.5 task/help icon is not part of the 2.5
+       field protocol and must not be painted over the time strip. */
+    #field-right-bg { left:508px; top:0; width:132px; height:63px; z-index:2; }
+    #field-right-join { left:518px; top:5px; width:28px; height:28px; z-index:4; }
+    #field-right-duel { left:549px; top:5px; width:28px; height:28px; z-index:4; }
+    #field-right-help,#field-right-help-hit { display:none !important; }
     #field-ui .field-extra-hit { appearance:none; -webkit-appearance:none; position:absolute; display:block; margin:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; opacity:0.01; z-index:4; pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
     #field-right-action { left:583px; top:42px; width:56px; height:14px; z-index:4; }
     #field-right-back { left:585px; top:5px; width:52px; height:32px; z-index:2; }
     /* FIELD.CPP queues the animated day/night strip after the panel.  The web
        port composes both into #field-right-composite in that same order;
        relying on a clipped sibling does not guarantee that Chromium reveals
-       the exact alpha contour of bitmap_232650 at every scene scale. */
+       the exact alpha contour of bitmap_9226 at every scene scale. */
     /* CG_FIELD_AM_PM_* is stocked at the native anchor y=21, but its ADRN
        record has yoffset=-16.  Position the actual 64×32 pixels at y=5;
        leaving the anchor value here made the opaque frame extend below the
@@ -327,7 +324,7 @@
        battle and the opaque strip becomes an unintended rectangular mask. */
     /* The frames are fully opaque 64x32 CGs; the composite canvas paints
        them first and then draws the real panel alpha over them. */
-    #field-right-composite { left:476px; top:0; width:164px; height:63px; z-index:2; display:none; image-rendering:pixelated; pointer-events:none; }
+    #field-right-composite { left:508px; top:0; width:132px; height:63px; z-index:2; display:none; image-rendering:pixelated; pointer-events:none; }
     #field-right-bg,#field-time-mask { display:none !important; }
     #field-ui.field-time-active #field-right-back { display:none; }
     #field-ui.field-time-active #field-right-composite { display:block; }
@@ -874,17 +871,16 @@
           <img id="world-cursor" src="/assets/bitmaps/bitmap_8827.png" alt="">
         </div>
         <div id="field-ui" aria-hidden="true">
-          <img id="field-left-bg" src="/assets/bitmaps/bitmap_126243.png" alt="">
+          <img id="field-left-bg" src="/assets/bitmaps/bitmap_9218.png" alt="">
           <img id="field-left-menu" class="click" data-field-action="settings" src="/assets/bitmaps/bitmap_9219.png" alt="菜单">
           <img id="field-left-card" class="click" data-action="card" src="/assets/bitmaps/bitmap_9221.png" alt="查看前方玩家资料">
           <img id="field-left-group" class="click" data-field-action="party" src="/assets/bitmaps/bitmap_9223.png" alt="队伍">
-          <img id="field-right-bg" src="/assets/bitmaps/bitmap_232650.png" alt="">
+          <img id="field-right-bg" src="/assets/bitmaps/bitmap_9226.png" alt="">
           <img id="field-right-join" class="click" data-field-action="join-battle" src="/assets/bitmaps/bitmap_9227.png" alt="加入战斗">
           <img id="field-right-duel" class="click" data-field-action="duel" src="/assets/bitmaps/bitmap_9229.png" alt="决斗">
-          <img id="field-right-help" class="click" data-field-action="help" src="/assets/bitmaps/bitmap_232638.png" alt="任务查询">
           <img id="field-right-action" class="click" data-field-action="action" src="/assets/bitmaps/bitmap_9231.png" alt="动作">
           <img id="field-right-back" src="/assets/bitmaps/bitmap_9237.png" alt="">
-          <canvas id="field-right-composite" width="164" height="63" aria-hidden="true"></canvas>
+          <canvas id="field-right-composite" width="132" height="63" aria-hidden="true"></canvas>
           <div id="field-time-mask">
             <img id="field-right-time-a" src="/assets/bitmaps/bitmap_9233.png" alt="">
             <img id="field-right-time-b" src="/assets/bitmaps/bitmap_9234.png" alt="">
@@ -1689,10 +1685,10 @@
     .field-window-screen{position:absolute!important;left:50%!important;top:50%!important;width:640px!important;height:480px!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:translate(-50%,-50%) scale(var(--scene-scale,1))!important;transform-origin:center center!important;color:#f5ecd4!important;z-index:31!important;pointer-events:none}
     .field-window-screen h2{position:absolute!important;left:-10000px!important;top:0!important;width:1px!important;height:1px!important;overflow:hidden!important}
     .field-window-screen .field-window-frame{position:absolute;z-index:0;pointer-events:none;overflow:hidden;width:192px}
-    #field-settings-screen .field-window-frame{left:16px;top:16px;height:240px}
+    #field-settings-screen .field-window-frame{left:16px;top:16px;height:192px}
     #field-actions-screen .field-window-frame{left:440px;top:16px;height:288px}
     .field-window-screen #field-settings-list,.field-window-screen #field-actions-list{position:absolute;z-index:2;display:block;margin:0;padding:0;overflow:visible;pointer-events:auto}
-    #field-settings-screen #field-settings-list{left:34px;top:39px;width:157px;height:172px}
+    #field-settings-screen #field-settings-list{left:34px;top:39px;width:157px;height:142px}
     #field-actions-screen #field-actions-list{left:458px;top:37px;width:157px;height:232px}
     .field-window-screen .field-setting-row,.field-window-screen .field-action-row{box-sizing:border-box;display:block;position:absolute;left:0;width:157px;height:22px;margin:0;padding:3px 0 0 2px;color:#f0e5c6;background:transparent;border:0;border-radius:0;box-shadow:none;outline:0;font:12px/12px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;font-weight:400;text-align:left;text-shadow:1px 1px #080706;white-space:pre;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
     /* field.cpp::charActionAnimeChange() creates two 73×22 hit boxes at
@@ -1717,7 +1713,7 @@
     .field-window-screen #field-settings-close,.field-window-screen #field-actions-close{position:absolute;z-index:3;width:80px;height:16px;padding:0;border:0;border-radius:0;color:transparent;background:transparent url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none;outline:0;font-size:0;pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
     /* StockDispBuffer receives the centre anchors (112,178)/(536,274);
        CG_CLOSE_BTN itself is 80×16 with ADRN offset -40/-8. */
-    #field-settings-screen #field-settings-close{left:72px;top:208px}
+    #field-settings-screen #field-settings-close{left:72px;top:170px}
     #field-actions-screen #field-actions-close{left:496px;top:266px}
     .field-window-screen #field-settings-close:hover,.field-window-screen #field-settings-close:focus-visible,.field-window-screen #field-actions-close:hover,.field-window-screen #field-actions-close:focus-visible{filter:brightness(1.12);outline:0}
     #status-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:360px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:310px;--toolbar-x:18px;--toolbar-y:338px}
@@ -2483,7 +2479,6 @@
           <button type="button" class="field-setting-row" data-field-setting="duel"><span>决    斗：</span><b class="field-setting-value"></b></button>
           <button type="button" class="field-setting-row" data-field-setting="mail"><span>交换名片：</span><b class="field-setting-value"></b></button>
           <button type="button" class="field-setting-row" data-field-setting="chat"><span>聊    天：</span><b class="field-setting-value"></b></button>
-          <button type="button" class="field-setting-row" data-field-setting="trade"><span>交    易：</span><b class="field-setting-value"></b></button>
         </div>
         <button id="field-settings-close" type="button" aria-label="关闭选单视窗"></button>
       </section>
@@ -2990,8 +2985,8 @@
      after it, so a visible “决斗 YES” still made lssproto_DU_recv reject
      the request. Keep the native wire bits here instead of the labels'
      display order. */
-  const FIELD_SETTING_BITS=Object.freeze({party:1,duel:4,mail:16,chat:8,trade:32});
-  const FIELD_SETTING_LABELS=Object.freeze({party:["组    队："," Ｎ  Ｏ"," ＹＥＳ"],duel:["决    斗："," Ｎ  Ｏ"," ＹＥＳ"],mail:["交换名片："," Ｎ  Ｏ"," ＹＥＳ"],chat:["聊    天："," 全  员"," 队  伍"],trade:["交    易："," Ｎ  Ｏ"," ＹＥＳ"]});
+  const FIELD_SETTING_BITS=Object.freeze({party:1,duel:4,mail:16,chat:8});
+  const FIELD_SETTING_LABELS=Object.freeze({party:["组    队："," Ｎ  Ｏ"," ＹＥＳ"],duel:["决    斗："," Ｎ  Ｏ"," ＹＥＳ"],mail:["交换名片："," Ｎ  Ｏ"," ＹＥＳ"],chat:["聊    天："," 全  员"," 队  伍"]});
   function openFieldWindow(name){
     if(app.phase!=="world"||app.battle)return;
     show(worldScreen);
@@ -12150,15 +12145,15 @@
     if(!ctx)return;
     ctx.imageSmoothingEnabled=false;
     ctx.globalCompositeOperation="copy";
-    ctx.clearRect(0,0,164,63);
+    ctx.clearRect(0,0,132,63);
     ctx.globalCompositeOperation="source-over";
     /* rightUpPanelX + 104 - amPmAnimeX with ADRN xoffset -32 gives the
-       visible first-frame x=576-offset; the composite starts at x=476. */
-    ctx.drawImage(first,100-offset,5,64,32);
-    ctx.drawImage(second,164-offset,5,64,32);
+       visible first-frame x=576-offset; the 2.5 composite starts at x=508. */
+    ctx.drawImage(first,68-offset,5,64,32);
+    ctx.drawImage(second,132-offset,5,64,32);
     /* The panel is the final mask.  Do not move this above the two frames:
        doing so exposes a bright rectangular strip across the gray plate. */
-    ctx.drawImage(panel,0,0,164,63);
+    ctx.drawImage(panel,0,0,132,63);
     app.fieldTimeCompositeKey=key;
   }
   function updateFieldTimeAnimation(now=performance.now()){
@@ -13935,7 +13930,7 @@
   function bindLegacyImageButtonStates(){
     const pairs={
       "field-left-menu":[9219,9220],"field-left-card":[9221,9222],"field-left-group":[9223,9224],
-      "field-right-join":[9227,9228],"field-right-duel":[9229,9230],"field-right-help":[232638,232639],"field-right-action":[9231,9232]
+      "field-right-join":[9227,9228],"field-right-duel":[9229,9230],"field-right-action":[9231,9232]
     };
     for(const [id,[normal,pressed]] of Object.entries(pairs)){
       const node=$(id);if(!node)continue;

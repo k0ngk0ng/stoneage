@@ -223,55 +223,59 @@ if (!/function getWorld2DContext\([\s\S]{0,1200}getCanvas2DContext\(canvas,\{alp
     !/ctx\.globalCompositeOperation="copy";ctx\.fillStyle="#000";ctx\.fillRect\(0,0,canvas\.width,canvas\.height\);ctx\.globalCompositeOperation="source-over"/.test(script)) {
   throw new Error("world back-buffer must use an opaque native-style clear before presenting");
 }
-/* Keep the preserved VER25 FIELD.CPP coordinates covered by the protocol
-   smoke test as well.  The web surface follows the 8.5 visual branch while
-   retaining only 2.5-safe protocol actions.  The optional _SPECIAL_LOGO
-   macro aliases the left plate to a character sprite in that source tree;
-   the web client deliberately uses the normal 172px plate to avoid painting
-   that unrelated character over the HUD. */
+/* Keep the preserved 2.5 FIELD.CPP coordinates covered by the protocol smoke
+   test as well.  The web surface must use the base 104/132px plates and the
+   same three-button field HUD; the optional 8.5 extension is intentionally
+   excluded because its extra controls are not 2.5-safe. */
 const nativeField = fs.readFileSync(__dirname + "/../../vendor/upstream/code_sa_client/SYSTEM/FIELD.CPP", "latin1");
 const nativeField85 = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/field.cpp", "latin1");
 if (!/leftUpPanelX\+52,\s*leftUpPanelY\+28,[\s\S]{0,180}CG_FIELD_MENU_LEFT/.test(nativeField) ||
     !/rightUpPanelX\+68,\s*rightUpPanelY\+32,[\s\S]{0,180}CG_FIELD_MENU_RIGHT/.test(nativeField) ||
-    !/leftUpPanelX \+ 26 \+ 58, leftUpPanelY \+ 28,[\s\S]{0,120}CG_FIELD_MENU_LEFT_NEW/.test(nativeField85) ||
-    !/rightUpPanelX \+ 54, rightUpPanelY \+ 33,[\s\S]{0,180}CG_FIELD_MENU_RIGHT/.test(nativeField85) ||
-    !/w\s*=\s*3;\s*h\s*=\s*5;[\s\S]{0,120}x\s*=\s*16;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField85) ||
-    !/w\s*=\s*3;\s*h\s*=\s*6;[\s\S]{0,120}x\s*=\s*440;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField85)) {
-  throw new Error("unexpected native VER25 field-control/window coordinate contract");
+    !/w\s*=\s*3;\s*h\s*=\s*4;[\s\S]{0,120}x\s*=\s*16;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField) ||
+    !/w\s*=\s*3;\s*h\s*=\s*6;[\s\S]{0,120}x\s*=\s*440;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField)) {
+  throw new Error("unexpected native 2.5 field-control/window coordinate contract");
 }
 const fieldSettingsMarkup = html.match(/<div id="field-settings-list"[\s\S]*?<\/div>/)?.[0] || "";
-if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 5 ||
-    !/data-field-setting="trade"/.test(fieldSettingsMarkup) ||
+if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 4 ||
+    /data-field-setting="trade"/.test(fieldSettingsMarkup) ||
     !/<span>组    队：<\/span>/.test(fieldSettingsMarkup) ||
     !/<span>决    斗：<\/span>/.test(fieldSettingsMarkup) ||
     !/<span>交换名片：<\/span>/.test(fieldSettingsMarkup) ||
-    !/<span>聊    天：<\/span>/.test(fieldSettingsMarkup) ||
-    !/<span>交    易：<\/span>/.test(fieldSettingsMarkup)) {
-  throw new Error("field settings must contain the five native VER25 rows");
+    !/<span>聊    天：<\/span>/.test(fieldSettingsMarkup)) {
+  throw new Error("field settings must contain the four native 2.5 rows");
+}
+const fieldUiMarkup = html.match(/<div id="field-ui"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || "";
+if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 6 ||
+    !/id="field-left-menu" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-left-card" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-left-group" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-right-join" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-right-duel" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-right-action" class="click"/.test(fieldUiMarkup)) {
+  throw new Error("2.5 field HUD must contain exactly three left and three right controls");
 }
 for (const expected of [
   /#field-right-composite\s*\{[^}]*z-index:2/,
-  /ctx\.drawImage\(first,100-offset,5,64,32\);\s*ctx\.drawImage\(second,164-offset,5,64,32\);[\s\S]{0,220}ctx\.drawImage\(panel,0,0,164,63\)/,
+  /ctx\.drawImage\(first,68-offset,5,64,32\);\s*ctx\.drawImage\(second,132-offset,5,64,32\);[\s\S]{0,220}ctx\.drawImage\(panel,0,0,132,63\)/,
   /#field-right-join\s*\{[^}]*z-index:4/,
   /#field-right-duel\s*\{[^}]*z-index:4/,
   /#field-left-menu\s*\{[^}]*left:5px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-card\s*\{[^}]*left:36px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-group\s*\{[^}]*left:67px; top:4px; width:32px; height:30px; z-index:4/,
-  /#field-right-join\s*\{[^}]*left:488px; top:5px; width:28px; height:28px; z-index:4/,
-  /#field-right-duel\s*\{[^}]*left:519px; top:5px; width:28px; height:28px; z-index:4/,
+  /#field-right-join\s*\{[^}]*left:518px; top:5px; width:28px; height:28px; z-index:4/,
+  /#field-right-duel\s*\{[^}]*left:549px; top:5px; width:28px; height:28px; z-index:4/,
   /#field-right-action\s*\{[^}]*left:583px; top:42px; width:56px; height:14px; z-index:4/,
   /* field.cpp::charActionAnimeChange() uses 73px-wide action hit boxes;
      keeping the settings-row width on these buttons pushes the right column
      outside the native 192px action window. */
   /\.field-window-screen \.field-action-row\{width:73px!important\}/,
-  /#field-ui #field-left-bg\s*\{[^}]*left:-2px; top:0; width:172px; height:54px/,
-  /#field-right-bg\s*\{[^}]*left:476px; top:0; width:164px; height:63px/,
-  /id="field-left-bg" src="\/assets\/bitmaps\/bitmap_126243\.png"/,
-  /id="field-right-bg" src="\/assets\/bitmaps\/bitmap_232650\.png"/,
-  /id="field-right-help" class="click" data-field-action="help" src="\/assets\/bitmaps\/bitmap_232638\.png"/,
-  /#field-settings-screen \.field-window-frame\{left:16px;top:16px;height:240px\}/,
+  /#field-ui #field-left-bg\s*\{[^}]*left:0; top:0; width:104px; height:54px/,
+  /#field-right-bg\s*\{[^}]*left:508px; top:0; width:132px; height:63px/,
+  /id="field-left-bg" src="\/assets\/bitmaps\/bitmap_9218\.png"/,
+  /id="field-right-bg" src="\/assets\/bitmaps\/bitmap_9226\.png"/,
+  /#field-settings-screen \.field-window-frame\{left:16px;top:16px;height:192px\}/,
   /#field-actions-screen \.field-window-frame\{left:440px;top:16px;height:288px\}/,
-  /#field-settings-screen #field-settings-close\{left:72px;top:208px\}/,
+  /#field-settings-screen #field-settings-close\{left:72px;top:170px\}/,
   /#field-actions-screen #field-actions-close\{left:496px;top:266px\}/,
   /FIELD_SETTING_LABELS=Object\.freeze\(\{[\s\S]{0,420}chat:\["聊    天："," 全  员"," 队  伍"\]/,
   /id="help-frame" src="\/assets\/bitmaps\/bitmap_234545\.png"/,
@@ -704,6 +708,7 @@ for (const expected of [
 ]) {
   if (!expected.test(html)) throw new Error(`field HUD regression: ${expected}`);
 }
+if (/id="field-right-help"/.test(html)) throw new Error("2.5 field HUD must not expose the 8.5 help button");
 /* BATTLEMENU.CPP::BattleTargetSelect() is used by ordinary H as well as
    capture and actor-targeted magic.  Its MakeWindowDisp(210,356,3,2) pixels
    begin at pActInfoWnd->x/y after the REALBIN (-32,-24) anchor is applied;
@@ -980,11 +985,11 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
    the list after the next successful login. */
 const failureSource = script.slice(script.indexOf("function showConnectionFailure"), script.indexOf("function returnToAccountLogin"));
 if (/addEvent\(/.test(failureSource)) throw new Error("connection failure leaked into the event list");
-/* CHAR_FS_* is sparse in the 2.5 server.  The preserved VER25 FIELD.CPP
-   exposes the trade flag as the fifth row in etcSwitch(); keep the wire bit
-   mapping explicit so the visual row cannot drift from FS payloads. */
+/* CHAR_FS_* is sparse in the 2.5 server.  The base FIELD.CPP exposes four
+   settings rows (party, duel, card exchange and chat); trade is an 8.5-only
+   extension and must not be sent by this client. */
 for (const expected of [
-  /FIELD_SETTING_BITS=Object\.freeze\(\{party:1,duel:4,mail:16,chat:8,trade:32\}\)/,
+  /FIELD_SETTING_BITS=Object\.freeze\(\{party:1,duel:4,mail:16,chat:8\}\)/,
   /setStatus\("duelAllowed",Boolean\(flags&4\)\)/,
 ]) {
   if (!expected.test(html)) throw new Error(`field protocol regression: ${expected}`);
