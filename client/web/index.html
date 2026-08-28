@@ -4349,6 +4349,31 @@
        damage opcode alive after the server's next incremental C snapshot. */
     delete actor.caAction;
   }
+  /* character.cpp::createCharAction() starts every field character on the
+     standing ANIM_LIST row, and charProc() advances that row on every native
+     process tick even when no C/CA packet arrives.  C records in the 2.5
+     protocol do not carry that transient process state, so install the same
+     clock when a character first enters the web actor table.  CA/local Action
+     paths overwrite these values with their authoritative action and start
+     time; this helper deliberately never resets an existing animation. */
+  function ensureFieldActorAnimation(actor,now=performance.now()){
+    if(!actor||actor.kind!=="character")return actor;
+    const action=Number.isFinite(Number(actor.action))?Math.trunc(Number(actor.action)):3;
+    if(!Number.isFinite(Number(actor.action)))actor.action=action;
+    if(actor.animationLoop===undefined)actor.animationLoop=fieldActionLoops(spriteActionForActor(actor));
+    if(!Number.isFinite(Number(actor.animationStartedAt))||Number(actor.animationStartedAt)<=0)actor.animationStartedAt=now;
+    return actor;
+  }
+  function fieldActorInAnimationRange(actor){
+    if(!actor||actor.kind!=="character")return false;
+    const center=typeof viewPosition==="function"?viewPosition():app.position;
+    if(!Array.isArray(center)||!Number.isFinite(Number(center[0]))||!Number.isFinite(Number(center[1])))return true;
+    /* C is normally already viewport-scoped; metadata NPCs are floor-wide.
+       Keep a generous native visibility radius for both so an off-screen
+       static record cannot keep the map repaint loop alive on a phone. */
+    const radius=actor.staticNPC?40:48;
+    return Math.abs(Number(actor.x)-Number(center[0]))<=radius&&Math.abs(Number(actor.y)-Number(center[1]))<=radius;
+  }
   /* Sprite animation tables are intentionally loaded after the small core
      manifest.  Keep one accessor so an older all-in-one asset pack remains
      compatible while the split mobile pack can populate the same lookup
@@ -4611,12 +4636,12 @@
     const actors=[...app.actors.values()];
     for(const actor of actors){
       if(!actor||actor.battle||actor.kind!=="character")continue;
-      /* Static C records use a direct bitmap and do not carry the native
-         character process clock.  Do not infer a looping sprite for every
-         NPC/decoration here: that would force a full DAT/parts repaint on
-         each idle frame (and consume a phone CPU core).  CA updates and a
-         local Action selection explicitly install animationLoop/start,
-         which are the records that actually need live presentation. */
+      if(!fieldActorInAnimationRange(actor))continue;
+      /* Every parsed field character (including metadata NPCs) is initialised
+         by ensureFieldActorAnimation() to match createCharAction()/charProc().
+         Keep this guard for an incomplete legacy record while it is waiting
+         for its first complete C/CA state; it must not wake a repaint loop on
+         an object that has no drawable animation row yet. */
       if(actor.animationLoop===undefined&&!Number.isFinite(Number(actor.animationStartedAt)))continue;
       const action=spriteActionForActor(actor),animation=spriteAnimationForAction(actor,actor.direction,action);
       const frames=Array.isArray(animation?.frames)?animation.frames:[];
@@ -4651,6 +4676,7 @@
     if(app.phase!=="world"||app.battle||app.mapLoading)return false;
     for(const actor of app.actors.values()){
       if(!actor||actor.battle||actor.kind!=="character")continue;
+      if(!fieldActorInAnimationRange(actor))continue;
       if(actor.animationLoop===undefined&&!Number.isFinite(Number(actor.animationStartedAt)))continue;
       const frame=actorFrame(actor),key=fieldActorFrameVisualKey(frame);
       if(key!==String(actor._lastPaintKey||""))return true;
@@ -5560,7 +5586,9 @@
         live.npcSource=String(record.source||"");
         continue;
       }
-      app.actors.set(id,Object.assign(existing||{}, {id,objectType:1,charType:20,type:20,kind:"character",staticNPC:true,npcFloor:Number(floor),x,y,direction:clientDirectionFromServer(stateNumber(record.direction)),wireDirection:stateNumber(record.direction),graphicKey:String(graphic),graphic,level:0,name,freeName:"",walkable:1,height:1,charNameColor:0,fmName:"",petName:"",petLevel:0,raw:"",npcTemplate:String(record.template||""),npcInteraction:String(record.interaction||""),npcSource:String(record.source||"")}));
+      const staticActor=Object.assign(existing||{}, {id,objectType:1,charType:20,type:20,kind:"character",staticNPC:true,npcFloor:Number(floor),x,y,direction:clientDirectionFromServer(stateNumber(record.direction)),wireDirection:stateNumber(record.direction),graphicKey:String(graphic),graphic,level:0,name,freeName:"",walkable:1,height:1,charNameColor:0,fmName:"",petName:"",petLevel:0,raw:"",npcTemplate:String(record.template||""),npcInteraction:String(record.interaction||""),npcSource:String(record.source||"")});
+      ensureFieldActorAnimation(staticActor);
+      app.actors.set(id,staticActor);
     }
     for(const [id,actor] of app.actors){if(actor?.staticNPC&&Number(actor.npcFloor)===Number(floor)&&!wanted.has(Number(id)))app.actors.delete(id);}
     renderWorld(true);updateHUD();
@@ -11600,6 +11628,7 @@
     for(const record of String(text).split(",")){
       if(!record)continue;
       const actor=parseLegacyActorRecord(record);if(!actor)continue;
+      ensureFieldActorAnimation(actor);
       const id=Number(actor.id);if(!Number.isFinite(id))continue;
       /* C is an incremental visibility packet.  Keep a malformed/out-of-floor
          object from becoming a visual escape route or from being used as a

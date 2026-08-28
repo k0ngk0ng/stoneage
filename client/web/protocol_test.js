@@ -371,6 +371,10 @@ if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:
 if(!/function fieldActorAnimationActive\(now=performance\.now\(\)\)[\s\S]{0,1300}spriteAnimationForAction\(actor,actor\.direction,action\)[\s\S]{0,900}frames\.length<2/.test(localActionAnimationSource)) {
   throw new Error("field Action renderer must keep a live animation loop while frames remain");
 }
+if(!/function ensureFieldActorAnimation\(actor,now=performance\.now\(\)\)[\s\S]{0,700}actor\.animationLoop=fieldActionLoops\(spriteActionForActor\(actor\)\)/.test(localActionAnimationSource) ||
+   !/const actor=parseLegacyActorRecord\(record\);if\(!actor\)continue;\s*ensureFieldActorAnimation\(actor\)/.test(script)) {
+  throw new Error("field C/NPC characters must receive the native standing animation clock");
+}
 if(!/function fieldActorFrameVisualKey\(frame\)[\s\S]{0,700}function fieldActorVisualChanged\(now=performance\.now\(\)\)/.test(localActionAnimationSource) ||
    !/actionActive&&fieldActorVisualChanged\(now\)/.test(script)) {
   throw new Error("field Action animation must avoid repainting unchanged bitmaps");
@@ -1169,6 +1173,7 @@ function scanGeneratedBattleAssets(filename) {
     heroDirection3ContactBitmap: "",
     heroDirection3DeadFrames: 0,
     heroDirection3DeadLastBitmap: "",
+    heroDirection3ActionUniqueFrames: {},
     playerActionRows: 0,
     playerActionRowsComplete: true,
     battleCount: 0,
@@ -1210,6 +1215,11 @@ function scanGeneratedBattleAssets(filename) {
           }
         }
       }
+    }
+    const heroRows=(sprites["100000"]?.actions||[]).filter(animation=>Number(animation?.direction)===3);
+    for(const animation of heroRows){
+      const action=Number(animation?.action),frames=Array.isArray(animation?.frames)?animation.frames:[];
+      if(action>=0&&action<=12)result.heroDirection3ActionUniqueFrames[action]=new Set(frames.map(frame=>`${frame?.file||""}|${Number(frame?.xoffset)||0}|${Number(frame?.yoffset)||0}`)).size;
     }
   };
   const visit = line => {
@@ -1319,6 +1329,7 @@ if (
   generatedBattleAssets.heroDirection3DeadLastBitmap !== "bitmaps/bitmap_10321.png" ||
   generatedBattleAssets.playerActionRows !== 12 * 13 * 8 ||
   !generatedBattleAssets.playerActionRowsComplete ||
+  [0,1,2,3,4,6,7,8,9,11,12].some(action=>Number(generatedBattleAssets.heroDirection3ActionUniqueFrames[action]||0)<2) ||
   generatedBattleAssets.battleCount !== 220
 ) {
   throw new Error(`generated SPR/battle resource regression: ${JSON.stringify(generatedBattleAssets)}`);
