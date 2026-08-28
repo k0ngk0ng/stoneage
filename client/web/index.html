@@ -4317,6 +4317,18 @@
      attack, whereas sprite action 2 means dead.  Keep the conversion in one
      place so field actors never accidentally render a throw/death frame. */
   const CA_TO_SPRITE_ACTION=Object.freeze({0:3,1:4,2:0,3:12,4:1,5:2,10:2,11:5,12:6,13:7,14:8,15:9,16:10,17:4,18:11,19:3,20:3,21:3,22:3,30:3,31:3});
+  /* character.cpp::charProc() passes ANM_LOOP only for these native rows.
+     Attack/damage/dead/sit/guard/throw are ANM_NO_LOOP: pattern() advances
+     them to their final frame and leaves that frame on screen until the next
+     action arrives.  Keeping this distinction matters for the field Action
+     menu; a one-shot row must animate once, while a hand/happy/etc. row keeps
+     moving just like the 8.5 client. */
+  const FIELD_LOOPING_SPRITE_ACTION=Object.freeze({3:true,4:true,6:true,7:true,8:true,9:true,11:true});
+  function fieldActionLoops(action){
+    const value=Number(action);
+    return Object.prototype.hasOwnProperty.call(FIELD_LOOPING_SPRITE_ACTION,value)
+      ? Boolean(FIELD_LOOPING_SPRITE_ACTION[value]) : false;
+  }
   function spriteActionForActor(actor){
     if(actor?.battle)return Number.isFinite(Number(actor.action))?Number(actor.action):3;
     if(Number.isFinite(Number(actor?.caAction)))return CA_TO_SPRITE_ACTION[Number(actor.caAction)]??3;
@@ -4329,7 +4341,10 @@
   }
   function setLocalActorAction(actor,action){
     if(!actor)return;
-    actor.action=Number(action);
+    const actionNo=Number(action);
+    actor.action=Number.isFinite(actionNo)?Math.trunc(actionNo):3;
+    actor.animationLoop=fieldActionLoops(actor.action);
+    actor.animationStartedAt=typeof performance!=="undefined"&&typeof performance.now==="function"?performance.now():0;
     /* A locally predicted walk/stand must not keep an older CA attack or
        damage opcode alive after the server's next incremental C snapshot. */
     delete actor.caAction;
@@ -4446,9 +4461,15 @@
          wall-clock origin for every movie phase; using performance.now() from
          page load here made an attack start on a random frame and made the
          death pose loop back to its first frame. */
+      /* A walk owns the shared walk clock; every other field action owns the
+         timestamp installed by setLocalActorAction()/receiveActions().  The
+         old unconditional self&&walkCycleStartedAt branch made a newly
+         selected Action sample the already-running walk cycle, often landing
+         on one bitmap forever when no subsequent field packet arrived. */
+      const walkingClock=actor?.walking&&self&&app.walkCycleStartedAt?app.walkCycleStartedAt:0;
       const startedAt=actor?.battle&&Number.isFinite(Number(actor.animationStartedAt))
         ?Number(actor.animationStartedAt)
-        :(self&&app.walkCycleStartedAt?app.walkCycleStartedAt:Number(actor?.animationStartedAt)||0);
+        :(walkingClock||Number(actor?.animationStartedAt)||0);
       const elapsed=startedAt?Math.max(0,performance.now()-startedAt):performance.now();
       let frameIndex=Math.floor(elapsed/duration);
       if(actor?.animationLoop===false)frameIndex=Math.min(frames.length-1,frameIndex);
@@ -4580,6 +4601,31 @@
       else{slot.disabled=true;slot.setAttribute("aria-label",`空背包格 ${index}`);}
       slot.classList.toggle("offered",offered.has(index));if(trade?.mineLocked||trade?.sending)slot.disabled=true;grid.append(slot);
     }
+  }
+  /* The native client calls charProc()/pattern() every process tick, not only
+     when a packet or pointer event arrives.  A browser paint that only runs on
+     packets turns all Action rows into a single still image.  Report whether
+     at least one visible field actor still needs the same process clock. */
+  function fieldActorAnimationActive(now=performance.now()){
+    if(app.phase!=="world"||app.battle||app.mapLoading)return false;
+    const actors=[...app.actors.values()];
+    for(const actor of actors){
+      if(!actor||actor.battle||actor.kind!=="character")continue;
+      const action=spriteActionForActor(actor),animation=spriteAnimationForAction(actor,actor.direction,action);
+      const frames=Array.isArray(animation?.frames)?animation.frames:[];
+      if(frames.length<2)continue;
+      const looping=actor.animationLoop!==undefined?Boolean(actor.animationLoop):fieldActionLoops(action);
+      if(looping)return true;
+      const started=Number(actor.animationStartedAt);
+      /* A C snapshot can contain an old one-shot action without the
+         transient timestamp (for example after reconnect).  That actor is
+         simply already settled; do not abort the scan, otherwise a later
+         local/player action would never arm the scheduler. */
+      if(!Number.isFinite(started)||started<=0)continue;
+      const frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_PROC_TICK_MS;
+      if(now-started<frames.length*frameDuration)return true;
+    }
+    return false;
   }
   function tradeStatusText(trade){
     if(!trade?.active)return "";
@@ -11535,7 +11581,7 @@
            sprite is still decoding.  Carry transient presentation state too,
            otherwise a movement C packet discards the last frame and the
            character can blink out until the new image finishes decoding. */
-        for(const key of ["inBattle","battleNo","battleSide","battleHelp","watching","leader","_lastFrame"])if(previousActor[key]!==undefined)actor[key]=previousActor[key];
+        for(const key of ["inBattle","battleNo","battleSide","battleHelp","watching","leader","action","caAction","animationLoop","animationStartedAt","walking","_lastFrame"])if(previousActor[key]!==undefined)actor[key]=previousActor[key];
       }
       if(actor.kind==="character"){
         const ownId=app.pc&&app.pc.id!==undefined&&app.pc.id!==null?Number(app.pc.id):NaN;
@@ -11584,7 +11630,7 @@
        next tile boundary, which is why walking near an NPC made it vanish.
        Floor changes clear the table in receiveSystemState(S:C), and CD is the
        authoritative removal path, so retain all records not mentioned here. */
-    updateHUD();renderPets();renderWorld();
+    updateHUD();renderPets();renderWorld();scheduleWorldAnimation();
   }
   function finalizePendingMove(){
     if(!app.pendingMove)return;
@@ -11620,7 +11666,7 @@
     const completedAnimation=app.walkAnimation;
     const nextWalkStartAt=Number(completedAnimation?.startedAt||0)+Number(completedAnimation?.duration||0);
     const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):null;
-    if(actor){actor.x=point[0];actor.y=point[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);setLocalActorAction(actor,3);}
+    if(actor){actor.x=point[0];actor.y=point[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);actor.walking=false;setLocalActorAction(actor,3);}
     app.pendingMove=false;app.pendingMoveAt=0;app.pendingMoveFrom=null;app.pendingMoveTarget=null;app.walkAnimation=null;
     if(app.moveSentSteps>0)app.moveSentSteps--;
     /* MAP.CPP::_etcEventCheck() tests each actual route landing cell and
@@ -11696,7 +11742,7 @@
     const fallback=resetPoint||app.serverPosition||app.pendingMoveFrom||app.position;
     app.position=[Number(fallback[0])||0,Number(fallback[1])||0];app.serverPosition=[...app.position];
     const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):null;
-    if(actor){actor.x=app.position[0];actor.y=app.position[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);setLocalActorAction(actor,3);}
+    if(actor){actor.x=app.position[0];actor.y=app.position[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);actor.walking=false;setLocalActorAction(actor,3);}
     app.pendingMove=false;app.pendingMoveAt=0;app.pendingMoveFrom=null;app.pendingMoveTarget=null;app.moveQueue=[];app.moveSentSteps=0;window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0;app.moveWirePending=false;app.moveWireTarget=null;app.moveWireRoute="";app.moveLastWireSentAt=0;app.moveLastWireSteps=0;app.moveTarget=null;app.walkAnimation=null;app._walkNextStartAt=0;app.walkCycleStartedAt=0;clearMovePrediction();clearMapEventRetry();
     if(message)setWorldState(message,"error");updateHUD();renderWorld(true);renderWorldOverlay();
   }
@@ -11706,7 +11752,7 @@
       const id=Protocol.base62(parts[0]||"0"),wireDirection=stateNumber(parts[4]),actor=app.actors.get(id)||{id,kind:"character",objectType:1};
       const action=stateNumber(parts[3]),x=stateNumber(parts[1]),y=stateNumber(parts[2]);
       if(isInsideFloor(x,y,app.floor)===false)continue;
-      actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;actor.direction=(wireDirection+3)%8;actor.wireDirection=wireDirection;actor.effect=stateNumber(parts[5]);
+      actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;actor.animationLoop=fieldActionLoops(CA_TO_SPRITE_ACTION[action]??3);actor.animationStartedAt=performance.now();actor.direction=(wireDirection+3)%8;actor.wireDirection=wireDirection;actor.effect=stateNumber(parts[5]);
       actor.effectParam1=stateNumber(parts[6]);actor.effectParam2=stateNumber(parts[7]);app.actors.set(id,actor);
       /* CA action 20/22 is how the 2.5 field client decorates a character
          with CHR_STATUS_BATTLE / CHR_STATUS_WATCH.  Keep those flags on the
@@ -11726,7 +11772,7 @@
         else {maybeReleaseMovePrediction([x,y]);if(localMovePredictionActive()){actor.x=app.position[0];actor.y=app.position[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);}else{app.position=[x,y];app.direction=clientDirectionFromServer(wireDirection);}}
       }
     }
-    updateHUD();renderWorld(true);renderWorldOverlay();
+    updateHUD();renderWorld(true);renderWorldOverlay();scheduleWorldAnimation();
   }
   function updateHUD() { $("world-floor").textContent=app.floor<0?"-":String(app.floor); $("world-position").textContent=`${app.position[0]}, ${app.position[1]}`; $("world-actors").textContent=String(app.actors.size); }
   function mapPixel(x,y){if(!app.map)return null;const definition=app.map.asset||{origin:[0,0],render:{origin_x:256,origin_y:(Math.max(1,Number(app.map.width)||1)-1)*24+256,tile_step:[32,24]}};const origin=definition.origin||[0,0],render=definition.render||{},step=render.tile_step||[32,24];const lx=Number(x)-Number(origin[0]||0),ly=Number(y)-Number(origin[1]||0);return [Number(render.origin_x??256)+(lx+ly)*Number(step[0]??32),Number(render.origin_y??952)+(ly-lx)*Number(step[1]??24)];}
@@ -12328,11 +12374,11 @@
       const parts=dynamicReady?(layerCache?.ready?(layerCache.parts||[]):(app.mapLayerFallback?.ready?(app.mapLayerFallback.parts||[]):[])):[];
       renderSceneActorsAndParts(domActors,parts,canvas);
       presentWorldBackBuffer(canvas);
-      renderWorldOverlay();return;
+      renderWorldOverlay();scheduleWorldAnimation();return;
     }
     for(const actor of actors)drawActor(ctx,actor,tilePoint(actor.x,actor.y));
     if(!actors.some(actor=>actor.name===app.character))drawActor(ctx,{name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3},tilePoint(app.position[0],app.position[1]));
-    presentWorldBackBuffer(canvas);renderWorldOverlay();
+    presentWorldBackBuffer(canvas);renderWorldOverlay();scheduleWorldAnimation();
   }
   function scheduleWorldAnimation(){
     /* The native client advances its position on a fixed 8ms processing
@@ -12343,21 +12389,37 @@
        expose no RAF.  Both paths share one handle so a tile boundary cannot
        leave duplicate loops behind. */
     if(app._worldAnimationFrame||app._worldAnimationTimer)return;
-    const useRAF=typeof window.requestAnimationFrame==="function";
+    /* requestAnimationFrame is attractive for a visible desktop tab, but it
+       can be suspended by mobile WebViews/headless Chromium even while the
+       document reports `visibilityState === "visible"`.  The native client
+       never suspends its process tick, and a suspended RAF leaves Action rows
+       on their first bitmap forever.  Drive this small (render-throttled)
+       scheduler from a timeout instead; renderWorld() still limits actual
+       canvas paints to the legacy 50/60 ms cadence, while the timer keeps
+       advancing both looping and one-shot actions in every browser state.
+       Walking remains smooth because its interpolation is sampled on the
+       same fixed 16.7 ms presentation cadence. */
+    const useRAF=false;
     const tick=(timestamp)=>{
       app._worldAnimationFrame=0;
       app._worldAnimationTimer=0;
-      if(app.phase!=="world"||!app.walkAnimation){renderWorldOverlay();return;}
+      if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive())){renderWorldOverlay();return;}
       const now=Number.isFinite(timestamp)?timestamp:performance.now();
-      if(walkProgress(now)>=1){
+      if(app.walkAnimation&&walkProgress(now)>=1){
         /* finalizePendingMove() may install the next tile immediately.  Let
            that new animation own its handle; do not schedule a second one
            from this boundary callback. */
         finalizePendingMove();
+        if(app.phase==="world"&&!app.walkAnimation&&fieldActorAnimationActive())scheduleWorldAnimation();
         return;
       }
-      if(app.phase==="world")renderWorld(true);
-      if(!app.walkAnimation)return;
+      /* Walking needs every presentation sample for its fractional tile
+         position.  A field Action only changes when its sprite frame changes;
+         renderWorld()'s native 50/60ms throttle is enough for those rows and
+         prevents a large DAT ground layer from monopolising the main thread
+         at 60Hz on phones. */
+      if(app.phase==="world")renderWorld(Boolean(app.walkAnimation));
+      if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive()))return;
       if(useRAF){
         app._worldAnimationFrame=window.requestAnimationFrame(tick);
       }else{
@@ -13072,6 +13134,14 @@
     if(!app.walkCycleStartedAt||app.walkCycleDirection!==direction){app.walkCycleStartedAt=now;app.walkCycleDirection=direction;}
     const animation={from:[from[0],from[1]],to:[target[0],target[1]],direction,startedAt:now,duration:moveStepDuration(from,target)};
     app.walkAnimation=animation;
+    const walkingActor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
+    if(walkingActor){
+      walkingActor.walking=true;
+      walkingActor.action=4;
+      walkingActor.animationLoop=true;
+      walkingActor.animationStartedAt=now;
+      delete walkingActor.caAction;
+    }
     /* The original web loop advances its local 64px grid at MOVE_SPEED=4
        with the 6ms process cadence (16 process ticks/96ms).  2.5 does not echo
        CHAR_ACTWALK to the walking player, so finishing this local animation
@@ -14341,7 +14411,7 @@
     const actionNo=Number(item.dataset.actionNo);if(!Number.isFinite(actionNo))return;
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
-    if(actor){setLocalActorAction(actor,actionNo);actor.walking=false;actor.animationStartedAt=performance.now();renderWorld(true);}
+    if(actor){setLocalActorAction(actor,actionNo);actor.walking=false;renderWorld(true);scheduleWorldAnimation();}
     fieldSend("AC",[x,y,actionNo]).catch(reportError);
   }));
   $("field-settings-close")?.addEventListener("click",closeFieldWindow);

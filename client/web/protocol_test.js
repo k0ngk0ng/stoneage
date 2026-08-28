@@ -362,11 +362,25 @@ for (let action = 0; action <= 12; action++) {
     throw new Error(`field Action ${action} must animate locally in place: ${spriteAction}@${x},${y}`);
   }
 }
+const localActionAnimationSource=script.slice(localActionStart,script.indexOf("  function tradeStatusText",localActionStart));
+if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:true,8:true,9:true,11:true\}\)/.test(localActionAnimationSource) ||
+   !/actor\.animationLoop=fieldActionLoops\(actor\.action\)/.test(localActionAnimationSource) ||
+   !/actor\.animationStartedAt=/.test(localActionAnimationSource)) {
+  throw new Error("field Action selection must start the native per-frame animation clock");
+}
+if(!/function fieldActorAnimationActive\(now=performance\.now\(\)\)[\s\S]{0,1300}spriteAnimationForAction\(actor,actor\.direction,action\)[\s\S]{0,900}frames\.length<2/.test(localActionAnimationSource)) {
+  throw new Error("field Action renderer must keep a live animation loop while frames remain");
+}
+if(!/const useRAF=false/.test(script) ||
+   !/app\._worldAnimationTimer=window\.setTimeout\(\(\)=>tick\(performance\.now\(\)\),LEGACY_RENDER_TICK_MS\)/.test(script)) {
+  throw new Error("field Action scheduler must keep progressing when requestAnimationFrame is throttled");
+}
 const fieldActionHandlerStart = script.indexOf('  document.querySelectorAll("#field-actions-list [data-action-no]")');
 const fieldActionHandlerEnd = script.indexOf('  $("field-settings-close")', fieldActionHandlerStart);
 const fieldActionHandlerSource = script.slice(fieldActionHandlerStart, fieldActionHandlerEnd);
 if (!fieldActionHandlerSource.includes("setLocalActorAction(actor,actionNo)") ||
-    !fieldActionHandlerSource.includes('fieldSend("AC",[x,y,actionNo])')) {
+    !fieldActionHandlerSource.includes('fieldSend("AC",[x,y,actionNo])') ||
+    !fieldActionHandlerSource.includes("scheduleWorldAnimation()")) {
   throw new Error("field Action click must preview and send the selected native action number");
 }
 for (const expected of [
