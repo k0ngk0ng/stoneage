@@ -368,6 +368,10 @@ if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:
    !/actor\.animationStartedAt=/.test(localActionAnimationSource)) {
   throw new Error("field Action selection must start the native per-frame animation clock");
 }
+if(!/const LEGACY_FIELD_ANIMATION_TICK_MS=1000\/60/.test(script) ||
+   !/const animationTick=actor\?\.walking\?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS/.test(localActionAnimationSource)) {
+  throw new Error("field Action animation must use the native 60 Hz clock without changing walk speed");
+}
 if(!/function fieldActorAnimationActive\(now=performance\.now\(\)\)[\s\S]{0,1300}spriteAnimationForAction\(actor,actor\.direction,action\)[\s\S]{0,900}frames\.length<2/.test(localActionAnimationSource)) {
   throw new Error("field Action renderer must keep a live animation loop while frames remain");
 }
