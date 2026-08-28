@@ -4611,6 +4611,13 @@
     const actors=[...app.actors.values()];
     for(const actor of actors){
       if(!actor||actor.battle||actor.kind!=="character")continue;
+      /* Static C records use a direct bitmap and do not carry the native
+         character process clock.  Do not infer a looping sprite for every
+         NPC/decoration here: that would force a full DAT/parts repaint on
+         each idle frame (and consume a phone CPU core).  CA updates and a
+         local Action selection explicitly install animationLoop/start,
+         which are the records that actually need live presentation. */
+      if(actor.animationLoop===undefined&&!Number.isFinite(Number(actor.animationStartedAt)))continue;
       const action=spriteActionForActor(actor),animation=spriteAnimationForAction(actor,actor.direction,action);
       const frames=Array.isArray(animation?.frames)?animation.frames:[];
       if(frames.length<2)continue;
@@ -4624,6 +4631,29 @@
       if(!Number.isFinite(started)||started<=0)continue;
       const frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_PROC_TICK_MS;
       if(now-started<frames.length*frameDuration)return true;
+    }
+    return false;
+  }
+  /* A REALBIN action often repeats the same bitmap for several process
+     ticks (for example the native hand-wave row).  Rebuilding the complete
+     DAT/parts/actor display list for each repeated tick wastes most of the
+     browser frame budget without changing a pixel.  Compare the frame that
+     would be presented with the key captured by the last full paint so the
+     animation clock can keep running while canvas work happens only when a
+     visible bitmap or native offset actually changes. */
+  function fieldActorFrameVisualKey(frame){
+    if(!frame)return "";
+    const source=frame.frame||frame.info||{},image=frame.image;
+    const file=source.file||image?.currentSrc||image?.src||"";
+    return `${file}|${Number(frame.x)||0}|${Number(frame.y)||0}`;
+  }
+  function fieldActorVisualChanged(now=performance.now()){
+    if(app.phase!=="world"||app.battle||app.mapLoading)return false;
+    for(const actor of app.actors.values()){
+      if(!actor||actor.battle||actor.kind!=="character")continue;
+      if(actor.animationLoop===undefined&&!Number.isFinite(Number(actor.animationStartedAt)))continue;
+      const frame=actorFrame(actor),key=fieldActorFrameVisualKey(frame);
+      if(key!==String(actor._lastPaintKey||""))return true;
     }
     return false;
   }
@@ -11581,7 +11611,7 @@
            sprite is still decoding.  Carry transient presentation state too,
            otherwise a movement C packet discards the last frame and the
            character can blink out until the new image finishes decoding. */
-        for(const key of ["inBattle","battleNo","battleSide","battleHelp","watching","leader","action","caAction","animationLoop","animationStartedAt","walking","_lastFrame"])if(previousActor[key]!==undefined)actor[key]=previousActor[key];
+        for(const key of ["inBattle","battleNo","battleSide","battleHelp","watching","leader","action","caAction","animationLoop","animationStartedAt","walking","_lastFrame","_lastPaintKey"])if(previousActor[key]!==undefined)actor[key]=previousActor[key];
       }
       if(actor.kind==="character"){
         const ownId=app.pc&&app.pc.id!==undefined&&app.pc.id!==null?Number(app.pc.id):NaN;
@@ -11837,6 +11867,7 @@
   }
   function drawActor(ctx,actor,point,options={}){
     const frame=actorFrame(actor);
+    if(actor&&typeof actor==="object")actor._lastPaintKey=fieldActorFrameVisualKey(frame);
     if(frame){
       /* The native client paints REALBIN pixels without a per-actor scale;
          CSS scales the completed 640x480 surface for the viewport. */
@@ -11923,6 +11954,7 @@
          actor so the next animation tick cannot lose it and briefly blank
          the player while a new direction/action frame is decoding. */
       if(renderActor!==actor&&renderActor?._lastFrame)actor._lastFrame=renderActor._lastFrame;
+      if(actor&&typeof actor==="object")actor._lastPaintKey=fieldActorFrameVisualKey(frame);
       /* Items and gold are still display-priority objects, but they are not
          characters: keeping their semantic kind here lets the final font
          pass omit fake names such as “100 Stone” and prevents NPC-only status
@@ -12382,12 +12414,11 @@
   }
   function scheduleWorldAnimation(){
     /* The native client advances its position on a fixed 8ms processing
-       clock, but presents the back-buffer on the display cadence.  Use
-       requestAnimationFrame when available so each interpolated position is
-       painted immediately before a browser refresh.  The timeout fallback is
-       intentional for headless/unit-test environments and for browsers that
-       expose no RAF.  Both paths share one handle so a tile boundary cannot
-       leave duplicate loops behind. */
+       clock, but presents the back-buffer on the display cadence.  The
+       scheduler below shares one handle so a tile boundary cannot leave
+       duplicate loops behind.  Field actions additionally skip paints when
+       the selected frame is visually unchanged; this keeps the native timing
+       without redrawing a large DAT window for repeated bitmaps. */
     if(app._worldAnimationFrame||app._worldAnimationTimer)return;
     /* requestAnimationFrame is attractive for a visible desktop tab, but it
        can be suspended by mobile WebViews/headless Chromium even while the
@@ -12403,14 +12434,15 @@
     const tick=(timestamp)=>{
       app._worldAnimationFrame=0;
       app._worldAnimationTimer=0;
-      if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive())){renderWorldOverlay();return;}
       const now=Number.isFinite(timestamp)?timestamp:performance.now();
+      const walking=Boolean(app.walkAnimation),actionActive=!walking&&fieldActorAnimationActive(now);
+      if(app.phase!=="world"||(!walking&&!actionActive)){renderWorldOverlay();return;}
       if(app.walkAnimation&&walkProgress(now)>=1){
         /* finalizePendingMove() may install the next tile immediately.  Let
            that new animation own its handle; do not schedule a second one
            from this boundary callback. */
         finalizePendingMove();
-        if(app.phase==="world"&&!app.walkAnimation&&fieldActorAnimationActive())scheduleWorldAnimation();
+        if(app.phase==="world"&&!app.walkAnimation&&fieldActorAnimationActive(now))scheduleWorldAnimation();
         return;
       }
       /* Walking needs every presentation sample for its fractional tile
@@ -12418,8 +12450,8 @@
          renderWorld()'s native 50/60ms throttle is enough for those rows and
          prevents a large DAT ground layer from monopolising the main thread
          at 60Hz on phones. */
-      if(app.phase==="world")renderWorld(Boolean(app.walkAnimation));
-      if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive()))return;
+      if(app.phase==="world"&&(walking||actionActive&&fieldActorVisualChanged(now)))renderWorld(walking);
+      if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive(now)))return;
       if(useRAF){
         app._worldAnimationFrame=window.requestAnimationFrame(tick);
       }else{

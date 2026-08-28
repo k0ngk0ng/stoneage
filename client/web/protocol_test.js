@@ -371,6 +371,10 @@ if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:
 if(!/function fieldActorAnimationActive\(now=performance\.now\(\)\)[\s\S]{0,1300}spriteAnimationForAction\(actor,actor\.direction,action\)[\s\S]{0,900}frames\.length<2/.test(localActionAnimationSource)) {
   throw new Error("field Action renderer must keep a live animation loop while frames remain");
 }
+if(!/function fieldActorFrameVisualKey\(frame\)[\s\S]{0,700}function fieldActorVisualChanged\(now=performance\.now\(\)\)/.test(localActionAnimationSource) ||
+   !/actionActive&&fieldActorVisualChanged\(now\)/.test(script)) {
+  throw new Error("field Action animation must avoid repainting unchanged bitmaps");
+}
 if(!/const useRAF=false/.test(script) ||
    !/app\._worldAnimationTimer=window\.setTimeout\(\(\)=>tick\(performance\.now\(\)\),LEGACY_RENDER_TICK_MS\)/.test(script)) {
   throw new Error("field Action scheduler must keep progressing when requestAnimationFrame is throttled");
