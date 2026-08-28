@@ -115,6 +115,49 @@ func TestLoginResponseTranslation(t *testing.T) {
 	}
 }
 
+func TestTradeResponseUsesTheSingle25MessageField(t *testing.T) {
+	translator := NewTranslator()
+	if _, _, err := translator.ClientToServer([]byte("HBZovLTemtm8s7fgadloSK8dIILiINuPLPGzJ-8\n")); err != nil {
+		t.Fatal(err)
+	}
+	const want = "C|77|TradeB28|1"
+	fields := protocol.NewFieldEncoder("probe" + protocol.RunningKey)
+	fields.String([]byte(want))
+	raw, err := fields.Finish(92)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric, err := protocol.EncodeMessage(raw, 41)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named, function, err := translator.ServerToClient(numeric)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if function != "TD" {
+		t.Fatalf("function = %q", function)
+	}
+	decoded, err := namedproto.DecodePacket(named)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := namedproto.ParseMessage(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(message.Fields) != 1 {
+		t.Fatalf("TD fields = %q, want one 2.5 message field", message.Fields)
+	}
+	value, err := namedproto.DecodeString(message.Fields[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(value) != want {
+		t.Fatalf("TD message = %q, want %q", value, want)
+	}
+}
+
 func TestRejects85OnlyClientFunctions(t *testing.T) {
 	for _, function := range []string{"SaMenu", "RideQuery", "SignDay", "STREET_VENDOR"} {
 		raw, err := namedproto.RawMessage(1, function, nil)

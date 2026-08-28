@@ -246,14 +246,76 @@ if (tradePlate?.file !== "bitmaps/bitmap_126232.png" || tradePlate?.width !== 14
     tradeOn?.file !== "bitmaps/bitmap_126234.png" || tradeOn?.width !== 32 || tradeOn?.height !== 30) {
   throw new Error("generated 2.5 trade HUD resources drifted from native ADRN metadata");
 }
+/* The wheel button is only the field entry.  sa_2903's compiled 2.5 trade
+   branch uses logical 40000 (620x456 at 10,0); 26328 belongs to the later
+   8.5 switch and resolves to an unrelated sprite in this resource pack. */
+const tradeWindow = battleManifest.bitmaps?.["40000"];
+if (tradeWindow?.file !== "bitmaps/bitmap_126231.png" || tradeWindow?.width !== 620 || tradeWindow?.height !== 456 ||
+    tradeWindow?.xoffset !== -310 || tradeWindow?.yoffset !== -228 || tradeWindow?.bmp_number !== 40000) {
+  throw new Error("classic 2.5 trade window resource drifted from sa_2903");
+}
+const tradeWindowPng = fs.readFileSync(path.join(__dirname, "assets", "original", tradeWindow.file));
+if (tradeWindowPng.readUInt32BE(16) !== 620 || tradeWindowPng.readUInt32BE(20) !== 456 ||
+    !battleExtractorSource.includes('"trade_window_25": 40000') || !battleExtractorSource.includes('parser.add_argument("--ui-only"')) {
+  throw new Error("classic 2.5 trade window was not extracted by the UI-only asset path");
+}
+const tradeMarkup = html.match(/<section id="trade-screen"[\s\S]*?<\/section>/)?.[0] || "";
+if (!/id="trade-window-art" src="\/assets\/bitmaps\/bitmap_126231\.png"/.test(tradeMarkup) ||
+    (tradeMarkup.match(/data-trade-offer=/g) || []).length !== 2 ||
+    !/id="trade-inventory-grid"/.test(tradeMarkup) || !/id="trade-confirm"/.test(tradeMarkup) ||
+    /26328|bitmap_126230/.test(tradeMarkup)) {
+  throw new Error("classic 2.5 trade surface markup is incomplete or uses the 8.5 plate");
+}
+for (const expected of [
+  /#trade-window-art\s*\{[^}]*left:10px; top:0; width:620px; height:456px/,
+  /#trade-confirm\s*\{[^}]*left:369px; background-image:url\('\/assets\/bitmaps\/bitmap_9211\.png'\)/,
+  /#trade-cancel\s*\{[^}]*left:501px; background-image:url\('\/assets\/bitmaps\/bitmap_9170\.png'\)/,
+  /const column=\(index-5\)%5,row=Math\.floor\(\(index-5\)\/5\)/,
+  /slot\.style\.left=`\$\{332\+column\*51\}px`;slot\.style\.top=`\$\{248\+row\*48\}px`/,
+  /case "TD": handleTradeMessage\(values\[0\]\|\|""\);break;/,
+]) {
+  if (!expected.test(html)) throw new Error(`classic 2.5 trade layout/dispatch regression: ${expected}`);
+}
+const tradePairStart = script.indexOf("  function tradeConfirmationPair");
+const tradePairEnd = script.indexOf("  function confirmTrade", tradePairStart);
+if (tradePairStart < 0 || tradePairEnd <= tradePairStart) throw new Error("classic trade confirmation helpers missing");
+const tradePairContext = {decimal(value, fallback = 0) { const number = Number.parseInt(String(value), 10); return Number.isFinite(number) ? number : fallback; }};
+vm.createContext(tradePairContext);
+vm.runInContext(script.slice(tradePairStart, tradePairEnd) + `\nthis.tradeVector=tradeConfirmationPayload({active:true,peerFd:77,peerName:"bob",mineSlots:[{kind:"I",itemIndex:5},null],minePet:{slot:2},peerSlots:[{kind:"G",amount:33},{kind:"I",itemIndex:9}],peerPet:null});`, tradePairContext);
+if (tradePairContext.tradeVector !== "T|77|bob|K|I|5|I|-1|P|2|G|33|I|9|P|-1") {
+  throw new Error(`classic trade must send exactly six 2.5 confirmation groups: ${tradePairContext.tradeVector}`);
+}
+const tradeItemParserStart = script.indexOf("  function parseTradePeerItem");
+const tradeItemParserEnd = script.indexOf("  function parseTradePeerPet", tradeItemParserStart);
+const tradeItemContext = {decimal: tradePairContext.decimal, unescapeCharacterOption: value => String(value || "")};
+vm.createContext(tradeItemContext);
+vm.runInContext(script.slice(tradeItemParserStart, tradeItemParserEnd) + `
+this.item25=parseTradePeerItem(["T","77","bob","I","1","123","stone","effect","5","20%"]);
+this.item85=parseTradePeerItem(["T","77","bob","I","1","123","base","free","effect85","6","30%"]);`, tradeItemContext);
+if (tradeItemContext.item25?.name !== "stone" || tradeItemContext.item25?.effect !== "effect" || tradeItemContext.item25?.itemIndex !== 5 || tradeItemContext.item25?.damage !== "20%" ||
+    tradeItemContext.item85?.name !== "free" || tradeItemContext.item85?.effect !== "effect85" || tradeItemContext.item85?.itemIndex !== 6 || tradeItemContext.item85?.damage !== "30%") {
+  throw new Error("trade item TD parser must keep both 2.5 and switched 8.5 field widths aligned");
+}
+const tradeServerSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/char/trade.c", "latin1");
+/* trade.c declares TRADE_CheckItembuf near the top and defines it after the
+   swap helpers.  Validate the definition, not the forward declaration. */
+const tradeCheckStart = tradeServerSource.lastIndexOf("int TRADE_CheckItembuf");
+const tradeCheckEnd = tradeServerSource.indexOf("BOOL TRADE_HandleItem", tradeCheckStart);
+const tradeCheckSource = tradeServerSource.slice(tradeCheckStart, tradeCheckEnd);
+for (let token = 5; token <= 16; token++) {
+  if (!new RegExp(`getStringFromIndexWithDelim\\(itembuf, "\\|", ${token},`).test(tradeCheckSource)) {
+    throw new Error(`2.5 server six-slot confirmation token ${token} missing`);
+  }
+}
 const fieldSettingsMarkup = html.match(/<div id="field-settings-list"[\s\S]*?<\/div>/)?.[0] || "";
-if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 4 ||
-    /data-field-setting="trade"/.test(fieldSettingsMarkup) ||
+if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 5 ||
+    !/data-field-setting="trade"/.test(fieldSettingsMarkup) ||
     !/<span>组    队：<\/span>/.test(fieldSettingsMarkup) ||
     !/<span>决    斗：<\/span>/.test(fieldSettingsMarkup) ||
     !/<span>交换名片：<\/span>/.test(fieldSettingsMarkup) ||
-    !/<span>聊    天：<\/span>/.test(fieldSettingsMarkup)) {
-  throw new Error("field settings must contain the four native 2.5 rows");
+    !/<span>聊    天：<\/span>/.test(fieldSettingsMarkup) ||
+    !/<span>交    易：<\/span>/.test(fieldSettingsMarkup)) {
+  throw new Error("field settings must contain the five native 2.5 rows");
 }
 const fieldUiMarkup = html.match(/<div id="field-ui"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || "";
 if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 7 ||
@@ -267,6 +329,45 @@ if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 7 ||
     !/id="field-right-duel" class="click"/.test(fieldUiMarkup) ||
     !/id="field-right-action" class="click"/.test(fieldUiMarkup)) {
   throw new Error("2.5 field HUD must contain four left and three right controls");
+}
+/* FIELD.CPP applies an Action selection twice: it sends the 0..12 AC value
+   and immediately calls setPcAction() with that same ANIM_LIST row.  The
+   server later maps it to CHAR_ACT_* for nearby CA packets.  Keep all 13
+   local rows distinct so the owner sees the action in place without waiting
+   for an echo (and without changing its map coordinate). */
+const nativeActionTable = nativeField.match(/int chgTbl\[\]\s*=\s*\{([\s\S]*?)\};/)?.[1] || "";
+const nativeActionOrder = [...nativeActionTable.matchAll(/\b(\d+)\s*,?/g)].map(match => Number(match[1])).slice(0, 13);
+const expectedActionOrder = [5, 3, 6, 4, 11, 2, 7, 0, 8, 10, 9, 1, 12];
+const fieldActionsMarkup = html.match(/<div id="field-actions-list"[\s\S]*?<\/div>/)?.[0] || "";
+const webActionOrder = [...fieldActionsMarkup.matchAll(/data-action-no="(\d+)"/g)].map(match => Number(match[1]));
+if (nativeActionOrder.join(",") !== expectedActionOrder.join(",") ||
+    webActionOrder.join(",") !== expectedActionOrder.join(",")) {
+  throw new Error(`field Action order drifted: native=${nativeActionOrder} web=${webActionOrder}`);
+}
+const localActionStart = script.indexOf("  const CA_TO_SPRITE_ACTION");
+const localActionEnd = script.indexOf("  /* Sprite animation tables", localActionStart);
+if (localActionStart < 0 || localActionEnd <= localActionStart) throw new Error("field Action renderer helpers missing");
+const localActionContext = {};
+vm.createContext(localActionContext);
+vm.runInContext(script.slice(localActionStart, localActionEnd) + `
+this.localActionVectors=[];
+for(let action=0;action<=12;action++){
+  const actor={x:123,y:456,action:3,caAction:19};
+  setLocalActorAction(actor,action);
+  this.localActionVectors.push([spriteActionForActor(actor),actor.x,actor.y]);
+}`, localActionContext);
+for (let action = 0; action <= 12; action++) {
+  const [spriteAction, x, y] = localActionContext.localActionVectors[action] || [];
+  if (spriteAction !== action || x !== 123 || y !== 456) {
+    throw new Error(`field Action ${action} must animate locally in place: ${spriteAction}@${x},${y}`);
+  }
+}
+const fieldActionHandlerStart = script.indexOf('  document.querySelectorAll("#field-actions-list [data-action-no]")');
+const fieldActionHandlerEnd = script.indexOf('  $("field-settings-close")', fieldActionHandlerStart);
+const fieldActionHandlerSource = script.slice(fieldActionHandlerStart, fieldActionHandlerEnd);
+if (!fieldActionHandlerSource.includes("setLocalActorAction(actor,actionNo)") ||
+    !fieldActionHandlerSource.includes('fieldSend("AC",[x,y,actionNo])')) {
+  throw new Error("field Action click must preview and send the selected native action number");
 }
 for (const expected of [
   /#field-right-composite\s*\{[^}]*z-index:2/,
@@ -292,11 +393,11 @@ for (const expected of [
   /"field-left-trade":\[126233,126234\]/,
   /if\(name==="trade"\)[\s\S]{0,900}fieldSend\("TD",\["D\|D"\]\)/,
   /id="field-right-bg" src="\/assets\/bitmaps\/bitmap_9226\.png"/,
-  /#field-settings-screen \.field-window-frame\{left:16px;top:16px;height:192px\}/,
+  /#field-settings-screen \.field-window-frame\{left:16px;top:16px;height:240px\}/,
   /#field-actions-screen \.field-window-frame\{left:440px;top:16px;height:288px\}/,
-  /#field-settings-screen #field-settings-close\{left:72px;top:170px\}/,
+  /#field-settings-screen #field-settings-close\{left:72px;top:208px\}/,
   /#field-actions-screen #field-actions-close\{left:496px;top:266px\}/,
-  /FIELD_SETTING_LABELS=Object\.freeze\(\{[\s\S]{0,420}chat:\["聊    天："," 全  员"," 队  伍"\]/,
+  /FIELD_SETTING_LABELS=Object\.freeze\(\{[\s\S]{0,520}chat:\["聊    天："," 全  员"," 队  伍"\],[\s\S]{0,100}trade:\["交    易："," Ｎ  Ｏ"," ＹＥＳ"\]/,
   /id="help-frame" src="\/assets\/bitmaps\/bitmap_234545\.png"/,
   /#help-screen #help-frame\s*\{[^}]*left:110px; top:50px; width:420px; height:376px/,
   /function renderHelp\(\)/,
@@ -1004,11 +1105,11 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
    the list after the next successful login. */
 const failureSource = script.slice(script.indexOf("function showConnectionFailure"), script.indexOf("function returnToAccountLogin"));
 if (/addEvent\(/.test(failureSource)) throw new Error("connection failure leaked into the event list");
-/* CHAR_FS_* is sparse in the 2.5 server.  The base FIELD.CPP exposes four
-   settings rows (party, duel, card exchange and chat).  Trade is a separate
-   TD command and is not a settings bit. */
+/* CHAR_FS_* is sparse in the 2.5 server.  FIELD.CPP exposes five settings
+   rows; the fifth enables incoming trade requests with CHAR_FS_TRADE (bit
+   5).  The wheel is the separate TD action that starts a trade. */
 for (const expected of [
-  /FIELD_SETTING_BITS=Object\.freeze\(\{party:1,duel:4,mail:16,chat:8\}\)/,
+  /FIELD_SETTING_BITS=Object\.freeze\(\{party:1,duel:4,mail:16,chat:8,trade:32\}\)/,
   /setStatus\("duelAllowed",Boolean\(flags&4\)\)/,
 ]) {
   if (!expected.test(html)) throw new Error(`field protocol regression: ${expected}`);
@@ -1043,12 +1144,22 @@ function scanGeneratedBattleAssets(filename) {
     heroDirection3ContactBitmap: "",
     heroDirection3DeadFrames: 0,
     heroDirection3DeadLastBitmap: "",
+    playerActionRows: 0,
+    playerActionRowsComplete: true,
     battleCount: 0,
   };
   const consumeSpritePayload = payload => {
     const sprites = payload?.sprites && typeof payload.sprites === "object" ? payload.sprites : payload;
     if (!sprites || typeof sprites !== "object") return;
     foundSprites = true;
+    for (const spriteNumber of Array.from({length: 12}, (_, index) => String(100000 + index * 20))) {
+      const rows = sprites[spriteNumber]?.actions || [];
+      for (let action = 0; action <= 12; action++) for (let direction = 0; direction < 8; direction++) {
+        const row = rows.find(item => Number(item?.action) === action && Number(item?.direction) === direction);
+        if (row && Array.isArray(row.frames) && row.frames.length) result.playerActionRows += 1;
+        else result.playerActionRowsComplete = false;
+      }
+    }
     for (const [spriteNumber, sprite] of Object.entries(sprites)) {
       for (const animation of sprite?.actions || []) {
         const direction = Number(animation?.direction);
@@ -1181,6 +1292,8 @@ if (
   generatedBattleAssets.heroDirection3ContactBitmap !== "bitmaps/bitmap_10308.png" ||
   generatedBattleAssets.heroDirection3DeadFrames !== 6 ||
   generatedBattleAssets.heroDirection3DeadLastBitmap !== "bitmaps/bitmap_10321.png" ||
+  generatedBattleAssets.playerActionRows !== 12 * 13 * 8 ||
+  !generatedBattleAssets.playerActionRowsComplete ||
   generatedBattleAssets.battleCount !== 220
 ) {
   throw new Error(`generated SPR/battle resource regression: ${JSON.stringify(generatedBattleAssets)}`);
@@ -1520,6 +1633,12 @@ const mc = P.decodeMessage(P.encodePacket(mcRaw));
 if (mc.schema.length !== 9 || mc.schema[8] !== "string" || mc.values.slice(0, 8).join(",") !== "1,10,20,47,57,10,11,12" || mc.textValues[8] !== "map") {
   throw new Error(`MC schema decode failed: ${JSON.stringify(mc)}`);
 }
+const tradeResponseText = "C|77|TradeB29|1";
+const tradeResponseRaw = P.rawMessage(13, "TD", [P.encodeString(tradeResponseText)]);
+const tradeResponse = P.decodeMessage(P.encodePacket(tradeResponseRaw));
+if (tradeResponse.schema.length !== 1 || tradeResponse.schema[0] !== "string" || tradeResponse.textValues[0] !== tradeResponseText) {
+  throw new Error(`single-field 2.5 TD decode failed: ${JSON.stringify(tradeResponse)}`);
+}
 if (!P.CLIENT_FIELDS.w || P.CLIENT_FIELDS.w.join(",") !== P.CLIENT_FIELDS.W.join(",")) throw new Error("w schema mismatch");
 if (P.CLIENT_FIELDS.CharLogout.length !== 0) throw new Error("2.5 CharLogout must use the no-argument schema");
 for (const name of ["SaMenu", "RideQuery", "SignDay", "STREET_VENDOR"]) {
@@ -1638,10 +1757,22 @@ for (const [name, kinds] of bridgeSchemas) {
     throw new Error(`web schema differs from 2.5 bridge for ${name}: ${JSON.stringify(pageKinds)} != ${JSON.stringify(kinds)}`);
   }
 }
+for (const [name, kinds] of bridgeServerSchemas) {
+  const pageKinds = pageServerSchemas.get(name);
+  if (!pageKinds || pageKinds.join(",") !== kinds.join(",")) {
+    throw new Error(`web server schema differs from 2.5 bridge for ${name}: ${JSON.stringify(pageKinds)} != ${JSON.stringify(kinds)}`);
+  }
+}
 for (const name of pageSchemas.keys()) {
   if (!bridgeSchemas.has(name)) throw new Error(`web schema is not supported by the 2.5 bridge: ${name}`);
 }
+for (const name of pageServerSchemas.keys()) {
+  if (!bridgeServerSchemas.has(name) && !serverSchemaAliases.has(name)) {
+    throw new Error(`web server schema is not supported by the 2.5 bridge: ${name}`);
+  }
+}
 if (pageSchemas.size !== bridgeSchemas.size) throw new Error("web/bridge client schema count mismatch");
+if (pageServerSchemas.size !== bridgeServerSchemas.size + serverSchemaAliases.size) throw new Error("web/bridge server schema count mismatch");
 
 /* Scan the actual browser call sites, not only the exported schema table.
    This is the guard that catches a future 8.5 visual/menu port adding a

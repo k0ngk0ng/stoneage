@@ -116267,6 +116267,20 @@
       "hit_y": 1,
       "hit": 0,
       "prio_type": 0
+    },
+    "40000": {
+      "file": "bitmaps/bitmap_126231.png",
+      "physical": 126231,
+      "width": 620,
+      "height": 456,
+      "xoffset": -310,
+      "yoffset": -228,
+      "bmp_number": 40000,
+      "name": "trade_window_25",
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 0,
+      "prio_type": 0
     }
   },
   "ui": {
@@ -119637,6 +119651,22 @@
       "height": 81,
       "xoffset": -166,
       "yoffset": -111
+    },
+    "field_menu_left_trade": {
+      "file": "bitmaps/bitmap_126232.png",
+      "bitmap": 26233,
+      "width": 140,
+      "height": 54,
+      "xoffset": -78,
+      "yoffset": -28
+    },
+    "trade_window_25": {
+      "file": "bitmaps/bitmap_126231.png",
+      "bitmap": 40000,
+      "width": 620,
+      "height": 456,
+      "xoffset": -310,
+      "yoffset": -228
     }
   },
   "bitmap_aliases": {
@@ -129448,7 +129478,8 @@
     "24322": "233113",
     "24352": "24352",
     "24370": "24370",
-    "24521": "6688"
+    "24521": "6688",
+    "40000": "126231"
   },
   "faces": {
     "30000": {

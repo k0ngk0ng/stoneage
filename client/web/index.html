@@ -362,6 +362,65 @@
        (Avoid :has() here: Chromium has to recalculate it for every live
        contact/mail row mutation, which makes the native mail window stutter.) */
     main.field-overlay-suppressed #field-ui { visibility:hidden; }
+    /* sa_2903::MenuProc(JOY_CTRL_T) owns a fixed 640x480 field surface.  Its
+       classic 2.5 branch stocks logical CG 40000 at window origin (10,0),
+       producing the exact 620x456 stone trade plate below.  Keep every live
+       label/hit target in those native coordinates; a generic browser modal
+       cannot reproduce the four offer wells, pet panes or 15-slot bag. */
+    #trade-screen { position:absolute!important; left:50%!important; top:50%!important; width:640px!important; height:480px!important; max-width:none!important; max-height:none!important; overflow:visible!important; margin:0!important; padding:0!important; border:0!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; transform:translate(-50%,-50%) scale(var(--scene-scale,1))!important; transform-origin:center center!important; z-index:42!important; color:#f8efd2; pointer-events:none; font:12px/1.2 MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif; text-shadow:1px 1px #080706; }
+    #trade-screen::before,#trade-screen::after { display:none!important; }
+    #trade-screen h2 { position:absolute!important; left:-10000px!important; top:0!important; width:1px!important; height:1px!important; overflow:hidden!important; margin:0!important; padding:0!important; }
+    #trade-window-art { position:absolute; left:10px; top:0; width:620px; height:456px; display:block; image-rendering:pixelated; pointer-events:none; }
+    #trade-screen button,#trade-screen input { pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important; }
+    #trade-screen button { position:absolute; display:block; margin:0; padding:0; border:0; border-radius:0; background-color:transparent; background-repeat:no-repeat; background-position:0 0; image-rendering:pixelated; box-shadow:none; color:#f8efd2; font:11px/1 MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif; text-shadow:1px 1px #080706; }
+    #trade-screen button:focus-visible { outline:1px solid #ffe25c; outline-offset:-2px; }
+    #trade-mine-name,#trade-peer-name { position:absolute; left:46px; width:156px; height:16px; overflow:hidden; color:#e3b6ff; white-space:nowrap; pointer-events:none; }
+    #trade-mine-name { top:18px; } #trade-peer-name { top:237px; }
+    .trade-pet-panel { position:absolute; overflow:hidden; pointer-events:none; }
+    #trade-mine-pet { left:18px; top:35px; width:202px; height:186px; }
+    #trade-peer-pet { left:18px; top:253px; width:202px; height:193px; }
+    #trade-pet-picker { left:328px; top:35px; width:202px; height:185px; }
+    .trade-pet-panel .trade-pet-name { position:absolute; left:12px; top:10px; width:176px; height:16px; overflow:hidden; color:#ffe45c; white-space:nowrap; }
+    .trade-pet-panel .trade-pet-stat { position:absolute; left:145px; width:50px; height:15px; overflow:hidden; color:#fff; text-align:right; white-space:nowrap; }
+    .trade-pet-panel .trade-pet-level { top:92px; } .trade-pet-panel .trade-pet-atk { top:120px; } .trade-pet-panel .trade-pet-def { top:148px; } .trade-pet-panel .trade-pet-quick { top:176px; }
+    #trade-pet-picker .trade-pet-level { top:91px; } #trade-pet-picker .trade-pet-atk { top:119px; } #trade-pet-picker .trade-pet-def { top:147px; } #trade-pet-picker .trade-pet-quick { top:175px; }
+    .trade-pet-panel .trade-pet-sprite { position:absolute; left:54px; top:38px; max-width:92px; max-height:86px; transform:translate(-50%,-50%); image-rendering:pixelated; }
+    .trade-pet-panel .trade-pet-empty { position:absolute; left:12px; top:80px; width:176px; color:#b9b19e; text-align:center; }
+    .trade-offer { width:82px; height:82px; overflow:hidden; }
+    .trade-offer.mine { left:232px; } .trade-offer.peer { left:232px; pointer-events:none!important; }
+    #trade-mine-offer-0 { top:33px; } #trade-mine-offer-1 { top:131px; }
+    #trade-peer-offer-0 { top:251px; } #trade-peer-offer-1 { top:349px; }
+    .trade-offer.selected::after { content:""; position:absolute; inset:2px; border:2px solid #ffe25c; box-shadow:inset 0 0 0 1px #5f3515; pointer-events:none; }
+    .trade-offer img { position:absolute; left:50%; top:43%; max-width:62px; max-height:58px; transform:translate(-50%,-50%); image-rendering:pixelated; pointer-events:none; }
+    .trade-offer .trade-offer-label { position:absolute; left:3px; right:3px; bottom:5px; overflow:hidden; color:#fff2a3; text-align:center; white-space:nowrap; text-overflow:ellipsis; pointer-events:none; }
+    .trade-offer .trade-offer-gold { position:absolute; left:4px; right:4px; top:51px; color:#ffe45c; text-align:center; white-space:nowrap; pointer-events:none; }
+    .trade-offer.locked::before { content:"LOCK"; position:absolute; left:4px; top:4px; z-index:2; color:#ff6464; font-weight:bold; pointer-events:none; }
+    #trade-inventory-grid { position:absolute; left:0; top:0; width:640px; height:480px; pointer-events:none; }
+    .trade-inventory-slot { width:50px; height:48px; overflow:hidden; }
+    .trade-inventory-slot img { position:absolute; left:50%; top:50%; max-width:48px; max-height:46px; transform:translate(-50%,-50%); image-rendering:pixelated; pointer-events:none; }
+    .trade-inventory-slot.offered { filter:grayscale(.85) brightness(.65); }
+    .trade-inventory-slot:disabled { pointer-events:none; }
+    #trade-item-detail { position:absolute; left:330px; top:409px; width:278px; height:39px; overflow:hidden; color:#f8efd2; white-space:pre-wrap; pointer-events:none; }
+    #trade-gold-owned,#trade-gold-amount { position:absolute; left:540px; width:76px; height:22px; padding:1px 4px; border:0; outline:0; background:transparent; color:#ffe45c; text-align:right; font:12px/20px MingLiU,"Microsoft JhengHei",sans-serif; text-shadow:1px 1px #080706; box-sizing:border-box; }
+    #trade-gold-owned { top:59px; pointer-events:none; } #trade-gold-amount { top:113px; }
+    #trade-pet-prev,#trade-pet-next { left:468px; width:32px; height:16px; }
+    #trade-pet-prev { top:63px; background-image:url('/assets/bitmaps/bitmap_9270.png'); }
+    #trade-pet-prev:active { background-image:url('/assets/bitmaps/bitmap_9271.png'); }
+    #trade-pet-next { top:88px; background-image:url('/assets/bitmaps/bitmap_9272.png'); }
+    #trade-pet-next:active { background-image:url('/assets/bitmaps/bitmap_9273.png'); }
+    #trade-gold-up,#trade-gold-down { top:93px; width:16px; height:14px; }
+    #trade-gold-up { left:564px; background-image:url('/assets/bitmaps/bitmap_9183.png'); }
+    #trade-gold-up:active { background-image:url('/assets/bitmaps/bitmap_9184.png'); }
+    #trade-gold-down { left:589px; background-image:url('/assets/bitmaps/bitmap_9185.png'); }
+    #trade-gold-down:active { background-image:url('/assets/bitmaps/bitmap_9186.png'); }
+    #trade-gold-place,#trade-pet-place { width:52px; height:17px; background-image:url('/assets/bitmaps/bitmap_9181.png'); }
+    #trade-gold-place:active,#trade-pet-place:active { background-image:url('/assets/bitmaps/bitmap_9182.png'); }
+    #trade-gold-place { left:573px; top:156px; } #trade-pet-place { left:376px; top:198px; }
+    #trade-confirm,#trade-cancel { top:422px; width:80px; height:16px; }
+    #trade-confirm { left:369px; background-image:url('/assets/bitmaps/bitmap_9211.png'); }
+    #trade-cancel { left:501px; background-image:url('/assets/bitmaps/bitmap_9170.png'); }
+    #trade-confirm:disabled,#trade-gold-place:disabled,#trade-pet-place:disabled,#trade-pet-prev:disabled,#trade-pet-next:disabled,#trade-gold-up:disabled,#trade-gold-down:disabled { filter:grayscale(1) brightness(.62); pointer-events:none; }
+    #trade-state { position:absolute; left:330px; top:229px; width:288px; height:16px; overflow:hidden; color:#ffed77; text-align:center; white-space:nowrap; pointer-events:none; }
     /* A battle is a separate native back-buffer. Keep all field-only layers
        out of its paint/compositor tree even while a prior frame is settling. */
     main[data-phase="battle"] #world-tools,
@@ -1011,7 +1070,7 @@
        envelope in the 2.5 server.  It is not a B movie command: keeping it
        as a string field is required before receiveBattleStatus() can split
        the 8/13-field participant records. */
-    BC:["string"], I:["string"], SI:["int","int"], MSG:["int","string","int"], PME:["int","int","int","int","int","int","int","int","string"], AB:["string"], ABI:["int","string"], TK:["int","string","int"], MC:["int","int","int","int","int","int","int","int","string"], M:["int","int","int","int","int","string"], C:["string"], CA:["string"], CD:["string"], R:["string"], S:["string"], D:["int","int","int","string"], FS:["int"], HL:["int"], PR:["int","int"], KS:["int","int"], PS:["int","int","int","int"], SKUP:["int"], WN:["int","int","int","int","string"], EF:["int","int","string"], SE:["int","int","int","int"], ClientLogin:["string"], CreateNewChar:["string","string"], CharDelete:["string","string"], CharLogin:["string","string"], CharList:["string","string"], CharLogout:["string","string"], ProcGet:["string"], PlayerNumGet:["int","int"], Echo:["string"], NU:["int"], TD:["int","string"], FM:["string"], WO:["int"], IC:["int","int"], NC:["int"], PETST:["int","int"], /* _PETS_SELECTCON names this server reply PETS even though the 2.5 header keeps the legacy PETST id. */ PETS:["int","int"], SPET:["int","int"]
+    BC:["string"], I:["string"], SI:["int","int"], MSG:["int","string","int"], PME:["int","int","int","int","int","int","int","string"], AB:["string"], ABI:["int","string"], TK:["int","string","int"], MC:["int","int","int","int","int","int","int","int","string"], M:["int","int","int","int","int","string"], C:["string"], CA:["string"], CD:["string"], R:["string"], S:["string"], D:["int","int","int","string"], FS:["int"], HL:["int"], PR:["int","int"], KS:["int","int"], PS:["int","int","int","int"], SKUP:["int"], WN:["int","int","int","int","string"], EF:["int","int","string"], SE:["int","int","int","int"], ClientLogin:["string"], CreateNewChar:["string","string"], CharDelete:["string","string"], CharLogin:["string","string"], CharList:["string","string"], CharLogout:["string","string"], ProcGet:["string"], PlayerNumGet:["int","int"], Echo:["string"], NU:["int"], TD:["string"], FM:["string"], WO:["int"], IC:["int","int"], NC:["int"], PETST:["int","int"], /* _PETS_SELECTCON names this server reply PETS even though the 2.5 header keeps the legacy PETST id. */ PETS:["int","int"], SPET:["int","int"]
   });
 
   function u8(value) { return value instanceof Uint8Array ? value : Uint8Array.from(value || []); }
@@ -1265,7 +1324,7 @@
   ]);
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
   const STONEAGE_25=Object.freeze({version:"2.5",executable:"sa_2903.exe",runningKey:"cary"});
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* A normal 2.5 owner walk has no per-tile self echo.  This latch limits
      the optional post-route S:c probe to one request per prediction epoch;
      otherwise a missing self C packet would schedule an endless one-second
@@ -1694,10 +1753,10 @@
     .field-window-screen{position:absolute!important;left:50%!important;top:50%!important;width:640px!important;height:480px!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:translate(-50%,-50%) scale(var(--scene-scale,1))!important;transform-origin:center center!important;color:#f5ecd4!important;z-index:31!important;pointer-events:none}
     .field-window-screen h2{position:absolute!important;left:-10000px!important;top:0!important;width:1px!important;height:1px!important;overflow:hidden!important}
     .field-window-screen .field-window-frame{position:absolute;z-index:0;pointer-events:none;overflow:hidden;width:192px}
-    #field-settings-screen .field-window-frame{left:16px;top:16px;height:192px}
+    #field-settings-screen .field-window-frame{left:16px;top:16px;height:240px}
     #field-actions-screen .field-window-frame{left:440px;top:16px;height:288px}
     .field-window-screen #field-settings-list,.field-window-screen #field-actions-list{position:absolute;z-index:2;display:block;margin:0;padding:0;overflow:visible;pointer-events:auto}
-    #field-settings-screen #field-settings-list{left:34px;top:39px;width:157px;height:142px}
+    #field-settings-screen #field-settings-list{left:34px;top:39px;width:157px;height:172px}
     #field-actions-screen #field-actions-list{left:458px;top:37px;width:157px;height:232px}
     .field-window-screen .field-setting-row,.field-window-screen .field-action-row{box-sizing:border-box;display:block;position:absolute;left:0;width:157px;height:22px;margin:0;padding:3px 0 0 2px;color:#f0e5c6;background:transparent;border:0;border-radius:0;box-shadow:none;outline:0;font:12px/12px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;font-weight:400;text-align:left;text-shadow:1px 1px #080706;white-space:pre;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
     /* field.cpp::charActionAnimeChange() creates two 73×22 hit boxes at
@@ -1720,9 +1779,10 @@
     .field-window-screen .field-setting-row span{display:inline-block;width:85px}.field-window-screen .field-setting-row b{display:inline-block;color:#f0e5c6;font-weight:400}
     .field-window-screen .field-setting-row:hover,.field-window-screen .field-setting-row:focus-visible,.field-window-screen .field-action-row:hover,.field-window-screen .field-action-row:focus-visible{color:#ffe88b;text-shadow:0 0 3px #ffe88b,1px 1px #080706;filter:none;outline:0}
     .field-window-screen #field-settings-close,.field-window-screen #field-actions-close{position:absolute;z-index:3;width:80px;height:16px;padding:0;border:0;border-radius:0;color:transparent;background:transparent url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none;outline:0;font-size:0;pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
-    /* StockDispBuffer receives the centre anchors (112,178)/(536,274);
-       CG_CLOSE_BTN itself is 80×16 with ADRN offset -40/-8. */
-    #field-settings-screen #field-settings-close{left:72px;top:170px}
+    /* etcSwitchProc() builds the settings frame with h=5 and stocks the
+       close control at centre (112,216).  CG_CLOSE_BTN itself is 80×16 with
+       ADRN offset -40/-8, so its visible top-left is (72,208). */
+    #field-settings-screen #field-settings-close{left:72px;top:208px}
     #field-actions-screen #field-actions-close{left:496px;top:266px}
     .field-window-screen #field-settings-close:hover,.field-window-screen #field-settings-close:focus-visible,.field-window-screen #field-actions-close:hover,.field-window-screen #field-actions-close:focus-visible{filter:brightness(1.12);outline:0}
     #status-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:360px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:310px;--toolbar-x:18px;--toolbar-y:338px}
@@ -2488,6 +2548,7 @@
           <button type="button" class="field-setting-row" data-field-setting="duel"><span>决    斗：</span><b class="field-setting-value"></b></button>
           <button type="button" class="field-setting-row" data-field-setting="mail"><span>交换名片：</span><b class="field-setting-value"></b></button>
           <button type="button" class="field-setting-row" data-field-setting="chat"><span>聊    天：</span><b class="field-setting-value"></b></button>
+          <button type="button" class="field-setting-row" data-field-setting="trade"><span>交    易：</span><b class="field-setting-value"></b></button>
         </div>
         <button id="field-settings-close" type="button" aria-label="关闭选单视窗"></button>
       </section>
@@ -2510,6 +2571,31 @@
           <button type="button" class="field-action-row field-action-last" data-action-no="12"> 投  掷 </button>
         </div>
         <button id="field-actions-close" type="button" aria-label="关闭动作视窗"></button>
+      </section>
+      <section id="trade-screen" class="advanced-screen legacy-screen hidden" aria-label="交易窗口">
+        <h2>交易</h2>
+        <img id="trade-window-art" src="/assets/bitmaps/bitmap_126231.png" alt="">
+        <span id="trade-mine-name"></span><span id="trade-peer-name"></span>
+        <div id="trade-mine-pet" class="trade-pet-panel" aria-label="我的交易宠物"></div>
+        <div id="trade-peer-pet" class="trade-pet-panel" aria-label="对方交易宠物"></div>
+        <div id="trade-pet-picker" class="trade-pet-panel" aria-label="选择交易宠物"></div>
+        <button id="trade-mine-offer-0" class="trade-offer mine" type="button" data-trade-offer="0" aria-label="选择我的第一个交易槽"></button>
+        <button id="trade-mine-offer-1" class="trade-offer mine" type="button" data-trade-offer="1" aria-label="选择我的第二个交易槽"></button>
+        <button id="trade-peer-offer-0" class="trade-offer peer" type="button" aria-label="对方第一个交易槽" tabindex="-1"></button>
+        <button id="trade-peer-offer-1" class="trade-offer peer" type="button" aria-label="对方第二个交易槽" tabindex="-1"></button>
+        <div id="trade-inventory-grid" aria-label="背包物品"></div>
+        <div id="trade-item-detail"></div>
+        <span id="trade-gold-owned"></span>
+        <input id="trade-gold-amount" type="number" inputmode="numeric" min="0" step="1" aria-label="交易石币数量">
+        <button id="trade-pet-prev" type="button" aria-label="上一只宠物"></button>
+        <button id="trade-pet-next" type="button" aria-label="下一只宠物"></button>
+        <button id="trade-gold-up" type="button" aria-label="增加石币"></button>
+        <button id="trade-gold-down" type="button" aria-label="减少石币"></button>
+        <button id="trade-gold-place" type="button" aria-label="放置石币"></button>
+        <button id="trade-pet-place" type="button" aria-label="放置宠物"></button>
+        <span id="trade-state" aria-live="polite"></span>
+        <button id="trade-confirm" type="button" aria-label="锁定或确认交易"></button>
+        <button id="trade-cancel" type="button" aria-label="取消交易"></button>
       </section>
       <section id="inventory-screen" class="advanced-screen hidden"><h2>物品栏 / 地面物品</h2><p id="inventory-status" class="status">尚未收到 I 数据。</p><div id="inventory-list" class="card-grid"></div><div class="toolbar-row"><button id="request-inventory">请求背包</button><button id="inventory-pickup">拾取/放置</button></div></section>
       <section id="pets-screen" class="advanced-screen hidden"><h2>宠物与技能 · 2.5</h2><p id="pets-status" class="status">尚未收到宠物状态。</p><div id="pets-list" class="card-grid"></div><div id="pet-skills-list" class="card-grid"></div><div class="toolbar-row"><button id="request-pets">请求宠物/技能</button><button id="pet-follow">切换待机位</button><button id="pet-name-submit">提交宠物名</button></div></section>
@@ -2994,8 +3080,8 @@
      after it, so a visible “决斗 YES” still made lssproto_DU_recv reject
      the request. Keep the native wire bits here instead of the labels'
      display order. */
-  const FIELD_SETTING_BITS=Object.freeze({party:1,duel:4,mail:16,chat:8});
-  const FIELD_SETTING_LABELS=Object.freeze({party:["组    队："," Ｎ  Ｏ"," ＹＥＳ"],duel:["决    斗："," Ｎ  Ｏ"," ＹＥＳ"],mail:["交换名片："," Ｎ  Ｏ"," ＹＥＳ"],chat:["聊    天："," 全  员"," 队  伍"]});
+  const FIELD_SETTING_BITS=Object.freeze({party:1,duel:4,mail:16,chat:8,trade:32});
+  const FIELD_SETTING_LABELS=Object.freeze({party:["组    队："," Ｎ  Ｏ"," ＹＥＳ"],duel:["决    斗："," Ｎ  Ｏ"," ＹＥＳ"],mail:["交换名片："," Ｎ  Ｏ"," ＹＥＳ"],chat:["聊    天："," 全  员"," 队  伍"],trade:["交    易："," Ｎ  Ｏ"," ＹＥＳ"]});
   function openFieldWindow(name){
     if(app.phase!=="world"||app.battle)return;
     show(worldScreen);
@@ -3127,7 +3213,7 @@
      submit.  This makes a fresh page and a logout back to the title follow
      the same music lifecycle. */
   setMusicMode("title",2);
-  function openPanel(name){ if(app.phase!=="world"&&name!=="journal")return; advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`)); syncFieldOverlayVisibility(); setActivePanelButton(name); if(name==="inventory")renderInventory(); if(name==="pets"){app.petMenuPage="list";app.petSkillHover=-1;renderPets();} if(name==="status")renderStatus(); if(name==="party")renderPartyFixed(); if(name==="map")renderMapDetails(); if(name==="social")renderSocial(); if(name==="titles")renderTitles(); if(name==="album")renderAlbumFixed(); if(name==="system"){app.systemPage="menu";renderSystem();} if(name==="actions")renderProtocolFields(); if(name==="journal")renderJournal(); if(name==="help"){app.helpPage=0;renderHelp();} }
+  function openPanel(name){ if(app.trade?.active||(app.phase!=="world"&&name!=="journal"))return; advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`)); syncFieldOverlayVisibility(); setActivePanelButton(name); if(name==="inventory")renderInventory(); if(name==="pets"){app.petMenuPage="list";app.petSkillHover=-1;renderPets();} if(name==="status")renderStatus(); if(name==="party")renderPartyFixed(); if(name==="map")renderMapDetails(); if(name==="social")renderSocial(); if(name==="titles")renderTitles(); if(name==="album")renderAlbumFixed(); if(name==="system"){app.systemPage="menu";renderSystem();} if(name==="actions")renderProtocolFields(); if(name==="journal")renderJournal(); if(name==="help"){app.helpPage=0;renderHelp();} }
   function status(text,kind="") { $("connection").textContent=text; $("connection").style.color=kind==="error"?"var(--danger)":kind==="good"?"var(--good)":"var(--muted)"; }
   function loginStatus(text,kind="") { const element=$("login-status"); element.textContent=text; element.className="status"+(kind?" "+kind:""); }
   function characterStatus(text,kind="") { const element=$("character-status"); element.textContent=text; element.className="status"+(kind?" "+kind:""); }
@@ -4224,7 +4310,12 @@
   function spriteActionForActor(actor){
     if(actor?.battle)return Number.isFinite(Number(actor.action))?Number(actor.action):3;
     if(Number.isFinite(Number(actor?.caAction)))return CA_TO_SPRITE_ACTION[Number(actor.caAction)]??3;
-    return (Number(actor?.action)===1||Number(actor?.action)===4||actor?.walking)?4:3;
+    /* setPcAction() in the native field client stores the selected AC menu
+       number directly as its ANIM_LIST row (0 attack ... 12 throw).  Local
+       actions therefore must not be collapsed into only walk/stand; doing
+       so made every right-side Action item appear to do nothing. */
+    if(Number.isFinite(Number(actor?.action)))return Number(actor.action);
+    return actor?.walking?4:3;
   }
   function setLocalActorAction(actor,action){
     if(!actor)return;
@@ -4409,7 +4500,7 @@
       const targetRaw=decimal(tokens[base+6]),item={index,name:unescapeCharacterOption(name),name2:unescapeCharacterOption(tokens[base+1]||""),color:decimal(tokens[base+2]),memo:unescapeCharacterOption(tokens[base+3]||""),graphic:decimal(tokens[base+4]),field:decimal(tokens[base+5]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,level:decimal(tokens[base+7]),send:decimal(tokens[base+8])};
       items.push(item);
     }
-    app.inventory=items; $("inventory-status").textContent=`服务器背包记录 ${items.length} 件；${indexed?"更新包按 10 字段":"登录状态按 9 字段"}解析。`; renderInventory();
+    app.inventory=items; $("inventory-status").textContent=`服务器背包记录 ${items.length} 件；${indexed?"更新包按 10 字段":"登录状态按 9 字段"}解析。`; renderInventory();if(app.trade?.active)renderTrade();
   }
   function renderInventory() {
     const list=$("inventory-list"); if(!list)return; list.replaceChildren();
@@ -4422,6 +4513,162 @@
       list.append(slot);
     }
     const close=imageButton("关闭物品窗口",9134,()=>show(worldScreen),80,16);close.id="inventory-close";list.append(close);
+  }
+  function newTradeState(peerFd,peerName){
+    const candidates=tradePetCandidates();
+    return {active:true,peerFd:decimal(peerFd,-1),peerName:unescapeCharacterOption(peerName||""),mineSlots:[null,null],peerSlots:[null,null],minePet:null,peerPet:null,selectedOffer:0,petCursor:candidates[0]?.slot??-1,mineLocked:false,peerLocked:false,mineFinal:false,peerFinal:false,sending:false,openedAt:Date.now()};
+  }
+  function tradePetCandidates(){
+    const riding=decimal(app.pc?.ridePet,-1),result=[];
+    for(let slot=0;slot<5;slot++){const pet=app.petSlots?.[slot];if(pet&&slot!==riding)result.push({slot,pet});}
+    return result;
+  }
+  function tradeCurrentPet(){
+    const trade=app.trade,candidates=tradePetCandidates();if(!trade||!candidates.length)return null;
+    let position=candidates.findIndex(entry=>entry.slot===decimal(trade.petCursor,-1));
+    if(position<0){position=0;trade.petCursor=candidates[0].slot;}
+    return candidates[position];
+  }
+  function tradePeerMatches(tokens,trade=app.trade){
+    if(!trade?.active)return false;
+    return decimal(tokens?.[1],-2)===decimal(trade.peerFd,-1)&&unescapeCharacterOption(tokens?.[2]||"")===trade.peerName;
+  }
+  function tradePetSprite(pet){
+    const actor={graphic:pet?.graphic??pet?.graNo,direction:0,action:3},entry=spriteEntryForActor(actor);
+    const animation=entry?.sprite?.actions?.find(item=>Number(item.direction)===0&&Number(item.action)===3)||entry?.sprite?.actions?.find(item=>Number(item.action)===3)||entry?.sprite?.actions?.[0];
+    const frame=animation?.frames?.[0];
+    if(!frame?.file){if(!assetState.spritesReady)loadSpriteManifest().then(value=>{if(value&&app.trade?.active)renderTrade();});return null;}
+    const image=document.createElement("img");image.className="trade-pet-sprite";image.alt="";image.src=`/assets/${frame.file}`;return image;
+  }
+  function renderTradePetPanel(node,pet){
+    if(!node)return;node.replaceChildren();
+    if(!pet){const empty=document.createElement("span");empty.className="trade-pet-empty";empty.textContent="没有放置宠物";node.append(empty);return;}
+    const name=document.createElement("span");name.className="trade-pet-name";name.textContent=petDisplayName(pet)||"宠物";node.append(name);
+    const sprite=tradePetSprite(pet);if(sprite)node.append(sprite);
+    for(const [key,value] of [["level",pet.level],["atk",pet.atk],["def",pet.def],["quick",pet.quick]]){const stat=document.createElement("span");stat.className=`trade-pet-stat trade-pet-${key}`;stat.textContent=textOr(value,"-");node.append(stat);}
+  }
+  function tradeOfferIcon(slot){
+    if(!slot)return null;
+    if(slot.kind==="G")return "/assets/bitmaps/bitmap_126253.png";
+    const info=resolveBitmapInfo(slot.graphic);return info?.file?`/assets/${info.file}`:null;
+  }
+  function renderTradeOffer(node,slot,selected=false,locked=false){
+    if(!node)return;node.replaceChildren();node.classList.toggle("selected",selected);node.classList.toggle("locked",locked);
+    if(!slot){node.setAttribute("aria-label",selected?"当前选中的空交易槽":"空交易槽");return;}
+    const source=tradeOfferIcon(slot);if(source){const image=document.createElement("img");image.src=source;image.alt="";node.append(image);}
+    const label=document.createElement("span");label.className=slot.kind==="G"?"trade-offer-gold":"trade-offer-label";label.textContent=slot.kind==="G"?String(Math.max(0,decimal(slot.amount,0))):(slot.name||"道具");node.append(label);
+  }
+  function tradeItemDescription(item){return item?`${item.name||"道具"}\n${item.memo||item.effect||""}`:"";}
+  function setTradeItemDetail(item){const node=$("trade-item-detail");if(node)node.textContent=tradeItemDescription(item);}
+  function renderTradeInventory(trade){
+    const grid=$("trade-inventory-grid");if(!grid)return;grid.replaceChildren();
+    const offered=new Set((trade?.mineSlots||[]).filter(slot=>slot?.kind==="I").map(slot=>decimal(slot.itemIndex,-1)));
+    for(let index=5;index<20;index++){
+      const column=(index-5)%5,row=Math.floor((index-5)/5),item=app.inventory.find(entry=>decimal(entry.index,-1)===index);
+      const slot=document.createElement("button");slot.type="button";slot.className="trade-inventory-slot";slot.style.left=`${332+column*51}px`;slot.style.top=`${248+row*48}px`;slot.dataset.itemIndex=String(index);
+      if(item){slot.setAttribute("aria-label",`交易 ${item.name||`物品 ${index}`}`);slot.title=item.name||"";const info=resolveBitmapInfo(item.graphic);if(info?.file){const icon=document.createElement("img");icon.src=`/assets/${info.file}`;icon.alt="";slot.append(icon);}slot.addEventListener("click",()=>tradeOfferItem(index));slot.addEventListener("pointerenter",()=>setTradeItemDetail(item));slot.addEventListener("focus",()=>setTradeItemDetail(item));}
+      else{slot.disabled=true;slot.setAttribute("aria-label",`空背包格 ${index}`);}
+      slot.classList.toggle("offered",offered.has(index));if(trade?.mineLocked||trade?.sending)slot.disabled=true;grid.append(slot);
+    }
+  }
+  function tradeStatusText(trade){
+    if(!trade?.active)return "";
+    if(trade.mineFinal&&trade.peerFinal)return "双方已最终确认，服务器正在交换物品…";
+    if(trade.mineFinal)return "已最终确认，等待对方确认。";
+    if(trade.peerFinal)return "对方已最终确认，请按 OK 完成交易。";
+    if(trade.mineLocked&&trade.peerLocked)return "双方已锁定，请再次按 OK 最终确认。";
+    if(trade.mineLocked)return "已锁定，等待对方锁定。";
+    if(trade.peerLocked)return "对方已锁定；确认内容后按 OK。";
+    return "先选择交易槽，再从右下背包放置道具。";
+  }
+  function renderTrade(){
+    const trade=app.trade,screen=$("trade-screen");if(!screen)return;
+    if(!trade?.active){screen.classList.add("hidden");syncFieldOverlayVisibility();return;}
+    $("trade-mine-name").textContent=app.pc?.name||app.character||"MINE";$("trade-peer-name").textContent=trade.peerName||"YOURS";
+    for(let index=0;index<2;index++){
+      const mine=$(`trade-mine-offer-${index}`),peer=$(`trade-peer-offer-${index}`);
+      renderTradeOffer(mine,trade.mineSlots[index],index===decimal(trade.selectedOffer,0),trade.mineLocked);renderTradeOffer(peer,trade.peerSlots[index],false,trade.peerLocked);
+      if(mine)mine.disabled=Boolean(trade.mineLocked||trade.sending);
+    }
+    renderTradePetPanel($("trade-mine-pet"),trade.minePet);renderTradePetPanel($("trade-peer-pet"),trade.peerPet);renderTradePetPanel($("trade-pet-picker"),tradeCurrentPet()?.pet||null);renderTradeInventory(trade);
+    const maximum=Math.max(0,decimal(app.pc?.gold,0)),gold=$("trade-gold-amount");$("trade-gold-owned").textContent=String(maximum);
+    if(gold){gold.max=String(maximum);gold.disabled=Boolean(trade.mineLocked||trade.sending);if(document.activeElement!==gold){const value=Math.max(0,Math.min(maximum,decimal(gold.value,0)));gold.value=String(value);}}
+    const petAvailable=Boolean(tradeCurrentPet());for(const id of ["trade-pet-prev","trade-pet-next","trade-pet-place"])if($(id))$(id).disabled=Boolean(trade.mineLocked||trade.sending||!petAvailable);
+    for(const id of ["trade-gold-up","trade-gold-down","trade-gold-place"])if($(id))$(id).disabled=Boolean(trade.mineLocked||trade.sending);
+    const confirm=$("trade-confirm");if(confirm){confirm.disabled=Boolean(trade.sending||trade.mineFinal||(trade.mineLocked&&!trade.peerLocked));confirm.title=trade.mineLocked&&trade.peerLocked?"最终确认交易":"锁定交易内容";}
+    $("trade-state").textContent=tradeStatusText(trade);screen.classList.remove("hidden");syncFieldOverlayVisibility();renderWorldOverlay();
+  }
+  function openTrade(peerFd,peerName){
+    if(app.phase!=="world"||app.battle)return;
+    app.trade=newTradeState(peerFd,peerName);advancedScreens.forEach(screen=>screen.classList.add("hidden"));$("trade-screen")?.classList.remove("hidden");setActivePanelButton("");setTradeItemDetail(null);renderTrade();
+  }
+  function closeTrade(message="",completed=false){
+    const trade=app.trade;if(!trade)return;app.trade=null;$("trade-screen")?.classList.add("hidden");syncFieldOverlayVisibility();renderWorldOverlay();if(message)setWorldState(message,completed?"good":"");
+  }
+  function tradeSetSelectedOffer(index){const trade=app.trade;if(!trade?.active||trade.mineLocked)return;trade.selectedOffer=Math.max(0,Math.min(1,decimal(index,0)));renderTrade();}
+  function tradeNextOffer(trade=app.trade){
+    if(!trade)return 0;const selected=Math.max(0,Math.min(1,decimal(trade.selectedOffer,0)));if(!trade.mineSlots[selected])return selected;const other=selected^1;if(!trade.mineSlots[other])return other;return selected;
+  }
+  function tradeOfferItem(index){
+    const trade=app.trade,item=app.inventory.find(entry=>decimal(entry.index,-1)===decimal(index,-2));if(!trade?.active||trade.mineLocked||trade.sending||!item)return;
+    if(trade.mineSlots.some(slot=>slot?.kind==="I"&&decimal(slot.itemIndex,-1)===decimal(index,-2))){setTradeItemDetail(item);$("trade-state").textContent="这个道具已经放入交易槽。";return;}
+    const slotIndex=tradeNextOffer(trade),previous=trade.mineSlots[slotIndex];trade.mineSlots[slotIndex]={kind:"I",itemIndex:decimal(index,-1),graphic:decimal(item.graphic,-1),name:item.name||"道具",effect:item.memo||"",damage:item.damage||""};trade.selectedOffer=slotIndex^1;trade.sending=true;renderTrade();playSoundEffect(212);
+    send("TD",[`T|${trade.peerFd}|${trade.peerName}|I|${slotIndex+1}|${decimal(index,-1)}`]).catch(error=>{if(app.trade===trade){trade.mineSlots[slotIndex]=previous;reportError(error);}}).finally(()=>{if(app.trade===trade){trade.sending=false;renderTrade();}});
+  }
+  function tradeGoldValue(){const maximum=Math.max(0,decimal(app.pc?.gold,0)),node=$("trade-gold-amount");return Math.max(0,Math.min(maximum,decimal(node?.value,0)));}
+  function tradeAdjustGold(delta){const node=$("trade-gold-amount");if(!node||node.disabled)return;node.value=String(Math.max(0,Math.min(Math.max(0,decimal(app.pc?.gold,0)),tradeGoldValue()+decimal(delta,0))));}
+  function tradeOfferGold(){
+    const trade=app.trade,amount=tradeGoldValue();if(!trade?.active||trade.mineLocked||trade.sending)return;if(amount<=0){$("trade-state").textContent="请输入要交易的石币数量。";return;}
+    if(trade.mineSlots.some(slot=>slot?.kind==="G")){ $("trade-state").textContent="石币已经放入交易槽。";return; }
+    const slotIndex=tradeNextOffer(trade),previous=trade.mineSlots[slotIndex];trade.mineSlots[slotIndex]={kind:"G",amount};trade.selectedOffer=slotIndex^1;trade.sending=true;renderTrade();playSoundEffect(212);
+    send("TD",[`T|${trade.peerFd}|${trade.peerName}|G|${slotIndex+1}|${amount}`]).catch(error=>{if(app.trade===trade){trade.mineSlots[slotIndex]=previous;reportError(error);}}).finally(()=>{if(app.trade===trade){trade.sending=false;renderTrade();}});
+  }
+  function tradeCyclePet(delta){
+    const trade=app.trade,candidates=tradePetCandidates();if(!trade?.active||trade.mineLocked||!candidates.length)return;let position=candidates.findIndex(entry=>entry.slot===decimal(trade.petCursor,-1));if(position<0)position=0;position=(position+(delta<0?-1:1)+candidates.length)%candidates.length;trade.petCursor=candidates[position].slot;renderTrade();playSoundEffect(217);
+  }
+  function tradeOfferPet(){
+    const trade=app.trade,current=tradeCurrentPet();if(!trade?.active||trade.mineLocked||trade.sending||!current)return;const previous=trade.minePet;trade.minePet={...current.pet,slot:current.slot,index:current.slot};trade.sending=true;renderTrade();playSoundEffect(212);
+    send("TD",[`T|${trade.peerFd}|${trade.peerName}|P|3|${current.slot}`]).catch(error=>{if(app.trade===trade){trade.minePet=previous;reportError(error);}}).finally(()=>{if(app.trade===trade){trade.sending=false;renderTrade();}});
+  }
+  function tradeConfirmationPair(slot){return slot?.kind==="G"?["G",String(Math.max(0,decimal(slot.amount,0)))]:["I",String(slot?.kind==="I"?decimal(slot.itemIndex,-1):-1)];}
+  function tradeConfirmationPayload(trade=app.trade){
+    if(!trade?.active)return "";const pairs=[tradeConfirmationPair(trade.mineSlots[0]),tradeConfirmationPair(trade.mineSlots[1]),["P",String(trade.minePet?decimal(trade.minePet.slot??trade.minePet.index,-1):-1)],tradeConfirmationPair(trade.peerSlots[0]),tradeConfirmationPair(trade.peerSlots[1]),["P",String(trade.peerPet?decimal(trade.peerPet.slot??trade.peerPet.index,-1):-1)]];
+    return `T|${trade.peerFd}|${trade.peerName}|K|${pairs.flat().join("|")}`;
+  }
+  function confirmTrade(){
+    const trade=app.trade;if(!trade?.active||trade.sending||trade.mineFinal)return;
+    if(!trade.mineLocked){trade.mineLocked=true;trade.sending=true;renderTrade();playSoundEffect(217);send("TD",[`T|${trade.peerFd}|${trade.peerName}|C|confirm`]).catch(error=>{if(app.trade===trade){trade.mineLocked=false;reportError(error);}}).finally(()=>{if(app.trade===trade){trade.sending=false;renderTrade();}});return;}
+    if(!trade.peerLocked){$("trade-state").textContent="等待对方锁定交易内容。";return;}
+    const payload=tradeConfirmationPayload(trade);trade.mineFinal=true;trade.sending=true;renderTrade();playSoundEffect(212);send("TD",[payload]).catch(error=>{if(app.trade===trade){trade.mineFinal=false;reportError(error);}}).finally(()=>{if(app.trade===trade){trade.sending=false;renderTrade();}});
+  }
+  function cancelTrade(){
+    const trade=app.trade;if(!trade?.active)return;const body=`W|${trade.peerFd}|${trade.peerName}`;closeTrade("已取消交易");playSoundEffect(203);send("TD",[body]).catch(reportError);
+  }
+  function parseTradePeerItem(tokens){
+    const extended=tokens.length>=11,graphic=decimal(tokens[5],-1),name=unescapeCharacterOption(tokens[6]||"");
+    const freeName=extended?unescapeCharacterOption(tokens[7]||""):"",effect=unescapeCharacterOption(tokens[extended?8:7]||""),itemIndex=decimal(tokens[extended?9:8],-1),damage=unescapeCharacterOption(tokens[extended?10:9]||"");
+    if(graphic<0||itemIndex<0)return null;return {kind:"I",graphic,name:freeName||name,baseName:name,freeName,effect,itemIndex,damage};
+  }
+  function parseTradePeerPet(tokens){
+    const graphic=decimal(tokens[5],-1),slot=decimal(tokens[11],-1);if(graphic<0||slot<0)return null;
+    return {kind:"P",graphic,name:unescapeCharacterOption(tokens[6]||""),level:decimal(tokens[7]),atk:decimal(tokens[8]),def:decimal(tokens[9]),quick:decimal(tokens[10]),slot,index:slot,transmigration:decimal(tokens[12]),maxHp:decimal(tokens[13])};
+  }
+  function handleTradeMessage(data){
+    const tokens=String(data||"").split("|"),head=(tokens[0]||"").toUpperCase();if(!head)return;
+    if(head==="C"){
+      const command=decimal(tokens[3],0);if(command===1)openTrade(tokens[1],tokens[2]);else if(command===0&&app.trade?.active&&tradePeerMatches(tokens))closeTrade("对方目前不能交易");return;
+    }
+    if(head==="W"){
+      const trade=app.trade;if(!trade?.active||!tradePeerMatches(tokens,trade))return;const completed=Boolean(trade.mineFinal&&trade.peerFinal);closeTrade(completed?"交易完成":"对方取消了交易",completed);playSoundEffect(203);return;
+    }
+    if(head!=="T"||!app.trade?.active||!tradePeerMatches(tokens))return;
+    const trade=app.trade,kind=(tokens[3]||"").toUpperCase(),showIndex=decimal(tokens[4],0)-1;
+    if(kind==="I"&&showIndex>=0&&showIndex<2)trade.peerSlots[showIndex]=parseTradePeerItem(tokens);
+    else if(kind==="G"&&showIndex>=0&&showIndex<2){const amount=decimal(tokens[5],-1);trade.peerSlots[showIndex]=amount<0?null:{kind:"G",amount};}
+    else if(kind==="P"&&decimal(tokens[4],0)===3)trade.peerPet=parseTradePeerPet(tokens);
+    else if(kind==="C")trade.peerLocked=true;
+    else if(kind==="A"){trade.peerLocked=true;trade.peerFinal=true;}
+    setStatus("trade",data);renderTrade();
   }
   function parseContacts(text) {
     // ADDRESSBOOK_sendAddressbookTable() emits seven fields per slot:
@@ -5413,7 +5660,7 @@
       case "G": app.status.gems=parts.slice(1).filter(Boolean);break;
       default: app.serverState[kind]=parts.slice(1);break;
     }
-    renderPets();renderStatus();renderPartyFixed();renderTitles();
+    renderPets();renderStatus();renderPartyFixed();renderTitles();if(app.trade?.active)renderTrade();
   }
   function battleNumber(value){const text=String(value??"");if(!text)return 0;const parsed=parseInt(text,16);return Number.isFinite(parsed)?parsed:stateNumber(text);}
   function battleBase62(value,fallback=0){const text=String(value??"");if(!text)return fallback;const parsed=Protocol.base62(text);return Number.isFinite(parsed)?parsed:fallback;}
@@ -10607,7 +10854,9 @@
       case "ProcGet": app.serverInfo.version=values[0]||"";addChat("服务器",`版本：${values[0]||"未知"}`);renderSystem();break;
       case "Echo": setStatus("lastEcho",values[0]||"");break;
       case "NU": setStatus("serverNotice",values[0]);addChat("服务器",`系统通知 ${textOr(values[0])}`);break;
-      case "TD": setStatus("trade",values[1]||"");addChat("交易",values[1]||`交易状态 ${textOr(values[0])}`);break;
+      /* Stock 2.5 lssproto_TD_send serializes only `message`; the unused
+         `index` argument in its C signature is not present on the wire. */
+      case "TD": handleTradeMessage(values[0]||"");break;
       case "FM": setStatus("family",values[0]||"");addChat("家族",values[0]||"");break;
       case "WO": setStatus("warpEffect",values[0]);addEvent(`传送效果 ${textOr(values[0])}`);break;
       case "IC": setStatus("itemCrack",`${values[0]??0},${values[1]??0}`);addEvent(`物品破解位置 ${values[0]??0},${values[1]??0}`);break;
@@ -10864,7 +11113,7 @@
   app.movePredictionSyncRequested=false;
   /* A fresh field session must never inherit a pending warp curtain. */
   cancelMapFloorTransition();
-  enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.talkConversation=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
+  enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.talkConversation=null;app.trade=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
   /* Re-entry can happen after logout/reconnect without rebuilding the page;
      make the map transition lifecycle independent of the battle/field reset
      wrapper above. */
@@ -11547,7 +11796,7 @@
     const animation=app.walkAnimation,now=performance.now(),progress=animation?walkProgress(now):1;
     for(const actor of actors){
       const isSelf=actor.name===app.character||actor.id===app.playerActorId;
-      const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:1}):actor;
+      const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:4}):actor;
       drawActor(ctx,renderActor,tilePoint(renderActor.x,renderActor.y));
     }
   }
@@ -11606,7 +11855,7 @@
     const animation=app.walkAnimation,now=performance.now(),progress=animation?walkProgress(now):1,actorItems=[];
     for(const actor of actors){
       const isSelf=actor.name===app.character||actor.id===app.playerActorId;
-      const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:1}):actor;
+      const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:4}):actor;
       const anchor=mapPixel(Number(renderActor.x)||0,Number(renderActor.y)||0);
       const frame=actorFrame(renderActor),info=frame?.frame||frame?.info||{};
       /* The local smooth-walk actor is a shallow presentation copy with a
@@ -12969,7 +13218,7 @@
        server; applying it here made every predicted walking frame face the
        wrong octant and then snap when the tile finished. */
     const renderDirection=step.direction;
-    const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(item=>item.name===app.character);if(actor){actor.direction=renderDirection;actor.wireDirection=serverDirectionFromClient(renderDirection);setLocalActorAction(actor,1);}
+    const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(item=>item.name===app.character);if(actor){actor.direction=renderDirection;actor.wireDirection=serverDirectionFromClient(renderDirection);setLocalActorAction(actor,4);}
     startWalkAnimation(from,target,renderDirection);renderWorld(true);renderWorldOverlay();
   }
   function directionFor(dx,dy) { for(let i=0;i<DIRS.length;i++)if(DIRS[i][0]===Math.sign(dx)&&DIRS[i][1]===Math.sign(dy))return i;return -1; }
@@ -14043,6 +14292,10 @@
     if(app.phase==="world"&&!app.battle){const directions={ArrowUp:3,w:3,W:3,ArrowRight:5,d:5,D:5,ArrowDown:7,s:7,S:7,ArrowLeft:1,a:1,A:1};if(directions[event.key]!==undefined){event.preventDefault();move(directions[event.key]);return;}}
     if(app.battle&&/^[1-8]$/.test(event.key)){const buttons=[...document.querySelectorAll("#battle-ui .battle-hit")],button=buttons[Number(event.key)-1];if(button){event.preventDefault();button.click();return;}}
     if(event.key==="Escape"){
+      /* The trade window is a server-owned session.  Hiding its DOM without
+         sending W leaves both 2.5 characters in CHAR_TRADE_TRADING and makes
+         every later wheel click appear broken. */
+      if(app.trade?.active){event.preventDefault();cancelTrade();return;}
       /* A WN/NPC window is an application state owner, not just an
          advanced-screen decoration.  Close it first so hiding the screen
          cannot leave app.activeWindow pointing at a stale sequence/object;
@@ -14056,6 +14309,7 @@
   function toggleWorldPanel(name){
     /* MENU.CPP treats every task-bar button as a toggle.  Re-clicking the
        active button closes that window; clicking another button replaces it. */
+    if(app.trade?.active)return;
     const target=$(`${name}-screen`);
     if(app.phase==="world"&&target&&!target.classList.contains("hidden")){show(worldScreen);return;}
     openPanel(name);
@@ -14074,11 +14328,22 @@
     const actionNo=Number(item.dataset.actionNo);if(!Number.isFinite(actionNo))return;
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
-    if(actor){setLocalActorAction(actor,3);actor.walking=false;actor.animationStartedAt=performance.now();renderWorld(true);}
+    if(actor){setLocalActorAction(actor,actionNo);actor.walking=false;actor.animationStartedAt=performance.now();renderWorld(true);}
     fieldSend("AC",[x,y,actionNo]).catch(reportError);
   }));
   $("field-settings-close")?.addEventListener("click",closeFieldWindow);
   $("field-actions-close")?.addEventListener("click",closeFieldWindow);
+  document.querySelectorAll("#trade-screen [data-trade-offer]").forEach(item=>item.addEventListener("click",()=>tradeSetSelectedOffer(item.dataset.tradeOffer)));
+  $("trade-pet-prev")?.addEventListener("click",()=>tradeCyclePet(-1));
+  $("trade-pet-next")?.addEventListener("click",()=>tradeCyclePet(1));
+  $("trade-pet-place")?.addEventListener("click",tradeOfferPet);
+  $("trade-gold-up")?.addEventListener("click",()=>tradeAdjustGold(1));
+  $("trade-gold-down")?.addEventListener("click",()=>tradeAdjustGold(-1));
+  $("trade-gold-place")?.addEventListener("click",tradeOfferGold);
+  $("trade-gold-amount")?.addEventListener("change",()=>{const node=$("trade-gold-amount");if(node)node.value=String(tradeGoldValue());});
+  $("trade-gold-amount")?.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();tradeOfferGold();}});
+  $("trade-confirm")?.addEventListener("click",confirmTrade);
+  $("trade-cancel")?.addEventListener("click",cancelTrade);
   document.querySelectorAll("#battle-ui [data-command]").forEach(item=>item.addEventListener("click",()=>battleMenuCommand(item.dataset.command)));
   $("battle-target-cancel")?.addEventListener("click",()=>{app.battleState.pendingAction=null;$("battle-target-panel")?.classList.add("hidden");renderBattle();});
   $("battle-popup-close")?.addEventListener("click",closeBattlePopup);

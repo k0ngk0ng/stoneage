@@ -90,6 +90,11 @@ UI_BITMAPS = {
     "field_market_on": 55100,
     "field_street_vendor": 35227,
     "field_street_vendor_on": 35226,
+    # sa_2903's classic 2.5 trade surface.  Later clients remap the new
+    # _TRADESYSTEM2 artwork to CG 26328, but that logical record is not in
+    # the bundled 2.5 ADRN table.  The actual 620x456 window shipped beside
+    # sa_2903 is logical 40000 (physical record 126231).
+    "trade_window_25": 40000,
     **{f"task_map_{state}": 26150 + state for state in range(2)},
     **{f"task_status_{state}": 26152 + state for state in range(2)},
     **{f"task_pet_{state}": 26154 + state for state in range(2)},
@@ -373,6 +378,37 @@ def emit_graphic(logical: int, records, by_number, real_path, palette, output, m
         **record_visual_metadata(record),
     }
     return f"bitmaps/{filename}"
+
+
+def ui_pack(records, by_number, real_path, palette, output, manifest):
+    """Refresh the original UI bitmap subset without rebuilding map/SPR data."""
+    manifest.setdefault("bitmaps", {})
+    manifest.setdefault("ui", {})
+    manifest.setdefault("bitmap_aliases", {})
+    for name, logical in UI_BITMAPS.items():
+        # Most CG_* constants are logical bitmap numbers with an ADRN
+        # translation.  A few 2.5 additions are direct ADRN records and have
+        # bmp_number == 0, so address those by record number only when no
+        # logical alias exists.
+        candidates = by_number.get(logical) or ([logical] if logical in records else None)
+        if not candidates:
+            continue
+        physical = candidates[-1]
+        manifest["bitmap_aliases"][str(logical)] = str(physical)
+        emit_bitmap(name, logical, records, real_path, palette, output, manifest)
+    for start, end in UI_BITMAP_RANGES:
+        for logical in range(start, end):
+            candidates = by_number.get(logical)
+            if not candidates:
+                continue
+            physical = candidates[-1]
+            manifest["bitmap_aliases"][str(logical)] = str(physical)
+            try:
+                emit_bitmap(f"cg_{logical}", logical, records, real_path, palette, output, manifest)
+            except legacy.AssetError:
+                # Reserved ADRN records are not drawable; skip only the bad
+                # alias and leave the rest of the deterministic UI pack.
+                manifest["bitmap_aliases"].pop(str(logical), None)
 
 
 def collect_map_resources(records, by_number, real_path, palette, output, manifest):
@@ -707,6 +743,7 @@ def main() -> int:
     parser.add_argument("--battle", type=int, default=0)
     parser.add_argument("--all-battles", action="store_true", help="extract every original battleMap/*.sab viewport")
     parser.add_argument("--battles-only", action="store_true", help="refresh battle PNGs in an existing browser asset pack")
+    parser.add_argument("--ui-only", action="store_true", help="refresh UI PNGs and aliases in an existing browser asset pack")
     parser.add_argument(
         "--creation-sprites-only",
         action="store_true",
@@ -731,6 +768,17 @@ def main() -> int:
     for palette_file in sorted((data / "pal").glob("Palet_*.sap")):
         shutil.copyfile(palette_file, palette_output / palette_file.name)
     battle_numbers = sorted(int(path.stem[6:]) for path in (data / "battleMap").glob("battle*.sab")) if args.all_battles else [args.battle]
+    if args.ui_only:
+        manifest_path = args.output / "manifest.json"
+        if not manifest_path.is_file():
+            parser.error("--ui-only requires an existing manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        ui_pack(records, by_number, real_path, palette, args.output, manifest)
+        temporary_manifest = manifest_path.with_name(manifest_path.name + ".tmp")
+        temporary_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary_manifest.replace(manifest_path)
+        print(json.dumps({"output": str(args.output), "ui": len(manifest.get("ui", {}))}, ensure_ascii=False))
+        return 0
     if args.battles_only:
         manifest_path = args.output / "manifest.json"
         if not manifest_path.is_file():
@@ -782,32 +830,7 @@ def main() -> int:
         "album": album_catalog(),
     }
 
-    for name, logical in UI_BITMAPS.items():
-        # Most CG_* constants are logical bitmap numbers with an ADRN
-        # translation.  A few 2.5 additions (the ride/sign-in, team, shop,
-        # help and street-vendor controls) are direct ADRN numbers and have
-        # bmp_number == 0, so they are intentionally addressed by record
-        # number when no logical alias exists.
-        candidates = by_number.get(logical) or ([logical] if logical in records else None)
-        if candidates:
-            physical = candidates[-1]
-            manifest["bitmap_aliases"][str(logical)] = str(physical)
-            emit_bitmap(name, logical, records, real_path, palette, args.output, manifest)
-    for start, end in UI_BITMAP_RANGES:
-        for logical in range(start, end):
-            candidates = by_number.get(logical)
-            if not candidates:
-                continue
-            physical = candidates[-1]
-            manifest["bitmap_aliases"][str(logical)] = str(physical)
-            try:
-                emit_bitmap(f"cg_{logical}", logical, records, real_path, palette, args.output, manifest)
-            except legacy.AssetError:
-                # A few reserved records in the original ADRNBIN are not
-                # valid drawable bitmaps.  They are never referenced by the
-                # normal menu path; skip only the malformed record and keep
-                # the rest of the complete menu pack.
-                manifest["bitmap_aliases"].pop(str(logical), None)
+    ui_pack(records, by_number, real_path, palette, args.output, manifest)
     countdown_digits = {}
     for digit in range(10):
         logical = BATTLE_COUNTDOWN_LOGICAL_BASE + digit

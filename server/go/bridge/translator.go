@@ -135,7 +135,12 @@ var serverToClientSchemas = []functionSchema{
 	schema("PlayerNumGet", 86, fieldInt, fieldInt),
 	schema("Echo", 88, fieldString),
 	schema("NU", 90, fieldInt),
-	schema("TD", 92, fieldInt, fieldString),
+	/* The preserved 2.5 lssproto_TD_send signature still accepts an `index`
+	   argument, but its generated body deliberately serializes only `message`.
+	   Treating that first encrypted string as an integer made every successful
+	   trade handshake fail translation after GMSV had already entered
+	   CHAR_TRADE_TRADING. */
+	schema("TD", 92, fieldString),
 	schema("FM", 93, fieldString),
 	schema("WO", 95, fieldInt),
 	schema("IC", 100, fieldInt, fieldInt),
