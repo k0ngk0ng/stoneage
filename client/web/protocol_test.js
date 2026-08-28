@@ -818,6 +818,13 @@ for (const expected of [
      the old completion must not close the new shop page. */
   /if\(select!==16&&select!==32&&app\.activeWindow===wnd\)closeServerWindow\(\)/,
   /frameX=\(640-frameW\)\/2,frameY=\(456-frameH\)\/2/,
+  /* serverWindowType1 stocks each visible msgWN row once and overlays its
+     MakeHitBox at the same 21-pixel row.  Do not duplicate selectable text
+     in both the body and a separately flowing choice column. */
+  /#server-window-screen\.server-window-select #server-window-body\{[^}]*font:11px\/21px[^}]*text-align:left/,
+  /screen\.classList\.remove\("server-window-shop-list","server-window-shop-quantity","server-window-select"\)/,
+  /screen\.classList\.add\("server-window-select"\);[\s\S]{0,900}body\.textContent=parsed\.lines\.slice\(0,start\)\.join\("\\n"\);/,
+  /const item=appendChoice\(label,0,String\(index\+1\)\);item\.style\.setProperty\("--wnd-select-row-y",`\$\{index\*21\}px`\)/,
   /* _checkWarpEvent() gates the three timed warp ids by getLSTime(); event 7
      is valid in both the native NOON and EVENING sections. */
   /function mapTimeSection\(hour=currentSaTimeHour\(\)\)[\s\S]{0,420}value>700&&value<=930[\s\S]{0,180}value>200&&value<=300[\s\S]{0,180}value>300&&value<=700/,

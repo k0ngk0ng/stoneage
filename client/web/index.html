@@ -2186,6 +2186,16 @@
     #server-window-screen #server-window-options.window-choice-list{top:var(--wnd-choice-y,162px);height:var(--wnd-choice-h,154px);align-items:stretch;overflow:auto;padding:0 4px 22px}
     #server-window-screen #server-window-options.window-choice-list>.window-choice{flex:0 0 20px;width:100%;min-height:20px;padding:0 4px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #server-window-screen #server-window-options.window-choice-list>.server-window-controls{position:absolute;left:0;right:0;bottom:0;width:100%;height:16px}
+    /* LOGIN.CPP::serverWindowType1 draws each msgWN row once at
+       (winX+44, winY+21+i*21), then places an invisible 366x20 hit box over
+       selectable rows.  Keep explanatory rows in the text layer and place
+       each choice at its original row index; a second flex-column copy made
+       family/task menus appear twice and shifted their wire selection. */
+    #server-window-screen.server-window-select #server-window-body{left:var(--wnd-select-text-x,140px);top:var(--wnd-select-text-y,129px);width:var(--wnd-select-row-w,366px);height:var(--wnd-select-text-h,168px);overflow:hidden;color:#fff;font:11px/21px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;text-align:left;white-space:pre;text-shadow:1px 1px #080706}
+    #server-window-screen.server-window-select #server-window-options.window-choice-list{left:var(--wnd-select-hit-x,137px);top:var(--wnd-select-choice-y,171px);width:var(--wnd-select-row-w,366px);height:var(--wnd-select-choice-h,126px);display:block;overflow:visible;margin:0;padding:0;pointer-events:none}
+    #server-window-screen.server-window-select #server-window-options.window-choice-list>.window-choice{position:absolute;left:0;top:var(--wnd-select-row-y,0);width:var(--wnd-select-row-w,366px);height:20px;min-height:20px;margin:0;padding:0 3px;color:#fff;background:transparent;border:0;box-shadow:none;font:11px/20px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;text-align:left;text-shadow:1px 1px #080706;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto}
+    #server-window-screen.server-window-select #server-window-options.window-choice-list>.window-choice:hover,
+    #server-window-screen.server-window-select #server-window-options.window-choice-list>.window-choice:focus-visible{color:#ffe88b;background:transparent;outline:0;filter:none}
     #server-window-screen #server-window-options.window-item-list{top:var(--wnd-item-y,82px);height:var(--wnd-item-h,300px);align-items:stretch;overflow:auto;padding:0 8px 24px}
     #server-window-screen #server-window-options.window-item-list>.data-card{flex:0 0 auto;width:100%;min-height:42px;display:flex;align-items:center;gap:4px}
     #server-window-screen #server-window-options.window-item-list>.server-window-controls{position:absolute;left:0;right:0;bottom:0;width:100%;height:16px}
@@ -9975,7 +9985,7 @@
   }
   function clearItemShopFrame(){
     const screen=$("server-window-screen");if(!screen)return;
-    screen.classList.remove("server-window-shop-list","server-window-shop-quantity");
+    screen.classList.remove("server-window-shop-list","server-window-shop-quantity","server-window-select");
     for(const property of ["--legacy-bg","--legacy-bg-x","--legacy-bg-y","--legacy-bg-w","--legacy-bg-h"])screen.style.removeProperty(property);
   }
   function applyShopAcknowledgement(session){
@@ -10197,7 +10207,7 @@
        server sends no button bit (a common NPC response); shop surfaces have
        their own bitmap return button and must not show a duplicate close. */
     closeButton?.classList.toggle("hidden",shopMenu||shopMain);
-    const appendChoice=(label,select,data)=>{const item=button(label,()=>windowResponse(select,data),"window-choice");item.setAttribute("aria-label",label);options.append(item);};
+    const appendChoice=(label,select,data)=>{const item=button(label,()=>windowResponse(select,data),"window-choice");item.setAttribute("aria-label",label);options.append(item);return item;};
     const appendShop=(shop,pool=false)=>{
       body.textContent=[shop.title,...shop.messages].filter(Boolean).map(unescapeCharacterOption).join("\n")||"（商店）";
       for(const item of shop.items){
@@ -10219,13 +10229,16 @@
          one-based relative to that start (i - selStartLine + 1).  Making the
          prose clickable shifted every family/task choice by two. */
       const parsed=windowMessageLines(wnd.data),start=Math.max(0,Math.min(parsed.lines.length,Number(parsed.startLine)||0));
-      body.textContent=parsed.lines.join("\n")||"请选择";
+      screen.classList.add("server-window-select");
+      screen.style.setProperty("--wnd-select-text-x",`${frameX+44}px`);screen.style.setProperty("--wnd-select-text-y",`${frameY+21}px`);screen.style.setProperty("--wnd-select-row-w","366px");screen.style.setProperty("--wnd-select-text-h",`${Math.max(21,(8-start)*21)}px`);
+      screen.style.setProperty("--wnd-select-hit-x",`${frameX+41}px`);screen.style.setProperty("--wnd-select-choice-y",`${frameY+21+start*21}px`);screen.style.setProperty("--wnd-select-choice-h",`${Math.max(20,(8-start)*21)}px`);
+      body.textContent=parsed.lines.slice(0,start).join("\n");
       parsed.lines.slice(start).forEach((label,index)=>{
         if(!String(label||"").trim())return;
         /* The native hit-test sends i - selStartLine + 1. Keep that exact
            one-based value; the 2.5 NPC handlers then add their own offset
            (for example familyman uses buttonproc[5 + atoi(data)]). */
-        appendChoice(label,0,String(index+1));
+        const item=appendChoice(label,0,String(index+1));item.style.setProperty("--wnd-select-row-y",`${index*21}px`);
       });
     }
     else if(type===3){body.textContent="＝＝＝ 请选择宠物 ＝＝＝";for(let i=0;i<app.petSlots.length;i++){const pet=app.petSlots[i];if(!pet)continue;appendChoice(`${pet.name||pet.freeName||`宠物 ${i+1}`}  Lv.${pet.level??"-"}  HP ${pet.maxHp??"-"}`,0,String(i+1));}}
