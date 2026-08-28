@@ -249,6 +249,7 @@ if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 6 ||
     !/id="field-left-menu" class="click"/.test(fieldUiMarkup) ||
     !/id="field-left-card" class="click"/.test(fieldUiMarkup) ||
     !/id="field-left-group" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-left-mail" src="\/assets\/bitmaps\/bitmap_9225\.png"/.test(fieldUiMarkup) ||
     !/id="field-right-join" class="click"/.test(fieldUiMarkup) ||
     !/id="field-right-duel" class="click"/.test(fieldUiMarkup) ||
     !/id="field-right-action" class="click"/.test(fieldUiMarkup)) {
@@ -262,6 +263,8 @@ for (const expected of [
   /#field-left-menu\s*\{[^}]*left:5px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-card\s*\{[^}]*left:36px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-group\s*\{[^}]*left:67px; top:4px; width:32px; height:30px; z-index:4/,
+  /#field-left-mail\s*\{[^}]*left:11px; top:37px; width:28px; height:10px; z-index:3; display:none/,
+  /function fieldHasUnreadMail\(\)[\s\S]{0,500}function updateFieldMailLamp\(\)[\s\S]{0,500}field-mail-flashing/,
   /#field-right-join\s*\{[^}]*left:518px; top:5px; width:28px; height:28px; z-index:4/,
   /#field-right-duel\s*\{[^}]*left:549px; top:5px; width:28px; height:28px; z-index:4/,
   /#field-right-action\s*\{[^}]*left:583px; top:42px; width:56px; height:14px; z-index:4/,
