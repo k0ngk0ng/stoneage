@@ -72,6 +72,10 @@ UI_BITMAPS = {
     # records are logical CG numbers and resolve through bitmapnumbertable;
     # the 35xxx/55xxx records are direct ADRN entries used by the 2.5 build.
     "field_menu_left_25": 26236,
+    # Trade-capable 2.5 field plate used when _SPECIAL_LOGO is not enabled
+    # (the native drawField() bNewServer=false path).  Keep this alongside
+    # the 172px special-logo plate so either server handshake can be packed.
+    "field_menu_left_trade": 26233,
     "field_trade": 26234,
     "field_trade_on": 26235,
     "field_channel": 26237,

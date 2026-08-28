@@ -224,9 +224,8 @@ if (!/function getWorld2DContext\([\s\S]{0,1200}getCanvas2DContext\(canvas,\{alp
   throw new Error("world back-buffer must use an opaque native-style clear before presenting");
 }
 /* Keep the preserved 2.5 FIELD.CPP coordinates covered by the protocol smoke
-   test as well.  The web surface must use the base 104/132px plates and the
-   same three-button field HUD; the optional 8.5 extension is intentionally
-   excluded because its extra controls are not 2.5-safe. */
+   test as well.  The web surface uses the trade-capable 140/132px plates and
+   the four-button left HUD; optional 8.5-only controls remain excluded. */
 const nativeField = fs.readFileSync(__dirname + "/../../vendor/upstream/code_sa_client/SYSTEM/FIELD.CPP", "latin1");
 const nativeField85 = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/field.cpp", "latin1");
 if (!/leftUpPanelX\+52,\s*leftUpPanelY\+28,[\s\S]{0,180}CG_FIELD_MENU_LEFT/.test(nativeField) ||
@@ -234,6 +233,18 @@ if (!/leftUpPanelX\+52,\s*leftUpPanelY\+28,[\s\S]{0,180}CG_FIELD_MENU_LEFT/.test
     !/w\s*=\s*3;\s*h\s*=\s*4;[\s\S]{0,120}x\s*=\s*16;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField) ||
     !/w\s*=\s*3;\s*h\s*=\s*6;[\s\S]{0,120}x\s*=\s*440;[\s\S]{0,100}y\s*=\s*16;/.test(nativeField)) {
   throw new Error("unexpected native 2.5 field-control/window coordinate contract");
+}
+if (!/fieldBtnHitId\[FIELD_FUNC_TRADE\]\s*=\s*StockDispBuffer\(leftUpPanelX\s*\+\s*104\s*\+\s*10,\s*leftUpPanelY\s*\+\s*28\s*-\s*10,[\s\S]{0,120}tradeBtnGraNo\[tradeBtn\]/.test(nativeField85) ||
+    !/lssproto_TD_send\(sockfd,\s*"D\|D"\)/.test(nativeField85)) {
+  throw new Error("unexpected native 2.5 trade button/TD command contract");
+}
+const tradePlate = battleManifest.bitmaps?.["26233"], tradeOff = battleManifest.bitmaps?.["26234"], tradeOn = battleManifest.bitmaps?.["26235"];
+if (tradePlate?.file !== "bitmaps/bitmap_126232.png" || tradePlate?.width !== 140 || tradePlate?.height !== 54 ||
+    tradePlate?.xoffset !== -78 || tradePlate?.yoffset !== -28 ||
+    tradeOff?.file !== "bitmaps/bitmap_126233.png" || tradeOff?.width !== 32 || tradeOff?.height !== 30 ||
+    tradeOff?.xoffset !== -17 || tradeOff?.yoffset !== -14 ||
+    tradeOn?.file !== "bitmaps/bitmap_126234.png" || tradeOn?.width !== 32 || tradeOn?.height !== 30) {
+  throw new Error("generated 2.5 trade HUD resources drifted from native ADRN metadata");
 }
 const fieldSettingsMarkup = html.match(/<div id="field-settings-list"[\s\S]*?<\/div>/)?.[0] || "";
 if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 4 ||
@@ -245,15 +256,17 @@ if ((fieldSettingsMarkup.match(/class="field-setting-row"/g) || []).length !== 4
   throw new Error("field settings must contain the four native 2.5 rows");
 }
 const fieldUiMarkup = html.match(/<div id="field-ui"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || "";
-if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 6 ||
+if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 7 ||
     !/id="field-left-menu" class="click"/.test(fieldUiMarkup) ||
     !/id="field-left-card" class="click"/.test(fieldUiMarkup) ||
     !/id="field-left-group" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-left-trade" class="click"/.test(fieldUiMarkup) ||
+    !/id="field-left-trade" class="click" data-field-action="trade" src="\/assets\/bitmaps\/bitmap_126233\.png"/.test(fieldUiMarkup) ||
     !/id="field-left-mail" src="\/assets\/bitmaps\/bitmap_9225\.png"/.test(fieldUiMarkup) ||
     !/id="field-right-join" class="click"/.test(fieldUiMarkup) ||
     !/id="field-right-duel" class="click"/.test(fieldUiMarkup) ||
     !/id="field-right-action" class="click"/.test(fieldUiMarkup)) {
-  throw new Error("2.5 field HUD must contain exactly three left and three right controls");
+  throw new Error("2.5 field HUD must contain four left and three right controls");
 }
 for (const expected of [
   /#field-right-composite\s*\{[^}]*z-index:2/,
@@ -263,6 +276,7 @@ for (const expected of [
   /#field-left-menu\s*\{[^}]*left:5px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-card\s*\{[^}]*left:36px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-group\s*\{[^}]*left:67px; top:4px; width:32px; height:30px; z-index:4/,
+  /#field-left-trade\s*\{[^}]*left:97px; top:4px; width:32px; height:30px; z-index:4/,
   /#field-left-mail\s*\{[^}]*left:11px; top:37px; width:28px; height:10px; z-index:3; display:none/,
   /function fieldHasUnreadMail\(\)[\s\S]{0,500}function updateFieldMailLamp\(\)[\s\S]{0,500}field-mail-flashing/,
   /#field-right-join\s*\{[^}]*left:518px; top:5px; width:28px; height:28px; z-index:4/,
@@ -272,9 +286,11 @@ for (const expected of [
      keeping the settings-row width on these buttons pushes the right column
      outside the native 192px action window. */
   /\.field-window-screen \.field-action-row\{width:73px!important\}/,
-  /#field-ui #field-left-bg\s*\{[^}]*left:0; top:0; width:104px; height:54px/,
+  /#field-ui #field-left-bg\s*\{[^}]*left:0; top:0; width:140px; height:54px/,
   /#field-right-bg\s*\{[^}]*left:508px; top:0; width:132px; height:63px/,
-  /id="field-left-bg" src="\/assets\/bitmaps\/bitmap_9218\.png"/,
+  /id="field-left-bg" src="\/assets\/bitmaps\/bitmap_126232\.png"/,
+  /"field-left-trade":\[126233,126234\]/,
+  /if\(name==="trade"\)[\s\S]{0,900}fieldSend\("TD",\["D\|D"\]\)/,
   /id="field-right-bg" src="\/assets\/bitmaps\/bitmap_9226\.png"/,
   /#field-settings-screen \.field-window-frame\{left:16px;top:16px;height:192px\}/,
   /#field-actions-screen \.field-window-frame\{left:440px;top:16px;height:288px\}/,
@@ -989,8 +1005,8 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
 const failureSource = script.slice(script.indexOf("function showConnectionFailure"), script.indexOf("function returnToAccountLogin"));
 if (/addEvent\(/.test(failureSource)) throw new Error("connection failure leaked into the event list");
 /* CHAR_FS_* is sparse in the 2.5 server.  The base FIELD.CPP exposes four
-   settings rows (party, duel, card exchange and chat); trade is an 8.5-only
-   extension and must not be sent by this client. */
+   settings rows (party, duel, card exchange and chat).  Trade is a separate
+   TD command and is not a settings bit. */
 for (const expected of [
   /FIELD_SETTING_BITS=Object\.freeze\(\{party:1,duel:4,mail:16,chat:8\}\)/,
   /setStatus\("duelAllowed",Boolean\(flags&4\)\)/,

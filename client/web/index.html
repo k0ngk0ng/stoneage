@@ -284,13 +284,13 @@
     #field-ui { position:absolute; left:0; top:0; width:640px; height:480px; z-index:9; pointer-events:none; overflow:hidden; }
     #field-ui img,#field-ui canvas { position:absolute; display:block; pointer-events:none; image-rendering:pixelated; }
     #field-ui .click { pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    /* sa_2903/2.5 FIELD.CPP uses the original 104×54 left plate
-       (CG_FIELD_MENU_LEFT, anchor 52,28, ADRN -52,-28).  The three core
-       controls share that anchor and their own ADRN offsets, so their visible
-       slots are (5,4), (36,4), and (67,4).  The 8.5 _SPECIAL_LOGO plate is
-       an optional extension and must not leave a 62px blank strip in 2.5. */
-    #field-ui #field-left-bg { display:block; left:0; top:0; width:104px; height:54px; z-index:1; }
-    /* CG_FIELD_MAIL_LAMP is a status overlay, not a fourth hit target.  The
+    /* sa_2903's trade-capable 2.5 FIELD.CPP uses the 140×54 CG_FIELD_MENU_LEFT
+       (26233, anchor 78,28, ADRN -78,-28).  The three core
+       controls remain at (5,4), (36,4), and (67,4); the wheel-shaped trade
+       control is the fourth slot at (97,4).  The 104×54 26100 plate is the
+       older no-trade variant and leaves the trade bitmap over the map. */
+    #field-ui #field-left-bg { display:block; left:0; top:0; width:140px; height:54px; z-index:1; }
+    /* CG_FIELD_MAIL_LAMP is a status overlay, not another hit target.  The
        native anchor (52,28) plus its (-41,+9) ADRN offset puts the 28×10
        unread-mail lamp at (11,37), over the muted "Mail" label in the plate. */
     #field-left-mail { left:11px; top:37px; width:28px; height:10px; z-index:3; display:none; pointer-events:none; }
@@ -299,6 +299,7 @@
     #field-left-menu { left:5px; top:4px; width:32px; height:30px; z-index:4; }
     #field-left-card { left:36px; top:4px; width:32px; height:30px; z-index:4; }
     #field-left-group { left:67px; top:4px; width:32px; height:30px; z-index:4; }
+    #field-left-trade { left:97px; top:4px; width:32px; height:30px; z-index:4; }
     /* FIELD.CPP composites the sliding AM/PM strip into the field buffer and
        then stocks CG_FIELD_MENU_RIGHT over it.  The panel is mostly opaque
        and its transparent diagonal aperture is the only place where the
@@ -877,11 +878,12 @@
           <img id="world-cursor" src="/assets/bitmaps/bitmap_8827.png" alt="">
         </div>
         <div id="field-ui" aria-hidden="true">
-          <img id="field-left-bg" src="/assets/bitmaps/bitmap_9218.png" alt="">
+          <img id="field-left-bg" src="/assets/bitmaps/bitmap_126232.png" alt="">
           <img id="field-left-mail" src="/assets/bitmaps/bitmap_9225.png" alt="" aria-hidden="true">
           <img id="field-left-menu" class="click" data-field-action="settings" src="/assets/bitmaps/bitmap_9219.png" alt="菜单">
           <img id="field-left-card" class="click" data-action="card" src="/assets/bitmaps/bitmap_9221.png" alt="查看前方玩家资料">
           <img id="field-left-group" class="click" data-field-action="party" src="/assets/bitmaps/bitmap_9223.png" alt="队伍">
+          <img id="field-left-trade" class="click" data-field-action="trade" src="/assets/bitmaps/bitmap_126233.png" alt="与前方玩家交易">
           <img id="field-right-bg" src="/assets/bitmaps/bitmap_9226.png" alt="">
           <img id="field-right-join" class="click" data-field-action="join-battle" src="/assets/bitmaps/bitmap_9227.png" alt="加入战斗">
           <img id="field-right-duel" class="click" data-field-action="duel" src="/assets/bitmaps/bitmap_9229.png" alt="决斗">
@@ -3053,10 +3055,15 @@
       fieldSend("PR",[x,y,1]).catch(reportError);return;
     }
     if(name==="trade"){
-      /* FIELD_FUNC_TRADE only raises the native T trigger.  Let the shared
-         talk path perform the same facing check and TK(P|hi) handshake; a
-         plain click on the map still remains movement-only. */
-      talkToFacingNPC();return;
+      /* FIELD_FUNC_TRADE raises JOY_CTRL_T in the native client.  Its 2.5
+         handler sends the real TD search command (D|D), which asks GMSV to
+         find the player directly in front of us.  Do not route this through
+         TK: that would make the wheel button talk to an NPC instead of
+         opening the trade handshake. */
+      const target=facingActor(actor=>Number(actor.charType)===1,1);
+      if(!target){setWorldState("请面向要交易的玩家。","error");return;}
+      fieldSend("TD",["D|D"]).then(()=>setWorldState(`正在等待 ${target.name||"对方"} 接受交易…`)).catch(reportError);
+      return;
     }
     if(name==="signin"){
       /* RideQuery is an optional client extension, not a 2.5 GMSV call.  The
@@ -13952,7 +13959,7 @@
      HTML button here is exactly the layer mismatch seen in the old MVP. */
   function bindLegacyImageButtonStates(){
     const pairs={
-      "field-left-menu":[9219,9220],"field-left-card":[9221,9222],"field-left-group":[9223,9224],
+      "field-left-menu":[9219,9220],"field-left-card":[9221,9222],"field-left-group":[9223,9224],"field-left-trade":[126233,126234],
       "field-right-join":[9227,9228],"field-right-duel":[9229,9230],"field-right-action":[9231,9232]
     };
     for(const [id,[normal,pressed]] of Object.entries(pairs)){
