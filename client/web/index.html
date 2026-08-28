@@ -4637,7 +4637,9 @@
      packets turns all Action rows into a single still image.  Report whether
      at least one visible field actor still needs the same process clock. */
   function fieldActorAnimationActive(now=performance.now()){
-    if(app.phase!=="world"||app.battle||app.mapLoading)return false;
+    /* Keep this clock alive during M-window replacement; the completed
+       previous back-buffer remains visible and native charProc() continues. */
+    if(app.phase!=="world"||app.battle)return false;
     const actors=[...app.actors.values()];
     for(const actor of actors){
       if(!actor||actor.battle||actor.kind!=="character")continue;
@@ -4648,10 +4650,18 @@
          for its first complete C/CA state; it must not wake a repaint loop on
          an object that has no drawable animation row yet. */
       if(actor.animationLoop===undefined&&!Number.isFinite(Number(actor.animationStartedAt)))continue;
-      const action=spriteActionForActor(actor),animation=spriteAnimationForAction(actor,actor.direction,action);
+      const action=spriteActionForActor(actor);
+      /* Mirror actorFrame()'s fallback for partial legacy SPR rows. */
+      let animation=spriteAnimationForAction(actor,actor.direction,action),resolvedAction=action;
+      if(!animation){animation=spriteAnimationForAction(actor,actor.direction,3);resolvedAction=3;}
+      if(!animation){
+        const entry=spriteEntryForActor(actor),direction=((Number(actor.direction)||0)%8+8)%8;
+        animation=entry?.sprite?.actions?.find(item=>Number(item.direction)===direction)||entry?.sprite?.actions?.[0]||null;
+        resolvedAction=Number(animation?.action);
+      }
       const frames=Array.isArray(animation?.frames)?animation.frames:[];
       if(frames.length<2)continue;
-      const looping=actor.animationLoop!==undefined?Boolean(actor.animationLoop):fieldActionLoops(action);
+      const looping=actor.animationLoop!==undefined?Boolean(actor.animationLoop):fieldActionLoops(resolvedAction);
       if(looping)return true;
       const started=Number(actor.animationStartedAt);
       /* A C snapshot can contain an old one-shot action without the
@@ -4678,7 +4688,10 @@
     return `${file}|${Number(frame.x)||0}|${Number(frame.y)||0}`;
   }
   function fieldActorVisualChanged(now=performance.now()){
-    if(app.phase!=="world"||app.battle||app.mapLoading)return false;
+    /* See fieldActorAnimationActive(): an M refresh must not suspend the
+       character process clock while the previous completed back-buffer is
+       still visible. */
+    if(app.phase!=="world"||app.battle)return false;
     for(const actor of app.actors.values()){
       if(!actor||actor.battle||actor.kind!=="character")continue;
       if(!fieldActorInAnimationRange(actor))continue;
@@ -14500,11 +14513,34 @@
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     const actor=ensureOwnFieldActor();
     setLocalActorAction(actor,actionNo);actor.walking=false;
+    /* The map curtain is dismissed before the optional split SPR table is
+       fetched.  A fast tap on Action can therefore land in the small window
+       where actorFrame() only has the static REALBIN bitmap and the native
+       action would appear to do nothing.  Keep the local action/timestamp
+       immediately (so the click is responsive), then repaint and arm the
+       field animation clock as soon as the table is resident.  Guard the
+       continuation by the same actor/action timestamp so a later click or a
+       walk cannot be overwritten by an old manifest response. */
+    const actionStartedAt=Number(actor.animationStartedAt)||0;
     /* FIELD.CPP destroys the action window on selection.  Closing it before
        the first paint also guarantees the newly selected frame is visible
        instead of being hidden behind the still-open menu on narrow screens. */
     closeFieldWindow();
     renderWorld(true);scheduleWorldAnimation();
+    if(!assetState.spritesReady){
+      loadSpriteManifest().then(sprites=>{
+        if(!sprites||app.phase!=="world"||app.battle)return;
+        const current=app.actors.get(actor.id);
+        if(current!==actor||Number(actor.action)!==actionNo||Number(actor.animationStartedAt)!==actionStartedAt)return;
+        /* No action row exists while the table is absent, so the native
+           clock could not have advanced a meaningful frame during the
+           download.  Restart this still-selected action at the first real
+           sprite frame; otherwise a slow one-shot download would resolve
+           after its old timestamp and paint only the terminal frame. */
+        setLocalActorAction(actor,actionNo);actor.walking=false;
+        renderWorld(true);scheduleWorldAnimation();
+      });
+    }
     fieldSend("AC",[x,y,actionNo]).catch(reportError);
   }));
   $("field-settings-close")?.addEventListener("click",closeFieldWindow);
