@@ -1325,6 +1325,11 @@
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
   const STONEAGE_25=Object.freeze({version:"2.5",executable:"sa_2903.exe",runningKey:"cary"});
   const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  /* renderWorld() calls scheduleWorldAnimation() at their tail.  During an
+     animation tick that call must be ignored; otherwise each tick installs a
+     second timeout before the original tick installs its continuation, and
+     the timer count grows without bound until the browser main thread stalls. */
+  app._worldAnimationTicking=false;
   /* A normal 2.5 owner walk has no per-tile self echo.  This latch limits
      the optional post-route S:c probe to one request per prediction epoch;
      otherwise a missing self C packet would schedule an endless one-second
@@ -10381,6 +10386,21 @@
     const ownId=app.pc&&app.pc.id!==undefined&&app.pc.id!==null?Number(app.pc.id):NaN;
     return (Number.isFinite(ownId)&&ownId!==0&&Number(actor.id)===ownId)||Boolean(actor.name&&app.character&&actor.name===app.character);
   }
+  /* The native PC action is local and does not wait for a CA echo.  A few
+     gateways omit the owner's C record during the first map refresh; in that
+     short window the old web handler had no actor to animate, so all thirteen
+     Action entries appeared inert.  Keep a synthetic owner in the same actor
+     table used by the renderer until the authoritative record arrives. */
+  function ensureOwnFieldActor(){
+    let actor=app.playerActorId!==null&&app.playerActorId!==undefined
+      ?app.actors.get(app.playerActorId):null;
+    if(!actor)actor=[...app.actors.values()].find(actorIsOwn)||null;
+    if(actor){app.playerActorId=actor.id;ensureFieldActorAnimation(actor);return actor;}
+    const configured=Number(app.pc?.image),graphic=Number.isFinite(configured)&&configured>0?configured:100000;
+    const id=Number.isFinite(Number(app.pc?.id))&&Number(app.pc.id)!==0?Number(app.pc.id):-2147483000;
+    actor={id,kind:"character",objectType:1,charType:1,name:app.character||"我",freeName:"",graphic,graphicKey:String(graphic),x:Number(app.position[0])||0,y:Number(app.position[1])||0,direction:Number(app.direction)||0,wireDirection:serverDirectionFromClient(Number(app.direction)||0),action:3,walking:false};
+    ensureFieldActorAnimation(actor);app.playerActorId=id;app.actors.set(id,actor);return actor;
+  }
   /* /api/npcs is a read-only navigation aid and uses negative synthetic ids.
      A live C record is the object the 2.5 server actually dispatched; when
      both records occupy the same tile (bus stops are the common case), the
@@ -12448,7 +12468,7 @@
        duplicate loops behind.  Field actions additionally skip paints when
        the selected frame is visually unchanged; this keeps the native timing
        without redrawing a large DAT window for repeated bitmaps. */
-    if(app._worldAnimationFrame||app._worldAnimationTimer)return;
+    if(app._worldAnimationTicking||app._worldAnimationFrame||app._worldAnimationTimer)return;
     /* requestAnimationFrame is attractive for a visible desktop tab, but it
        can be suspended by mobile WebViews/headless Chromium even while the
        document reports `visibilityState === "visible"`.  The native client
@@ -12470,7 +12490,8 @@
         /* finalizePendingMove() may install the next tile immediately.  Let
            that new animation own its handle; do not schedule a second one
            from this boundary callback. */
-        finalizePendingMove();
+        app._worldAnimationTicking=true;
+        try{finalizePendingMove();}finally{app._worldAnimationTicking=false;}
         if(app.phase==="world"&&!app.walkAnimation&&fieldActorAnimationActive(now))scheduleWorldAnimation();
         return;
       }
@@ -12479,7 +12500,13 @@
          renderWorld()'s native 50/60ms throttle is enough for those rows and
          prevents a large DAT ground layer from monopolising the main thread
          at 60Hz on phones. */
-      if(app.phase==="world"&&(walking||actionActive&&fieldActorVisualChanged(now)))renderWorld(walking);
+      if(app.phase==="world"&&(walking||actionActive&&fieldActorVisualChanged(now))){
+        /* renderWorld() itself calls scheduleWorldAnimation() after painting.
+           Suppress that nested registration while this tick owns the one
+           continuation timer below. */
+        app._worldAnimationTicking=true;
+        try{renderWorld(walking);}finally{app._worldAnimationTicking=false;}
+      }
       if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive(now)))return;
       if(useRAF){
         app._worldAnimationFrame=window.requestAnimationFrame(tick);
@@ -14471,8 +14498,13 @@
     if(app.phase!=="world"||app.battle||mapMovementBlocked())return;
     const actionNo=Number(item.dataset.actionNo);if(!Number.isFinite(actionNo))return;
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
-    const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
-    if(actor){setLocalActorAction(actor,actionNo);actor.walking=false;renderWorld(true);scheduleWorldAnimation();}
+    const actor=ensureOwnFieldActor();
+    setLocalActorAction(actor,actionNo);actor.walking=false;
+    /* FIELD.CPP destroys the action window on selection.  Closing it before
+       the first paint also guarantees the newly selected frame is visible
+       instead of being hidden behind the still-open menu on narrow screens. */
+    closeFieldWindow();
+    renderWorld(true);scheduleWorldAnimation();
     fieldSend("AC",[x,y,actionNo]).catch(reportError);
   }));
   $("field-settings-close")?.addEventListener("click",closeFieldWindow);

@@ -383,6 +383,15 @@ if(!/const useRAF=false/.test(script) ||
    !/app\._worldAnimationTimer=window\.setTimeout\(\(\)=>tick\(performance\.now\(\)\),LEGACY_RENDER_TICK_MS\)/.test(script)) {
   throw new Error("field Action scheduler must keep progressing when requestAnimationFrame is throttled");
 }
+if(!/app\._worldAnimationTicking\|\|app\._worldAnimationFrame\|\|app\._worldAnimationTimer/.test(script) ||
+   !/app\._worldAnimationTicking=true;\s*try\{renderWorld\(walking\);\}finally\{app\._worldAnimationTicking=false;\}/.test(script) ||
+   !/app\._worldAnimationTicking=true;\s*try\{finalizePendingMove\(\);\}finally\{app\._worldAnimationTicking=false;\}/.test(script)) {
+  throw new Error("field Action scheduler must not recursively register duplicate timers during a paint tick");
+}
+if(!/function ensureOwnFieldActor\(\)[\s\S]{0,1200}app\.actors\.set\(id,actor\)/.test(script) ||
+   !/const actor=ensureOwnFieldActor\(\);\s*setLocalActorAction\(actor,actionNo\)/.test(script)) {
+  throw new Error("field Action selection must animate even before the owner's first C record");
+}
 const fieldActionHandlerStart = script.indexOf('  document.querySelectorAll("#field-actions-list [data-action-no]")');
 const fieldActionHandlerEnd = script.indexOf('  $("field-settings-close")', fieldActionHandlerStart);
 const fieldActionHandlerSource = script.slice(fieldActionHandlerStart, fieldActionHandlerEnd);
