@@ -1251,6 +1251,13 @@
   const LEGACY_MOVE_SPEED=4;
   const LEGACY_PROC_TICK_MS=8;
   const MOVE_CARDINAL_DURATION=LEGACY_GRID_SIZE/LEGACY_MOVE_SPEED*LEGACY_PROC_TICK_MS;
+  /* GAMEMAIN.CPP drives charProc()/pattern() from the 60 Hz ProcTime
+     (16.666667 ms).  Keep that field-character clock separate from the
+     server/battle 8 ms tick above: using the battle tick for Action rows
+     compressed a hand-wave/attack into a fraction of the native duration,
+     so on a phone it was easy to see only the first/final bitmap and report
+     the action as static. */
+  const LEGACY_FIELD_ANIMATION_TICK_MS=1000/60;
   /* Keep the optimized process clock for sprites and battle movies. */
   /* The previously shipped web field used a 6ms-equivalent movement clock;
      0.75× the 8ms process interval restores its 96ms cardinal step. */
@@ -4511,7 +4518,13 @@
       const requested=spriteActionForActor(actor);
       const candidates=sprite.actions.filter(item=>Number(item.direction)===direction); const animation=candidates.find(item=>Number(item.action)===requested)||candidates.find(item=>Number(item.action)===3)||candidates[0]||sprite.actions[0];
       const frames=Array.isArray(animation?.frames)&&animation.frames.length?animation.frames:[ ]; if(!frames.length)return previousFrame||null;
-      const duration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_PROC_TICK_MS;
+      /* A locally predicted tile walk uses the web field's 96 ms step
+         duration.  Keep its six walk frames on the same 8 ms cadence that
+         was used to derive that movement speed; an explicitly selected
+         “走动” Action (walking=false) follows the native 60 Hz charProc()
+         clock above. */
+      const animationTick=actor?.walking?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS;
+      const duration=Math.max(1,Number(animation.frame_ms)||7)*animationTick;
       const self=actor?.name===app.character||actor?.id===app.playerActorId;
       /* Field actors use the shared walk clock. Battle actors have their own
          wall-clock origin for every movie phase; using performance.now() from
@@ -4695,7 +4708,7 @@
          simply already settled; do not abort the scan, otherwise a later
          local/player action would never arm the scheduler. */
       if(!Number.isFinite(started)||started<=0)continue;
-      const frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_PROC_TICK_MS;
+      const frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_FIELD_ANIMATION_TICK_MS;
       if(now-started<frames.length*frameDuration)return true;
     }
     return false;
