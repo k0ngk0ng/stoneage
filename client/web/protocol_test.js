@@ -1045,6 +1045,9 @@ if (leavingFrames[0].join(",")!=="516,1" || leavingFrames[23].join(",")!=="815,2
 const menuLifecycleSource=script.slice(script.indexOf("  const BATTLE_MENU_FRAME_MS"),script.indexOf("  const BATTLE_COUNTDOWN_LOGICAL_BASE"));
 for(const expected of [
   /const BATTLE_MENU_FRAME_MS=1000\/60/,
+  /fallbackTimer/,
+  /motion\.phase==="shown"[\s\S]{0,260}motion\.buttonX=BATTLE_MENU_ANCHOR_X/,
+  /const watchdog=\(\)=>\{[\s\S]{0,520}stalled=[^;]+now-Number\(motion\.lastAt/,
   /startBattleMenuMotion[\s\S]{0,1200}battleAdvanceMenuMotion\(state\);[\s\S]{0,180}scheduleBattleMenuMotion\(state\)/,
   /battleMenuMotionFinished\(state,owner\)[\s\S]{0,260}owner==="player"&&state\.petMenuStagePending\)battleCommitPetMenuStage/,
   /queueBattlePetMenuStage\(state=app\.battleState,command=""\)[\s\S]{0,520}leaveBattleMenuMotion\(state,"player"\)/,

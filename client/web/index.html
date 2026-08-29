@@ -3308,7 +3308,7 @@
   const BATTLE_MENU_START_ACCELERATION=25;
   function battleMenuMotionShape(state=app.battleState){
     if(!state)return null;
-    if(!state.menuMotion||typeof state.menuMotion!=="object")state.menuMotion={owner:"",phase:"hidden",buttonX:BATTLE_MENU_START_X,buttonA:BATTLE_MENU_START_ACCELERATION,raf:0,lastAt:0,accumulator:0,generation:null};
+    if(!state.menuMotion||typeof state.menuMotion!=="object")state.menuMotion={owner:"",phase:"hidden",buttonX:BATTLE_MENU_START_X,buttonA:BATTLE_MENU_START_ACCELERATION,raf:0,fallbackTimer:0,lastAt:0,accumulator:0,generation:null};
     return state.menuMotion;
   }
   function battleMenuSkillEntry(action,state=app.battleState){
@@ -3320,6 +3320,15 @@
   function syncBattleMenuMotion(state=app.battleState){
     const player=$("battle-player-menu"),pet=$("battle-pet-command-menu"),motion=battleMenuMotionShape(state);
     if(!player||!pet||!motion)return;
+    /* A reconnect/packet split can restore a serialized `shown` state before
+       the last movement frame's buttonX value.  Native BattleMenuProc keeps
+       the completed surface at buttonX=515; accepting the stale entry value
+       (815) paints every button beyond the 640px back-buffer and looks like
+       the battle menu is missing on the right.  Normalize only the terminal
+       state; entering/leaving still uses the full native trajectory. */
+    if(motion.phase==="shown"&&(Number(motion.buttonX)!==BATTLE_MENU_ANCHOR_X||Number(motion.buttonA)!==0)){
+      motion.buttonX=BATTLE_MENU_ANCHOR_X;motion.buttonA=0;
+    }
     const active=Boolean(app.battle&&app.phase==="battle"&&app.battleState===state),offset=Math.trunc(Number(motion.buttonX)||BATTLE_MENU_START_X)-BATTLE_MENU_ANCHOR_X;
     const playerVisible=active&&motion.owner==="player"&&motion.phase!=="hidden",petVisible=active&&motion.owner==="pet"&&motion.phase!=="hidden";
     player.hidden=!playerVisible;pet.hidden=!petVisible;
@@ -3346,7 +3355,8 @@
   function cancelBattleMenuMotionFrame(state=app.battleState){
     const motion=state?.menuMotion;if(!motion)return;
     if(Number(motion.raf))window.cancelAnimationFrame(Number(motion.raf));
-    motion.raf=0;motion.lastAt=0;motion.accumulator=0;
+    window.clearTimeout(Number(motion.fallbackTimer)||0);
+    motion.raf=0;motion.fallbackTimer=0;motion.lastAt=0;motion.accumulator=0;
   }
   function resetBattleMenuMotion(state=app.battleState,options={}){
     if(!state)return;
@@ -3390,7 +3400,21 @@
       if(finished){battleMenuMotionFinished(state,finished);return;}
       if(motion.phase==="entering"||motion.phase==="leaving")motion.raf=window.requestAnimationFrame(frame);
     };
+    /* requestAnimationFrame is intentionally the presentation clock, but a
+       background/throttled WebView can suspend it indefinitely while the
+       battle surface remains active.  Keep a small watchdog that advances
+       the same discrete clock only when the pending RAF has stalled; it
+       prevents the native menu from being left at its off-screen x=815
+       entry point without changing the 60Hz trajectory in a foreground tab. */
+    const watchdog=()=>{
+      motion.fallbackTimer=0;
+      if(app.battleState!==state||!app.battle||app.phase!=="battle"||!(motion.phase==="entering"||motion.phase==="leaving"))return;
+      const now=performance.now(),stalled=Number(motion.raf)>0&&now-Number(motion.lastAt||now)>120;
+      if(stalled){window.cancelAnimationFrame(Number(motion.raf));motion.raf=0;frame(now);}
+      if(motion.phase==="entering"||motion.phase==="leaving")motion.fallbackTimer=window.setTimeout(watchdog,120);
+    };
     motion.raf=window.requestAnimationFrame(frame);
+    motion.fallbackTimer=window.setTimeout(watchdog,120);
   }
   function startBattleMenuMotion(state,owner,generation=state?.turnKey){
     if(!state||app.battleState!==state||!app.battle)return false;
