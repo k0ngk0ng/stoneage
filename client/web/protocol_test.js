@@ -1832,6 +1832,14 @@ if (depthEntries.map(entry => entry.name).join(",") !== "far actor,missile,near 
 if (/#map-transition::after\s*\{/.test(html)) {
   throw new Error("map transition regressed: the artificial center seam must not be drawn");
 }
+/* A floor-fold curtain blocks gameplay routing through worldRouteInputBlocked,
+   but must not become a pointer/cursor layer: the painted fish is deliberately
+   above it and document-level trusted pointer samples must continue updating
+   during the fold. */
+const mapTransitionCSS = html.match(/#map-transition\s*\{([^}]*)\}/)?.[1] || "";
+if (!/pointer-events\s*:\s*none/.test(mapTransitionCSS) || /cursor\s*:\s*none/.test(mapTransitionCSS)) {
+  throw new Error("map transition must stay pointer-transparent without hiding the painted cursor");
+}
 /* BattleMenuProc(), BattleButtonJujutsu/Item/Pet/Waza and every extracted
    REALBIN bitmap use the executable's one 640x480 back-buffer.  Keep the
    visible rectangles checked as numbers: a later responsive-rule edit must

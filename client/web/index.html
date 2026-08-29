@@ -599,7 +599,13 @@
        Keep the black surface below the field and animate the whole finished
        field above it; this also removes the rounding seam created by two
        independently scaled half-elements. */
-    #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1000; display:none; overflow:hidden; pointer-events:auto; background:#000; cursor:none; }
+    /* The curtain owns the gameplay lock, not the physical pointer.  Keeping
+       it pointer-transparent lets the document-level pointer sampler update
+       the painted fish while a floor fold is in progress; the cursor portal
+       (z-index 1100) remains visible above this black surface.  An opaque,
+       pointer-active curtain used to swallow those samples and made the fish
+       appear frozen or disappear exactly when changing rooms. */
+    #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1000; display:none; overflow:hidden; pointer-events:none; background:#000; }
     #map-transition.active { display:block; }
     #map-transition .map-transition-half { display:none; }
     main.map-transition-active #world-screen { z-index:1001; transform-origin:center center; }
