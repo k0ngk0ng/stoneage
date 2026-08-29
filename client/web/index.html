@@ -6252,7 +6252,15 @@
         }
         break;
       }
-      case "E": app.status.encounterMin=stateNumber(parts[1]);app.status.encounterMax=stateNumber(parts[2]);break;
+      case "E": {
+        /* Compatibility with an unpatched client-owned encounter server.
+           The deployed 2.5 GMSV deliberately returns an empty E status and
+           owns CEP in CHAR_walk() (Arminius 6.22), so these values are never
+           sampled by the field walker below.  Keeping the decoder is safe;
+           using it to send EN per step would run a second encounter roll on
+           top of the authoritative server roll. */
+        app.status.encounterMin=stateNumber(parts[1]);app.status.encounterMax=stateNumber(parts[2]);break;
+      }
       case "J": { const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:unescapeCharacterOption(parts[5]||""),memo:unescapeCharacterOption(parts[6]||"")};app.magic[slot]=entry;break; }
       case "N": { const slot=decimal(kind.slice(1),0),target=app.party[slot]||{slot};if(Protocol.base62(parts[1]||"0")===0){app.party[slot]=null;}else{applyMaskedFields(parts,target,PARTY_FIELDS);target.slot=slot;app.party[slot]=target;}break; }
       case "I": receiveInventory([kind.slice(1),...parts.slice(1)].join("|"),false);break;
@@ -13949,6 +13957,12 @@
   }
   function startNextMove(){
     if(app.phase!=="world"||app.battle||mapMovementBlocked()||app.pendingMove||!app.moveQueue.length){app._walkNextStartAt=0;return;}
+    /* This repository's 2.5 GMSV applies Arminius 6.22 in CHAR_walk(): every
+       accepted landing step clamps/increments CONNECT.CEP, rolls rand()%120,
+       and calls lssproto_EN_recv() itself.  MAP.CPP::_checkEncount() belongs
+       to the older client-owned path and must not be copied into this send
+       boundary.  A per-step send("EN") here would double-roll encounters;
+       ordinary field walking therefore emits W only and waits for server EN. */
     const step=app.moveQueue.shift(),delta=DIRS[step.direction];if(!delta)return;
     const from=[app.position[0],app.position[1]],target=[step.target[0],step.target[1]],alreadySent=app.moveSentSteps>0;
     const targetInside=isInsideFloor(target[0],target[1],app.floor);

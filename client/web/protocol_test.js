@@ -210,6 +210,34 @@ if (heartbeatStart < 0 || heartbeatEnd <= heartbeatStart ||
     !script.includes('app.phase==="character-create"||app.phase==="login-error"')) {
   throw new Error("connected title/character screens must retain the native global Echo and disconnect UI");
 }
+/* This 2.5 server includes Arminius 6.22's server-owned random encounter
+   loop.  It intentionally suppresses the old S:E probability packet and
+   rolls CONNECT.CEP after accepted W steps.  Porting MAP.CPP::_checkEncount
+   into the browser would make every step roll twice: once here and once in
+   GMSV.  Verify both halves of that contract instead of treating a short
+   no-encounter walk as evidence that the client must send EN. */
+const legacyWalkSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/char/char_walk.c", "latin1");
+const legacyCharSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/char/char.c", "latin1");
+if (!legacyWalkSource.includes("int cep = CONNECT_get_CEP(enfd)") ||
+    !legacyWalkSource.includes("if (rand()%120<cep)") ||
+    !legacyWalkSource.includes("lssproto_EN_recv(enfd,") ||
+    !legacyWalkSource.includes("CONNECT_set_CEP(enfd, cep)")) {
+  throw new Error("deployed 2.5 walk source lost its server-owned encounter roll");
+}
+if (!/case\s+'e'\s*:\s*return\s+"\\0"\s*;/.test(legacyCharSource)) {
+  throw new Error("server-owned encounter mode must suppress the client S:E probability packet");
+}
+const startNextMoveStart = script.indexOf("  function startNextMove(){");
+const startNextMoveEnd = script.indexOf("  function directionFor", startNextMoveStart);
+const startNextMoveSource = script.slice(startNextMoveStart, startNextMoveEnd);
+const startNextMoveExecutable = startNextMoveSource
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/\/\/[^\n]*/g, "");
+if (startNextMoveStart < 0 || startNextMoveEnd <= startNextMoveStart ||
+    !startNextMoveSource.includes("ordinary field walking therefore emits W only") ||
+    /send\(["']EN["']/.test(startNextMoveExecutable)) {
+  throw new Error("ordinary Web walking must wait for the authoritative 2.5 server EN packet");
+}
 /* The fish-bone is a painted legacy sprite.  A browser Pointer Lock would
    move/recapture the user's real mouse during a map fold, which is the
    opposite of the native client's behavior and makes the cursor appear to
