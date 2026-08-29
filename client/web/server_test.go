@@ -247,6 +247,107 @@ func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
 	}
 }
 
+func TestWebConfigFileLoadsOSSAndCDNWithEnvironmentOverride(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "web.json")
+	content := `{
+  "listen_address": "127.0.0.1:18089",
+  "tcp_upstream": "127.0.0.1:19065",
+  "max_sessions": 23,
+  "poll_timeout": "9s",
+  "static": {
+    "assets_directory": "/srv/stoneage/assets",
+    "maps_directory": "/srv/stoneage/maps",
+    "audio_directory": "/srv/stoneage/audio",
+    "npc_directory": "/srv/stoneage/npc",
+    "oss": {
+      "provider": "aliyun-oss",
+      "endpoint": "https://oss-cn-shanghai.aliyuncs.com/",
+      "region": "cn-shanghai",
+      "bucket": "stoneage-web-assets",
+      "prefix": "/stoneage/",
+      "access_key_id_env": "TEST_OSS_ACCESS_KEY_ID",
+      "access_key_secret_env": "TEST_OSS_ACCESS_KEY_SECRET"
+    },
+    "cdn": {"base_url": "https://cdn.example.com/stoneage/"}
+  }
+}`
+	if err := os.WriteFile(filename, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STONEAGE_WEB_CONFIG", "")
+	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "")
+	t.Setenv("STONEAGE_WEB_MAX_SESSIONS", "")
+	cfg, path, err := configFromCommandLine([]string{"-config", filename})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filename || cfg.ListenAddress != "127.0.0.1:18089" || cfg.TCPUpstream != "127.0.0.1:19065" || cfg.MaxSessions != 23 || cfg.PollTimeout != 9*time.Second || cfg.CDNBaseURL != "https://cdn.example.com/stoneage/" {
+		t.Fatalf("loaded config path=%q cfg=%+v", path, cfg)
+	}
+	oss, err := normalizeOSSConfig(cfg.OSS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oss.Endpoint != "https://oss-cn-shanghai.aliyuncs.com" || oss.Region != "cn-shanghai" || oss.Bucket != "stoneage-web-assets" || oss.Prefix != "stoneage" || oss.AccessKeyIDEnv != "TEST_OSS_ACCESS_KEY_ID" || oss.AccessKeySecretEnv != "TEST_OSS_ACCESS_KEY_SECRET" {
+		t.Fatalf("normalized OSS=%+v", oss)
+	}
+	if got := ossPublicBaseURL(oss); got != "https://stoneage-web-assets.oss-cn-shanghai.aliyuncs.com/stoneage" {
+		t.Fatalf("public OSS base=%q", got)
+	}
+	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "https://emergency.example.com/stoneage")
+	overridden, _, err := configFromCommandLine([]string{"-config", filename})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overridden.CDNBaseURL != "https://emergency.example.com/stoneage" {
+		t.Fatalf("CDN environment override=%q", overridden.CDNBaseURL)
+	}
+}
+
+func TestHandlerUsesPublicOSSRootWhenCDNIsUnset(t *testing.T) {
+	cfg := testConfig("127.0.0.1:1")
+	cfg.CDNBaseURL = ""
+	cfg.OSS.Endpoint = "https://oss-cn-hangzhou.aliyuncs.com"
+	cfg.OSS.Region = "cn-hangzhou"
+	cfg.OSS.Bucket = "stoneage-web-assets"
+	cfg.OSS.Prefix = "stoneage"
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	text := string(handler.page)
+	for _, fragment := range []string{
+		"https://stoneage-web-assets.oss-cn-hangzhou.aliyuncs.com/stoneage/assets/",
+		"https://stoneage-web-assets.oss-cn-hangzhou.aliyuncs.com/stoneage/maps/",
+		"https://stoneage-web-assets.oss-cn-hangzhou.aliyuncs.com/stoneage/audio/",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Errorf("OSS-backed page lost rewritten static fragment %q", fragment)
+		}
+	}
+}
+
+func TestWebConfigFileAndOSSValidationFailClosed(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "web.json")
+	if err := os.WriteFile(filename, []byte(`{"static":{"cdn":{"domain":"https://cdn.example.com"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadWebConfigFile(filename); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown config field error=%v", err)
+	}
+	for _, value := range []OSSConfig{
+		{Provider: "aliyun-oss", Endpoint: "https://oss-cn-hangzhou.aliyuncs.com", Prefix: "stoneage"},
+		{Provider: "aliyun-oss", Endpoint: "https://oss-cn-hangzhou.aliyuncs.com/path", Bucket: "stoneage-web-assets", Prefix: "stoneage"},
+		{Provider: "aliyun-oss", Endpoint: "https://oss-cn-hangzhou.aliyuncs.com", Bucket: "StoneAge", Prefix: "stoneage"},
+		{Provider: "aliyun-oss", Endpoint: "https://oss-cn-hangzhou.aliyuncs.com", Bucket: "stoneage-web-assets", Prefix: "stoneage/../v1"},
+	} {
+		if _, err := normalizeOSSConfig(value); err == nil {
+			t.Errorf("invalid OSS configuration accepted: %+v", value)
+		}
+	}
+}
+
 func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 	body := string(page)
 	required := []string{

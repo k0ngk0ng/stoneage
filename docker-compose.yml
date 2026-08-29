@@ -126,20 +126,14 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
-    command: ["/opt/stoneage/bin/stoneage-web"]
+    command: ["/opt/stoneage/bin/stoneage-web", "-config", "/etc/stoneage/web.json"]
     environment:
-      STONEAGE_WEB_LISTEN: 0.0.0.0:8088
-      STONEAGE_TCP_UPSTREAM: gateway:9065
-      STONEAGE_WEB_ASSETS: /opt/stoneage/web-assets
-      STONEAGE_WEB_MAPS: /game/client/map
-      STONEAGE_WEB_AUDIO: /game/client/data
-      STONEAGE_WEB_NPCS: /game/gmsv/data/npc
+      # Environment variables are emergency/secret-safe overrides. Normal
+      # Web, OSS and CDN settings live in the mounted JSON configuration.
       STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
-      # Optional public resource root, for example
-      # https://cdn.example.com/stoneage.  Only assets/, maps/ and audio/ are
-      # fetched there; game/account APIs stay on this container.
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.json}:/etc/stoneage/web.json:ro
       - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
       - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv:ro
     ports:

@@ -95,8 +95,29 @@ ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/maps
 ossutil sync runtime/legacy-client/data oss://my-bucket/stoneage/audio
 ```
 
-然后在 `.env` 设置
-`STONEAGE_WEB_CDN_BASE_URL=https://cdn.example.com/stoneage`。网页会把
+Web 后端启动时读取 [`config/web.json`](config/web.json)。在
+`static.oss` 中填写阿里云 OSS 的 `endpoint`、`region`、`bucket` 和固定
+`prefix`，在 `static.cdn.base_url` 中填写 CDN 公开根地址，例如：
+
+```json
+"oss": {
+  "provider": "aliyun-oss",
+  "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
+  "region": "cn-hangzhou",
+  "bucket": "my-stoneage-assets",
+  "prefix": "stoneage",
+  "access_key_id_env": "ALIBABA_CLOUD_ACCESS_KEY_ID",
+  "access_key_secret_env": "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+},
+"cdn": {
+  "base_url": "https://cdn.example.com/stoneage"
+}
+```
+
+`prefix` 和 `base_url` 都是跨版本复用的固定根目录，不追加 `v*` tag。Compose
+通过 `.env` 的 `STONEAGE_WEB_CONFIG_FILE` 把这个配置只读挂载到 Web 容器；AccessKey
+明文只应放在配置所命名的环境变量中，不应直接写进 JSON 或提交到 Git。CDN 有值时优先
+使用 CDN；CDN 留空但 OSS endpoint/bucket 已配置时，后端会直接生成公开 OSS 根地址。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
 仍只访问 8088。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露

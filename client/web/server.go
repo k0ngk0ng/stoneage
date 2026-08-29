@@ -121,6 +121,21 @@ type Config struct {
 	// audio/.  It changes only browser static-resource URLs; the account, NPC
 	// and game-session APIs always remain on this process.
 	CDNBaseURL string
+	// OSS describes the stable object-storage origin used by deployment to
+	// hold assets/, maps/ and audio/. Runtime browser URLs still prefer the
+	// CDN base above; credentials are referenced by environment-variable name
+	// and are never embedded in the public page.
+	OSS OSSConfig
+}
+
+type OSSConfig struct {
+	Provider           string
+	Endpoint           string
+	Region             string
+	Bucket             string
+	Prefix             string
+	AccessKeyIDEnv     string
+	AccessKeySecretEnv string
 }
 
 func DefaultConfig() Config {
@@ -136,11 +151,16 @@ func DefaultConfig() Config {
 		PollTimeout:     defaultPollTimeout,
 		IdleTimeout:     defaultIdleTimeout,
 		DialTimeout:     defaultDialTimeout,
+		OSS: OSSConfig{
+			Provider:           "aliyun-oss",
+			Prefix:             "stoneage",
+			AccessKeyIDEnv:     "ALIBABA_CLOUD_ACCESS_KEY_ID",
+			AccessKeySecretEnv: "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
+		},
 	}
 }
 
-func configFromEnvironment() Config {
-	cfg := DefaultConfig()
+func applyEnvironmentConfig(cfg Config) Config {
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_LISTEN")); value != "" {
 		cfg.ListenAddress = value
 	}
@@ -174,10 +194,28 @@ func configFromEnvironment() Config {
 	if value := positiveDurationEnv("STONEAGE_WEB_DIAL_TIMEOUT"); value > 0 {
 		cfg.DialTimeout = value
 	}
-	cfg.AllowedOrigin = strings.TrimSpace(os.Getenv("STONEAGE_WEB_ALLOWED_ORIGIN"))
-	cfg.CDNBaseURL = strings.TrimSpace(os.Getenv("STONEAGE_WEB_CDN_BASE_URL"))
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_ALLOWED_ORIGIN")); value != "" {
+		cfg.AllowedOrigin = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_CDN_BASE_URL")); value != "" {
+		cfg.CDNBaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_OSS_ENDPOINT")); value != "" {
+		cfg.OSS.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_OSS_REGION")); value != "" {
+		cfg.OSS.Region = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_OSS_BUCKET")); value != "" {
+		cfg.OSS.Bucket = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_OSS_PREFIX")); value != "" {
+		cfg.OSS.Prefix = value
+	}
 	return cfg
 }
+
+func configFromEnvironment() Config { return applyEnvironmentConfig(DefaultConfig()) }
 
 func normalizeCDNBaseURL(value string) (string, error) {
 	value = strings.TrimSpace(value)
@@ -874,10 +912,22 @@ func NewHandler(config Config) (*Handler, error) {
 	}
 	cdnBaseURL, err := normalizeCDNBaseURL(config.CDNBaseURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid CDN base URL: %w", err)
 	}
 	config.CDNBaseURL = cdnBaseURL
-	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithCDNBase(page, cdnBaseURL), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
+	oss, err := normalizeOSSConfig(config.OSS)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OSS configuration: %w", err)
+	}
+	config.OSS = oss
+	publicAssetBaseURL := cdnBaseURL
+	if publicAssetBaseURL == "" {
+		/* A configured CDN is preferred. Without one, a public Aliyun OSS
+		   bucket is still a valid external static origin, so the OSS settings
+		   are operational rather than deployment-only metadata. */
+		publicAssetBaseURL = ossPublicBaseURL(oss)
+	}
+	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithCDNBase(page, publicAssetBaseURL), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository
@@ -1336,12 +1386,16 @@ func (handler *Handler) writeJSON(response http.ResponseWriter, status int, valu
 }
 
 func run() error {
-	config := configFromEnvironment()
+	config, configPath, err := configFromCommandLine(os.Args[1:])
+	if err != nil {
+		return err
+	}
 	handler, err := NewHandler(config)
 	if err != nil {
 		return err
 	}
 	defer handler.Close()
+	config = handler.config
 	server := &http.Server{
 		Addr:              config.ListenAddress,
 		Handler:           handler,
@@ -1360,6 +1414,17 @@ func run() error {
 		_ = server.Shutdown(ctx)
 		handler.Close()
 	}()
+	if configPath != "" {
+		log.Printf("web configuration loaded from %s", configPath)
+	}
+	if config.OSS.Endpoint != "" {
+		log.Printf("static OSS origin configured: provider=%s bucket=%s endpoint=%s prefix=%s", config.OSS.Provider, config.OSS.Bucket, config.OSS.Endpoint, config.OSS.Prefix)
+	}
+	if config.CDNBaseURL != "" {
+		log.Printf("static CDN root configured: %s", config.CDNBaseURL)
+	} else if publicOSSURL := ossPublicBaseURL(config.OSS); publicOSSURL != "" {
+		log.Printf("static assets use public OSS root: %s", publicOSSURL)
+	}
 	log.Printf("web listening on %s -> TCP %s", config.ListenAddress, config.TCPUpstream)
 	err = server.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
