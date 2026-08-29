@@ -799,6 +799,12 @@
     #battle-popup[data-kind="pet"] #battle-popup-bg{width:256px;height:320px;left:376px;top:132px}
     #battle-popup[data-kind="pet"] #battle-popup-list{left:393px;top:165px;width:220px;height:240px;line-height:16px}
     #battle-popup[data-kind="pet"] #battle-popup-list .battle-popup-row{width:220px;height:48px;min-height:48px;line-height:16px;white-space:normal}
+    /* BATTLEMENU.CPP keeps every selectPetNo row clickable: the current pet
+       is yellow, a dead standby pet is red, and either click emits only the
+       native error SE.  Do not use the HTML disabled state here because it
+       suppresses that click feedback and differs from StockFontBuffer. */
+    #battle-popup[data-kind="pet"] #battle-popup-list .battle-popup-row.pet-current{color:#ffe95d}
+    #battle-popup[data-kind="pet"] #battle-popup-list .battle-popup-row.pet-dead{color:#ff6060}
     #battle-popup[data-kind="pet"] #battle-popup-list .battle-popup-icon{width:24px;height:24px;margin-right:4px}
     #battle-popup[data-kind="pet"] #battle-popup-return{display:block}
     #battle-popup[data-kind="pet"] #battle-popup-close{left:464px;top:423px}
@@ -1342,7 +1348,7 @@
   ]);
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
   const STONEAGE_25=Object.freeze({version:"2.5",executable:"sa_2903.exe",runningKey:"cary"});
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* renderWorld() calls scheduleWorldAnimation() at their tail.  During an
      animation tick that call must be ignored; otherwise each tick installs a
      second timeout before the original tick installs its continuation, and
@@ -1483,8 +1489,14 @@
      defaults and the in-game audio menu remains authoritative for players. */
   const DEBUG_AUDIO_MUTED=(()=>{
     try{
-      const query=new URLSearchParams(window.location.search);
-      return Boolean(navigator.webdriver)||query.get("debugMute")==="1"||query.get("muteAudio")==="1"||window.localStorage?.getItem("stoneage:web:debug-mute")==="1";
+      const query=new URLSearchParams(window.location.search),explicit=query.get("debugMute")??query.get("muteAudio");
+      /* Automated visual checks stay silent by default, but an explicit 0
+         opts into the real audio path for a deliberate music regression
+         run.  Without this escape hatch navigator.webdriver made it
+         impossible to verify map/BGM lifecycle with the same browser used
+         for the rest of the release QA. */
+      if(explicit==="0")return false;
+      return Boolean(navigator.webdriver)||explicit==="1"||window.localStorage?.getItem("stoneage:web:debug-mute")==="1";
     }catch(_){return false;}
   })();
   app.debugAudioMuted=DEBUG_AUDIO_MUTED;
@@ -1528,13 +1540,19 @@
     const legacy=Number(legacyValue);
     return Math.max(1,Math.min(15,Math.round(Number.isFinite(legacy)?legacy:15)));
   }
+  function audioSettingLevel(value,legacyValue=15){
+    const level=Number(value);
+    if(Number.isFinite(level))return Math.max(0,Math.min(15,Math.trunc(level)));
+    const legacy=Number(legacyValue);
+    return Math.max(0,Math.min(15,Math.round(Number.isFinite(legacy)?legacy:15)));
+  }
   function bgmVolume(){
     const settings=app.systemSettings||{};
-    return clampAudio(settingLevel(settings.bgmVolumeLevel,Number(settings.bgmTempo??100)*15/100)/15);
+    return clampAudio(audioSettingLevel(settings.bgmVolumeLevel,Number(settings.bgmTempo??100)*15/100)/15);
   }
   function seVolume(){
     const settings=app.systemSettings||{};
-    return clampAudio(settingLevel(settings.seVolumeLevel,Number(settings.seVolume??100)*15/100)/15);
+    return clampAudio(audioSettingLevel(settings.seVolumeLevel,Number(settings.seVolume??100)*15/100)/15);
   }
   function musicIntentBgm(){
     const music=app.music||{};
@@ -1542,6 +1560,22 @@
     if((music.mode==="map"||music.mode==="battle-result")&&Number(music.mapBgmNo)>=0)return Number(music.mapBgmNo);
     if(music.mode==="off")return -1;
     return 2;
+  }
+  function bgmPitchTrack(number=musicIntentBgm()){
+    return Math.max(0,Math.min(15,Math.trunc(Number(number)||0)));
+  }
+  function bgmPitchFor(number=musicIntentBgm()){
+    const settings=app.systemSettings||{},track=bgmPitchTrack(number),values=settings.bgmPitchByTrack;
+    const value=Array.isArray(values)?values[track]:settings.bgmPitch;
+    return Math.max(-8,Math.min(8,Math.trunc(Number(value)||0)));
+  }
+  function setBgmPitchFor(number,value){
+    const settings=app.systemSettings||{},track=bgmPitchTrack(number),pitch=Math.max(-8,Math.min(8,Math.trunc(Number(value)||0)));
+    if(!Array.isArray(settings.bgmPitchByTrack))settings.bgmPitchByTrack=Array.from({length:16},()=>0);
+    settings.bgmPitchByTrack[track]=pitch;
+    /* Keep the old scalar in sync for already persisted web settings. */
+    settings.bgmPitch=pitch;
+    return pitch;
   }
   function setMusicMode(mode,number){
     const music=app.music||{};music.mode=String(mode||"title");
@@ -1578,7 +1612,7 @@
        audio has no pitch-only primitive; playbackRate is the closest native
        equivalent and keeps the original ±8 range without inventing a new
        server-side rule. */
-    const pitch=Math.max(-8,Math.min(8,Math.trunc(Number(app.systemSettings.bgmPitch)||0)));
+    const pitch=bgmPitchFor(bgmNo);
     audio.playbackRate=Math.pow(2,pitch/12);audio.setAttribute("aria-hidden","true");
     audio.addEventListener("error",()=>{if(soundState.bgm===audio){soundState.bgm=null;soundState.bgmNo=-1;}});
     soundState.bgm=audio;soundState.bgmNo=bgmNo;audio.play().catch(()=>{if(soundState.bgm===audio)soundState.pendingBgm=bgmNo;});
@@ -5741,7 +5775,7 @@
   function systemPlace(item,top,left=0){item.style.top=`${top}px`;item.style.left=`${left}px`;item.style.paddingLeft="0";item.style.margin="0";return item;}
   function systemValue(text,top=0,left=0){const item=document.createElement("span");item.className="system-value";item.textContent=text;return systemPlace(item,top,left);}
   function systemAction(label,handler,top,left=0){const item=button(label,handler);item.className="system-action";return systemPlace(item,top,left);}
-  function systemSubpage(caption,left=-8){const page=document.createElement("div");page.className="system-subpage";const title=document.createElement("span");title.className="system-caption";title.textContent=caption;systemPlace(title,0,left);page.append(title);return page;}
+  function systemSubpage(caption="",left=-8){const page=document.createElement("div");page.className="system-subpage";if(String(caption)){const title=document.createElement("span");title.className="system-caption";title.textContent=caption;systemPlace(title,0,left);page.append(title);}return page;}
   function systemReturn(page,top,left=0){const back=imageButton("返回",9135,()=>{app.systemPage="menu";renderSystem();},80,16);back.className="system-return system-action";systemPlace(back,top,left);page.append(back);}
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
   function sendLegacySystemMenu(index,label){
@@ -5969,38 +6003,40 @@
       systemReturn(sub,280);list.append(sub);return;
     }
     if(page==="bgm"){
-      const sub=systemSubpage("背景音乐");
-      sub.append(systemValue(`目前的音量：${settingLevel(settings.bgmVolumeLevel,15)}`));
-      sub.append(button("增加音量",()=>{settings.bgmVolumeLevel=Math.min(15,settingLevel(settings.bgmVolumeLevel)+1);setBgmVolume();renderSystem();}));
-      sub.append(button("减少音量",()=>{settings.bgmVolumeLevel=Math.max(1,settingLevel(settings.bgmVolumeLevel)-1);setBgmVolume();renderSystem();}));
-      const pitch=Math.max(-8,Math.min(8,Math.trunc(Number(settings.bgmPitch)||0)));
-      sub.append(systemValue(`目前的节奏：${pitch>=0?"+":""}${pitch}`));
-      sub.append(button("加快节奏",()=>{settings.bgmPitch=Math.min(8,(Number(settings.bgmPitch)||0)+1);setBackgroundMusic(app.music.currentBgmNo,{force:true});renderSystem();}));
-      sub.append(button("减慢节奏",()=>{settings.bgmPitch=Math.max(-8,(Number(settings.bgmPitch)||0)-1);setBackgroundMusic(app.music.currentBgmNo,{force:true});renderSystem();}));
-      systemReturn(sub);list.append(sub);return;
+      /* MENU.CPP case 4 advances y by 40/40/48/40/40/52.  These are
+         StockFontBuffer hit rows, not browser-flow buttons. */
+      const sub=systemSubpage(""),track=musicIntentBgm(),level=audioSettingLevel(settings.bgmVolumeLevel,15),pitch=bgmPitchFor(track);
+      sub.append(systemValue(`◆目前的音量 ${String(level).padStart(3," ")} ◆`,0,-8));
+      sub.append(systemAction("增加音量",()=>{settings.bgmVolumeLevel=Math.min(15,audioSettingLevel(settings.bgmVolumeLevel)+1);setBgmVolume();renderSystem();},40));
+      sub.append(systemAction("减少音量",()=>{settings.bgmVolumeLevel=Math.max(0,audioSettingLevel(settings.bgmVolumeLevel)-1);setBgmVolume();renderSystem();},80));
+      sub.append(systemValue(`◆目前的节奏 ${pitch>=0?"+":""}${String(pitch).padStart(3," ")} ◆`,128,-8));
+      sub.append(systemAction("加快节奏",()=>{const target=musicIntentBgm();setBgmPitchFor(target,bgmPitchFor(target)+1);setBackgroundMusic(target,{force:true});renderSystem();},168));
+      sub.append(systemAction("减慢节奏",()=>{const target=musicIntentBgm();setBgmPitchFor(target,bgmPitchFor(target)-1);setBackgroundMusic(target,{force:true});renderSystem();},208));
+      systemReturn(sub,260);list.append(sub);return;
     }
     if(page==="se"){
-      const sub=systemSubpage("音效设定");
-      sub.append(systemValue(`目前的音量：${settingLevel(settings.seVolumeLevel,15)}`));
-      sub.append(button("增加音量",()=>{settings.seVolumeLevel=Math.min(15,settingLevel(settings.seVolumeLevel)+1);renderSystem();}));
-      sub.append(button("减少音量",()=>{settings.seVolumeLevel=Math.max(1,settingLevel(settings.seVolumeLevel)-1);renderSystem();}));
-      sub.append(button(`立体声：${settings.seStereo?"开启":"关闭"}`,()=>{settings.seStereo=!settings.seStereo;renderSystem();}));
-      systemReturn(sub);list.append(sub);return;
+      /* MENU.CPP case 3 uses four 40px rows, then a 52px return gap. */
+      const sub=systemSubpage(""),level=audioSettingLevel(settings.seVolumeLevel,15);
+      sub.append(systemValue(`◆目前的音量 ${String(level).padStart(3," ")} ◆`,0,-8));
+      sub.append(systemAction("增加音量",()=>{settings.seVolumeLevel=Math.min(15,audioSettingLevel(settings.seVolumeLevel)+1);renderSystem();},40));
+      sub.append(systemAction("减少音量",()=>{settings.seVolumeLevel=Math.max(0,audioSettingLevel(settings.seVolumeLevel)-1);renderSystem();},80));
+      sub.append(systemAction(`立体声：${settings.seStereo?"开启":"关闭"}`,()=>{settings.seStereo=!settings.seStereo;renderSystem();},120));
+      systemReturn(sub,172);list.append(sub);return;
     }
     if(page==="mouse"){
-      const sub=systemSubpage("游标设定");
+      const sub=systemSubpage("");
       /* The fish-bone is a painted cursor, not a pointer lock.  It follows
          real mouse movement during field play, including while a floor fold
          is playing; compositor-only events never move it by themselves. */
-      sub.append(systemValue("鱼骨游标：跟随鼠标（切换场景不自动位移）"));
-      systemReturn(sub);list.append(sub);return;
+      sub.append(systemValue("鱼骨游标：跟随鼠标（切换场景不自动位移）",0,-8));
+      systemReturn(sub,96);list.append(sub);return;
     }
     if(page==="auto"){
-      const sub=systemSubpage("战斗设定");
-      sub.append(systemValue(`自动战斗：${settings.autoBattle?"开启":"关闭"}`));
-      sub.append(button(settings.autoBattle?"关闭自动战斗":"开启自动战斗",()=>{settings.autoBattle=!settings.autoBattle;app.battleState.autoTurn=-1;if(!settings.autoBattle)app.battleState.pendingAction=null;addChat("战斗",settings.autoBattle?"已开启自动战斗。":"已关闭自动战斗。");renderSystem();renderBattle();}));
-      sub.append(systemValue("自动模式只发送 2.5 B 战斗指令"));
-      systemReturn(sub);list.append(sub);return;
+      const sub=systemSubpage("");
+      sub.append(systemValue(`自动战斗：${settings.autoBattle?"开启":"关闭"}`,0,-8));
+      sub.append(systemAction(settings.autoBattle?"关闭自动战斗":"开启自动战斗",()=>{settings.autoBattle=!settings.autoBattle;app.battleState.autoTurn=-1;if(!settings.autoBattle)app.battleState.pendingAction=null;addChat("战斗",settings.autoBattle?"已开启自动战斗。":"已关闭自动战斗。");renderSystem();renderBattle();},40));
+      sub.append(systemValue("自动模式只发送 2.5 B 战斗指令",80,-8));
+      systemReturn(sub,128);list.append(sub);return;
     }
     if(page==="registry"){
       const registry=document.createElement("div");registry.className="system-registry";registry.style.background="url('/assets/bitmaps/bitmap_9288.png') center/272px 430px no-repeat";
@@ -6536,15 +6572,39 @@
     const targetNo=battleHex(battleAggregateTarget(action,target)),index=battleHex(action?.index);
     switch(action?.kind){case "attack":return `H|${targetNo}`;case "capture":return `T|${targetNo}`;case "magic":return `J|${index}|${targetNo}`;case "item":return `I|${index}|${targetNo}`;case "pet":return `W|${index}|${targetNo}`;default:return "";}
   }
+  function battlePetSwitchEntry(index){
+    const slot=Number(index),validSlot=Number.isInteger(slot)&&slot>=0&&slot<5,pet=validSlot?app.petSlots?.[slot]:null;
+    const mask=Math.max(0,Number(app.status?.standbyPetMask)||0)&0x1f;
+    /* PC.H::selectPetNo is the authoritative five-bit list used by
+       BATTLEMENU.CPP.  A populated K slot is not sufficient: rest/mail pets
+       deliberately remain in petSlots but must not produce S|n. */
+    const listed=Boolean(validSlot&&pet&&Number(pet.useFlag??1)!==0&&(mask&(1<<slot)));
+    return {slot,pet,listed,alive:Boolean(listed&&Number(pet.hp??0)>0),current:Boolean(listed&&slot===Number(app.selectedPet))};
+  }
+  function rejectUnavailableBattlePetSwitch(index){
+    const value=Number(index);
+    if(value===-1){
+      if(Number.isInteger(Number(app.selectedPet))&&Number(app.selectedPet)>=0)return false;
+      playSoundEffect(220,320,240);return true;
+    }
+    const entry=battlePetSwitchEntry(value);
+    if(entry.listed&&entry.alive&&!entry.current)return false;
+    /* The server does not reject an out-of-mask S|n: battle_command.c turns
+       it into BATTLE_COM_PETIN, consuming the master's whole turn.  Reject
+       locally before any lock/pending mutation and leave the popup plus the
+       absolute BattleCntDown deadline untouched, matching MENU.CPP. */
+    playSoundEffect(220,320,240);return true;
+  }
   function battleSwitchPet(index){
     /* BattleButtonPet() sends an S command inside the B envelope. KS is the
        field/menu pet-selection protocol and is not interchangeable here. */
-    const value=Number(index);if(!Number.isFinite(value))return;
+    const value=Number(index);if(!Number.isInteger(value)||value< -1||value>4)return false;
+    if(rejectUnavailableBattlePetSwitch(value))return false;
     /* BattleCommandDispach() parses S with %d (decimal), unlike H/T/J/I/W
        which use hexadecimal slots/targets.  Sending battleHex(10) here made
        slot ten arrive as "A" and the server silently treated it as -1. */
     const command=`S|${value<0?"-1":String(Math.trunc(value))}`;
-    if(!battleCommandAllowed(command))return;
+    if(!battleCommandAllowed(command))return false;
     const state=app.battleState;
     /* S is the master's command, but the old active pet still has to submit
        its W command before GMSV can execute BATTLE_PetOut().  Keep the old
@@ -6564,6 +6624,7 @@
     }).catch(error=>{
       battleClearCommandPending(state,"player");battleSetCommandLock(state,"player",false);reportError(error);
     });
+    return true;
   }
   function closeBattlePopup(options={}){
     const kind=String(app.battlePopup?.kind||""),state=app.battleState;
@@ -6653,10 +6714,14 @@
          half-open turn. */
       list.append(battlePopupRow("不行动","",()=>{closeBattlePopup({skipDefault:true});sendBattlePetDefault(app.battleState);},"",false));
     }else{
-      const entries=app.petSlots.map((pet,index)=>({pet,index})).filter(item=>item.pet&&Number(item.pet.hp??1)>0);
+      /* BATTLEMENU.CPP iterates pet.useFlag && pc.selectPetNo.  Keep dead
+         and current rows visible for their red/yellow palette and local
+         SE-220 click, but never show rest/mail slots outside the mask. */
+      const entries=app.petSlots.map((pet,index)=>({pet,index,entry:battlePetSwitchEntry(index)})).filter(item=>item.entry.listed);
       for(const {pet,index} of entries){
         const graphic=resolveBitmapInfo(pet.graphic??pet.graNo),meta=`Lv ${pet.level??"-"}  ${pet.hp??"-"}/${pet.maxHp??"-"}`;
-        list.append(battlePopupRow(pet.name||pet.freeName||`宠物 ${index+1}`,meta,()=>battleSwitchPet(index),graphic?.file||"",index===app.selectedPet));
+        const row=battlePopupRow(pet.name||pet.freeName||`宠物 ${index+1}`,meta,()=>battleSwitchPet(index),graphic?.file||"",false),entry=battlePetSwitchEntry(index);
+        row.classList.toggle("pet-current",entry.current);row.classList.toggle("pet-dead",!entry.alive);list.append(row);
       }
     if(petReturn){
       petReturn.onclick=()=>battleSwitchPet(-1);

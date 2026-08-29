@@ -711,6 +711,18 @@ for (const expected of [
   /* The preserved 2.5 T_MUSIC.CPP switch maps only 40..46; 47..59 are
      candidates while drawing but play_map_bgm() leaves the current track. */
   /const MAP_BGM_NO=Object\.freeze\(\{40:4,41:3,42:7,43:8,44:9,45:10,46:11\}\);/,
+  /* webdriver sessions stay quiet unless a deliberate BGM audit opts in;
+     this is required to test the real HTMLAudio lifecycle in agent-browser. */
+  /if\(explicit==="0"\)return false;[\s\S]{0,180}Boolean\(navigator\.webdriver\)\|\|explicit==="1"/,
+  /* Native MENU.CPP volume is 0..15 (zero is valid), and pitch belongs to
+     the current BGM slot rather than one global browser setting. */
+  /function audioSettingLevel\(value,legacyValue=15\)[\s\S]{0,360}Math\.max\(0,Math\.min\(15/,
+  /function bgmPitchFor\(number=musicIntentBgm\(\)\)[\s\S]{0,620}bgmPitchByTrack[\s\S]{0,300}Math\.max\(-8,Math\.min\(8/,
+  /* MENU.CPP case 4 paints fixed rows at 0/40/80/128/168/208/260.  Generic
+     flow buttons were visibly overlaid at the top of the original frame. */
+  /if\(page==="bgm"\)[\s\S]{0,1600}systemValue\([^\n]+,0,-8\)[\s\S]{0,260}systemAction\("增加音量"[^\n]+,40\)[\s\S]{0,260}systemAction\("减少音量"[^\n]+,80\)[\s\S]{0,260}systemValue\([^\n]+,128,-8\)[\s\S]{0,360}systemAction\("加快节奏"[^\n]+,168\)[\s\S]{0,360}systemAction\("减慢节奏"[^\n]+,208\)[\s\S]{0,160}systemReturn\(sub,260\)/,
+  /* MENU.CPP case 3 uses 0/40/80/120/172 and the same zero-volume floor. */
+  /if\(page==="se"\)[\s\S]{0,1200}systemValue\([^\n]+,0,-8\)[\s\S]{0,240}systemAction\("增加音量"[^\n]+,40\)[\s\S]{0,240}systemAction\("减少音量"[^\n]+,80\)[\s\S]{0,260}systemAction\(`立体声[^\n]+,120\)[\s\S]{0,140}systemReturn\(sub,172\)/,
   /* MAP.CPP keeps the last recognized marker in diagonal tile→part order
      and retains the active track when a partial M window has no marker. */
   /function mapMusicFromWindow\(map\)[\s\S]{0,2200}let ti=height-1,tj=0;[\s\S]{0,1400}if\(tone===null&&app\.music\.mapBgmNo>=0\)return;/,
@@ -1358,6 +1370,75 @@ const openCaptureHarness=makeBattleCaptureHarness(fullPetSlots.slice(0,4));
 if(!openCaptureHarness.beginBattleAction({kind:"capture"})||openCaptureHarness.state.pendingAction?.kind!=="capture"||
    openCaptureHarness.counts().targets!==1||openCaptureHarness.counts().tones.length!==0){
   throw new Error("Capture must retain native target selection while fewer than five pet slots are occupied");
+}
+/* _STANDBYPET BattleButtonPet() iterates only pet.useFlag slots selected in
+   pc.selectPetNo.  The 2.5 server turns an out-of-mask S|n into PETIN rather
+   than rejecting it, so exercise the production writer after a simulated
+   SPET mask change as well as the popup filter. */
+const battlePetSwitchStart=script.indexOf("  function battlePetSwitchEntry(index)");
+const battlePetSwitchEnd=script.indexOf("  function closeBattlePopup(options={})",battlePetSwitchStart);
+const battlePetPopupStart=script.indexOf("  function renderBattlePopup()");
+const battlePetPopupEnd=script.indexOf("  function battleTargetPromptPlacement",battlePetPopupStart);
+if(battlePetSwitchStart<0||battlePetSwitchEnd<=battlePetSwitchStart||battlePetPopupStart<0||battlePetPopupEnd<=battlePetPopupStart){
+  throw new Error("battle standby-pet production function boundary missing");
+}
+const battlePetPopupSource=script.slice(battlePetPopupStart,battlePetPopupEnd);
+for(const expected of [
+  /entry:battlePetSwitchEntry\(index\)/,
+  /filter\(item=>item\.entry\.listed\)/,
+  /classList\.toggle\("pet-current",entry\.current\)/,
+  /classList\.toggle\("pet-dead",!entry\.alive\)/,
+]) if(!expected.test(battlePetPopupSource))throw new Error(`native standby-pet popup regression: ${expected}`);
+const makeBattlePetSwitchHarness=new Function("petSlots","mask","selectedPet",`
+  const state={choiceDeadline:666666,commandLocked:false,petCommandLocked:false,pendingAction:{kind:"sentinel"}};
+  const app={battle:true,phase:"battle",battleState:state,battlePopup:{kind:"pet"},petSlots,status:{standbyPetMask:mask},selectedPet};
+  const sends=[],tones=[];
+  function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
+  function battleCommandAllowed(){return true;}
+  function battleActivePetSlot(){return Number(app.selectedPet);}
+  function battleSetCommandLock(current,kind,locked){if(kind==="player")current.commandLocked=locked;else current.petCommandLocked=locked;}
+  function battleStartCommandPending(current,kind,command){current.commandPending={kind,command};}
+  function battleClearCommandPending(current,kind){if(current.commandPending?.kind===kind)current.commandPending=null;}
+  function send(name,values){sends.push([name,[...values]]);return new Promise(()=>{});}
+  function closeBattlePopup(){app.battlePopup=null;}
+  function renderPets(){}
+  function renderBattle(){}
+  function maybeOpenBattlePetSkillMenu(){}
+  function reportError(error){throw error;}
+  ${script.slice(battlePetSwitchStart,battlePetSwitchEnd)}
+  return {
+    app,state,battlePetSwitchEntry,battleSwitchPet,
+    listed:()=>[0,1,2,3,4].filter(index=>battlePetSwitchEntry(index).listed),
+    setMask:value=>{app.status.standbyPetMask=value;},
+    setHp:(index,value)=>{app.petSlots[index].hp=value;},
+    counts:()=>({sends:[...sends],tones:[...tones]})
+  };
+`);
+const switchPets=Array.from({length:5},(_,index)=>({index,useFlag:1,name:`pet${index}`,hp:100,maxHp:100}));
+const invalidSwitchHarness=makeBattlePetSwitchHarness(switchPets.map(pet=>({...pet})),0b00011,0),switchDeadline=invalidSwitchHarness.state.choiceDeadline,sentinel=invalidSwitchHarness.state.pendingAction;
+if(invalidSwitchHarness.listed().join(",")!=="0,1")throw new Error(`standby mask must hide rest/mail pets: ${invalidSwitchHarness.listed()}`);
+if(invalidSwitchHarness.battleSwitchPet(4)!==false||invalidSwitchHarness.battleSwitchPet(0)!==false){
+  throw new Error("out-of-mask and current battle pets must reject locally");
+}
+invalidSwitchHarness.setHp(1,0);
+if(invalidSwitchHarness.battleSwitchPet(1)!==false||invalidSwitchHarness.counts().sends.length!==0||
+   invalidSwitchHarness.counts().tones.length!==3||invalidSwitchHarness.counts().tones.some(item=>item.join(",")!=="220,320,240")||
+   invalidSwitchHarness.state.commandLocked||invalidSwitchHarness.state.petCommandLocked||invalidSwitchHarness.state.petSwitchPending||
+   invalidSwitchHarness.state.commandPending||invalidSwitchHarness.state.choiceDeadline!==switchDeadline||
+   invalidSwitchHarness.state.pendingAction!==sentinel||invalidSwitchHarness.app.battlePopup?.kind!=="pet"){
+  throw new Error(`invalid/dead/current pet clicks must preserve popup, deadline and turn: ${JSON.stringify(invalidSwitchHarness.counts())}`);
+}
+const staleMaskHarness=makeBattlePetSwitchHarness(switchPets.map(pet=>({...pet})),0b00011,0);
+staleMaskHarness.setMask(0b00001);
+if(staleMaskHarness.battleSwitchPet(1)!==false||staleMaskHarness.counts().sends.length!==0||staleMaskHarness.counts().tones[0]?.[0]!==220){
+  throw new Error("SPET change after popup open must reject stale S|n before the wire");
+}
+const legalSwitchHarness=makeBattlePetSwitchHarness(switchPets.map(pet=>({...pet})),0b00011,0),legalDeadline=legalSwitchHarness.state.choiceDeadline;
+if(legalSwitchHarness.battleSwitchPet(1)!==true||legalSwitchHarness.counts().sends.length!==1||
+   legalSwitchHarness.counts().sends[0][0]!=="B"||legalSwitchHarness.counts().sends[0][1][0]!=="S|1"||
+   !legalSwitchHarness.state.commandLocked||legalSwitchHarness.state.petSwitchPending?.index!==1||
+   legalSwitchHarness.state.choiceDeadline!==legalDeadline){
+  throw new Error(`legal standby pet must send exactly B(S|1) and lock the master turn: ${JSON.stringify(legalSwitchHarness.counts())}`);
 }
 /* BattleButtonJujutsu() does not hide or disable MP-starved/map-only
    spells. It keeps the row/window alive, paints the native red/gray state,
