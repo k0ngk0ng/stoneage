@@ -145,6 +145,37 @@ services:
       retries: 30
       start_period: 5s
 
+  # Client publication is a one-shot control-plane job, not part of the
+  # browser or admin runtime.  It is opt-in via `--profile assets-sync` so an
+  # ordinary deployment never uploads anything (and never needs OSS keys).
+  # The three trees are mounted together and published as one stable client
+  # root: stoneage/{assets,maps,audio}/.
+  assets-sync:
+    profiles: ["assets-sync"]
+    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    init: true
+    restart: "no"
+    networks:
+      - backend
+    entrypoint: ["/opt/stoneage/bin/stoneage-assets-sync"]
+    command:
+      - -config
+      - /etc/stoneage/web.toml
+      - -assets
+      - /opt/stoneage/web-assets
+      - -client-data
+      - /game/client
+      - -workers
+      - ${STONEAGE_ASSET_SYNC_WORKERS:-8}
+    environment:
+      # These values exist only for this short-lived upload process.  They are
+      # deliberately absent from web, gateway and admin containers.
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${ALIBABA_CLOUD_ACCESS_KEY_ID:-}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}
+    volumes:
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
+
   # This is the privileged-but-fixed service control boundary. The web
   # container never receives the Docker socket.
   service-control:

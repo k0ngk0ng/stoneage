@@ -46,8 +46,11 @@ TCP 上游改为本机路径后运行 `go run . -config /path/to/web.toml`；也
 
 `static.cdn.base_url` 是公开静态资源根地址；`STONEAGE_WEB_CDN_BASE_URL` 仅保留为应急环境变量覆盖。设置后，返回给浏览器的页面会把 `/assets/`、`/maps/` 和 `/audio/` 改写为这个根地址下的同名目录；`/api/sessions`、`/api/npcs` 等动态接口不会改写。`static.oss` 保存阿里云 OSS 的 endpoint、region、bucket、固定 prefix；AK/SK 不写在 TOML，而是只注入批量资源同步工具，Web 游戏进程不会读取或上传。如果配置了 OSS 而未配置 CDN，Web 后端会自动使用 `https://<bucket>.<endpoint>/<prefix>` 作为公开资源根地址。CDN 基址只接受不含账号、查询串和片段的绝对 HTTP(S) URL，末尾斜线会自动去除；OSS endpoint/bucket 必须同时设置。生产部署应使用 HTTPS 和固定资源根目录，CDN 路径和 OSS prefix 都不带 tag，发布时增量同步；JSON 清单使用短缓存或 `no-cache`，PNG、地图和音频可长期缓存，同名二进制确实发生变化时刷新对应 CDN URL。CDN/OSS 源站还需为网页域名配置 CORS 和 `Timing-Allow-Origin`（下载进度需要）。OSS/CDN 都未设置时仍由当前 Web 进程提供本地文件，便于开发和故障排查。
 
-后台 admin 的“资源”页面可以触发受限的批量同步任务；AK/SK 只注入
-`service-control`，不会进入 Web 页面或浏览器。若资源已经由 CI 发布，不配置同步凭据即可。
+客户端资源应作为整体由部署脚本或 CI 发布。仓库根目录的
+`scripts/sync-client-assets.sh` 会启动一次性的 Compose `assets-sync` 容器，统一同步
+`assets/`、`maps/`、`audio/` 三棵目录；任务结束后容器即删除，AK/SK 不会进入 Web、
+admin HTTP 进程或浏览器。admin 的资源按钮（如启用）只是请求同一个受限批量任务，
+不会接收路径、bucket 或命令参数。若资源已经由 CI 发布，不配置同步凭据即可。
 
 音乐通过只读 `/audio/bgm/` 和 `/audio/se/` 路径提供。网页按 `_SA_VERSION_25` 客户端的时机切换标题、地图、战斗/首领 BGM，并按服务器 `SE` 包播放对应音效；浏览器第一次用户操作后才会解锁音频，这是浏览器自动播放策略的限制。WAV 使用长期缓存，地图音乐标记只接受随附 `sa_2903` 2.5 客户端源码的 40–46 范围；47–53 属于后续 8.5 表，不会在本网页端启用。
 

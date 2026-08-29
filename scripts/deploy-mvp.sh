@@ -13,6 +13,7 @@ mode="auto"
 init_env=0
 check_only=0
 created_env=0
+sync_assets=0
 
 usage()
 {
@@ -25,6 +26,8 @@ Options:
   --init             Create .env with a random administrator password.
   --build            Build the configured control-plane and legacy images.
   --pull             Pull the configured versioned images from a registry.
+  --sync-assets      Publish the complete client asset tree to OSS after the
+                     control-plane image is ready (one-shot, opt-in).
   --no-image-update  Do not build or pull images (use images already present).
   --check            Validate .env, bind paths and Compose without starting services.
   --env FILE         Read FILE instead of .env.
@@ -40,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         --init) init_env=1 ;;
         --build) mode=build ;;
         --pull) mode=pull ;;
+        --sync-assets) sync_assets=1 ;;
         --no-image-update) mode=none ;;
         --check) check_only=1 ;;
         --env)
@@ -255,6 +259,13 @@ case "$mode" in
         echo "Using images already present on this host."
         ;;
 esac
+
+if [[ "$sync_assets" == 1 ]]; then
+    echo "Publishing the complete client asset tree through the one-shot assets-sync profile..."
+    # Keep publication independent from the admin/operator socket.  Only this
+    # short-lived Compose process receives the OSS credentials.
+    "$docker_bin" compose "${compose_args[@]}" --profile assets-sync run --rm --no-deps assets-sync
+fi
 
 echo "Starting StoneAge MVP services..."
 compose up -d --remove-orphans

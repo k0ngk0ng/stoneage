@@ -88,7 +88,10 @@ jobs:
             mkdir -p "$bin_root"
             commands=(stoneage-gateway stoneage-admin stoneage-operator)
             if [[ "$goos" == linux ]]; then
-              commands+=(stoneage-web)
+              # The uploader is a separate, one-shot control-plane utility;
+              # it is shipped with Linux artifacts but is never started as a
+              # long-running web/admin service.
+              commands+=(stoneage-web stoneage-assets-sync)
             fi
             for command in "${commands[@]}"; do
               local output="$bin_root/$command$suffix"

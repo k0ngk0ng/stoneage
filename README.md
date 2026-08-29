@@ -71,6 +71,8 @@ Linux 也可以把旧版游戏服务、Go 网关、浏览器客户端、管理�
 ./scripts/deploy-mvp.sh --init   # 只执行一次，生成 0600 的 .env 和随机后台密码
 # 编辑 .env：生产镜像填 GHCR 的仓库和 v* 版本；本地 MVP 保持 VERSION=local
 ./scripts/deploy-mvp.sh          # VERSION=local 自动构建；v* 自动拉取
+# 如果这次发布也要更新 CDN/OSS 上的客户端整体资源：
+./scripts/deploy-mvp.sh --sync-assets
 docker compose --env-file .env ps
 docker compose --env-file .env logs -f saac gmsv gateway web
 ```
@@ -127,11 +129,19 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 内容。`assets/*.json` 等清单应使用短缓存或 `no-cache`；PNG、地图和音频可以长期
 缓存。同名二进制确实发生变化时，只刷新对应 CDN URL，不需要复制整套资源目录。
 
-后台的“资源”页面提供批量同步按钮，一次上传 `assets/`、`maps/`、`audio/` 三棵目录，
-不会要求逐个文件操作。同步在受限 `service-control` 容器中异步执行，Web 和 admin
-进程都拿不到 AK/SK；只有该固定任务读取 `.env` 中的
-`ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET`。如果资源由 CI
-发布，也可以不配置这两个变量，直接用 `ossutil sync` 或流水线上传。
+客户端资源是一个整体发布单元，生产发布时建议由部署脚本或 CI 执行（admin 仍可作为
+受限运维入口，但不是客户端的一部分）：
+
+```bash
+./scripts/sync-client-assets.sh --dry-run   # 先检查目录和对象数量
+./scripts/sync-client-assets.sh              # 一次发布 assets、maps、audio
+```
+
+脚本启动 Compose 的一次性 `assets-sync` profile；任务结束后容器即被删除，Web、网关和
+admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目标仍是固定的
+`stoneage/{assets,maps,audio}/` 根目录，不包含 release tag。CI 也可以直接调用同一个
+`stoneage-assets-sync` 二进制或等价的 OSS 同步步骤。admin 的资源按钮（如启用）只会
+请求 service-control 的固定任务，不接受路径、bucket 或命令参数。
 
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和
