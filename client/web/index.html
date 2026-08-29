@@ -3115,11 +3115,25 @@
     else if(name==="actions"){
       /* The action list is a native field window, so make its current
          character's directional rows resident while the player is choosing.
-         If the split SPR manifest is still downloading, retry after it is
-         ready; the selection handler has the same guard for a fast tap. */
+         If the split SPR manifest is still downloading, keep the hit boxes
+         disabled until both the table and the current-facing PNGs have been
+         decoded.  FIELD.CPP only opens a usable Action window after
+         LoadSprBin() has completed; allowing a click during this browser
+         gap fell through to the static REALBIN fallback and made every row
+         look frozen on a first visit (especially on mobile). */
       const actor=ensureOwnFieldActor();
-      if(assetState.spritesReady)preloadFieldActionFrames(actor);
-      else loadSpriteManifest().then(()=>{if(app.phase==="world"&&!app.battle&&!target.classList.contains("hidden"))preloadFieldActionFrames(actor);});
+      const rows=[...target.querySelectorAll("[data-action-no]")];
+      const setBusy=busy=>{
+        target.setAttribute("aria-busy",busy?"true":"false");
+        for(const row of rows){row.disabled=Boolean(busy);row.setAttribute("aria-disabled",busy?"true":"false");}
+      };
+      setBusy(true);
+      const table=loadFieldSpriteManifest();
+      Promise.resolve(table).then(()=>preloadFieldActionFrames(actor)).finally(()=>{
+        /* Closing the window while a slow SPR request is in flight must not
+           reopen it or leave stale disabled controls in the next visit. */
+        setBusy(false);
+      });
     }
   }
   function closeFieldWindow(){if(app.phase==="world")show(worldScreen);}
@@ -3806,6 +3820,11 @@
       /* Painting the map is the first playable milestone.  Fetch the large
          character animation table only after the curtain is dismissed; the
          browser can then keep walking/UI responsive while sprites decode. */
+      /* The compact field pack is small enough to start immediately, so the
+         first Action click never paints the static REALBIN fallback while
+         the 42 MB all-sprite table is still downloading.  Keep the complete
+         table warming in parallel for NPC and battle actors. */
+      if(!assetState.fieldSpritesReady&&!assetState.fieldSpriteLoading)window.setTimeout(loadFieldSpriteManifest,0);
       if(!assetState.spritesReady&&!assetState.spriteLoading)window.setTimeout(loadSpriteManifest,0);
       /* lssproto_S_recv() keeps SubProcNo 202 on the pressed black frame
          until the first complete M window is resident, then switches to
@@ -3846,7 +3865,7 @@
   const MAP_DATA_CACHE_PREFIX="stoneage25.v1.map-data.";
   const MAP_TILE_CACHE_MAX_BYTES=768*1024;
   const MAP_DATA_CACHE_MAX_BYTES=2*1024*1024;
-  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
   function rememberAssetResourceSize(file,entryOrSize){
     const key=String(file||"").replace(/^\//,"");if(!key)return 0;
     const size=typeof entryOrSize==="number"
@@ -3979,6 +3998,11 @@
      the timer appears as an empty space even though the code is present. */
   const ASSET_MANIFEST_URL="/assets/manifest.json?v=20260825-core-sprites";
   const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json?v=20260828-character-create";
+  /* The complete SPR table is ~42 MB.  FIELD.CPP has the player's 13 rows
+     resident before it enables the Action window, so keep the common stock
+     player graphics in a compact first-response pack as well.  The complete
+     table is still fetched in the background for NPCs and battles. */
+  const FIELD_SPRITE_MANIFEST_URL="/assets/field-sprites.json?v=20260829-field-actions-2";
   const SPRITE_MANIFEST_URL="/assets/sprites.json?v=20260825-core-sprites";
   function mapCacheKey(file){return `${MAP_TILE_CACHE_PREFIX}${String(file||"")}`;}
   function mapDataCacheKey(map){return `${MAP_DATA_CACHE_PREFIX}${Number(map?.floor)||0}.${Number(map?.x1)||0}.${Number(map?.y1)||0}.${Number(map?.width)||0}.${Number(map?.height)||0}`;}
@@ -4214,6 +4238,29 @@
     });
     return assetState.creationSpriteLoading;
   }
+  function loadFieldSpriteManifest(){
+    if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
+    if(assetState.fieldSpritesReady)return Promise.resolve(assetState.fieldSprites);
+    if(assetState.fieldSpriteLoading)return assetState.fieldSpriteLoading;
+    assetState.fieldSpritesFailed=false;
+    assetState.fieldSpriteLoading=fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"force-cache"}).then(async response=>{
+      if(!response.ok)throw new Error(`场景动作资源 HTTP ${response.status}`);
+      return response.json();
+    }).then(payload=>{
+      const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
+      if(!sprites||typeof sprites!=="object")throw new Error("场景动作资源清单为空");
+      assetState.fieldSprites=sprites;assetState.fieldSpritesReady=true;assetState.fieldSpritesFailed=false;
+      return sprites;
+    }).catch(error=>{
+      assetState.fieldSprites=null;assetState.fieldSpritesReady=false;assetState.fieldSpritesFailed=true;
+      addEvent(`场景动作资源加载失败：${error?.message||error}`);
+      assetState.fieldSpriteLoading=null;
+      /* The full table remains the compatibility fallback for asset packs
+         produced before field-sprites.json existed. */
+      return loadSpriteManifest();
+    });
+    return assetState.fieldSpriteLoading;
+  }
   function loadSpriteManifest(){
     if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
     /* A pre-split pack is preferred.  All-in-one packs from older builds
@@ -4409,7 +4456,7 @@
      compatible while the split mobile pack can populate the same lookup
      lazily. */
   function spriteManifest(){
-    return assetState.sprites||assetState.creationSprites||assetState.manifest?.sprites||null;
+    return assetState.sprites||assetState.fieldSprites||assetState.creationSprites||assetState.manifest?.sprites||null;
   }
   function actorGraphicValue(actor){
     const key=actor?.graphicKey;

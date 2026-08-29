@@ -131,6 +131,26 @@ if (creationSpritePayload.sprites["100000"].actions.find(action => action.action
     creationSpritePayload.sprites["100220"].actions.find(action => action.action === 4)?.frames?.[0]?.file !== "bitmaps/bitmap_77443.png") {
   throw new Error("character-selection SPR pack no longer resolves the native first/last player graphics");
 }
+/* The field Action window must not wait for the complete ~42 MB NPC/battle
+   table.  Keep a compact all-direction/all-action pack for the twelve stock
+   player graphics and verify that every native row is present. */
+const expectedFieldSprites = [...expectedCreationSprites, "100025"];
+const fieldSpriteFilename = path.join(__dirname, "assets", "original", "field-sprites.json");
+const fieldSpriteBytes = fs.statSync(fieldSpriteFilename).size;
+const fieldSpritePayload = JSON.parse(fs.readFileSync(fieldSpriteFilename, "utf8"));
+if (Object.keys(fieldSpritePayload.sprites || {}).sort().join(",") !== expectedFieldSprites.sort().join(",") ||
+    fieldSpriteBytes > 1024 * 1024) {
+  throw new Error(`field Action SPR pack shape/size regression: ${fieldSpriteBytes}`);
+}
+for (const graphic of expectedFieldSprites) {
+  const rows = fieldSpritePayload.sprites?.[graphic]?.actions || [];
+  for (let action = 0; action <= 12; action++) for (let direction = 0; direction < 8; direction++) {
+    const row = rows.find(item => Number(item.direction) === direction && Number(item.action) === action);
+    if (!row || !Array.isArray(row.frames) || !row.frames.length) {
+      throw new Error(`field Action SPR row missing for ${graphic}/${direction}/${action}`);
+    }
+  }
+}
 const creationLoaderStart = script.indexOf("  function loadCreationSpriteManifest");
 const creationLoaderEnd = script.indexOf("  function loadSpriteManifest", creationLoaderStart);
 const creationPaintStart = script.indexOf("  function paintCreationCanvas");
@@ -145,7 +165,7 @@ if (creationLoaderStart < 0 || creationLoaderEnd <= creationLoaderStart ||
 if (creationPaintStart < 0 || creationPaintEnd <= creationPaintStart ||
     !script.slice(creationPaintStart, creationPaintEnd).includes("creationGraphics.every") ||
     !script.slice(creationPaintStart, creationPaintEnd).includes("walking?4:3") ||
-    !script.includes("return assetState.sprites||assetState.creationSprites||assetState.manifest?.sprites||null") ||
+    !script.includes("return assetState.sprites||assetState.fieldSprites||assetState.creationSprites||assetState.manifest?.sprites||null") ||
     !script.slice(openCreationStart, openCreationEnd).includes("loadCreationSpriteManifest()")) {
   throw new Error("character selection must wait for native SPR rows and animate hover with ANIM_WALK");
 }

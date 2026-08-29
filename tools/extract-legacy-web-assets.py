@@ -24,6 +24,10 @@ import asset_cooker as legacy  # noqa: E402  (the decoder is shared, output is n
 
 CREATION_SPRITES = tuple(100000 + index * 20 for index in range(12))
 CREATION_SPRITE_ACTIONS = frozenset((3, 4))  # ANIM_STAND / ANIM_WALK
+# 100025 is sa_2903's default new-character image (the web create form uses
+# it as its initial value). Keep it in the compact field-action pack even
+# though it is not among the twelve character-select portraits.
+FIELD_ACTION_SPRITES = tuple(dict.fromkeys((*CREATION_SPRITES, 100025)))
 
 
 UI_BITMAPS = {
@@ -897,8 +901,24 @@ def main() -> int:
             if str(sprite_no) in sprite_manifest["sprites"]
         },
     }
+    # FIELD.CPP enables its Action window only after the player's complete
+    # directional SPR rows are resident.  Keep those twelve stock player
+    # graphics in a compact first-response resource; the full table remains
+    # available for NPC and battle actors and is loaded in the background.
+    field_sprite_manifest = {
+        "format": sprite_manifest["format"],
+        "sprites": {
+            str(sprite_no): sprite_manifest["sprites"][str(sprite_no)]
+            for sprite_no in FIELD_ACTION_SPRITES
+            if str(sprite_no) in sprite_manifest["sprites"]
+        },
+    }
     (args.output / "sprites.json").write_text(
         json.dumps(sprite_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    (args.output / "field-sprites.json").write_text(
+        json.dumps(field_sprite_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
     (args.output / "creation-sprites.json").write_text(
