@@ -4250,6 +4250,12 @@
       const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
       if(!sprites||typeof sprites!=="object")throw new Error("场景动作资源清单为空");
       assetState.fieldSprites=sprites;assetState.fieldSpritesReady=true;assetState.fieldSpritesFailed=false;
+      /* Keep the resolved value out of the in-flight latch.  A later Action
+         window should use the already resident compact table immediately;
+         retaining the old Promise made callers believe a fetch was still in
+         progress and could leave a mobile menu waiting on the large fallback
+         table after a transient first load. */
+      assetState.fieldSpriteLoading=null;
       return sprites;
     }).catch(error=>{
       assetState.fieldSprites=null;assetState.fieldSpritesReady=false;assetState.fieldSpritesFailed=true;
@@ -4598,6 +4604,11 @@
          “走动” Action (walking=false) follows the native 60 Hz charProc()
          clock above. */
       const animationTick=actor?.walking?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS;
+      /* PATTERN.CPP loads dtAnim, paints the current frame, and decrements
+         ATR_CHR_TIM in that same process tick.  The frame therefore remains
+         visible for exactly dtAnim process ticks.  Walking keeps its
+         dedicated 8ms interpolation clock and must not inherit a different
+         action cadence. */
       const duration=Math.max(1,Number(animation.frame_ms)||7)*animationTick;
       const self=actor?.name===app.character||actor?.id===app.playerActorId;
       /* Field actors use the shared walk clock. Battle actors have their own
@@ -14665,9 +14676,14 @@
        manifest itself is already resident, the first click can still race
        image decoding.  Wait for the current-facing rows in either case and
        restart this action from frame zero once drawImage() can use them. */
-    const prepare=assetState.spritesReady
+    /* The compact field table is the native Action window's working set.  Do
+       not make a first click wait for the optional ~42 MB NPC/battle table;
+       that request can continue in the background while these frames are
+       decoded.  The full table remains available to spriteManifest() once it
+       arrives. */
+    const prepare=(assetState.fieldSpritesReady||assetState.spritesReady)
       ? preloadFieldActionFrames(actor)
-      : loadSpriteManifest().then(sprites=>sprites?preloadFieldActionFrames(actor):false);
+      : loadFieldSpriteManifest().then(sprites=>sprites?preloadFieldActionFrames(actor):false);
     Promise.resolve(prepare).then(()=>{
       if(app.phase!=="world"||app.battle)return;
       const current=app.actors.get(actor.id);

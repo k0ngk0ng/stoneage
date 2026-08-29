@@ -367,6 +367,12 @@ if (nativeActionOrder.join(",") !== expectedActionOrder.join(",") ||
 const localActionStart = script.indexOf("  const CA_TO_SPRITE_ACTION");
 const localActionEnd = script.indexOf("  /* Sprite animation tables", localActionStart);
 if (localActionStart < 0 || localActionEnd <= localActionStart) throw new Error("field Action renderer helpers missing");
+const fieldSpriteLoaderStart = script.indexOf("  function loadFieldSpriteManifest");
+const fieldSpriteLoaderEnd = script.indexOf("  function loadSpriteManifest", fieldSpriteLoaderStart);
+if (fieldSpriteLoaderStart < 0 || fieldSpriteLoaderEnd <= fieldSpriteLoaderStart ||
+    !/assetState\.fieldSpritesReady=true;assetState\.fieldSpritesFailed=false;[\s\S]{0,800}assetState\.fieldSpriteLoading=null;/.test(script.slice(fieldSpriteLoaderStart, fieldSpriteLoaderEnd))) {
+  throw new Error("field Action loader must clear its resolved in-flight latch");
+}
 const localActionContext = {};
 vm.createContext(localActionContext);
 vm.runInContext(script.slice(localActionStart, localActionEnd) + `
@@ -389,12 +395,13 @@ if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:
   throw new Error("field Action selection must start the native per-frame animation clock");
 }
 if(!/function preloadFieldActionFrames\(actor\)[\s\S]{0,2200}image\.decode\(\)/.test(localActionAnimationSource) ||
-   !/const prepare=assetState\.spritesReady[\s\S]{0,420}preloadFieldActionFrames\(actor\)/.test(script) ||
+   !/const prepare=\(assetState\.fieldSpritesReady\|\|assetState\.spritesReady\)[\s\S]{0,520}preloadFieldActionFrames\(actor\)/.test(script) ||
    !/Promise\.resolve\(prepare\)\.then\(\(\)=>/.test(script)) {
   throw new Error("field Action selection must wait for decoded SPR frames before replaying from frame zero");
 }
 if(!/const LEGACY_FIELD_ANIMATION_TICK_MS=1000\/60/.test(script) ||
-   !/const animationTick=actor\?\.walking\?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS/.test(localActionAnimationSource)) {
+   !/const animationTick=actor\?\.walking\?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS/.test(localActionAnimationSource) ||
+   !/const duration=Math\.max\(1,Number\(animation\.frame_ms\)\|\|7\)\*animationTick/.test(localActionAnimationSource)) {
   throw new Error("field Action animation must use the native 60 Hz clock without changing walk speed");
 }
 /* MAP.CPP/PC.CPP overwrite a local Action with ANIM_WALK as soon as a real
