@@ -981,6 +981,68 @@ if (!/for\(const \[field,value\] of \[\["level",pet\.level\],\["hp",pet\.hp\],\[
     !/#status-screen \.status-readout \.max-hp\{left:122px;top:137px;width:32px;text-align:right/.test(html)) {
   throw new Error("pet/status current and maximum HP fields must keep native fixed columns");
 }
+/* MENU.CPP::statusWndNo==0 submits four independent SKUP hit sprites only
+   while StatusUpPoint is non-zero.  The title/group/close CG records all use
+   different anchors, so a flex toolbar or a web-only attribute chooser can
+   never reproduce the native status surface. */
+const renderStatusStart = script.indexOf("  function renderStatus() {");
+const renderStatusEnd = script.indexOf("  function renderParty()", renderStatusStart);
+const renderStatusSource = script.slice(renderStatusStart, renderStatusEnd);
+for (const expected of [
+  /id="status-up"[^>]*data-status-point="0"/,
+  /id="status-up-str"[^>]*data-status-point="1"/,
+  /id="status-up-tgh"[^>]*data-status-point="2"/,
+  /id="status-up-dex"[^>]*data-status-point="3"/,
+  /#status-screen #status-up\{left:114px;top:293px\}/,
+  /#status-screen #status-up-str\{left:234px;top:293px\}/,
+  /#status-screen #status-up-tgh\{left:114px;top:313px\}/,
+  /#status-screen #status-up-dex\{left:234px;top:313px\}/,
+  /#status-screen #status-title\{left:139px;top:54px;width:68px;height:16px/,
+  /#status-screen #status-party\{left:43px;top:341px;width:80px;height:16px[^}]*bitmap_9199\.png/,
+  /#status-screen #status-close\{left:157px;top:341px;width:80px;height:16px[^}]*bitmap_9134\.png/,
+  /#status-screen #status-level-up-art\{[^}]*left:69px;top:272px;width:112px;height:17px/,
+  /#status-screen #status-level-up-points\{[^}]*left:190px;top:272px;width:16px/,
+]) {
+  if (!expected.test(html)) throw new Error(`native status-window layout regression: ${expected}`);
+}
+if (renderStatusStart < 0 || renderStatusEnd <= renderStatusStart ||
+    !/showSkillUp=skillPoints>0/.test(renderStatusSource) ||
+    !/\["status-level-up-art","status-level-up-points","status-up","status-up-str","status-up-tgh","status-up-dex"\]/.test(renderStatusSource) ||
+    !/classList\.toggle\("hidden",!showSkillUp\)/.test(renderStatusSource) ||
+    !/String\(skillPoints\)\.padStart\(2," "\)/.test(renderStatusSource) ||
+    /openLocalDialog\("技能点"/.test(script) ||
+    !/const requestStatusSkillUp=point=>\{[\s\S]{0,360}send\("SKUP",\[point\]\)/.test(script) ||
+    !/querySelectorAll\("\[data-status-point\]"\)[\s\S]{0,180}requestStatusSkillUp/.test(script) ||
+    !/id="status-title-dialog"[^>]*class="hidden"/.test(html) ||
+    !/send\("FT",\[value\]\)/.test(script)) {
+  throw new Error("status skill/title controls must follow the native inline interaction");
+}
+/* statusWndNo==1 always starts with the player, compresses occupied pet
+   slots into the upper block, then draws at most four non-self party members
+   from y=268.  Current/max HP remain separate four-cell fields. */
+const partyFixedStart = script.indexOf("  function renderPartyFixed(){");
+const partyFixedEnd = script.indexOf("  function parseAutoMapData", partyFixedStart);
+const partyFixedSource = script.slice(partyFixedStart, partyFixedEnd);
+if (partyFixedStart < 0 || partyFixedEnd <= partyFixedStart ||
+    !/appendRow\(\{name:pc\.name\|\|app\.character\|\|"人物",mp:pc\.mp,hp:pc\.hp,maxHp:pc\.maxHp\},25,\{mp:true\}\)/.test(partyFixedSource) ||
+    !/app\.petSlots\.filter\(Boolean\)\.slice\(0,5\)/.test(partyFixedSource) ||
+    !/64\+index\*40/.test(partyFixedSource) ||
+    !/for\(const member of app\.party\.filter\(Boolean\)\)/.test(partyFixedSource) ||
+    !/Number\(member\.id\)===ownId/.test(partyFixedSource) ||
+    !/if\(members\.length===4\)break/.test(partyFixedSource) ||
+    !/268\+index\*40/.test(partyFixedSource) ||
+    !/maxHp\.className="party-max-hp"/.test(partyFixedSource)) {
+  throw new Error("group status window must render self, pets, then four other party members");
+}
+for (const expected of [
+  /#party-screen \.legacy-party-row \.party-name\{[^}]*left:21px;top:0;width:128px[^}]*text-align:center/,
+  /#party-screen \.legacy-party-row \.party-mp\{left:98px\}/,
+  /#party-screen \.legacy-party-row \.party-hp\{left:163px\}/,
+  /#party-screen \.legacy-party-row \.party-max-hp\{left:203px\}/,
+  /#party-screen #party-close\{left:92px;top:433px\}/,
+]) {
+  if (!expected.test(html)) throw new Error(`native group-window layout regression: ${expected}`);
+}
 /* IME.CPP::ImeProc() writes the closed/default input mode as
    "       abc" from x=545, so its visible suffix begins at x=601.  The
    legacy client has no web-only "player mode" or ping counter in this bar. */

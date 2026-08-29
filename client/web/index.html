@@ -1872,16 +1872,33 @@
     #status-screen .status-readout .earth{left:191px;top:133px}.status-readout .water{left:191px;top:153px}.status-readout .fire{left:191px;top:173px}.status-readout .wind{left:191px;top:193px}
     #status-screen .status-readout .base-vital{left:85px;top:284px}.status-readout .base-str{left:205px;top:284px}.status-readout .base-tgh{left:85px;top:304px}.status-readout .base-dex{left:205px;top:304px}
     #status-screen .status-readout .meta{left:16px;top:222px;width:230px;color:#b8ad8e;font-size:9px;line-height:12px;white-space:pre-wrap}
-    /* Status bitmap 9192 already contains every caption and divider.  Keep
-       only the live numbers above it, and use the extracted CG button art for
-       the two actions that the original window exposes. */
-    #status-screen #request-status { display:none; }
-    #status-screen .toolbar-row { left:18px; top:338px; width:270px; }
-    #status-screen #status-up, #status-screen #status-title { height:17px; padding:0; color:transparent; font-size:0; border:0; box-shadow:none; background-repeat:no-repeat; background-position:center; background-size:100% 100%; }
-    #status-screen #status-up { width:28px; background-image:url('/assets/bitmaps/bitmap_9195.png'); }
-    #status-screen #status-up:hover,#status-screen #status-up:focus { background-image:url('/assets/bitmaps/bitmap_9196.png'); }
-    #status-screen #status-title { width:68px; background-image:url('/assets/bitmaps/bitmap_9197.png'); }
-    #status-screen #status-title:hover,#status-screen #status-title:focus { background-image:url('/assets/bitmaps/bitmap_9198.png'); }
+    /* Status bitmap 9192 already contains every caption and divider.  The
+       remaining controls are submitted with unusual per-CG anchors, so their
+       visible rectangles are not a normal toolbar: keep every one at the
+       exact StockDispBuffer result from MENU.CPP::statusWndNo==0. */
+    #status-screen #request-status{display:none}
+    #status-screen .toolbar-row{left:0;top:0;width:640px;height:480px;display:block;margin:0;pointer-events:none}
+    #status-screen .toolbar-row button{position:absolute;margin:0;padding:0;color:transparent;font-size:0;border:0;box-shadow:none;background-repeat:no-repeat;background-position:center;background-size:100% 100%;pointer-events:auto;image-rendering:pixelated}
+    #status-screen #status-up,#status-screen #status-up-str,#status-screen #status-up-tgh,#status-screen #status-up-dex{width:28px;height:16px;background-image:url('/assets/bitmaps/bitmap_9195.png')}
+    #status-screen #status-up:active,#status-screen #status-up-str:active,#status-screen #status-up-tgh:active,#status-screen #status-up-dex:active{background-image:url('/assets/bitmaps/bitmap_9196.png');filter:none}
+    #status-screen #status-up{left:114px;top:293px}
+    #status-screen #status-up-str{left:234px;top:293px}
+    #status-screen #status-up-tgh{left:114px;top:313px}
+    #status-screen #status-up-dex{left:234px;top:313px}
+    #status-screen #status-title{left:139px;top:54px;width:68px;height:16px;background-image:url('/assets/bitmaps/bitmap_9197.png')}
+    #status-screen #status-title:active{background-image:url('/assets/bitmaps/bitmap_9198.png');filter:none}
+    #status-screen #status-party{left:43px;top:341px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9199.png')}
+    #status-screen #status-close{left:157px;top:341px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9134.png')}
+    #status-screen #status-level-up-art{position:absolute;left:69px;top:272px;width:112px;height:17px;z-index:3;image-rendering:pixelated;pointer-events:none}
+    #status-screen #status-level-up-points{position:absolute;left:190px;top:272px;width:16px;height:16px;z-index:4;color:#ffe34f;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-align:right;text-shadow:1px 1px #080706;white-space:pre;pointer-events:none}
+    /* The title editor is pActMenuWnd3 from the same source routine.  It is
+       intentionally below the main 272x360 status surface, not a generic
+       centred browser dialog. */
+    #status-screen #status-title-dialog{left:4px;top:367px;width:272px;height:85px;z-index:30;margin:0;padding:0;background:url('/assets/bitmaps/bitmap_9169.png') 0 0/272px 85px no-repeat;image-rendering:pixelated;pointer-events:auto}
+    #status-screen #status-title-input{position:absolute;left:38px;top:24px;width:96px;height:16px;margin:0;padding:0;color:#f5ecd4;background:transparent;border:0;outline:0;box-shadow:none;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;caret-color:#fff}
+    #status-screen #status-title-ok,#status-screen #status-title-cancel{position:absolute;top:58px;width:80px;height:16px;margin:0;padding:0;color:transparent;font-size:0;border:0;box-shadow:none;background-position:center;background-repeat:no-repeat;background-size:80px 16px;image-rendering:pixelated}
+    #status-screen #status-title-ok{left:40px;background-image:url('/assets/bitmaps/bitmap_9211.png')}
+    #status-screen #status-title-cancel{left:150px;background-image:url('/assets/bitmaps/bitmap_9170.png')}
     #status-screen #status-list{pointer-events:none}
     #status-screen .status-face{position:absolute;left:214px;top:123px;width:56px;height:64px;object-fit:contain;image-rendering:pixelated;pointer-events:none}
     #status-screen .status-attr-bar{position:absolute;left:182px;width:64px;height:8px;pointer-events:none;box-shadow:1px 1px #ddd8,2px 2px #2228}
@@ -1986,10 +2003,11 @@
     #party-screen #party-status{display:none}
     #party-screen #party-list{left:0!important;top:0!important;width:256px!important;height:456px!important;overflow:visible!important;pointer-events:none}
     #party-screen .legacy-party-row{position:absolute;left:0;width:256px;height:40px;color:#f5ecd4;font:11px/20px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
-    #party-screen .legacy-party-row .party-name{position:absolute;left:21px;top:0;width:116px;overflow:hidden;white-space:nowrap}
-    #party-screen .legacy-party-row .party-mp{position:absolute;left:98px;top:20px;width:42px;text-align:right}
-    #party-screen .legacy-party-row .party-hp{position:absolute;left:163px;top:20px;width:78px;white-space:nowrap}
-    #party-screen .legacy-party-row:nth-child(1){top:25px}#party-screen .legacy-party-row:nth-child(2){top:65px}#party-screen .legacy-party-row:nth-child(3){top:105px}#party-screen .legacy-party-row:nth-child(4){top:145px}#party-screen .legacy-party-row:nth-child(5){top:185px}#party-screen .legacy-party-row:nth-child(6){top:268px}#party-screen .legacy-party-row:nth-child(7){top:308px}#party-screen .legacy-party-row:nth-child(8){top:348px}#party-screen .legacy-party-row:nth-child(9){top:388px}
+    #party-screen .legacy-party-row .party-name{position:absolute;left:21px;top:0;width:128px;overflow:hidden;white-space:nowrap;text-align:center}
+    #party-screen .legacy-party-row .party-mp,#party-screen .legacy-party-row .party-hp,#party-screen .legacy-party-row .party-max-hp{position:absolute;top:20px;width:32px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+    #party-screen .legacy-party-row .party-mp{left:98px}
+    #party-screen .legacy-party-row .party-hp{left:163px}
+    #party-screen .legacy-party-row .party-max-hp{left:203px}
     /* These close/return CGs are appended inside the fixed list by the
        render*Fixed() functions.  Keep their native left/top coordinates
        relative to that 640x480 window instead of letting normal-flow place
@@ -2004,7 +2022,7 @@
       pointer-events:auto!important;
       z-index:20;
     }
-    #party-screen #party-close{left:88px;top:440px}
+    #party-screen #party-close{left:92px;top:433px}
     /* ITEM_WND is a bitmap inventory. Keep icon hit areas in the native
        five-column grid and never fall back to data-card panels. */
     #inventory-screen #inventory-list{left:0!important;top:0!important;width:640px!important;height:440px!important;display:block!important;overflow:visible!important;pointer-events:none}
@@ -2621,7 +2639,7 @@
       </section>
       <section id="inventory-screen" class="advanced-screen hidden"><h2>物品栏 / 地面物品</h2><p id="inventory-status" class="status">尚未收到 I 数据。</p><div id="inventory-list" class="card-grid"></div><div class="toolbar-row"><button id="request-inventory">请求背包</button><button id="inventory-pickup">拾取/放置</button></div></section>
       <section id="pets-screen" class="advanced-screen hidden"><h2>宠物与技能 · 2.5</h2><p id="pets-status" class="status">尚未收到宠物状态。</p><div id="pets-list" class="card-grid"></div><div id="pet-skills-list" class="card-grid"></div><div class="toolbar-row"><button id="request-pets">请求宠物/技能</button><button id="pet-follow">切换待机位</button><button id="pet-name-submit">提交宠物名</button></div></section>
-      <section id="status-screen" class="advanced-screen hidden"><h2>人物状态 / 加点</h2><p id="status-summary" class="status">等待服务器状态包。</p><div id="status-list" class="card-grid"></div><div class="toolbar-row"><button id="request-status">刷新状态</button><button id="status-up">技能点</button><button id="status-title">更换称号</button><button id="status-close">返回世界</button></div></section>
+      <section id="status-screen" class="advanced-screen hidden"><h2>人物状态 / 加点</h2><p id="status-summary" class="status">等待服务器状态包。</p><div id="status-list" class="card-grid"></div><img id="status-level-up-art" class="hidden" src="/assets/bitmaps/bitmap_9194.png" alt=""><span id="status-level-up-points" class="hidden"></span><div class="toolbar-row"><button id="request-status" type="button">刷新状态</button><button id="status-up" type="button" data-status-point="0" aria-label="提升体力">体力</button><button id="status-up-str" type="button" data-status-point="1" aria-label="提升腕力">腕力</button><button id="status-up-tgh" type="button" data-status-point="2" aria-label="提升耐力">耐力</button><button id="status-up-dex" type="button" data-status-point="3" aria-label="提升速度">速度</button><button id="status-title" type="button" aria-label="更改称号">更换称号</button><button id="status-party" type="button" aria-label="查看队伍状态">队伍状态</button><button id="status-close" type="button" aria-label="关闭人物状态">返回世界</button></div><form id="status-title-dialog" class="hidden" autocomplete="off"><input id="status-title-input" maxlength="12" aria-label="称号"><button id="status-title-ok" type="submit" aria-label="确定">确定</button><button id="status-title-cancel" type="button" aria-label="取消">取消</button></form></section>
       <section id="party-screen" class="advanced-screen hidden"><h2>队伍</h2><p id="party-status" class="status">尚未加入队伍。</p><div id="party-list" class="card-grid"></div><div class="toolbar-row"><button id="party-request">请求组队</button><button id="party-leave">离开队伍</button></div></section>
       <section id="map-screen" class="advanced-screen hidden"><h2>地图</h2><canvas id="auto-map" width="640" height="480" aria-label="自动地图"></canvas><p id="map-summary" class="status">尚未收到地图。</p><div id="map-coordinates" aria-label="当前位置"><span id="map-x"></span><span id="map-y"></span></div><button id="map-close" type="button">返回世界</button></section>
       <section id="titles-screen" class="advanced-screen hidden"><h2>称号</h2><p id="titles-status" class="status">服务器尚未提供称号列表。</p><div id="titles-list" class="card-grid"></div></section>
@@ -5205,20 +5223,34 @@
     const faceInfo=characterFaceInfo(pc.faceGraNo??app.characterFace??pc.image??0);
     if(faceInfo?.file){const face=document.createElement("img");face.className="status-face";face.alt="";face.src=`/assets/${faceInfo.file}`;list.append(face);}
     for(const [kind,value] of [["earth",pc.earth],["water",pc.water],["fire",pc.fire],["wind",pc.wind]]){const bar=document.createElement("i");bar.className=`status-attr-bar ${kind}`;bar.style.width=`${Math.max(0,Math.min(80,decimal(value,0)*.8))}px`;list.append(bar);}
-    $("status-summary").textContent=`人物字段 ${Object.keys(pc).length} 项 · 可用技能点 ${app.status.skillPoints??0} · 称号 ${app.titles.length} 个`;
+    const skillPoints=Math.max(0,decimal(app.status.skillPoints,0)),showSkillUp=skillPoints>0;
+    for(const id of ["status-level-up-art","status-level-up-points","status-up","status-up-str","status-up-tgh","status-up-dex"])$(id)?.classList.toggle("hidden",!showSkillUp);
+    $("status-level-up-points").textContent=String(skillPoints).padStart(2," ");
+    $("status-summary").textContent=`人物字段 ${Object.keys(pc).length} 项 · 可用技能点 ${skillPoints} · 称号 ${app.titles.length} 个`;
   }
   function renderParty(){const list=$("party-list");if(!list)return;list.replaceChildren();const members=app.party.filter(Boolean);if(!members.length)list.append(card("尚未加入队伍","可以向相邻角色发出组队请求。"));for(const member of members){const box=card(member.name||`成员 ${member.slot+1}`,`等级 ${member.level??"-"} · 生命 ${member.hp??"-"}/${member.maxHp??"-"} · 魔法 ${member.mp??"-"}`);if(member.id!==undefined)box.append(button("跟随视角",()=>{const actor=app.actors.get(member.id);if(actor){app.position=[actor.x,actor.y];renderWorld();}}));list.append(box);}$("party-status").textContent=members.length?`队伍 ${members.length} 人`:`不在队伍中`;
   }
   function renderPartyFixed(){
     const list=$("party-list");if(!list)return;list.replaceChildren();
-    const members=app.party.filter(Boolean).slice(0,9);
-    for(let rowIndex=0;rowIndex<members.length;rowIndex++){
-      const member=members[rowIndex],row=document.createElement("div");row.className="legacy-party-row";row.style.top=`${rowIndex<5?25+rowIndex*40:268+(rowIndex-5)*40}px`;
-      const name=document.createElement("span");name.className="party-name";name.textContent=member.name||"";row.append(name);
-      const mp=document.createElement("span");mp.className="party-mp";mp.textContent=textOr(member.mp,"-");row.append(mp);
-      const hp=document.createElement("span");hp.className="party-hp";hp.textContent=`${textOr(member.hp,"-")} ${textOr(member.maxHp,"-")}`;row.append(hp);
-      row.addEventListener("click",()=>{if(member.id!==undefined){const actor=app.actors.get(member.id);if(actor){app.position=[actor.x,actor.y];renderWorld(true);}}});list.append(row);
+    const appendRow=(entry,top,{mp=false}={})=>{
+      const row=document.createElement("div");row.className="legacy-party-row";row.style.top=`${top}px`;
+      const name=document.createElement("span");name.className="party-name";name.textContent=entry.name||"";row.append(name);
+      if(mp){const value=document.createElement("span");value.className="party-mp";value.textContent=textOr(entry.mp,"-");row.append(value);}
+      const hp=document.createElement("span");hp.className="party-hp";hp.textContent=textOr(entry.hp,"-");row.append(hp);
+      const maxHp=document.createElement("span");maxHp.className="party-max-hp";maxHp.textContent=textOr(entry.maxHp,"-");row.append(maxHp);list.append(row);
+    };
+    const pc=app.pc||{};
+    appendRow({name:pc.name||app.character||"人物",mp:pc.mp,hp:pc.hp,maxHp:pc.maxHp},25,{mp:true});
+    const pets=app.petSlots.filter(Boolean).slice(0,5);
+    for(let index=0;index<pets.length;index++){const pet=pets[index];appendRow({name:petDisplayName(pet),hp:pet.hp,maxHp:pet.maxHp},64+index*40);}
+    const ownId=Number(pc.id),hasOwnId=Number.isFinite(ownId),ownName=String(pc.name||app.character||"");let skippedOwnName=false;
+    const members=[];
+    for(const member of app.party.filter(Boolean)){
+      if(hasOwnId&&Number(member.id)===ownId)continue;
+      if(!hasOwnId&&!skippedOwnName&&ownName&&String(member.name||"")===ownName){skippedOwnName=true;continue;}
+      members.push(member);if(members.length===4)break;
     }
+    for(let index=0;index<members.length;index++)appendRow(members[index],268+index*40,{mp:true});
     const close=imageButton("关闭队伍窗口",9135,()=>show(worldScreen),80,16);close.id="party-close";list.append(close);$("party-status").textContent="";
   }
   function parseAutoMapData(buffer,floor,source){
@@ -14785,8 +14817,17 @@
   $("pet-follow").addEventListener("click",()=>toggleStandbyPet(app.selectedPet<0?0:app.selectedPet));
   $("pet-name-submit").addEventListener("click",()=>{const index=app.selectedPet<0?0:app.selectedPet;openLocalDialog("宠物改名","请输入新的宠物名称：",[{label:"确定",kind:"yes",handler:value=>{const name=String(value||"").trim();if(!name)return;closeLocalDialog();send("KN",[index,name]).catch(reportError);}},{label:"取消",kind:"no",handler:closeLocalDialog}],app.petSlots[index]?.name||"");});
   $("request-status").addEventListener("click",()=>{send("ProcGet",[]).catch(reportError);send("PlayerNumGet",[]).catch(reportError);send("Echo",["web-status"]).catch(reportError);});
-  $("status-up").addEventListener("click",()=>{openLocalDialog("技能点", "请选择要提升的属性：", [0,1,2,3].map(point=>({label:["体力","腕力","耐力","速度"][point],kind:"yes",handler:()=>{closeLocalDialog();send("SKUP",[point]).catch(reportError);}})).concat([{label:"取消",kind:"no",handler:closeLocalDialog}]))});
-  $("status-title").addEventListener("click",()=>openPanel("titles"));
+  const requestStatusSkillUp=point=>{
+    const available=Math.max(0,decimal(app.status.skillPoints,0));if(available<=0)return;
+    app.status.skillPoints=available-1;renderStatus();
+    send("SKUP",[point]).catch(error=>{app.status.skillPoints=Math.max(available,decimal(app.status.skillPoints,0));renderStatus();reportError(error);});
+  };
+  document.querySelectorAll("[data-status-point]").forEach(node=>node.addEventListener("click",()=>requestStatusSkillUp(decimal(node.dataset.statusPoint,0))));
+  const closeStatusTitleDialog=()=>{$("status-title-dialog")?.classList.add("hidden");$("status-title-input")?.blur();};
+  $("status-title").addEventListener("click",()=>{const dialog=$("status-title-dialog"),input=$("status-title-input");if(!dialog||!input)return;if(!dialog.classList.contains("hidden")){closeStatusTitleDialog();return;}input.value="";dialog.classList.remove("hidden");input.focus();});
+  $("status-title-dialog").addEventListener("submit",event=>{event.preventDefault();const value=$("status-title-input").value;closeStatusTitleDialog();send("FT",[value]).catch(reportError);});
+  $("status-title-cancel").addEventListener("click",closeStatusTitleDialog);
+  $("status-party").addEventListener("click",()=>openPanel("party"));
   $("party-request").addEventListener("click",()=>send("PR",[app.position[0],app.position[1],1]).catch(reportError));
   $("party-leave").addEventListener("click",()=>send("PR",[app.position[0],app.position[1],0]).catch(reportError));
   /* The original map window has no refresh/center controls; M/center remains
