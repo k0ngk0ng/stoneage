@@ -13322,6 +13322,12 @@
       walkingActor.action=4;
       walkingActor.animationLoop=true;
       walkingActor.animationStartedAt=now;
+      /* setPcAction(ANIM_WALK) is authoritative while a real route is
+         moving.  A field Action menu selection is only a local prediction
+         until the next walk; leaving localActionNo here made a previous
+         attack/gesture win spriteActionForActor() and the player could walk
+         with the old static frame. */
+      delete walkingActor.localActionNo;
       delete walkingActor.caAction;
     }
     /* The original web loop advances its local 64px grid at MOVE_SPEED=4

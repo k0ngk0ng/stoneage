@@ -377,6 +377,13 @@ if(!/const LEGACY_FIELD_ANIMATION_TICK_MS=1000\/60/.test(script) ||
    !/const animationTick=actor\?\.walking\?LEGACY_PROC_TICK_MS:LEGACY_FIELD_ANIMATION_TICK_MS/.test(localActionAnimationSource)) {
   throw new Error("field Action animation must use the native 60 Hz clock without changing walk speed");
 }
+/* MAP.CPP/PC.CPP overwrite a local Action with ANIM_WALK as soon as a real
+   route starts.  Keep the local preview marker out of that path, otherwise
+   spriteActionForActor() can keep rendering the previous gesture while the
+   character is moving. */
+if(!/walkingActor\.action=4;[\s\S]{0,650}delete walkingActor\.localActionNo;[\s\S]{0,160}delete walkingActor\.caAction;/.test(script)) {
+  throw new Error("starting a field walk must clear the previous local Action selection");
+}
 const receiveActionsStart = script.indexOf("  function receiveActions(text)");
 const receiveActionsEnd = script.indexOf("  function updateHUD()", receiveActionsStart);
 const receiveActionsSource = script.slice(receiveActionsStart, receiveActionsEnd);
