@@ -87,6 +87,9 @@ type pageData struct {
 	Deployment          DeploymentStatus
 	DeploymentError     string
 	DeploymentAvailable bool
+	AssetSync           AssetSyncStatus
+	AssetSyncError      string
+	AssetSyncAvailable  bool
 }
 
 var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
@@ -108,8 +111,8 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
-		"releases": "releases.html",
-		"config":   "config.html", "error": "error.html",
+		"releases": "releases.html", "assets": "assets.html",
+		"config": "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
 		if parseErr != nil {
@@ -204,6 +207,10 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 	}
 	if request.URL.Path == "/releases" || request.URL.Path == "/releases/deploy" {
 		server.releases(response, request, data)
+		return
+	}
+	if request.URL.Path == "/assets" || request.URL.Path == "/assets/sync" {
+		server.assets(response, request, data)
 		return
 	}
 	if request.URL.Path == "/server" || request.URL.Path == "/server/restart" || request.URL.Path == "/server/restart-game" || request.URL.Path == "/server/restart-gateway" || request.URL.Path == "/server/restart-gmsv" || request.URL.Path == "/server/restart-saac" || request.URL.Path == "/server/stop" || request.URL.Path == "/server/stop-game" || request.URL.Path == "/server/stop-gateway" || request.URL.Path == "/server/stop-gmsv" || request.URL.Path == "/server/stop-saac" {
@@ -519,6 +526,44 @@ func (server *Server) releases(response http.ResponseWriter, request *http.Reque
 	}
 	_ = server.store.RecordAudit(request.Context(), adminID(data), "release_deploy_started", "", requestSourceIP(request), version)
 	server.redirectWithMessage(response, request, "/releases", "已开始下发 "+version+"，请刷新查看进度")
+}
+
+func (server *Server) assets(response http.ResponseWriter, request *http.Request, data *pageData) {
+	syncer, ok := server.operator.(AssetSyncingOperator)
+	data.Title = "静态资源"
+	data.AssetSyncAvailable = ok
+	if ok {
+		status, err := syncer.AssetSyncStatus(request.Context())
+		if err != nil {
+			data.AssetSyncError = err.Error()
+		} else {
+			data.AssetSync = status
+		}
+	} else if server.operator == nil {
+		data.AssetSyncError = "当前没有配置服务控制接口"
+	} else {
+		data.AssetSyncError = "当前运维接口不支持资源同步"
+	}
+	if request.Method == http.MethodGet {
+		data.Message = server.consumeFlash(response, request)
+		server.render(response, "assets", data)
+		return
+	}
+	if request.Method != http.MethodPost || request.URL.Path != "/assets/sync" || !server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {
+		server.renderError(response, http.StatusForbidden, "请求无效")
+		return
+	}
+	if !ok {
+		server.renderError(response, http.StatusServiceUnavailable, data.AssetSyncError)
+		return
+	}
+	if err := syncer.SyncAssets(request.Context()); err != nil {
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "assets_sync_failed", "", requestSourceIP(request), err.Error())
+		server.renderError(response, http.StatusBadGateway, err.Error())
+		return
+	}
+	_ = server.store.RecordAudit(request.Context(), adminID(data), "assets_sync_started", "", requestSourceIP(request), "")
+	server.redirectWithMessage(response, request, "/assets", "已开始批量同步 assets、maps、audio；请刷新查看状态")
 }
 
 func (server *Server) configPage(response http.ResponseWriter, request *http.Request, data *pageData) {

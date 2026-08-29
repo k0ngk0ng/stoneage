@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
     go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-gateway ./cmd/stoneage-gateway && \
     go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-admin ./cmd/stoneage-admin && \
     go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-operator ./cmd/stoneage-operator && \
+    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-assets-sync ./cmd/stoneage-assets-sync && \
     go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-web ./client/web
 
 FROM alpine:3.22
@@ -19,6 +20,7 @@ RUN apk add --no-cache bash docker-cli docker-cli-compose netcat-openbsd
 COPY --from=build /out/stoneage-gateway /opt/stoneage/bin/stoneage-gateway
 COPY --from=build /out/stoneage-admin /opt/stoneage/bin/stoneage-admin
 COPY --from=build /out/stoneage-operator /opt/stoneage/bin/stoneage-operator
+COPY --from=build /out/stoneage-assets-sync /opt/stoneage/bin/stoneage-assets-sync
 COPY --from=build /out/stoneage-web /opt/stoneage/bin/stoneage-web
 # The generated sprite pack is immutable release content. Maps, WAVs and NPC
 # definitions stay on the host because they come from the matching 2.5 client

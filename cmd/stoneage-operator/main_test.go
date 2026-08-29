@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOperatorOnlyRunsFixedRestartScript(t *testing.T) {
@@ -147,5 +148,41 @@ func TestOperatorNotificationUsesFixedScriptAndLiteralArgument(t *testing.T) {
 	}
 	if _, err := notificationCP936("StoneAge 😀"); err == nil {
 		t.Fatal("unrepresentable CP936 notification accepted")
+	}
+}
+
+func TestOperatorAssetSyncRunsOnlyFixedScriptAsync(t *testing.T) {
+	directory := t.TempDir()
+	marker := filepath.Join(directory, "asset-sync")
+	command := filepath.Join(directory, "sync-assets.sh")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf synced >\""+marker+"\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	value := operator{packageRoot: directory}
+	if err := value.startAssetSync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := value.startAssetSync(); err == nil {
+		t.Fatal("concurrent asset sync unexpectedly accepted")
+	}
+	deadline := time.Now().Add(time.Second)
+	finished := false
+	for time.Now().Before(deadline) {
+		status := value.assetSyncStatus()
+		if status.Phase != "running" {
+			if status.Phase != "succeeded" {
+				t.Fatalf("asset sync status = %#v", status)
+			}
+			finished = true
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !finished {
+		t.Fatal("asset sync did not finish")
+	}
+	content, err := os.ReadFile(marker)
+	if err != nil || string(content) != "synced" {
+		t.Fatalf("asset sync marker = %q, err=%v", content, err)
 	}
 }

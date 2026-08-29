@@ -126,14 +126,14 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
-    command: ["/opt/stoneage/bin/stoneage-web", "-config", "/etc/stoneage/web.json"]
+    command: ["/opt/stoneage/bin/stoneage-web", "-config", "/etc/stoneage/web.toml"]
     environment:
       # Environment variables are emergency/secret-safe overrides. Normal
-      # Web, OSS and CDN settings live in the mounted JSON configuration.
+      # Web, OSS and CDN settings live in the mounted TOML configuration.
       STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:
-      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.json}:/etc/stoneage/web.json:ro
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
       - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
       - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv:ro
     ports:
@@ -215,9 +215,15 @@ services:
       STONEAGE_GMSV_DATA_ROOT: ${STONEAGE_GMSV_DATA_ROOT:-}
       STONEAGE_SAAC_DATA_ROOT: ${STONEAGE_SAAC_DATA_ROOT:-}
       STONEAGE_AUTH_VOLUME: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
+      # Credentials are scoped to the fixed bulk asset-sync command. They are
+      # deliberately not present in the web or admin containers.
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${ALIBABA_CLOUD_ACCESS_KEY_ID:-}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}
     volumes:
       - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
       - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
       - auth-data:/data
       - operator-run:/run/stoneage
       - operator-state:/state

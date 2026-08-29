@@ -35,16 +35,19 @@ STONEAGE_WEB_MAX_SESSIONS=64 \
 GOFLAGS=-mod=mod go run .
 ```
 
-生产启动使用根目录的 [`config/web.json`](../../config/web.json) 集中配置 Web、OSS
+生产启动使用根目录的 [`config/web.toml`](../../config/web.toml) 集中配置 Web、OSS
 和 CDN，Compose 会把它只读挂载并执行
-`stoneage-web -config /etc/stoneage/web.json`。本地也可以复制一份、把其中的目录和
-TCP 上游改为本机路径后运行 `go run . -config /path/to/web.json`；也支持
-`STONEAGE_WEB_CONFIG=/path/to/web.json`。文件中的未知字段、非法 OSS endpoint、
+`stoneage-web -config /etc/stoneage/web.toml`。本地也可以复制一份、把其中的目录和
+TCP 上游改为本机路径后运行 `go run . -config /path/to/web.toml`；也支持
+`STONEAGE_WEB_CONFIG=/path/to/web.toml`。文件中的未知字段、非法 OSS endpoint、
 不完整的 endpoint/bucket 组合和非法 CDN URL 都会让服务在启动时直接报错。
 
 从仓库的 `client/web` 目录启动时，`STONEAGE_WEB_ASSETS` 默认就是 `assets/original`。这组资源直接从 `runtime/legacy-client/sa_2903.exe` 的伴随数据（`real_15.bin`、`adrn_15.bin`、`spr_4.bin`、`spradrn_5.bin`、地图和 `Palet_1.sap`）提取，不引用 `/client/mobile` 的图片；所有已同步的地图、物件、角色和战斗场景都使用原版索引与位图。部署到别的目录时请显式设置该变量。资源通过只读 `/assets/` 路径提供，不接受浏览器指定任意目录。
 
-`static.cdn.base_url` 是公开静态资源根地址；`STONEAGE_WEB_CDN_BASE_URL` 仅保留为应急环境变量覆盖。设置后，返回给浏览器的页面会把 `/assets/`、`/maps/` 和 `/audio/` 改写为这个根地址下的同名目录；`/api/sessions`、`/api/npcs` 等动态接口不会改写。`static.oss` 保存阿里云 OSS 的 endpoint、region、bucket、固定 prefix 和凭据环境变量名，不在配置文件中保存 AccessKey 明文；如果配置了 OSS 而未配置 CDN，Web 后端会自动使用 `https://<bucket>.<endpoint>/<prefix>` 作为公开资源根地址。CDN 基址只接受不含账号、查询串和片段的绝对 HTTP(S) URL，末尾斜线会自动去除；OSS endpoint/bucket 必须同时设置。生产部署应使用 HTTPS 和固定资源根目录，CDN 路径和 OSS prefix 都不带 tag，发布时增量同步；JSON 清单使用短缓存或 `no-cache`，PNG、地图和音频可长期缓存，同名二进制确实发生变化时刷新对应 CDN URL。CDN/OSS 源站还需为网页域名配置 CORS 和 `Timing-Allow-Origin`（下载进度需要）。OSS/CDN 都未设置时仍由当前 Web 进程提供本地文件，便于开发和故障排查。
+`static.cdn.base_url` 是公开静态资源根地址；`STONEAGE_WEB_CDN_BASE_URL` 仅保留为应急环境变量覆盖。设置后，返回给浏览器的页面会把 `/assets/`、`/maps/` 和 `/audio/` 改写为这个根地址下的同名目录；`/api/sessions`、`/api/npcs` 等动态接口不会改写。`static.oss` 保存阿里云 OSS 的 endpoint、region、bucket、固定 prefix；AK/SK 不写在 TOML，而是只注入批量资源同步工具，Web 游戏进程不会读取或上传。如果配置了 OSS 而未配置 CDN，Web 后端会自动使用 `https://<bucket>.<endpoint>/<prefix>` 作为公开资源根地址。CDN 基址只接受不含账号、查询串和片段的绝对 HTTP(S) URL，末尾斜线会自动去除；OSS endpoint/bucket 必须同时设置。生产部署应使用 HTTPS 和固定资源根目录，CDN 路径和 OSS prefix 都不带 tag，发布时增量同步；JSON 清单使用短缓存或 `no-cache`，PNG、地图和音频可长期缓存，同名二进制确实发生变化时刷新对应 CDN URL。CDN/OSS 源站还需为网页域名配置 CORS 和 `Timing-Allow-Origin`（下载进度需要）。OSS/CDN 都未设置时仍由当前 Web 进程提供本地文件，便于开发和故障排查。
+
+后台 admin 的“资源”页面可以触发受限的批量同步任务；AK/SK 只注入
+`service-control`，不会进入 Web 页面或浏览器。若资源已经由 CI 发布，不配置同步凭据即可。
 
 音乐通过只读 `/audio/bgm/` 和 `/audio/se/` 路径提供。网页按 `_SA_VERSION_25` 客户端的时机切换标题、地图、战斗/首领 BGM，并按服务器 `SE` 包播放对应音效；浏览器第一次用户操作后才会解锁音频，这是浏览器自动播放策略的限制。WAV 使用长期缓存，地图音乐标记只接受随附 `sa_2903` 2.5 客户端源码的 40–46 范围；47–53 属于后续 8.5 表，不会在本网页端启用。
 

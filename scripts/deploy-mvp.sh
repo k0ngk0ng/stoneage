@@ -159,7 +159,7 @@ admin_password="$(env_value STONEAGE_ADMIN_PASSWORD || true)"
 setup_token="$(env_value STONEAGE_ADMIN_SETUP_TOKEN || true)"
 cdn_base="$(env_value STONEAGE_WEB_CDN_BASE_URL || true)"
 web_config_file="$(env_value STONEAGE_WEB_CONFIG_FILE || true)"
-web_config_file="${web_config_file:-./config/web.json}"
+web_config_file="${web_config_file:-./config/web.toml}"
 if [[ "$check_only" != 1 && "$admin_password" == "replace-with-a-long-random-password" && -z "$setup_token" ]]; then
     echo "Set STONEAGE_ADMIN_PASSWORD (or a one-time STONEAGE_ADMIN_SETUP_TOKEN) in $env_file before deploying." >&2
     exit 2
@@ -208,7 +208,7 @@ case "$web_config_file" in
 esac
 if [[ ! -f "$web_config_file" ]]; then
     echo "Web configuration file not found: $web_config_file" >&2
-    echo "Copy or edit $project_root/config/web.json before deploying." >&2
+    echo "Copy or edit $project_root/config/web.toml before deploying." >&2
     exit 2
 fi
 

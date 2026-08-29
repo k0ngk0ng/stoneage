@@ -1,6 +1,7 @@
 // stoneage-operator is the small privileged boundary used by the web console
-// for status and fixed restart actions. It accepts only fixed JSON actions over
-// a Unix socket and never evaluates a command string supplied by the web process.
+// for status, fixed service actions and bulk asset publication. It accepts only
+// fixed JSON actions over a Unix socket and never evaluates a command string
+// supplied by the web process.
 package main
 
 import (
@@ -41,6 +42,7 @@ type response struct {
 	Error      string           `json:"error,omitempty"`
 	Status     status           `json:"status,omitempty"`
 	Deployment deploymentStatus `json:"deployment,omitempty"`
+	AssetSync  assetSyncStatus  `json:"asset_sync,omitempty"`
 }
 
 type deploymentStatus struct {
@@ -49,6 +51,13 @@ type deploymentStatus struct {
 	Message   string `json:"message,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 	Backup    string `json:"backup,omitempty"`
+}
+
+type assetSyncStatus struct {
+	Phase     string `json:"phase"`
+	Message   string `json:"message,omitempty"`
+	StartedAt string `json:"started_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 type operator struct {
@@ -70,6 +79,8 @@ type operator struct {
 	gmsvDataRoot    string
 	saacDataRoot    string
 	restartMu       sync.Mutex
+	assetSyncMu     sync.Mutex
+	assetSync       assetSyncStatus
 }
 
 func main() {
@@ -159,6 +170,16 @@ func (value *operator) handle(connection net.Conn) {
 		}
 	case "deploy_status":
 		output.Deployment = value.deploymentStatus()
+		output.OK = true
+	case "sync_assets":
+		if err := value.startAssetSync(); err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+			output.AssetSync = value.assetSyncStatus()
+		}
+	case "sync_assets_status":
+		output.AssetSync = value.assetSyncStatus()
 		output.OK = true
 	case "restart", "restart_server":
 		if err := value.restartScript("restart-server.sh"); err != nil {

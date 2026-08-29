@@ -123,19 +123,16 @@ type Config struct {
 	CDNBaseURL string
 	// OSS describes the stable object-storage origin used by deployment to
 	// hold assets/, maps/ and audio/. Runtime browser URLs still prefer the
-	// CDN base above; credentials are referenced by environment-variable name
-	// and are never embedded in the public page.
+	// CDN base above; this process never uploads to OSS or receives its keys.
 	OSS OSSConfig
 }
 
 type OSSConfig struct {
-	Provider           string
-	Endpoint           string
-	Region             string
-	Bucket             string
-	Prefix             string
-	AccessKeyIDEnv     string
-	AccessKeySecretEnv string
+	Provider string
+	Endpoint string
+	Region   string
+	Bucket   string
+	Prefix   string
 }
 
 func DefaultConfig() Config {
@@ -152,10 +149,8 @@ func DefaultConfig() Config {
 		IdleTimeout:     defaultIdleTimeout,
 		DialTimeout:     defaultDialTimeout,
 		OSS: OSSConfig{
-			Provider:           "aliyun-oss",
-			Prefix:             "stoneage",
-			AccessKeyIDEnv:     "ALIBABA_CLOUD_ACCESS_KEY_ID",
-			AccessKeySecretEnv: "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
+			Provider: "aliyun-oss",
+			Prefix:   "stoneage",
 		},
 	}
 }

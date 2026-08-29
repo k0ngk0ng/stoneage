@@ -248,29 +248,28 @@ func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
 }
 
 func TestWebConfigFileLoadsOSSAndCDNWithEnvironmentOverride(t *testing.T) {
-	filename := filepath.Join(t.TempDir(), "web.json")
-	content := `{
-  "listen_address": "127.0.0.1:18089",
-  "tcp_upstream": "127.0.0.1:19065",
-  "max_sessions": 23,
-  "poll_timeout": "9s",
-  "static": {
-    "assets_directory": "/srv/stoneage/assets",
-    "maps_directory": "/srv/stoneage/maps",
-    "audio_directory": "/srv/stoneage/audio",
-    "npc_directory": "/srv/stoneage/npc",
-    "oss": {
-      "provider": "aliyun-oss",
-      "endpoint": "https://oss-cn-shanghai.aliyuncs.com/",
-      "region": "cn-shanghai",
-      "bucket": "stoneage-web-assets",
-      "prefix": "/stoneage/",
-      "access_key_id_env": "TEST_OSS_ACCESS_KEY_ID",
-      "access_key_secret_env": "TEST_OSS_ACCESS_KEY_SECRET"
-    },
-    "cdn": {"base_url": "https://cdn.example.com/stoneage/"}
-  }
-}`
+	filename := filepath.Join(t.TempDir(), "web.toml")
+	content := `listen_address = "127.0.0.1:18089"
+tcp_upstream = "127.0.0.1:19065"
+max_sessions = 23
+poll_timeout = "9s"
+
+[static]
+assets_directory = "/srv/stoneage/assets"
+maps_directory = "/srv/stoneage/maps"
+audio_directory = "/srv/stoneage/audio"
+npc_directory = "/srv/stoneage/npc"
+
+[static.oss]
+provider = "aliyun-oss"
+endpoint = "https://oss-cn-shanghai.aliyuncs.com/"
+region = "cn-shanghai"
+bucket = "stoneage-web-assets"
+prefix = "/stoneage/"
+
+[static.cdn]
+base_url = "https://cdn.example.com/stoneage/"
+`
 	if err := os.WriteFile(filename, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +287,7 @@ func TestWebConfigFileLoadsOSSAndCDNWithEnvironmentOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if oss.Endpoint != "https://oss-cn-shanghai.aliyuncs.com" || oss.Region != "cn-shanghai" || oss.Bucket != "stoneage-web-assets" || oss.Prefix != "stoneage" || oss.AccessKeyIDEnv != "TEST_OSS_ACCESS_KEY_ID" || oss.AccessKeySecretEnv != "TEST_OSS_ACCESS_KEY_SECRET" {
+	if oss.Endpoint != "https://oss-cn-shanghai.aliyuncs.com" || oss.Region != "cn-shanghai" || oss.Bucket != "stoneage-web-assets" || oss.Prefix != "stoneage" {
 		t.Fatalf("normalized OSS=%+v", oss)
 	}
 	if got := ossPublicBaseURL(oss); got != "https://stoneage-web-assets.oss-cn-shanghai.aliyuncs.com/stoneage" {
@@ -329,11 +328,11 @@ func TestHandlerUsesPublicOSSRootWhenCDNIsUnset(t *testing.T) {
 }
 
 func TestWebConfigFileAndOSSValidationFailClosed(t *testing.T) {
-	filename := filepath.Join(t.TempDir(), "web.json")
-	if err := os.WriteFile(filename, []byte(`{"static":{"cdn":{"domain":"https://cdn.example.com"}}}`), 0o600); err != nil {
+	filename := filepath.Join(t.TempDir(), "web.toml")
+	if err := os.WriteFile(filename, []byte("[static.cdn]\ndomain = \"https://cdn.example.com\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadWebConfigFile(filename); err == nil || !strings.Contains(err.Error(), "unknown field") {
+	if _, err := loadWebConfigFile(filename); err == nil || !strings.Contains(err.Error(), "missing in the target struct") {
 		t.Fatalf("unknown config field error=%v", err)
 	}
 	for _, value := range []OSSConfig{
@@ -345,6 +344,16 @@ func TestWebConfigFileAndOSSValidationFailClosed(t *testing.T) {
 		if _, err := normalizeOSSConfig(value); err == nil {
 			t.Errorf("invalid OSS configuration accepted: %+v", value)
 		}
+	}
+}
+
+func TestWebConfigRejectsJSONInFavorOfTOML(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "web.json")
+	if err := os.WriteFile(filename, []byte(`{"listen_address":"127.0.0.1:18089"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadWebConfigFile(filename); err == nil {
+		t.Fatal("JSON web config unexpectedly accepted; use TOML")
 	}
 }
 

@@ -6,6 +6,10 @@
 客户端经兼容补丁后，在 Apple Silicon macOS 的 Wine 11 中可连接容器内的
 Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖移动硬盘。
 
+浏览器 Web 后端是 Go（`client/web`），不是 Node.js；页面前端是随 Go 二进制嵌入的
+HTML/CSS/JavaScript。Web 进程只负责游戏协议和公开静态资源 URL，OSS 上传由独立的
+`stoneage-assets-sync` 控制面命令完成。
+
 ## 已验证状态（2026-08-13）
 
 - macOS 26.5.2 / Apple Silicon / Wine 11：登录、人物、地图、移动、聊天、
@@ -95,36 +99,39 @@ ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/maps
 ossutil sync runtime/legacy-client/data oss://my-bucket/stoneage/audio
 ```
 
-Web 后端启动时读取 [`config/web.json`](config/web.json)。在
+Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
 `static.oss` 中填写阿里云 OSS 的 `endpoint`、`region`、`bucket` 和固定
 `prefix`，在 `static.cdn.base_url` 中填写 CDN 公开根地址，例如：
 
-```json
-"oss": {
-  "provider": "aliyun-oss",
-  "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
-  "region": "cn-hangzhou",
-  "bucket": "my-stoneage-assets",
-  "prefix": "stoneage",
-  "access_key_id_env": "ALIBABA_CLOUD_ACCESS_KEY_ID",
-  "access_key_secret_env": "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
-},
-"cdn": {
-  "base_url": "https://cdn.example.com/stoneage"
-}
+```toml
+[static.oss]
+provider = "aliyun-oss"
+endpoint = "https://oss-cn-hangzhou.aliyuncs.com"
+region = "cn-hangzhou"
+bucket = "my-stoneage-assets"
+prefix = "stoneage"
+
+[static.cdn]
+base_url = "https://cdn.example.com/stoneage"
 ```
 
 `prefix` 和 `base_url` 都是跨版本复用的固定根目录，不追加 `v*` tag。Compose
-通过 `.env` 的 `STONEAGE_WEB_CONFIG_FILE` 把这个配置只读挂载到 Web 容器；AccessKey
-明文只应放在配置所命名的环境变量中，不应直接写进 JSON 或提交到 Git。CDN 有值时优先
+通过 `.env` 的 `STONEAGE_WEB_CONFIG_FILE` 把这个 TOML 配置只读挂载到 Web 容器；AccessKey
+明文只应放在环境变量中，不应直接写进 TOML 或提交到 Git。CDN 有值时优先
 使用 CDN；CDN 留空但 OSS endpoint/bucket 已配置时，后端会直接生成公开 OSS 根地址。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
-仍只访问 8088。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
+仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 只放在 `.env`，由批量资源同步工具读取，Web 游戏进程不会读取或上传。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露
 `Content-Length`、`Content-Range`、`Accept-Ranges`、`ETag`。生产环境必须使用
 HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网页会拦截混合
 内容。`assets/*.json` 等清单应使用短缓存或 `no-cache`；PNG、地图和音频可以长期
 缓存。同名二进制确实发生变化时，只刷新对应 CDN URL，不需要复制整套资源目录。
+
+后台的“资源”页面提供批量同步按钮，一次上传 `assets/`、`maps/`、`audio/` 三棵目录，
+不会要求逐个文件操作。同步在受限 `service-control` 容器中异步执行，Web 和 admin
+进程都拿不到 AK/SK；只有该固定任务读取 `.env` 中的
+`ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET`。如果资源由 CI
+发布，也可以不配置这两个变量，直接用 `ossutil sync` 或流水线上传。
 
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和

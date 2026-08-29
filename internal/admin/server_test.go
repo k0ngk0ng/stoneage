@@ -31,6 +31,8 @@ type fakeOperator struct {
 	notifications   []string
 	deployments     []string
 	deployment      DeploymentStatus
+	assetSyncStarts int
+	assetSync       AssetSyncStatus
 }
 
 func (operator *fakeOperator) Status(context.Context) (ServiceStatus, error) {
@@ -105,6 +107,19 @@ func (operator *fakeOperator) DeploymentStatus(context.Context) (DeploymentStatu
 		return DeploymentStatus{Phase: "idle"}, nil
 	}
 	return operator.deployment, nil
+}
+
+func (operator *fakeOperator) SyncAssets(context.Context) error {
+	operator.assetSyncStarts++
+	operator.assetSync = AssetSyncStatus{Phase: "running", Message: "syncing"}
+	return nil
+}
+
+func (operator *fakeOperator) AssetSyncStatus(context.Context) (AssetSyncStatus, error) {
+	if operator.assetSync.Phase == "" {
+		return AssetSyncStatus{Phase: "idle", Message: "idle"}, nil
+	}
+	return operator.assetSync, nil
 }
 
 func newAdminTestServer(t *testing.T) (*auth.Store, *fakeOperator, *httptest.Server) {
@@ -449,6 +464,49 @@ func TestAdminReleaseVersionValidationAndCSRF(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("release CSRF response = %d", response.StatusCode)
+	}
+}
+
+func TestAdminAssetSyncIsBulkAndCSRFProtected(t *testing.T) {
+	_, operator, server := newAdminTestServer(t)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.PostForm(server.URL+"/login", url.Values{"username": {"admin"}, "password": {"secret123"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	response, err = client.Get(server.URL + "/assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "批量同步") || !strings.Contains(string(body), "assets/") || !strings.Contains(string(body), "maps/") || !strings.Contains(string(body), "audio/") {
+		t.Fatalf("asset page = %d %s", response.StatusCode, body)
+	}
+	csrf := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(string(body))
+	if len(csrf) != 2 {
+		t.Fatal("asset page did not contain CSRF token")
+	}
+	response, err = client.PostForm(server.URL+"/assets/sync", url.Values{"csrf": {csrf[1]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/assets" || operator.assetSyncStarts != 1 {
+		t.Fatalf("asset sync response = %d location=%q starts=%d", response.StatusCode, response.Header.Get("Location"), operator.assetSyncStarts)
+	}
+	response, err = client.PostForm(server.URL+"/assets/sync", url.Values{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("asset sync without CSRF status=%d", response.StatusCode)
 	}
 }
 

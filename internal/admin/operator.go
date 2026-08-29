@@ -25,8 +25,9 @@ type DeploymentStatus struct {
 	Backup    string `json:"backup,omitempty"`
 }
 
-// Operator is deliberately narrow. The web process can request status and a
-// full restart, but it cannot execute arbitrary shell commands or access Docker.
+// Operator is deliberately narrow. The web process can request status, fixed
+// service actions and the fixed asset-sync job, but it cannot execute arbitrary
+// shell commands or access Docker.
 type Operator interface {
 	Status(context.Context) (ServiceStatus, error)
 	Restart(context.Context) error
@@ -67,6 +68,21 @@ type DeployingOperator interface {
 	DeploymentStatus(context.Context) (DeploymentStatus, error)
 }
 
+// AssetSyncingOperator exposes one fixed, asynchronous bulk upload. It never
+// accepts a path, bucket or shell command from the browser; the operator owns
+// those values and invokes the checked-in sync-assets.sh script.
+type AssetSyncingOperator interface {
+	SyncAssets(context.Context) error
+	AssetSyncStatus(context.Context) (AssetSyncStatus, error)
+}
+
+type AssetSyncStatus struct {
+	Phase     string `json:"phase"`
+	Message   string `json:"message,omitempty"`
+	StartedAt string `json:"started_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
 type UnixOperator struct {
 	Socket string
 }
@@ -82,6 +98,7 @@ type operatorResponse struct {
 	Error      string           `json:"error,omitempty"`
 	Status     ServiceStatus    `json:"status,omitempty"`
 	Deployment DeploymentStatus `json:"deployment,omitempty"`
+	AssetSync  AssetSyncStatus  `json:"asset_sync,omitempty"`
 }
 
 func (operator UnixOperator) Status(ctx context.Context) (ServiceStatus, error) {
@@ -165,6 +182,28 @@ func (operator UnixOperator) DeploymentStatus(ctx context.Context) (DeploymentSt
 	return response.Deployment, nil
 }
 
+func (operator UnixOperator) SyncAssets(ctx context.Context) error {
+	response, err := operator.call(ctx, "sync_assets")
+	if err != nil {
+		return err
+	}
+	if !response.OK {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
+func (operator UnixOperator) AssetSyncStatus(ctx context.Context) (AssetSyncStatus, error) {
+	response, err := operator.call(ctx, "sync_assets_status")
+	if err != nil {
+		return AssetSyncStatus{}, err
+	}
+	if !response.OK {
+		return AssetSyncStatus{}, errors.New(response.Error)
+	}
+	return response.AssetSync, nil
+}
+
 func (operator UnixOperator) restartAction(ctx context.Context, action string) error {
 	response, err := operator.call(ctx, action)
 	if err != nil {
@@ -203,7 +242,7 @@ func (operator UnixOperator) callWithMessage(ctx context.Context, action, messag
 	defer connection.Close()
 	deadline := 5 * time.Second
 	switch action {
-	case "restart", "restart_server", "restart_game", "restart_gateway", "restart_gmsv", "restart_saac", "stop", "stop_server", "stop_game", "stop_gateway", "stop_gmsv", "stop_saac", "deploy_status":
+	case "restart", "restart_server", "restart_game", "restart_gateway", "restart_gmsv", "restart_saac", "stop", "stop_server", "stop_game", "stop_gateway", "stop_gmsv", "stop_saac", "deploy_status", "sync_assets", "sync_assets_status":
 		deadline = 100 * time.Second
 	case "notify":
 		deadline = 10 * time.Second

@@ -1,0 +1,24 @@
+listen_address = "0.0.0.0:8088"
+tcp_upstream = "gateway:9065"
+packet_limit = 4194304
+max_sessions = 64
+poll_timeout = "25s"
+idle_timeout = "10m"
+dial_timeout = "5s"
+allowed_origin = ""
+
+[static]
+assets_directory = "/opt/stoneage/web-assets"
+maps_directory = "/game/client/map"
+audio_directory = "/game/client/data"
+npc_directory = "/game/gmsv/data/npc"
+
+[static.oss]
+provider = "aliyun-oss"
+endpoint = ""
+region = ""
+bucket = ""
+prefix = "stoneage"
+
+[static.cdn]
+base_url = ""

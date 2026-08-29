@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,45 +10,45 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 // webConfigFile is deliberately separate from Config so the on-disk schema
-// stays stable even if the bridge gains internal runtime fields. JSON keeps
-// the production binary self-contained and lets startup reject misspelled
+// stays stable even if the bridge gains internal runtime fields. TOML keeps
+// the production configuration readable and lets startup reject misspelled
 // keys instead of silently serving assets from the wrong origin.
 type webConfigFile struct {
-	ListenAddress string              `json:"listen_address"`
-	TCPUpstream   string              `json:"tcp_upstream"`
-	PacketLimit   int                 `json:"packet_limit"`
-	MaxSessions   int                 `json:"max_sessions"`
-	PollTimeout   string              `json:"poll_timeout"`
-	IdleTimeout   string              `json:"idle_timeout"`
-	DialTimeout   string              `json:"dial_timeout"`
-	AllowedOrigin string              `json:"allowed_origin"`
-	Static        webStaticConfigFile `json:"static"`
+	ListenAddress string              `toml:"listen_address"`
+	TCPUpstream   string              `toml:"tcp_upstream"`
+	PacketLimit   int                 `toml:"packet_limit"`
+	MaxSessions   int                 `toml:"max_sessions"`
+	PollTimeout   string              `toml:"poll_timeout"`
+	IdleTimeout   string              `toml:"idle_timeout"`
+	DialTimeout   string              `toml:"dial_timeout"`
+	AllowedOrigin string              `toml:"allowed_origin"`
+	Static        webStaticConfigFile `toml:"static"`
 }
 
 type webStaticConfigFile struct {
-	AssetsDirectory string           `json:"assets_directory"`
-	MapsDirectory   string           `json:"maps_directory"`
-	AudioDirectory  string           `json:"audio_directory"`
-	NPCDirectory    string           `json:"npc_directory"`
-	OSS             webOSSConfigFile `json:"oss"`
-	CDN             webCDNConfigFile `json:"cdn"`
+	AssetsDirectory string           `toml:"assets_directory"`
+	MapsDirectory   string           `toml:"maps_directory"`
+	AudioDirectory  string           `toml:"audio_directory"`
+	NPCDirectory    string           `toml:"npc_directory"`
+	OSS             webOSSConfigFile `toml:"oss"`
+	CDN             webCDNConfigFile `toml:"cdn"`
 }
 
 type webCDNConfigFile struct {
-	BaseURL string `json:"base_url"`
+	BaseURL string `toml:"base_url"`
 }
 
 type webOSSConfigFile struct {
-	Provider           string `json:"provider"`
-	Endpoint           string `json:"endpoint"`
-	Region             string `json:"region"`
-	Bucket             string `json:"bucket"`
-	Prefix             string `json:"prefix"`
-	AccessKeyIDEnv     string `json:"access_key_id_env"`
-	AccessKeySecretEnv string `json:"access_key_secret_env"`
+	Provider string `toml:"provider"`
+	Endpoint string `toml:"endpoint"`
+	Region   string `toml:"region"`
+	Bucket   string `toml:"bucket"`
+	Prefix   string `toml:"prefix"`
 }
 
 func applyNonEmpty(destination *string, value string) {
@@ -78,16 +77,9 @@ func loadWebConfigFile(filename string) (Config, error) {
 		return Config{}, fmt.Errorf("read web config %q: %w", filename, err)
 	}
 	var disk webConfigFile
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
+	decoder := toml.NewDecoder(bytes.NewReader(content)).DisallowUnknownFields()
 	if err := decoder.Decode(&disk); err != nil {
-		return Config{}, fmt.Errorf("decode web config %q: %w", filename, err)
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		if err == nil {
-			err = fmt.Errorf("multiple JSON values")
-		}
-		return Config{}, fmt.Errorf("decode web config %q: %w", filename, err)
+		return Config{}, fmt.Errorf("decode web TOML config %q: %w", filename, err)
 	}
 
 	applyNonEmpty(&cfg.ListenAddress, disk.ListenAddress)
@@ -103,8 +95,6 @@ func loadWebConfigFile(filename string) (Config, error) {
 	applyNonEmpty(&cfg.OSS.Region, disk.Static.OSS.Region)
 	applyNonEmpty(&cfg.OSS.Bucket, disk.Static.OSS.Bucket)
 	applyNonEmpty(&cfg.OSS.Prefix, disk.Static.OSS.Prefix)
-	applyNonEmpty(&cfg.OSS.AccessKeyIDEnv, disk.Static.OSS.AccessKeyIDEnv)
-	applyNonEmpty(&cfg.OSS.AccessKeySecretEnv, disk.Static.OSS.AccessKeySecretEnv)
 	if disk.PacketLimit != 0 {
 		cfg.PacketLimit = disk.PacketLimit
 	}
@@ -127,7 +117,7 @@ func configFromCommandLine(arguments []string) (Config, string, error) {
 	var configPath string
 	flags := flag.NewFlagSet("stoneage-web", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringVar(&configPath, "config", strings.TrimSpace(os.Getenv("STONEAGE_WEB_CONFIG")), "path to web JSON configuration")
+	flags.StringVar(&configPath, "config", strings.TrimSpace(os.Getenv("STONEAGE_WEB_CONFIG")), "path to web TOML configuration")
 	if err := flags.Parse(arguments); err != nil {
 		return Config{}, "", fmt.Errorf("parse web arguments: %w", err)
 	}
@@ -146,8 +136,7 @@ func configFromCommandLine(arguments []string) (Config, string, error) {
 }
 
 var (
-	ossBucketNamePattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
-	environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	ossBucketNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
 )
 
 func normalizeOSSConfig(value OSSConfig) (OSSConfig, error) {
@@ -156,8 +145,6 @@ func normalizeOSSConfig(value OSSConfig) (OSSConfig, error) {
 	value.Region = strings.TrimSpace(value.Region)
 	value.Bucket = strings.TrimSpace(value.Bucket)
 	value.Prefix = strings.Trim(strings.TrimSpace(value.Prefix), "/")
-	value.AccessKeyIDEnv = strings.TrimSpace(value.AccessKeyIDEnv)
-	value.AccessKeySecretEnv = strings.TrimSpace(value.AccessKeySecretEnv)
 	if value.Provider == "" {
 		value.Provider = "aliyun-oss"
 	}
@@ -182,14 +169,6 @@ func normalizeOSSConfig(value OSSConfig) (OSSConfig, error) {
 	for _, part := range strings.Split(value.Prefix, "/") {
 		if part == "." || part == ".." {
 			return OSSConfig{}, fmt.Errorf("prefix must not contain dot path segments")
-		}
-	}
-	for name, configured := range map[string]string{
-		"access_key_id_env":     value.AccessKeyIDEnv,
-		"access_key_secret_env": value.AccessKeySecretEnv,
-	} {
-		if configured != "" && !environmentNamePattern.MatchString(configured) {
-			return OSSConfig{}, fmt.Errorf("%s must name an environment variable", name)
 		}
 	}
 	return value, nil
