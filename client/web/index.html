@@ -15255,6 +15255,22 @@
     /* Explicit NPC conversation mirrors __TALK_TO_NPC without making ground
        clicks conversational.  Keep it outside the movement key table. */
     if((event.key==="t"||event.key==="T")&&app.phase==="world"&&!app.battle){event.preventDefault();talkToFacingNPC();return;}
+    /* FIELD.CPP::actionShortCutKeyProc() maps Ctrl+keys to the same thirteen
+       rows as the Action window.  Keep the shortcut at the keyboard boundary
+       and delegate to the real row click so local animation, AC encoding,
+       menu closing and sound feedback cannot drift into a second path.  The
+       native guard ignores shortcuts while a route/warp is in flight. */
+    if(event.ctrlKey&&app.phase==="world"&&!app.battle){
+      const actionShortcuts={"0":0,"^":1,"9":2,"7":3,"8":4,"1":5,"2":6,"4":7,"5":8,"6":9,"-":10,"3":11,"\\":12};
+      const actionNo=actionShortcuts[event.key];
+      if(actionNo!==undefined){
+        event.preventDefault();
+        if(!mapMovementBlocked()&&!app.pointerMoveHeld){
+          document.querySelector(`#field-actions-list [data-action-no="${actionNo}"]`)?.click();
+        }
+        return;
+      }
+    }
     if(app.phase==="world"&&!app.battle){const directions={ArrowUp:3,w:3,W:3,ArrowRight:5,d:5,D:5,ArrowDown:7,s:7,S:7,ArrowLeft:1,a:1,A:1};if(directions[event.key]!==undefined){event.preventDefault();move(directions[event.key]);return;}}
     if(app.battle&&/^[1-8]$/.test(event.key)){const buttons=[...document.querySelectorAll("#battle-ui .battle-hit")],button=buttons[Number(event.key)-1];if(button){event.preventDefault();button.click();return;}}
     if(event.key==="Escape"){

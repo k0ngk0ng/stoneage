@@ -570,6 +570,16 @@ if (!fieldActionHandlerSource.includes("setLocalActorAction(actor,actionNo)") ||
     !fieldActionHandlerSource.includes("scheduleWorldAnimation()")) {
   throw new Error("field Action click must preview and send the selected native action number");
 }
+/* FIELD.CPP::actionShortCutKeyProc() exposes the same 13 actions through
+   Ctrl+keys.  Keep the exact mapping in the web keyboard boundary and route
+   it through the DOM row so the local animation/AC path stays authoritative. */
+const actionShortcutStart = script.indexOf('if(event.ctrlKey&&app.phase==="world"&&!app.battle)');
+const actionShortcutSource = script.slice(actionShortcutStart, script.indexOf('if(app.phase==="world"&&!app.battle){const directions=', actionShortcutStart));
+if (!/const actionShortcuts=\{"0":0,"\^":1,"9":2,"7":3,"8":4,"1":5,"2":6,"4":7,"5":8,"6":9,"-":10,"3":11,"\\\\":12\}/.test(actionShortcutSource) ||
+    !/field-actions-list \[data-action-no=/.test(actionShortcutSource) ||
+    !/!mapMovementBlocked\(\)&&!app\.pointerMoveHeld/.test(actionShortcutSource)) {
+  throw new Error("field Action Ctrl shortcuts must match the native 2.5 mapping");
+}
 for (const expected of [
   /#field-right-composite\s*\{[^}]*z-index:2/,
   /ctx\.drawImage\(first,68-offset,5,64,32\);\s*ctx\.drawImage\(second,132-offset,5,64,32\);[\s\S]{0,220}ctx\.drawImage\(panel,0,0,132,63\)/,
