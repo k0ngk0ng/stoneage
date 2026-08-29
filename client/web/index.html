@@ -5143,6 +5143,8 @@
     /* Keep this clock alive during M-window replacement; the completed
        previous back-buffer remains visible and native charProc() continues. */
     if(app.phase!=="world"||app.battle)return false;
+    /* Covered modal surfaces do not need a hidden field repaint loop. */
+    if(app.activeWindow||app.localDialog||app.trade)return false;
     const actors=[...app.actors.values()];
     for(const actor of actors){
       if(!actor||actor.battle||actor.kind!=="character")continue;
@@ -11066,7 +11068,13 @@
     return shop;
   }
   function windowAssetButton(label,bitmap,handler,width=80,height=16){return imageButton(label,bitmap,handler,width,height);}
-  function closeLocalDialog(){const screen=$("local-dialog-screen");if(screen){screen.classList.add("hidden");screen.classList.remove("local-dialog-message","local-dialog-choice-list");}app.localDialog=null;syncFieldOverlayVisibility();}
+  function closeLocalDialog(){
+    const screen=$("local-dialog-screen");
+    if(screen){screen.classList.add("hidden");screen.classList.remove("local-dialog-message","local-dialog-choice-list");}
+    app.localDialog=null;
+    syncFieldOverlayVisibility();
+    if(app.phase==="world"&&!app.battle&&!app.activeWindow&&!app.trade){renderWorld(true);scheduleWorldAnimation();}
+  }
   /* _NEW_WGS_MSG measures the common-message window with the executable's
      two-byte character font (GBK), then centres a (w × 64) by (h × 48)
      MakeWindowDisp surface.  The original loop measures a line *including*
@@ -11222,7 +11230,15 @@
     if(controlCount)options.append(controls);
     openPanel("server-window");
   }
-  function closeServerWindow(){app.activeWindow=null;$("server-window-screen").classList.add("hidden");syncFieldOverlayVisibility();}
+  function closeServerWindow(){
+    app.activeWindow=null;
+    $("server-window-screen").classList.add("hidden");
+    syncFieldOverlayVisibility();
+    /* WN suppressed the field animation clock while the modal was visible.
+       Paint once with the latest actor frame, then let the normal scheduler
+       resume looping NPC/player actions after the window is gone. */
+    if(app.phase==="world"&&!app.battle){renderWorld(true);scheduleWorldAnimation();}
+  }
   function actorIsOwn(actor){
     if(!actor||actor.kind!=="character")return false;
     if(app.playerActorId!==null&&app.playerActorId!==undefined&&Number(actor.id)===Number(app.playerActorId))return true;
