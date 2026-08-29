@@ -13246,9 +13246,11 @@
     if(Number.isFinite(screenX)&&Number.isFinite(screenY)){app.cursorScreenX=screenX;app.cursorScreenY=screenY;}
     app.cursor.x=Math.max(0,Math.min(640,(clientX-scene.left)*640/scene.width));
     app.cursor.y=Math.max(0,Math.min(480,(clientY-scene.top)*480/scene.height));
-    /* A held route changes gameplay sampling only.  The painted cursor remains
-       visible and follows this pointer once the field is interactive again. */
-    app.cursor.visible=true;
+    /* A trusted physical sample still updates the stored pointer position
+       during a held route, but the original field interaction requested by
+       the 2.5 UI hides the fish-bone until the left button is released.  Do
+       not let the document-level pointermove handler repaint it mid-hold. */
+    if(!app.pointerMoveHeld)app.cursor.visible=true;
     /* The 640×480 field back-buffer includes the bottom edge of the scene.
        The task bar owns only its actual bitmap hit rectangles; a pointer over
        the remaining lower field pixels is still a valid map sample.  The old
@@ -14588,7 +14590,10 @@
     app.pointerMoveInitialClientX=Number(event.clientX);app.pointerMoveInitialClientY=Number(event.clientY);
     app.pointerMoveDragged=false;app.pointerMoveLastAt=0;app.pointerMoveStartedAt=Date.now();
     app.pointerMoveClientX=Number(event.clientX);app.pointerMoveClientY=Number(event.clientY);
-    app.cursor.visible=true;
+    /* Held-left movement is the one normal field state where the fish-bone
+       is not painted.  It remains the topmost cursor before the press and is
+       restored at the same physical point on release. */
+    app.cursor.visible=false;
     /* Do not call setPointerCapture().  It does not move the OS pointer, but
        it changes the browser's event target for the entire drag and can make
        the painted fish appear to jump when a scene fold replaces the field.
@@ -14602,10 +14607,11 @@
   }
   function updateHeldWorldPointer(event){
     if(!app.pointerMoveHeld||!pointerMoveIdMatches(event)||app.phase!=="world"||app.battle||worldRouteInputBlocked())return false;
-    /* Keep the fish visible for the entire held gesture, including over the
-       bottom toolbar.  Do not route through UI hit regions, but retain the
-       previous route so releasing over a button does not cancel walking. */
-    app.cursor.visible=true;
+    /* Keep the fish hidden for the entire held gesture, including when the
+       pointer crosses the bottom toolbar.  Do not route through UI hit
+       regions, but retain the previous route so releasing over a button does
+       not cancel walking. */
+    app.cursor.visible=false;
     const clientX=Number(event.clientX),clientY=Number(event.clientY);
     if(Number.isFinite(clientX)&&Number.isFinite(clientY)){
       app.pointerMoveDragged=app.pointerMoveDragged||Math.hypot(clientX-Number(app.pointerMoveInitialClientX),clientY-Number(app.pointerMoveInitialClientY))>=2;
@@ -14918,7 +14924,7 @@
     updateWorldPointer(event);
     updateHeldWorldPointer(event);
   },{passive:true});
-  worldScreen.addEventListener("pointerleave",()=>{if(app.phase==="world"){app.cursor.visible=true;renderWorldOverlay();}});
+  worldScreen.addEventListener("pointerleave",()=>{if(app.phase==="world"){app.cursor.visible=!app.pointerMoveHeld;renderWorldOverlay();}});
   /* Listen at document level so a ground press remains tracked even when the
      pointer crosses from #world into a sibling toolbar or the task bar. */
   document.addEventListener("pointerdown",handleWorldPointerDown,true);

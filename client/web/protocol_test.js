@@ -639,7 +639,7 @@ for (const expected of [
   /function renderSceneActorsAndParts\([\s\S]{0,2600}drawMapEffects\(ctx\)[\s\S]{0,420}StockFontBuffer|DISP_PRIO_RESERVE is emitted[\s\S]{0,260}drawMapEffects\(ctx\)/,
   /* map.cpp's held-left-button mode samples a new moveStack point every
      250 ms; the browser must keep the gesture separate from ordinary UI
-     clicks while leaving the fish cursor visible at the real pointer. */
+     clicks and hide the fish-bone until the physical button is released. */
   /const LEGACY_MOVE_SPEED=4;[\s\S]{0,420}const LEGACY_PROC_TICK_MS=8;[\s\S]{0,260}const MOVE_CARDINAL_DURATION=LEGACY_GRID_SIZE\/LEGACY_MOVE_SPEED\*LEGACY_PROC_TICK_MS;/,
   /function moveStepDuration\(from,target\)[\s\S]{0,360}const distance=Math\.hypot\(dx,dy\)[\s\S]{0,120}distance\|\|1/,
   /* A normal 2.5 owner walk has no self C/XYD echo.  The prediction
@@ -655,9 +655,13 @@ for (const expected of [
   /const POINTER_MOVE_MODE_DELAY_MS=1000;/,
   /function sampleHeldWorldPointer\(now=Date\.now\(\)\)[\s\S]{0,900}worldTileFromPointerPosition\(clientX,clientY\)[\s\S]{0,260}setHeldMoveDestination\(tile,now,false\)/,
   /function scheduleHeldWorldPointerSample\(delay=POINTER_MOVE_MODE_DELAY_MS\)[\s\S]{0,900}sampleHeldWorldPointer\(Date\.now\(\)\)[\s\S]{0,260}scheduleHeldWorldPointerSample\(POINTER_MOVE_ROUTE_INTERVAL_MS\)/,
+  /function updateWorldPointer\(event\)[\s\S]{0,2400}if\(!app\.pointerMoveHeld\)app\.cursor\.visible=true/,
+  /function beginHeldWorldPointer\(event\)[\s\S]{0,1200}app\.cursor\.visible=false/,
   /function beginHeldWorldPointer\(event\)[\s\S]{0,1800}setHeldMoveDestination\(tile,Date\.now\(\),true\)[\s\S]{0,240}scheduleHeldWorldPointerSample\(POINTER_MOVE_MODE_DELAY_MS\)/,
+  /function updateHeldWorldPointer\(event\)[\s\S]{0,700}app\.cursor\.visible=false/,
   /function updateHeldWorldPointer\(event\)[\s\S]{0,1100}moveModeReady[\s\S]{0,320}setHeldMoveDestination\(tile,Date\.now\(\),false\)/,
-  /function endHeldWorldPointer\(event=null,commit=true\)[\s\S]{0,1500}clearHeldWorldPointerSample\(\)[\s\S]{0,700}app\.cursor\.updatedAt=Date\.now\(\)/,
+  /function endHeldWorldPointer\(event=null,commit=true\)[\s\S]{0,1500}clearHeldWorldPointerSample\(\)[\s\S]{0,700}app\.cursor\.visible=true[\s\S]{0,500}app\.cursor\.updatedAt=Date\.now\(\)/,
+  /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{app\.cursor\.visible=!app\.pointerMoveHeld;/,
   /function moveTargetIsSolid\(target\)[\s\S]{0,900}isMapWarpEvent\(event\)\|\|isMapEnemyEvent\(event\)[\s\S]{0,260}localCellWalkable\(target\[0\],target\[1\],false\)===false/,
   /function installMoveRoute\(route,requested\)[\s\S]{0,900}moveTargetIsSolid\(requested\)[\s\S]{0,180}app\.moveTarget=\[Number\(last\[0\]\),Number\(last\[1\]\)\]/,
   /* An in-floor wall/scene-rim click must use the bounded A* nearest-cell
