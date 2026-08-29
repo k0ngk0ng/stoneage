@@ -812,7 +812,7 @@ for (const expected of [
      never fall back to the generic text target window.  Keep the contract
      visible in this protocol smoke test because a CSS-only target-window
      tweak can otherwise regress the actual command path. */
-  /function battleUsesActorTarget\(action\)\{[\s\S]*?if\(action\?\.kind==="attack"\|\|action\?\.kind==="capture"\)return true;[\s\S]*?\[0,1,2,3,4,6,7,8,9,10,11\]\.includes\(target\);/,
+  /function battleUsesActorTarget\(action\)\{[\s\S]*?if\(action\?\.kind==="attack"\|\|action\?\.kind==="capture"\)return true;[\s\S]*?if\(!battleTargetTypeAllowed\(action\)\)return false;[\s\S]*?return Number\(action\?\.targetType\)!==5;/,
   /* MAGIC_TARGET_WHOLEOTHERSIDE (8) is a clicked-side target in the native
      menu: both formations receive hit boxes and the selected actor maps to
      synthetic side target 20/21. */
@@ -1064,6 +1064,24 @@ if (battleTargetRenderStart < 0 || battleTargetRenderEnd <= battleTargetRenderSt
     !/if\(battleUsesActorTarget\(action\)\)\{[\s\S]*panel\.classList\.add\("actor-target-prompt"\)[\s\S]*battleTargetPromptPlacement\(panel\)[\s\S]*panel\.classList\.remove\("hidden"\)/.test(battleTargetRenderSource) ||
     /if\(action\.kind==="attack"\)[\s\S]*panel\.classList\.add\("hidden"\)/.test(battleTargetRenderSource)) {
   throw new Error("ordinary attack must retain the native BattleTargetSelect prompt window");
+}
+/* The selected server/client contract is sa_2903 2.5.  Its PC.H has magic
+   targets 0..8 and item/pet targets 0..7; 8.5 adds 9..11 only under
+   __ATTACK_MAGIC.  Fail closed instead of emitting synthetic row targets
+   that the 2.5 server never defined. */
+const nativePCHeader=fs.readFileSync(__dirname+"/../../vendor/upstream/code_sa_client/SYSTEMINC/PC.H","latin1");
+if(!/MAGIC_TARGET_WHOLEOTHERSIDE[\s\S]{0,120}\};/.test(nativePCHeader)||/__ATTACK_MAGIC/.test(nativePCHeader)){
+  throw new Error("unexpected 2.5 PC.H battle target enum");
+}
+const battleTargetTypeStart=script.indexOf("  function battleTargetTypeAllowed(");
+const battleTargetTypeEnd=script.indexOf("  function battleAggregateTarget(",battleTargetTypeStart);
+const battleTargetTypeAllowed=new Function(`${script.slice(battleTargetTypeStart,battleTargetTypeEnd)};return battleTargetTypeAllowed;`)();
+if(battleTargetTypeStart<0||battleTargetTypeEnd<=battleTargetTypeStart||
+   !battleTargetTypeAllowed({kind:"magic",targetType:8})||battleTargetTypeAllowed({kind:"magic",targetType:9})||
+   !battleTargetTypeAllowed({kind:"item",targetType:7})||battleTargetTypeAllowed({kind:"item",targetType:8})||
+   !battleTargetTypeAllowed({kind:"pet",targetType:7})||battleTargetTypeAllowed({kind:"pet",targetType:8})||
+   /battleRowTargetCode|case 9:return|case 10:return|case 11:return/.test(script.slice(battleTargetTypeStart,script.indexOf("  function battleFieldAllowed(",battleTargetTypeStart)))){
+  throw new Error("Web battle target types leaked the 8.5 __ATTACK_MAGIC extension into 2.5");
 }
 for (const expected of [
   /#battle-target-panel\.actor-target-prompt \{[^}]*width:192px;height:96px;min-height:96px;padding:0/,
@@ -1644,7 +1662,6 @@ const highlighted=(id,action,state=highlightState)=>[...battleTargetHighlightIds
 if(highlighted(10,{kind:"attack"})!=="10"||
    highlighted(10,{kind:"attack"},{...highlightState,bpFlags:1})!=="10,11"||
    highlighted(10,{kind:"magic",targetType:8})!=="10,11,15"||
-   highlighted(10,{kind:"magic",targetType:10})!=="10,11"||
    highlighted(10,{kind:"magic",targetType:4})!=="0,1,5,10,11,15"){
   throw new Error("native grouped battle target outlines drifted");
 }
