@@ -15034,7 +15034,13 @@
      editor menu for chat/mail fields, but swallow it everywhere else while
      the field is active. */
   document.addEventListener("contextmenu",event=>{
-    if(app.phase==="world"&&!isEditableTarget(event.target))event.preventDefault();
+    if(isEditableTarget(event.target))return;
+    if(app.phase==="world"){event.preventDefault();return;}
+    /* #battle-target-overlay is deliberately a top-level scene sibling so
+       actor hit boxes stay above the transformed battle surface.  Listen at
+       document rather than #battle-screen; otherwise right-clicking the
+       visible target itself never reaches the native cancel path. */
+    if(app.phase==="battle"&&app.battle){event.preventDefault();cancelBattleSelectionFromContextMenu();}
   },true);
   /* The native client never zooms its 640×480 back buffer.  Mobile Safari
      can still treat a rapid double tap as page zoom even with the viewport
@@ -15101,6 +15107,27 @@
     if(app.battlePopup?.kind==="pet-skill")closeBattlePopup({skipDefault:true});
     else openBattlePetSkillPopup({surfaceReady:true});
     syncBattleMenuMotion(state);
+  }
+  /* BATTLEMENU.CPP routes MOUSE_RIGHT_CRICK through BattleButtonOff() while
+     the master's command surface is active.  The pet surface has one extra
+     native step: a right click from an actor target clears that hit box and
+     feeds battlePetButtonFlag back into BattleButtonWaza(), reopening the
+     pet skill window.  Keep the shared absolute BattleCntDown deadline and
+     both command locks untouched; cancelling a selector is never a B write. */
+  function cancelBattleSelectionFromContextMenu(){
+    const state=app.battleState;
+    if(!app.battle||app.phase!=="battle"||!state||state.movieActive||!battleChoiceActive(state))return false;
+    const motion=battleMenuMotionShape(state),petOwner=state.pendingAction?.kind==="pet"||app.battlePopup?.kind==="pet-skill"||motion?.owner==="pet"||state.choiceOwner==="pet";
+    const hadPetTarget=state.pendingAction?.kind==="pet",petPopupOpen=app.battlePopup?.kind==="pet-skill";
+    state.pendingAction=null;
+    const panel=$("battle-target-panel");
+    if(panel){panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom","actor-target-prompt");panel.classList.add("hidden");}
+    paintBattleHoverTarget(null);
+    closeBattlePopup({skipDefault:true});
+    if(petOwner&&(hadPetTarget||!petPopupOpen))openBattlePetSkillPopup({surfaceReady:true});
+    playSoundEffect(217,320,240);
+    renderBattleWorld();renderBattle();
+    return true;
   }
   const battlePetCommandHit=$("battle-pet-command-hit");
   battlePetCommandHit?.addEventListener("click",activateBattlePetCommandButton);

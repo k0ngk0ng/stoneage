@@ -1525,6 +1525,61 @@ if(!/battlePetCommandHit\?\.addEventListener\("click",activateBattlePetCommandBu
    !/activateBattlePetCommandButton[\s\S]{0,700}state\.pendingAction=null[\s\S]{0,420}openBattlePetSkillPopup\(\{surfaceReady:true\}\)/.test(script)){
   throw new Error("pet command skill/cancel bitmap lost its native click lifecycle");
 }
+/* BattleMenuProc handles MOUSE_RIGHT_CRICK as BattleButtonOff() for the
+   player surface.  Its pet branch routes a selected target back through
+   BattleButtonWaza(), reopening the skill window without changing the one
+   BattleCntDown deadline or sending a command.  Exercise the production
+   helper for every actor-target owner and both pet-window toggle states. */
+const battleRightCancelStart=script.indexOf("  function cancelBattleSelectionFromContextMenu()");
+const battleRightCancelEnd=script.indexOf("  const battlePetCommandHit=",battleRightCancelStart);
+if(battleRightCancelStart<0||battleRightCancelEnd<=battleRightCancelStart)throw new Error("battle right-click cancel helper missing");
+const makeBattleRightCancelHarness=new Function("pendingKind","popupKind","owner",`
+  const deadline=9123456789;
+  const state={pendingAction:pendingKind?{kind:pendingKind}:null,choiceDeadline:deadline,choiceOwner:owner,movieActive:false,menuMotion:{owner,phase:"shown"},commandLocked:false,petCommandLocked:false};
+  const app={battle:true,phase:"battle",battleState:state,battlePopup:popupKind?{kind:popupKind}:null};
+  const classes=new Set(),panel={dataset:{promptPlacement:"top"},classList:{add(...values){for(const value of values)classes.add(value);},remove(...values){for(const value of values)classes.delete(value);}}};
+  let opens=0,closes=0,worldRenders=0,battleRenders=0,sends=0,hoverClears=0;
+  const tones=[];
+  const $=()=>panel;
+  function battleChoiceActive(){return true;}
+  function battleMenuMotionShape(){return state.menuMotion;}
+  function closeBattlePopup(){closes++;app.battlePopup=null;}
+  function openBattlePetSkillPopup(){opens++;app.battlePopup={kind:"pet-skill"};return true;}
+  function paintBattleHoverTarget(value){if(value===null)hoverClears++;}
+  function playSoundEffect(...values){tones.push(values);}
+  function renderBattleWorld(){worldRenders++;}
+  function renderBattle(){battleRenders++;}
+  function send(){sends++;}
+  ${script.slice(battleRightCancelStart,battleRightCancelEnd)}
+  return {state,app,deadline,cancelBattleSelectionFromContextMenu,counts:()=>({opens,closes,worldRenders,battleRenders,sends,hoverClears,tones:[...tones],hidden:classes.has("hidden")})};
+`);
+for(const kind of ["attack","capture","magic","item"]){
+  const harness=makeBattleRightCancelHarness(kind,null,"player");
+  if(!harness.cancelBattleSelectionFromContextMenu()||harness.state.pendingAction!==null||harness.state.choiceDeadline!==harness.deadline||
+     harness.counts().opens!==0||harness.counts().sends!==0||harness.counts().tones[0]?.join(",")!=="217,320,240"||
+     !harness.counts().hidden||harness.counts().hoverClears!==1){
+    throw new Error(`right-click must locally cancel ${kind} targeting without changing BattleCntDown: ${JSON.stringify(harness.counts())}`);
+  }
+}
+const petTargetCancel=makeBattleRightCancelHarness("pet",null,"pet");
+if(!petTargetCancel.cancelBattleSelectionFromContextMenu()||petTargetCancel.state.pendingAction!==null||petTargetCancel.app.battlePopup?.kind!=="pet-skill"||
+   petTargetCancel.counts().opens!==1||petTargetCancel.counts().sends!==0||petTargetCancel.state.choiceDeadline!==petTargetCancel.deadline){
+  throw new Error(`right-click pet target must reopen the native skill window: ${JSON.stringify(petTargetCancel.counts())}`);
+}
+const petPopupCancel=makeBattleRightCancelHarness(null,"pet-skill","pet");
+if(!petPopupCancel.cancelBattleSelectionFromContextMenu()||petPopupCancel.app.battlePopup!==null||petPopupCancel.counts().opens!==0||
+   petPopupCancel.counts().sends!==0||petPopupCancel.state.choiceDeadline!==petPopupCancel.deadline){
+  throw new Error(`right-click open pet skill window must toggle it off locally: ${JSON.stringify(petPopupCancel.counts())}`);
+}
+const battleContextMenuStart=script.indexOf('  document.addEventListener("contextmenu"');
+const battleContextMenuEnd=script.indexOf('  document.addEventListener("dblclick"',battleContextMenuStart);
+const battleContextMenuSource=script.slice(battleContextMenuStart,battleContextMenuEnd);
+if(battleContextMenuStart<0||battleContextMenuEnd<=battleContextMenuStart||
+   !/isEditableTarget\(event\.target\)/.test(battleContextMenuSource)||!/event\.preventDefault\(\)/.test(battleContextMenuSource)||
+   !/app\.phase==="battle"&&app\.battle/.test(battleContextMenuSource)||!/cancelBattleSelectionFromContextMenu\(\)/.test(battleContextMenuSource)||
+   /battleScreen\.addEventListener\("contextmenu"/.test(script)){
+  throw new Error("top-level battle target overlay must route document contextmenu to native right-click cancel");
+}
 /* MOUSE.CPP only reports a target after the physical pointer enters the
    48x48 foot box; the complete sprite rectangle is an outline painted after
    that hit, never a second hover-only selector. */
