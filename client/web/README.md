@@ -49,8 +49,11 @@ TCP 上游改为本机路径后运行 `go run . -config /path/to/web.toml`；也
 客户端资源应作为整体由部署脚本或 CI 发布。仓库根目录的
 `scripts/sync-client-assets.sh` 会启动一次性的 Compose `assets-sync` 容器，统一同步
 `assets/`、`maps/`、`audio/` 三棵目录；任务结束后容器即删除，AK/SK 不会进入 Web、
-admin HTTP 进程或浏览器。admin 的资源按钮（如启用）只是请求同一个受限批量任务，
-不会接收路径、bucket 或命令参数。若资源已经由 CI 发布，不配置同步凭据即可。
+admin HTTP 进程或浏览器。同步器只取 `client/web/assets/original`、`map/`、
+`data/auto.dat`、`data/bgm/` 和 `data/se/`，不会把客户端存档、聊天记录或 PE 支持文件
+放进公开 bucket。admin 的资源按钮（如启用）只是请求同一个受限整包任务，不会接收路径、
+bucket 或命令参数；service-control 仅在任务启动时从 `/host-project/.env` 读取密钥。
+若资源已经由 CI 发布，不配置同步凭据即可。
 
 音乐通过只读 `/audio/bgm/` 和 `/audio/se/` 路径提供。网页按 `_SA_VERSION_25` 客户端的时机切换标题、地图、战斗/首领 BGM，并按服务器 `SE` 包播放对应音效；浏览器第一次用户操作后才会解锁音频，这是浏览器自动播放策略的限制。WAV 使用长期缓存，地图音乐标记只接受随附 `sa_2903` 2.5 客户端源码的 40–46 范围；47–53 属于后续 8.5 表，不会在本网页端启用。
 

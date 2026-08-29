@@ -90,7 +90,7 @@ docker compose --env-file .env logs -f saac gmsv gateway web
 stoneage/
 ├── assets/   # client/web/assets/original 的内容
 ├── maps/     # 2.5 客户端 map/ 的内容
-└── audio/    # 2.5 客户端 data/ 的内容（包括 bgm、se、pal、auto.dat）
+└── audio/    # 公开音频数据（data/auto.dat、data/bgm/、data/se/）
 ```
 
 例如使用 `ossutil` 增量上传（bucket 和目录按实际环境替换）：
@@ -98,7 +98,9 @@ stoneage/
 ```bash
 ossutil sync client/web/assets/original oss://my-bucket/stoneage/assets
 ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/maps
-ossutil sync runtime/legacy-client/data oss://my-bucket/stoneage/audio
+ossutil cp runtime/legacy-client/data/auto.dat oss://my-bucket/stoneage/audio/auto.dat
+ossutil sync runtime/legacy-client/data/bgm oss://my-bucket/stoneage/audio/bgm
+ossutil sync runtime/legacy-client/data/se oss://my-bucket/stoneage/audio/se
 ```
 
 Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
@@ -122,7 +124,11 @@ base_url = "https://cdn.example.com/stoneage"
 明文只应放在环境变量中，不应直接写进 TOML 或提交到 Git。CDN 有值时优先
 使用 CDN；CDN 留空但 OSS endpoint/bucket 已配置时，后端会直接生成公开 OSS 根地址。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
-仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 只放在 `.env`，由批量资源同步工具读取，Web 游戏进程不会读取或上传。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
+仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 只放在权限为 0600 的部署
+`.env`（或由 CI 注入），由一次性批量资源同步工具读取，Web 游戏进程和 admin HTTP
+进程不会读取或上传。admin 页面如果启用同步，只能请求 service-control 的固定整包任务；
+service-control 在任务启动时从 `/host-project/.env` 读取密钥并传给一次性子进程，任务结束
+后不保留密钥。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露
 `Content-Length`、`Content-Range`、`Accept-Ranges`、`ETag`。生产环境必须使用
 HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网页会拦截混合
@@ -139,9 +145,11 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 
 脚本启动 Compose 的一次性 `assets-sync` profile；任务结束后容器即被删除，Web、网关和
 admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目标仍是固定的
-`stoneage/{assets,maps,audio}/` 根目录，不包含 release tag。CI 也可以直接调用同一个
+`stoneage/{assets,maps,audio}/` 根目录，不包含 release tag。同步器只上传公开的
+`client/web/assets/original`、`map/`、`data/auto.dat`、`data/bgm/` 和 `data/se/`；不会把
+`savedata.dat`、聊天记录、PE 支持文件等 `data/` 私有内容上传。CI 也可以直接调用同一个
 `stoneage-assets-sync` 二进制或等价的 OSS 同步步骤。admin 的资源按钮（如启用）只会
-请求 service-control 的固定任务，不接受路径、bucket 或命令参数。
+请求 service-control 的固定整包任务，不接受路径、bucket 或命令参数。
 
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和

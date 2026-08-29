@@ -790,12 +790,14 @@ for (const expected of [
   /function sampleHeldWorldPointer\(now=Date\.now\(\)\)[\s\S]{0,900}worldTileFromPointerPosition\(clientX,clientY\)[\s\S]{0,260}setHeldMoveDestination\(tile,now,false\)/,
   /function scheduleHeldWorldPointerSample\(delay=POINTER_MOVE_MODE_DELAY_MS\)[\s\S]{0,900}sampleHeldWorldPointer\(Date\.now\(\)\)[\s\S]{0,260}scheduleHeldWorldPointerSample\(POINTER_MOVE_ROUTE_INTERVAL_MS\)/,
   /function updateWorldPointer\(event\)[\s\S]{0,2400}if\(!app\.pointerMoveHeld\)app\.cursor\.visible=true/,
-  /function beginHeldWorldPointer\(event\)[\s\S]{0,1200}app\.cursor\.visible=false/,
+  /* The fish-bone remains the topmost field cursor during the native held
+     walk gesture; only the route sampler is continuous. */
+  /function beginHeldWorldPointer\(event\)[\s\S]{0,1200}app\.cursor\.visible=true/,
   /function beginHeldWorldPointer\(event\)[\s\S]{0,1800}setHeldMoveDestination\(tile,Date\.now\(\),true\)[\s\S]{0,240}scheduleHeldWorldPointerSample\(POINTER_MOVE_MODE_DELAY_MS\)/,
-  /function updateHeldWorldPointer\(event\)[\s\S]{0,700}app\.cursor\.visible=false/,
+  /function updateHeldWorldPointer\(event\)[\s\S]{0,700}app\.cursor\.visible=true/,
   /function updateHeldWorldPointer\(event\)[\s\S]{0,1100}moveModeReady[\s\S]{0,320}setHeldMoveDestination\(tile,Date\.now\(\),false\)/,
   /function endHeldWorldPointer\(event=null,commit=true\)[\s\S]{0,1500}clearHeldWorldPointerSample\(\)[\s\S]{0,700}app\.cursor\.visible=true[\s\S]{0,500}app\.cursor\.updatedAt=Date\.now\(\)/,
-  /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{app\.cursor\.visible=!app\.pointerMoveHeld;/,
+  /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{app\.cursor\.visible=true;/,
   /function moveTargetIsSolid\(target\)[\s\S]{0,900}isMapWarpEvent\(event\)\|\|isMapEnemyEvent\(event\)[\s\S]{0,260}localCellWalkable\(target\[0\],target\[1\],false\)===false/,
   /function installMoveRoute\(route,requested\)[\s\S]{0,900}moveTargetIsSolid\(requested\)[\s\S]{0,180}app\.moveTarget=\[Number\(last\[0\]\),Number\(last\[1\]\)\]/,
   /* An in-floor wall/scene-rim click must use the bounded A* nearest-cell

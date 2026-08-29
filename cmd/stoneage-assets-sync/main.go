@@ -55,8 +55,17 @@ type cdnConfigFile struct {
 }
 
 type sourceTree struct {
-	Name string
-	Root string
+	Name  string
+	Roots []sourceRoot
+}
+
+// sourceRoot describes one public subtree (or file) and the path it gets
+// below the stable client root.  Keeping this list explicit is intentional:
+// runtime/legacy-client/data also contains savedata, chat history and client
+// binaries which must never be copied to a public bucket.
+type sourceRoot struct {
+	Path   string
+	Prefix string
 }
 
 func main() {
@@ -71,7 +80,7 @@ func run(arguments []string) error {
 	flags.SetOutput(os.Stderr)
 	configPath := flags.String("config", envOr("STONEAGE_WEB_CONFIG", "/etc/stoneage/web.toml"), "Web TOML configuration")
 	assetsRoot := flags.String("assets", "", "sprite asset directory (defaults to static.assets_directory)")
-	clientRoot := flags.String("client-data", "/game/client", "2.5 client data root containing map/ and data/")
+	clientRoot := flags.String("client-data", "/game/client", "2.5 client root containing map/ and data/{auto.dat,bgm,se}")
 	dryRun := flags.Bool("dry-run", false, "list the upload plan without writing OSS objects")
 	workers := flags.Int("workers", envPositiveInt("STONEAGE_ASSET_SYNC_WORKERS", 8), "parallel OSS uploads")
 	if err := flags.Parse(arguments); err != nil {
@@ -100,6 +109,9 @@ func run(arguments []string) error {
 		return errors.New("static.oss.region must be configured for OSS V4 uploads")
 	}
 	prefix := strings.Trim(strings.TrimSpace(disk.Static.OSS.Prefix), "/")
+	if err := validateObjectPrefix(prefix); err != nil {
+		return err
+	}
 	const accessKeyIDEnv = "ALIBABA_CLOUD_ACCESS_KEY_ID"
 	const accessKeySecretEnv = "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
 	accessKeyID := strings.TrimSpace(os.Getenv(accessKeyIDEnv))
@@ -116,21 +128,34 @@ func run(arguments []string) error {
 	if clientDirectory == "" {
 		return errors.New("-client-data must not be empty")
 	}
+	dataDirectory := filepath.Join(clientDirectory, "data")
+	// Do not use dataDirectory itself as the audio root.  It contains private
+	// files (savedata.dat, chat history, PE support data) in addition to the
+	// browser's public audio/map colour resources.
 	trees := []sourceTree{
-		{Name: "assets", Root: assetDirectory},
-		{Name: "maps", Root: filepath.Join(clientDirectory, "map")},
-		{Name: "audio", Root: filepath.Join(clientDirectory, "data")},
+		{Name: "assets", Roots: []sourceRoot{{Path: assetDirectory}}},
+		{Name: "maps", Roots: []sourceRoot{{Path: filepath.Join(clientDirectory, "map")}}},
+		{Name: "audio", Roots: []sourceRoot{
+			{Path: filepath.Join(dataDirectory, "auto.dat")},
+			{Path: filepath.Join(dataDirectory, "bgm"), Prefix: "bgm"},
+			{Path: filepath.Join(dataDirectory, "se"), Prefix: "se"},
+		}},
 	}
 	for _, tree := range trees {
-		if strings.TrimSpace(tree.Root) == "" {
-			return fmt.Errorf("source directory for %s is empty", tree.Name)
-		}
-		info, statErr := os.Stat(tree.Root)
-		if statErr != nil {
-			return fmt.Errorf("source directory for %s is unavailable: %w", tree.Name, statErr)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("source path for %s is not a directory", tree.Name)
+		for _, root := range tree.Roots {
+			if strings.TrimSpace(root.Path) == "" {
+				return fmt.Errorf("source path for %s is empty", tree.Name)
+			}
+			info, statErr := os.Lstat(root.Path)
+			if statErr != nil {
+				return fmt.Errorf("source path for %s is unavailable: %w", tree.Name, statErr)
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("refusing symbolic link source for %s: %q", tree.Name, root.Path)
+			}
+			if !info.IsDir() && !info.Mode().IsRegular() {
+				return fmt.Errorf("source path for %s is not a regular file or directory", tree.Name)
+			}
 		}
 	}
 
@@ -186,16 +211,7 @@ func loadConfig(filename string) (configFile, error) {
 func syncTree(bucket *oss.Bucket, tree sourceTree, prefix string, dryRun bool, workers int) (int, error) {
 	if dryRun {
 		count := 0
-		err := filepath.WalkDir(tree.Root, func(filename string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return fmt.Errorf("refusing symbolic link %q", filename)
-			}
+		err := walkTree(tree, func(_, _ string) error {
 			count++
 			return nil
 		})
@@ -256,20 +272,7 @@ func syncTree(bucket *oss.Bucket, tree sourceTree, prefix string, dryRun bool, w
 			}
 		}()
 	}
-	walkErr := filepath.WalkDir(tree.Root, func(filename string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("refusing symbolic link %q", filename)
-		}
-		relative, err := filepath.Rel(tree.Root, filename)
-		if err != nil {
-			return err
-		}
+	walkErr := walkTree(tree, func(filename, relative string) error {
 		key := path.Join(prefix, tree.Name, filepath.ToSlash(relative))
 		if key == "." || strings.HasPrefix(key, "../") {
 			return fmt.Errorf("unsafe object key for %q", filename)
@@ -293,6 +296,62 @@ func syncTree(bucket *oss.Bucket, tree sourceTree, prefix string, dryRun bool, w
 		return int(count.Load()), fmt.Errorf("sync %s: %w", tree.Name, err)
 	}
 	return int(count.Load()), nil
+}
+
+// walkTree visits files in a source tree without ever following a symlink.
+// The callback receives the source filename and its POSIX-style path below
+// the tree's public directory.  A single-file root is supported for
+// data/auto.dat, while directory roots retain their complete relative path.
+func walkTree(tree sourceTree, visit func(filename, relative string) error) error {
+	for _, root := range tree.Roots {
+		info, err := os.Lstat(root.Path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing symbolic link %q", root.Path)
+		}
+		if !info.IsDir() {
+			relative := filepath.Join(root.Prefix, filepath.Base(root.Path))
+			if err := visit(root.Path, relative); err != nil {
+				return err
+			}
+			continue
+		}
+		err = filepath.WalkDir(root.Path, func(filename string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return fmt.Errorf("refusing symbolic link %q", filename)
+			}
+			relative, err := filepath.Rel(root.Path, filename)
+			if err != nil {
+				return err
+			}
+			relative = filepath.Join(root.Prefix, relative)
+			return visit(filename, relative)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateObjectPrefix(prefix string) error {
+	if strings.ContainsRune(prefix, '\x00') || strings.ContainsRune(prefix, '\\') {
+		return errors.New("static.oss.prefix contains an unsafe character")
+	}
+	for _, segment := range strings.Split(prefix, "/") {
+		if segment == "." || segment == ".." {
+			return errors.New("static.oss.prefix must not contain dot path segments")
+		}
+	}
+	return nil
 }
 
 func envOr(name, fallback string) string {
