@@ -3291,8 +3291,16 @@
   function fieldFacingPlayer(){return facingActor(actor=>Number(actor.charType)===1,1);}
   function fieldAction(name){
     if(app.phase!=="world"||app.battle||mapMovementBlocked())return;
-    if(name==="settings"){openFieldWindow("settings");return;}
-    if(name==="action"){openFieldWindow("actions");return;}
+    /* MENU.CPP treats the two right/left field windows as toggles: clicking
+       the button which owns the currently visible window closes it, while a
+       click on another field control replaces the window.  Re-opening the
+       same Action window here used to leave it permanently stuck on screen
+       (and made the button's pressed artwork look wrong). */
+    if(name==="settings"||name==="action"){
+      const windowName=name==="settings"?"field-settings-screen":"field-actions-screen",target=$(windowName);
+      if(target&&!target.classList.contains("hidden")){closeFieldWindow();return;}
+      openFieldWindow(name==="settings"?"settings":"actions");return;
+    }
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     if(name==="party"){
       if(fieldOwnParty()){fieldSend("PR",[x,y,0]).catch(reportError);return;}

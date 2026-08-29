@@ -2606,6 +2606,15 @@ for (const name of pageServerSchemas.keys()) {
 }
 if (pageServerSchemas.size - serverSchemaAliases.size !== bridgeServerSchemas.size) throw new Error("web/bridge server schema count mismatch");
 
+/* FIELD.CPP treats the settings and Action toolbar entries as toggles.  A
+   second click on the already-visible window must close it; otherwise the
+   extracted button's down state can never be cleared and the field becomes
+   trapped behind an Action window.  Keep this source invariant beside the
+   protocol checks so a future UI refactor cannot silently restore the old
+   unconditional openFieldWindow() call. */
+const fieldActionToggle = /function fieldAction\(name\)\{[\s\S]{0,1200}if\(name==="settings"\|\|name==="action"\)\{[\s\S]{0,700}if\(target&&!target\.classList\.contains\("hidden"\)\)\{closeFieldWindow\(\);return;\}[\s\S]{0,240}openFieldWindow\(name==="settings"\?"settings":"actions"\);return;\s*\}/;
+if (!fieldActionToggle.test(script)) throw new Error("field settings/action windows are not toggleable");
+
 /* BATTLE_ActSettingSend() has two broadcast loops: the primary battle and
    any linked/parent battle.  The latter must send BA to its local
    `charaindex`; accidentally reusing the primary loop's `pindex` leaves the
