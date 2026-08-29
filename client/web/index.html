@@ -1340,17 +1340,17 @@
   ]);
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
   const STONEAGE_25=Object.freeze({version:"2.5",executable:"sa_2903.exe",runningKey:"cary"});
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* renderWorld() calls scheduleWorldAnimation() at their tail.  During an
      animation tick that call must be ignored; otherwise each tick installs a
      second timeout before the original tick installs its continuation, and
      the timer count grows without bound until the browser main thread stalls. */
   app._worldAnimationTicking=false;
-  /* A normal 2.5 owner walk has no per-tile self echo.  This latch limits
-     the optional post-route S:c probe to one request per prediction epoch;
-     otherwise a missing self C packet would schedule an endless one-second
+  /* A normal 2.5 owner walk has no per-tile self echo.  These fields bound
+     the optional post-route S:c confirmation (including its one tail-step
+     resample); otherwise a missing self C packet could schedule an endless
      request loop and starve the field on mobile. */
-  app.movePredictionSyncRequested=false;
+  app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;
   /* A pointer gesture may straddle a map/scene fold.  Keep its producer
      generation separately from the painted cursor so a late pointerup cannot
      become a fresh movement command on the destination floor. */
@@ -12020,7 +12020,7 @@
   app.movePredictionSyncRequested=false;
   /* A fresh field session must never inherit a pending warp curtain. */
   cancelMapFloorTransition();
-  enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.talkConversation=null;app.trade=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
+  enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.talkConversation=null;app.trade=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
   /* Re-entry can happen after logout/reconnect without rebuilding the page;
      make the map transition lifecycle independent of the battle/field reset
      wrapper above. */
@@ -12216,6 +12216,8 @@
   const MOVE_WIRE_TIMEOUT_MS=Math.max(5000,MOVE_SERVER_WALK_INTERVAL_MS*2+1000);
   const MOVE_PREDICTION_MIN_HOLD_MS=12000;
   const MOVE_PREDICTION_MAX_HOLD_MS=120000;
+  const MOVE_PREDICTION_MAX_SYNC_ATTEMPTS=2;
+  const MOVE_PREDICTION_RESAMPLE_DELAY_MS=320;
   function sameMovePoint(left,right){return Array.isArray(left)&&Array.isArray(right)&&Number(left[0])===Number(right[0])&&Number(left[1])===Number(right[1]);}
   function localMovePredictionActive(){return Boolean(app.movePredictionActive||app.moveWirePending||app.pendingMove||app.moveSentSteps>0||app.moveQueue.length||app.walkAnimation);}
   function predictedMoveContains(point){
@@ -12225,7 +12227,7 @@
   }
   function clearMovePrediction(){
     window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;
-    app.movePredictionActive=false;app.movePredictionTrail=[];app.movePredictionStartedAt=0;app.movePredictionServerVersion=Number(app.serverPositionVersion||0);app.movePredictionSyncRequested=false;
+    app.movePredictionActive=false;app.movePredictionTrail=[];app.movePredictionStartedAt=0;app.movePredictionServerVersion=Number(app.serverPositionVersion||0);app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;
     refreshSettledMoveState();
   }
   /* An encounter can arrive while a two-step W batch is still being painted.
@@ -12246,7 +12248,7 @@
     app.moveQueue=[];app.moveSentSteps=0;app.moveTarget=null;
     app.moveWirePending=false;app.moveWireTarget=null;app.moveWireRoute="";app.moveWireTimer=0;
     app.moveLastWireSentAt=0;app.moveLastWireSteps=0;clearMapEventRetry();
-    app.movePredictionActive=false;app.movePredictionTrail=[];app.movePredictionStartedAt=0;app.movePredictionServerVersion=Number(app.serverPositionVersion||0);app.movePredictionSyncRequested=false;
+    app.movePredictionActive=false;app.movePredictionTrail=[];app.movePredictionStartedAt=0;app.movePredictionServerVersion=Number(app.serverPositionVersion||0);app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;
     app.walkAnimation=null;app._walkNextStartAt=0;app.walkCycleStartedAt=0;app.walkCycleDirection=null;
     app.pointerMoveHeld=false;app.pointerMovePointerId=null;app.pointerMoveTile=null;app.pointerMoveInitialTile=null;app.pointerMoveInitialClientX=NaN;app.pointerMoveInitialClientY=NaN;app.pointerMoveDragged=false;app.pointerLookTargetId=null;app.pointerLookPointerId=null;
     app.pointerMoveLastAt=0;app.pointerMoveStartedAt=0;
@@ -12276,10 +12278,9 @@
       const versionReady=Number(app.serverPositionVersion||0)>Number(app.movePredictionServerVersion||0);
       if(versionReady&&sameMovePoint(app.serverPosition,app.position)){clearMovePrediction();return;}
       if(!app.movePredictionSyncRequested&&Date.now()-started>=grace){
-        app.movePredictionSyncRequested=true;
         /* C only refreshes newly visible objects and omits the owner record;
            S:c is the 2.5 status query that can actually confirm x/y. */
-        if(app.transport)send("S",["c"]).catch(()=>{});
+        requestMovePredictionSync();
         refreshSettledMoveState();
         return;
       }
@@ -12290,7 +12291,22 @@
     },remaining);
   }
   function beginMovePrediction(from,target){
-    if(!app.movePredictionActive){app.movePredictionActive=true;app.movePredictionStartedAt=Date.now();app.movePredictionServerVersion=Number(app.serverPositionVersion||0);app.movePredictionSyncRequested=false;app.movePredictionTrail=[];}
+    if(!app.movePredictionActive){app.movePredictionActive=true;app.movePredictionStartedAt=Date.now();app.movePredictionServerVersion=Number(app.serverPositionVersion||0);app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;app.movePredictionTrail=[];}
+    else if(app.movePredictionSyncRequested&&Number(app.serverPositionVersion||0)>Number(app.movePredictionServerVersion||0)){
+      /* A held pointer can finish its initial route before the native
+         one-second move-mode delay, issue the one allowed S:c sample, and
+         then start a new route when continuous sampling begins.  Keeping
+         movePredictionSyncRequested latched across that *new* movement left
+         serverPosition at the intermediate sample forever: the final local
+         tile never received a status probe, so NPC talks and in-place logout
+         compared against an obsolete coordinate.  A newer authoritative
+         sample proves the previous probe completed; re-arm exactly once for
+         the movement that follows it.  When the server never answers, the
+         version cannot advance and the existing no-spin guarantee remains. */
+      app.movePredictionServerVersion=Number(app.serverPositionVersion||0);
+      app.movePredictionSyncRequested=false;
+      app.movePredictionSyncAttempts=0;
+    }
     if(!app.movePredictionTrail.some(item=>sameMovePoint(item,from)))app.movePredictionTrail.push([from[0],from[1]]);
     if(!app.movePredictionTrail.some(item=>sameMovePoint(item,target)))app.movePredictionTrail.push([target[0],target[1]]);
     if(app.movePredictionTrail.length>256)app.movePredictionTrail.splice(0,app.movePredictionTrail.length-256);
@@ -12298,7 +12314,30 @@
   }
   function maybeReleaseMovePrediction(point){
     if(!app.movePredictionActive||app.pendingMove||app.moveQueue.length||app.moveSentSteps)return;
-    if(sameMovePoint(point,app.position))clearMovePrediction();
+    if(sameMovePoint(point,app.position)){clearMovePrediction();return;}
+    const versionReady=Number(app.serverPositionVersion||0)>Number(app.movePredictionServerVersion||0);
+    if(!versionReady||!app.movePredictionSyncRequested)return;
+    /* GMSV executes the first direction of W immediately and drains its
+       second direction on the walk tick.  An S:c issued as the local batch
+       settles can therefore sample the first tile even though the second
+       tile is already painted.  One delayed follow-up closes that race.  It
+       is strictly bounded: no reply leaves the existing one-shot latch in
+       place, while a second differing reply is an authoritative collision or
+       correction and snaps through cancelPendingMove(). */
+    if(Number(app.movePredictionSyncAttempts||0)<MOVE_PREDICTION_MAX_SYNC_ATTEMPTS){
+      app.movePredictionServerVersion=Number(app.serverPositionVersion||0);
+      app.movePredictionSyncRequested=false;
+      window.clearTimeout(app._movePredictionTimer);
+      app._movePredictionTimer=window.setTimeout(()=>{
+        app._movePredictionTimer=0;
+        if(!app.movePredictionActive)return;
+        if(app.pendingMove||app.moveQueue.length||app.moveSentSteps){scheduleMovePredictionRelease();return;}
+        requestMovePredictionSync();
+        refreshSettledMoveState();
+      },MOVE_PREDICTION_RESAMPLE_DELAY_MS);
+      return;
+    }
+    cancelPendingMove("服务器已校正位置。",point);
   }
   function noteServerMove(point){
     if(app.moveWirePending&&sameMovePoint(point,app.moveWireTarget)){
@@ -12327,6 +12366,7 @@
        locally painted route without waiting twelve seconds for the fallback
        watchdog (or leaving the HUD in "等待服务器同步"). */
     app.movePredictionSyncRequested=true;
+    app.movePredictionSyncAttempts=Number(app.movePredictionSyncAttempts||0)+1;
     send("S",["c"]).catch(()=>{});
     return true;
   }

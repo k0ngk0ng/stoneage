@@ -238,6 +238,99 @@ if (startNextMoveStart < 0 || startNextMoveEnd <= startNextMoveStart ||
     /send\(["']EN["']/.test(startNextMoveExecutable)) {
   throw new Error("ordinary Web walking must wait for the authoritative 2.5 server EN packet");
 }
+/* A held pointer can complete one route, receive its one-shot S:c sample,
+   then continue moving after the native one-second move-mode delay.  That
+   newer movement must get its own final sample; otherwise serverPosition
+   remains at the intermediate tile and later NPC/logout checks roll back to
+   stale state.  Re-arm only after a real authoritative version increment so
+   a silent 2.5 connection still cannot generate a probe loop. */
+const beginMovePredictionStart = script.indexOf("  function beginMovePrediction(from,target){");
+const beginMovePredictionEnd = script.indexOf("  function maybeReleaseMovePrediction", beginMovePredictionStart);
+if (beginMovePredictionStart < 0 || beginMovePredictionEnd <= beginMovePredictionStart) {
+  throw new Error("move prediction boundary not found");
+}
+const acknowledgedPrediction = {
+  movePredictionActive: true,
+  movePredictionStartedAt: 1,
+  movePredictionServerVersion: 4,
+  serverPositionVersion: 5,
+  movePredictionSyncRequested: true,
+  movePredictionSyncAttempts: 1,
+  movePredictionTrail: [[10, 10]],
+};
+const makeBeginMovePrediction = state => new Function("app", "sameMovePoint", "scheduleMovePredictionRelease",
+  `${script.slice(beginMovePredictionStart, beginMovePredictionEnd)};return beginMovePrediction;`)(
+    state,
+    (left, right) => Array.isArray(left) && Array.isArray(right) && left[0] === right[0] && left[1] === right[1],
+    () => {},
+  );
+makeBeginMovePrediction(acknowledgedPrediction)([10, 10], [10, 11]);
+if (acknowledgedPrediction.movePredictionSyncRequested || acknowledgedPrediction.movePredictionServerVersion !== 5 ||
+    acknowledgedPrediction.movePredictionSyncAttempts !== 0) {
+  throw new Error("acknowledged intermediate move sample must re-arm the final S:c probe");
+}
+const silentPrediction = {
+  movePredictionActive: true,
+  movePredictionStartedAt: 1,
+  movePredictionServerVersion: 4,
+  serverPositionVersion: 4,
+  movePredictionSyncRequested: true,
+  movePredictionSyncAttempts: 1,
+  movePredictionTrail: [[10, 10]],
+};
+makeBeginMovePrediction(silentPrediction)([10, 10], [10, 11]);
+if (!silentPrediction.movePredictionSyncRequested || silentPrediction.movePredictionServerVersion !== 4 ||
+    silentPrediction.movePredictionSyncAttempts !== 1) {
+  throw new Error("silent move sample must retain the one-shot probe latch");
+}
+/* The server executes W's first step immediately and its second on a walk
+   tick, so the first S:c can legitimately be one tile behind the completed
+   local route.  The client gets exactly one delayed resample; a second
+   differing authoritative reply must correct locally instead of probing in
+   an unbounded loop. */
+const maybeReleaseStart = script.indexOf("  function maybeReleaseMovePrediction(point){");
+const maybeReleaseEnd = script.indexOf("  function noteServerMove", maybeReleaseStart);
+if (maybeReleaseStart < 0 || maybeReleaseEnd <= maybeReleaseStart) {
+  throw new Error("move prediction release boundary not found");
+}
+const makeMaybeRelease = (state, hooks) => new Function(
+  "app", "sameMovePoint", "clearMovePrediction", "scheduleMovePredictionRelease",
+  "requestMovePredictionSync", "refreshSettledMoveState", "cancelPendingMove", "window",
+  "MOVE_PREDICTION_MAX_SYNC_ATTEMPTS", "MOVE_PREDICTION_RESAMPLE_DELAY_MS",
+  `${script.slice(maybeReleaseStart, maybeReleaseEnd)};return maybeReleaseMovePrediction;`,
+)(state, hooks.same, hooks.clear, hooks.schedule, hooks.request, hooks.refresh,
+  hooks.cancel, hooks.window, 2, 320);
+const retryTimers = [];
+const tailRace = {
+  movePredictionActive: true, pendingMove: false, moveQueue: [], moveSentSteps: 0,
+  position: [10, 11], serverPositionVersion: 5, movePredictionServerVersion: 4,
+  movePredictionSyncRequested: true, movePredictionSyncAttempts: 1, _movePredictionTimer: 0,
+};
+let tailRaceCancelled = 0;
+const tailRaceHooks = {
+  same: (left, right) => left[0] === right[0] && left[1] === right[1],
+  clear: () => { throw new Error("a one-tile intermediate sample must not release prediction"); },
+  schedule: () => {},
+  request: () => { tailRace.movePredictionSyncRequested = true; tailRace.movePredictionSyncAttempts++; },
+  refresh: () => {},
+  cancel: () => { tailRaceCancelled++; },
+  window: {clearTimeout: () => {}, setTimeout: callback => { retryTimers.push(callback); return 7; }},
+};
+const maybeReleaseTailRace = makeMaybeRelease(tailRace, tailRaceHooks);
+maybeReleaseTailRace([10, 10]);
+if (tailRace.movePredictionSyncRequested || tailRace.movePredictionServerVersion !== 5 ||
+    retryTimers.length !== 1 || tailRaceCancelled) {
+  throw new Error("first acknowledged tail-step race must schedule exactly one delayed S:c resample");
+}
+retryTimers[0]();
+if (!tailRace.movePredictionSyncRequested || tailRace.movePredictionSyncAttempts !== 2 || retryTimers.length !== 1) {
+  throw new Error("delayed tail-step resample must remain bounded while awaiting its reply");
+}
+tailRace.serverPositionVersion = 6;
+maybeReleaseTailRace([10, 10]);
+if (tailRaceCancelled !== 1 || retryTimers.length !== 1) {
+  throw new Error("second differing authoritative sample must correct locally without another probe");
+}
 /* The fish-bone is a painted legacy sprite.  A browser Pointer Lock would
    move/recapture the user's real mouse during a map fold, which is the
    opposite of the native client's behavior and makes the cursor appear to
@@ -682,11 +775,13 @@ for (const expected of [
   /const BATTLE_PROC_TICK_MS=1000\/60;/,
   /function moveStepDuration\(from,target\)[\s\S]{0,360}const distance=Math\.hypot\(dx,dy\)[\s\S]{0,120}distance\|\|1/,
   /* A normal 2.5 owner walk has no self C/XYD echo.  The prediction
-     watchdog may issue one diagnostic S:c probe, but must stop there rather
-     than enqueueing a request every second on a long-poll connection. */
+     watchdog may issue an initial S:c plus one acknowledged tail-step
+     resample, but must stop when the server does not answer. */
   /movePredictionSyncRequested/,
-  /if\(!app\.movePredictionSyncRequested&&Date\.now\(\)-started>=grace\)\{[\s\S]{0,300}send\("S",\["c"\]\)[\s\S]{0,260}return;/,
+  /if\(!app\.movePredictionSyncRequested&&Date\.now\(\)-started>=grace\)\{[\s\S]{0,300}requestMovePredictionSync\(\)[\s\S]{0,260}return;/,
   /function requestMovePredictionSync\(\)[\s\S]{0,800}send\("S",\["c"\]\)/,
+  /const MOVE_PREDICTION_MAX_SYNC_ATTEMPTS=2;/,
+  /function maybeReleaseMovePrediction\(point\)[\s\S]{0,1800}MOVE_PREDICTION_RESAMPLE_DELAY_MS[\s\S]{0,360}cancelPendingMove\("服务器已校正位置。",point\)/,
   /function scheduleMoveWireDrain\(delay=320\)[\s\S]{0,900}requestMovePredictionSync\(\)/,
   /if\(app\.moveWirePending\|\|app\.movePredictionActive&&!app\.movePredictionSyncRequested\)\{/,
   /function actorFrame\(actor\)[\s\S]{0,1200}if\(!key\|\|key==="0"\)return previousFrame\|\|null;[\s\S]{0,1900}if\(!frames\.length\)return previousFrame\|\|null;/,
