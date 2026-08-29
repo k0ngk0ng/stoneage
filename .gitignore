@@ -49,6 +49,7 @@ server/legacy/source/2.5/saac/data/fmsmemodir/
 .env
 .env.*
 !.env.compose.example
+.secrets/
 
 # Python bytecode
 __pycache__/

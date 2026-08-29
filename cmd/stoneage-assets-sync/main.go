@@ -114,10 +114,24 @@ func run(arguments []string) error {
 	}
 	const accessKeyIDEnv = "ALIBABA_CLOUD_ACCESS_KEY_ID"
 	const accessKeySecretEnv = "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
-	accessKeyID := strings.TrimSpace(os.Getenv(accessKeyIDEnv))
-	accessKeySecret := strings.TrimSpace(os.Getenv(accessKeySecretEnv))
+	// Prefer file-mounted credentials (Docker secrets, Kubernetes secrets, or
+	// a CI secret file). Environment variables remain a deliberate fallback so
+	// the binary can still be used directly by existing CI jobs. The file form
+	// keeps AK/SK out of `docker inspect`, Compose's rendered environment and
+	// the long-running web/admin processes.
+	accessKeyID, accessKeySecret := "", ""
+	if !*dryRun {
+		accessKeyID, err = credentialValue(accessKeyIDEnv, "ALIBABA_CLOUD_ACCESS_KEY_ID_FILE")
+		if err != nil {
+			return err
+		}
+		accessKeySecret, err = credentialValue(accessKeySecretEnv, "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE")
+		if err != nil {
+			return err
+		}
+	}
 	if !*dryRun && (accessKeyID == "" || accessKeySecret == "") {
-		return fmt.Errorf("OSS credentials are missing: set %s and %s", accessKeyIDEnv, accessKeySecretEnv)
+		return fmt.Errorf("OSS credentials are missing: set %s/%s files or %s and %s", "ALIBABA_CLOUD_ACCESS_KEY_ID_FILE", "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE", accessKeyIDEnv, accessKeySecretEnv)
 	}
 
 	assetDirectory := strings.TrimSpace(*assetsRoot)
@@ -193,6 +207,24 @@ func run(arguments []string) error {
 		fmt.Printf("uploaded %d objects to oss://%s/%s\n", count, bucketName, prefix)
 	}
 	return nil
+}
+
+// credentialValue reads one credential from a secret file when configured,
+// otherwise from its legacy environment variable. Secret files contain one
+// value and may end with a newline (as Docker/Kubernetes secrets commonly do).
+func credentialValue(valueEnv, fileEnv string) (string, error) {
+	if filename := strings.TrimSpace(os.Getenv(fileEnv)); filename != "" {
+		content, err := os.ReadFile(filename)
+		if err != nil {
+			return "", fmt.Errorf("read OSS credential file %s: %w", fileEnv, err)
+		}
+		value := strings.TrimSpace(string(content))
+		if strings.ContainsAny(value, "\r\n\x00") {
+			return "", fmt.Errorf("OSS credential file %s must contain one value", fileEnv)
+		}
+		return value, nil
+	}
+	return strings.TrimSpace(os.Getenv(valueEnv)), nil
 }
 
 func loadConfig(filename string) (configFile, error) {

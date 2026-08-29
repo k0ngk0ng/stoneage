@@ -168,10 +168,14 @@ services:
       - -workers
       - ${STONEAGE_ASSET_SYNC_WORKERS:-8}
     environment:
-      # These values exist only for this short-lived upload process.  They are
-      # deliberately absent from web, gateway and admin containers.
-      ALIBABA_CLOUD_ACCESS_KEY_ID: ${ALIBABA_CLOUD_ACCESS_KEY_ID:-}
-      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}
+      # Credentials are Docker secrets, not Compose environment values. They
+      # exist only in this short-lived uploader and are never visible to web,
+      # gateway or admin HTTP containers.
+      ALIBABA_CLOUD_ACCESS_KEY_ID_FILE: /run/secrets/stoneage-oss-access-key-id
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
+    secrets:
+      - stoneage-oss-access-key-id
+      - stoneage-oss-access-key-secret
     volumes:
       - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
       - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
@@ -246,10 +250,10 @@ services:
       STONEAGE_GMSV_DATA_ROOT: ${STONEAGE_GMSV_DATA_ROOT:-}
       STONEAGE_SAAC_DATA_ROOT: ${STONEAGE_SAAC_DATA_ROOT:-}
       STONEAGE_AUTH_VOLUME: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
-      # The fixed sync script reads the two OSS credentials from this mounted
-      # deployment env file only when an admin explicitly starts a job. They
-      # are not injected into the long-running service-control environment.
-      STONEAGE_ASSET_SYNC_ENV_FILE: /run/secrets/stoneage-assets.env
+      # The fixed sync script reads only the two OSS secret files when an
+      # admin explicitly starts a job. They are not injected into admin/web.
+      ALIBABA_CLOUD_ACCESS_KEY_ID_FILE: /run/secrets/stoneage-oss-access-key-id
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
     volumes:
       - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
       - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
@@ -258,15 +262,15 @@ services:
       - auth-data:/data
       - operator-run:/run/stoneage
       - operator-state:/state
-      # Mount only the selected deployment env file for the fixed asset-sync
-      # helper. It is read-only and never exposed to web/admin HTTP handlers.
-      - ${STONEAGE_ASSET_SYNC_ENV_FILE:-./.env}:/run/secrets/stoneage-assets.env:ro
       # The host project is mounted separately so it does not hide the
       # operator binaries under /opt/stoneage. Release deployment additionally
       # requires STONEAGE_PROJECT_ROOT to be an absolute host path and all
       # data roots in the production .env to be absolute paths.
       - ${STONEAGE_PROJECT_ROOT:-.}:/host-project:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    secrets:
+      - stoneage-oss-access-key-id
+      - stoneage-oss-access-key-secret
     healthcheck:
       test: ["CMD-SHELL", "test -S /run/stoneage/operator.sock"]
       interval: 2s
@@ -329,6 +333,17 @@ volumes:
     name: ${STONEAGE_OPERATOR_RUN_VOLUME:-stoneage-operator-run}
   operator-state:
     name: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
+
+# File-backed Compose secrets keep OSS credentials out of the rendered service
+# environment and out of the web/admin containers. deploy-mvp.sh creates empty
+# 0600 defaults when no upload credentials are configured, so ordinary game
+# deployments do not need an OSS account; an upload fails closed until both
+# files contain values.
+secrets:
+  stoneage-oss-access-key-id:
+    file: ${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-./.secrets/oss-access-key-id}
+  stoneage-oss-access-key-secret:
+    file: ${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-./.secrets/oss-access-key-secret}
 
 networks:
   # No host ports are published for GMSV/SAAC, so they remain private while

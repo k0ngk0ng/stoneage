@@ -22,8 +22,8 @@ func TestWalkTreeKeepsPublicClientAssetAllowlist(t *testing.T) {
 		filepath.Join(assets, "manifest.json"): "{}",
 		filepath.Join(mapDir, "100.MAP"):       "map",
 		filepath.Join(data, "auto.dat"):        "auto",
-		filepath.Join(data, "bgm", "0.wav"):   "bgm",
-		filepath.Join(data, "se", "1.wav"):    "se",
+		filepath.Join(data, "bgm", "0.wav"):    "bgm",
+		filepath.Join(data, "se", "1.wav"):     "se",
 		filepath.Join(data, "savedata.dat"):    "private",
 		filepath.Join(data, "chatreg.dat"):     "private",
 	} {
@@ -66,5 +66,27 @@ func TestValidateObjectPrefix(t *testing.T) {
 		if err := validateObjectPrefix(prefix); err == nil {
 			t.Errorf("unsafe prefix %q accepted", prefix)
 		}
+	}
+}
+
+func TestCredentialValuePrefersSecretFile(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "access-key")
+	if err := os.WriteFile(filename, []byte("file-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ALIBABA_CLOUD_ACCESS_KEY_ID", "environment-value")
+	t.Setenv("ALIBABA_CLOUD_ACCESS_KEY_ID_FILE", filename)
+	value, err := credentialValue("ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_ID_FILE")
+	if err != nil || value != "file-value" {
+		t.Fatalf("credentialValue=%q err=%v", value, err)
+	}
+}
+
+func TestCredentialValueFallsBackToEnvironment(t *testing.T) {
+	t.Setenv("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "environment-value")
+	t.Setenv("ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE", "")
+	value, err := credentialValue("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE")
+	if err != nil || value != "environment-value" {
+		t.Fatalf("credentialValue=%q err=%v", value, err)
 	}
 }

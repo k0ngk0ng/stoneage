@@ -112,15 +112,6 @@ if [[ "$env_file" != /* ]]; then
     env_file="$(cd "$(dirname "$env_file")" && pwd)/$(basename "$env_file")"
 fi
 
-# Compose cannot infer which --env-file path should be mounted inside the
-# long-running operator.  Pass the selected host path explicitly so an admin
-# triggered asset sync also works with an external secret file such as
-# /etc/stoneage/prod.env.  An explicitly exported value remains authoritative
-# for operators who keep the upload credentials in a separate file.
-if [[ -z "${STONEAGE_ASSET_SYNC_ENV_FILE:-}" ]]; then
-    export STONEAGE_ASSET_SYNC_ENV_FILE="$env_file"
-fi
-
 if ! command -v "$docker_bin" >/dev/null 2>&1; then
     echo "Docker CLI not found: $docker_bin" >&2
     exit 1
@@ -162,6 +153,48 @@ env_value()
     ' "$env_file"
 }
 
+# Compose file-backed secrets must exist before service-control is started.
+# Keep empty defaults for ordinary deployments (the uploader then fails closed)
+# and materialize values only when an operator supplied the legacy variables.
+prepare_asset_secret()
+{
+    local path="$1" value="$2" label="$3"
+    case "$path" in
+        /*) ;;
+        *) path="$project_root/${path#./}" ;;
+    esac
+    if [[ -e "$path" ]]; then
+        if [[ ! -f "$path" ]]; then
+            echo "$label secret path is not a regular file: $path" >&2
+            return 2
+        fi
+        if [[ "$check_only" != 1 ]]; then
+            if [[ ! -s "$path" && -n "$value" ]]; then
+                umask 077
+                printf '%s\n' "$value" >"$path"
+            fi
+            chmod 600 "$path"
+        fi
+        printf '%s\n' "$path"
+        return 0
+    fi
+    # The generated .secrets defaults may be empty until the first upload.
+    # Custom external paths must be provisioned by the deployment operator.
+    if [[ -z "$value" && "$path" != "$project_root/.secrets/"* ]]; then
+        echo "$label secret file is missing: $path (create it with mode 0600)" >&2
+        return 2
+    fi
+    if [[ "$check_only" == 1 ]]; then
+        printf '%s\n' "$path"
+        return 0
+    fi
+    umask 077
+    mkdir -p "$(dirname "$path")"
+    printf '%s\n' "$value" >"$path"
+    chmod 600 "$path"
+    printf '%s\n' "$path"
+}
+
 version="$(env_value STONEAGE_VERSION || true)"
 control_image="$(env_value STONEAGE_CONTROL_IMAGE || true)"
 legacy_image="$(env_value STONEAGE_LEGACY_IMAGE || true)"
@@ -173,6 +206,17 @@ setup_token="$(env_value STONEAGE_ADMIN_SETUP_TOKEN || true)"
 cdn_base="$(env_value STONEAGE_WEB_CDN_BASE_URL || true)"
 web_config_file="$(env_value STONEAGE_WEB_CONFIG_FILE || true)"
 web_config_file="${web_config_file:-./config/web.toml}"
+
+asset_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
+asset_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
+asset_key_file="${asset_key_file:-./.secrets/oss-access-key-id}"
+asset_secret_file="${asset_secret_file:-./.secrets/oss-access-key-secret}"
+legacy_asset_key="${ALIBABA_CLOUD_ACCESS_KEY_ID:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)}"
+legacy_asset_secret="${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)}"
+asset_key_file="$(prepare_asset_secret "$asset_key_file" "$legacy_asset_key" "OSS access-key-id")"
+asset_secret_file="$(prepare_asset_secret "$asset_secret_file" "$legacy_asset_secret" "OSS access-key-secret")"
+export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$asset_key_file"
+export STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE="$asset_secret_file"
 if [[ "$check_only" != 1 && "$admin_password" == "replace-with-a-long-random-password" && -z "$setup_token" ]]; then
     echo "Set STONEAGE_ADMIN_PASSWORD (or a one-time STONEAGE_ADMIN_SETUP_TOKEN) in $env_file before deploying." >&2
     exit 2

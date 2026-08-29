@@ -31,9 +31,11 @@ Options:
   --env FILE      Read FILE instead of .env.
   -h, --help      Show this help.
 
-ALIBABA_CLOUD_ACCESS_KEY_ID and ALIBABA_CLOUD_ACCESS_KEY_SECRET must be set
-in FILE or exported in the environment.  They are visible only to this
-one-shot container.  The admin UI is not involved.
+Set STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE and
+STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE to 0600 files containing the two OSS
+credentials. For CI/direct use, ALIBABA_CLOUD_ACCESS_KEY_ID and
+ALIBABA_CLOUD_ACCESS_KEY_SECRET are accepted and copied to those files for
+the one-shot container. The admin UI is not involved.
 EOF
 }
 
@@ -132,16 +134,61 @@ if [[ -n "$workers" ]]; then
 fi
 
 if [[ "$dry_run" != 1 ]]; then
-    # Do not silently start an upload with empty credentials.  This check also
-    # catches the common mistake of leaving the example placeholders in .env.
+    # Do not silently start an upload with empty credentials. Prefer secret
+    # files so the values never enter Compose's rendered environment.
     access_key="${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
     access_secret="${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
     access_key="${access_key:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)}"
     access_secret="${access_secret:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)}"
-    if [[ -z "$access_key" || -z "$access_secret" ]]; then
-        echo "OSS credentials are missing; set ALIBABA_CLOUD_ACCESS_KEY_ID and ALIBABA_CLOUD_ACCESS_KEY_SECRET in $env_file or the environment." >&2
+    access_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
+    access_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
+    access_key_file="${access_key_file:-.secrets/oss-access-key-id}"
+    access_secret_file="${access_secret_file:-.secrets/oss-access-key-secret}"
+    case "$access_key_file" in /*) ;; *) access_key_file="$project_root/${access_key_file#./}" ;; esac
+    case "$access_secret_file" in /*) ;; *) access_secret_file="$project_root/${access_secret_file#./}" ;; esac
+    if [[ -n "$access_key" && ! -s "$access_key_file" ]]; then
+        umask 077
+        mkdir -p "$(dirname "$access_key_file")"
+        printf '%s\n' "$access_key" >"$access_key_file"
+    fi
+    if [[ -n "$access_secret" && ! -s "$access_secret_file" ]]; then
+        umask 077
+        mkdir -p "$(dirname "$access_secret_file")"
+        printf '%s\n' "$access_secret" >"$access_secret_file"
+    fi
+    chmod 600 "$access_key_file" "$access_secret_file"
+    if [[ ! -s "$access_key_file" || ! -s "$access_secret_file" ]]; then
+        echo "OSS credentials are missing; provide the two secret files or ALIBABA_CLOUD_ACCESS_KEY_ID(_FILE) and ALIBABA_CLOUD_ACCESS_KEY_SECRET(_FILE)." >&2
         exit 2
     fi
+    # Compose resolves secret file paths against the project directory. Pass
+    # the normalized paths explicitly so --env FILE and an external cwd agree.
+    export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$access_key_file"
+    export STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE="$access_secret_file"
+else
+    # Compose still needs a source file for a file-backed secret even though
+    # the uploader will not read it in --dry-run mode. Create only the ignored
+    # local defaults; custom external paths are an operator error.
+    access_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
+    access_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
+    access_key_file="${access_key_file:-.secrets/oss-access-key-id}"
+    access_secret_file="${access_secret_file:-.secrets/oss-access-key-secret}"
+    case "$access_key_file" in /*) ;; *) access_key_file="$project_root/${access_key_file#./}" ;; esac
+    case "$access_secret_file" in /*) ;; *) access_secret_file="$project_root/${access_secret_file#./}" ;; esac
+    for secret_file in "$access_key_file" "$access_secret_file"; do
+        if [[ ! -e "$secret_file" ]]; then
+            if [[ "$secret_file" != "$project_root/.secrets/"* ]]; then
+                echo "secret file is missing: $secret_file" >&2
+                exit 2
+            fi
+            umask 077
+            mkdir -p "$(dirname "$secret_file")"
+            : >"$secret_file"
+        fi
+        chmod 600 "$secret_file"
+    done
+    export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$access_key_file"
+    export STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE="$access_secret_file"
 fi
 
 echo "Publishing the complete client asset tree (assets, maps, audio)…"

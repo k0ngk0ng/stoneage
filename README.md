@@ -121,14 +121,14 @@ base_url = "https://cdn.example.com/stoneage"
 
 `prefix` 和 `base_url` 都是跨版本复用的固定根目录，不追加 `v*` tag。Compose
 通过 `.env` 的 `STONEAGE_WEB_CONFIG_FILE` 把这个 TOML 配置只读挂载到 Web 容器；AccessKey
-明文只应放在环境变量中，不应直接写进 TOML 或提交到 Git。CDN 有值时优先
+明文只应放在权限为 0600 的 secret 文件中，不应直接写进 TOML 或提交到 Git。CDN 有值时优先
 使用 CDN；CDN 留空但 OSS endpoint/bucket 已配置时，后端会直接生成公开 OSS 根地址。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
-仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 只放在权限为 0600 的部署
-`.env`（或由 CI 注入），由一次性批量资源同步工具读取，Web 游戏进程和 admin HTTP
-进程不会读取或上传。admin 页面如果启用同步，只能请求 service-control 的固定整包任务；
-service-control 在任务启动时从只读部署 secret 文件读取密钥并传给一次性子进程，任务结束
-后不保留密钥。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
+仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 建议分别写入权限为 0600 的
+`.secrets/oss-access-key-id` 和 `.secrets/oss-access-key-secret`（或由 CI 注入），由一次性
+批量资源同步工具读取，Web 游戏进程和 admin HTTP 进程不会读取或上传。admin 页面如果启用
+同步，只能请求 service-control 的固定整包任务；service-control 只挂载这两个 Docker secret
+文件，并在任务启动时传给上传子进程，任务结束后不保留密钥。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露
 `Content-Length`、`Content-Range`、`Accept-Ranges`、`ETag`。生产环境必须使用
 HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网页会拦截混合
@@ -143,6 +143,19 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 ./scripts/sync-client-assets.sh              # 一次发布 assets、maps、audio
 ```
 
+首次配置 OSS 时，把凭据分别写入部署机上的两个 secret 文件（不要把值提交到
+`.env` 或 Git）：
+
+```bash
+install -d -m 700 .secrets
+read -r -s -p 'OSS AccessKey ID: ' oss_id; echo
+read -r -s -p 'OSS AccessKey Secret: ' oss_secret; echo
+printf '%s\n' "$oss_id" > .secrets/oss-access-key-id
+printf '%s\n' "$oss_secret" > .secrets/oss-access-key-secret
+unset oss_id oss_secret
+chmod 600 .secrets/oss-access-key-id .secrets/oss-access-key-secret
+```
+
 脚本启动 Compose 的一次性 `assets-sync` profile；任务结束后容器即被删除，Web、网关和
 admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目标仍是固定的
 `stoneage/{assets,maps,audio}/` 根目录，不包含 release tag。同步器只上传公开的
@@ -150,7 +163,7 @@ admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目
 `savedata.dat`、聊天记录、PE 支持文件等 `data/` 私有内容上传。CI 也可以直接调用同一个
 `stoneage-assets-sync` 二进制或等价的 OSS 同步步骤。admin 的资源按钮（如启用）只会
 请求 service-control 的固定整包任务，不接受路径、bucket 或命令参数；service-control
-只读挂载部署脚本选择的凭据文件，不会把它持久化进镜像或传给 admin。
+只读挂载两个 Docker secret，不会把它持久化进镜像或传给 admin。
 
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和
