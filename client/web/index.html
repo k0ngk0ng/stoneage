@@ -769,6 +769,11 @@
     #battle-popup[data-kind="magic"] #battle-popup-title{display:none}
     #battle-popup[data-kind="magic"] #battle-popup-list{left:391px;top:179px;width:230px;height:140px;line-height:28px}
     #battle-popup[data-kind="magic"] #battle-popup-list .battle-popup-row{width:230px;height:28px;min-height:28px;line-height:28px}
+    /* BattleButtonJujutsu() keeps every learned row selectable even when it
+       cannot be cast. Native FONT_PAL_RED marks insufficient MP and the
+       map-only gray takes precedence when both conditions are true. */
+    #battle-popup[data-kind="magic"] #battle-popup-list .battle-popup-row.magic-insufficient{color:#ff6060}
+    #battle-popup[data-kind="magic"] #battle-popup-list .battle-popup-row.magic-map-only{color:#928b7f}
     #battle-popup[data-kind="magic"] #battle-popup-close{left:456px;top:408px}
     /* MakeWindowDisp(361,160,271,281); CG_ITEM_WND_1 and its title are
        stocked at (mx,my-80), yielding visible origins 360,159 and 360,138. */
@@ -6474,9 +6479,39 @@
   }
   function battleFieldAllowed(entry){ const field=Number(entry?.field); return !Number.isFinite(field)||field!==2; }
   function battleLevelAllowed(entry){ const required=Number(entry?.level),level=Number(app.pc?.level); return !Number.isFinite(required)||required<=0||!Number.isFinite(level)||level>=required; }
-  function battleUsableMagic(entry){ return Boolean(entry)&&Number(entry.useFlag??1)!==0&&battleFieldAllowed(entry)&&battleLevelAllowed(entry); }
+  /* BATTLEMENU.CPP lists all five useFlag spells. MP and field restrictions
+     change their font palette, not their presence or click hit box. */
+  function battleUsableMagic(entry){ return Boolean(entry)&&Number(entry.useFlag??1)!==0; }
   function battleUsableItem(entry){ return Boolean(entry?.name)&&battleFieldAllowed(entry)&&battleLevelAllowed(entry); }
   function battleUsablePetSkill(entry){ return Boolean(entry?.name||entry?.skillId!==undefined)&&battleFieldAllowed(entry)&&battleLevelAllowed(entry); }
+  function battleMagicEntry(action){
+    const index=Number(action?.index);if(!Number.isInteger(index)||index<0)return null;
+    const direct=app.magic?.[index];if(direct&&Number(direct.index??index)===index)return direct;
+    return app.magic?.find(entry=>entry&&Number(entry.index)===index)||null;
+  }
+  function battleMagicUnavailableReason(action,state=app.battleState){
+    if(String(action?.kind||"").toLowerCase()!=="magic")return "";
+    const entry=battleMagicEntry(action);
+    if(entry&&Number(entry.useFlag??1)===0)return "unavailable";
+    /* PC.H defines ALL=0, BATTLE=1, MAP=2. Read the live J record first so
+       a status refresh between opening the window and clicking a target
+       cannot leave a stale field/cost in the pending action. */
+    const field=Number(entry?.field??action?.field);if(field===2)return "map";
+    const cost=Math.max(0,Number(entry?.mp??action?.mpCost)||0),mp=Math.max(0,Number(state?.myMp)||0);
+    return cost>mp?"mp":"";
+  }
+  function rejectUnavailableBattleMagic(action,state=app.battleState){
+    const reason=battleMagicUnavailableReason(action,state);if(!reason)return false;
+    /* Native failure is deliberately local: SE 220 only. Keep the shared
+       BattleCntDown deadline and command locks untouched, retain/reopen the
+       Jujutsu window, and remove stale actor hit boxes without sending B. */
+    playSoundEffect(220,320,240);
+    if(state?.pendingAction?.kind==="magic")state.pendingAction=null;
+    const panel=$("battle-target-panel");if(panel){panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom","actor-target-prompt");panel.classList.add("hidden");}
+    if(app.battle&&battleActionAllowed(action,state)){app.battlePopup={kind:"magic"};renderBattlePopup();}
+    renderBattleWorld();renderBattle();
+    return true;
+  }
   function battleActionCommand(action,target){
     const targetNo=battleHex(battleAggregateTarget(action,target)),index=battleHex(action?.index);
     switch(action?.kind){case "attack":return `H|${targetNo}`;case "capture":return `T|${targetNo}`;case "magic":return `J|${index}|${targetNo}`;case "item":return `I|${index}|${targetNo}`;case "pet":return `W|${index}|${targetNo}`;default:return "";}
@@ -6569,12 +6604,15 @@
     if(!config){closeBattlePopup();return;}
     bg.src=`/assets/bitmaps/${config.background}`;bg.alt="";
     if(config.title){title.src=`/assets/bitmaps/${config.title}`;title.alt="";title.style.display="block";}else{title.removeAttribute("src");title.style.display="none";}
-    const empty=()=>{const row=battlePopupRow(kind==="magic"?"没有可用咒术":kind==="item"?"没有可用道具":kind==="pet-skill"?"没有可用宠物技能":"没有可出战宠物","",null,"",true);list.append(row);};
+    const empty=()=>{const row=battlePopupRow(kind==="magic"?"没有咒术":kind==="item"?"没有可用道具":kind==="pet-skill"?"没有可用宠物技能":"没有可出战宠物","",null,"",true);list.append(row);};
     if(kind==="magic"){
-      const entries=app.magic.filter(battleUsableMagic).slice(0,6);
+      const entries=app.magic.filter(battleUsableMagic).slice(0,5);
       for(const skill of entries){
-        const index=Number(skill.index)||0,mp=Number(skill.mp)||0,info=resolveBitmapInfo(skill.graphic);
-        list.append(battlePopupRow(skill.name||`咒术 ${index}`,mp?`MP ${mp}`:"",()=>beginBattleAction({kind:"magic",index,targetType:skill.target,field:skill.field,allowDead:skill.deadTarget},{closePopup:true}),info?.file||"",false));
+        const index=Number(skill.index)||0,mp=Math.max(0,Number(skill.mp)||0),info=resolveBitmapInfo(skill.graphic),action={kind:"magic",index,targetType:skill.target,field:skill.field,mpCost:mp,allowDead:skill.deadTarget},reason=battleMagicUnavailableReason(action,app.battleState);
+        const row=battlePopupRow(skill.name||`咒术 ${index}`,mp?`MP ${mp}`:"",()=>beginBattleAction(action,{closePopup:true}),info?.file||"",false);
+        row.classList.toggle("magic-insufficient",reason==="mp");row.classList.toggle("magic-map-only",reason==="map");
+        if(reason)row.setAttribute("aria-disabled","true");else row.removeAttribute("aria-disabled");
+        list.append(row);
       }
       if(!entries.length)empty();
     }else if(kind==="item"){
@@ -6655,6 +6693,10 @@
       battleExplainUnavailable(action);
       app.battleState.pendingAction=null;$("battle-target-panel")?.classList.add("hidden");closeBattlePopup();renderBattle();renderBattleWorld();return;
     }
+    /* BP is the authoritative current-MP snapshot. Recheck immediately
+       before building/sending J so a late BP/status update cannot submit a
+       spell the native client would reject at the row click. */
+    if(rejectUnavailableBattleMagic(action,app.battleState))return;
     /* A BC update may invalidate an actor hitbox between render and click
        (for example, the target died or moved during the round).  Re-run the
        exact same selector predicate used by renderBattleWorld() before
@@ -6825,6 +6867,7 @@
       return false;
     }
     if(!battleActionAllowed(action)){battleExplainUnavailable(action);return false;}
+    if(rejectUnavailableBattleMagic(action,state))return false;
     /* Selecting another command from the fixed eight-button bar closes any
        open native sub-window first.  Otherwise two menus can remain active
        and two bitmap buttons appear pressed at once. */

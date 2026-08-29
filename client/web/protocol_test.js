@@ -1247,6 +1247,7 @@ const makeBattleToggleHarness=new Function("initialState",`
   function closeBattlePopup(){app.battlePopup=null;}
   function battleCommandAllowed(){return true;}
   function battleActionAllowed(){return true;}
+  function rejectUnavailableBattleMagic(){return false;}
   function battleExplainUnavailable(){unavailable++;}
   function renderBattleWorld(){worldRenders++;}
   function renderBattle(){battleRenders++;}
@@ -1296,6 +1297,86 @@ if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.state.pendingAc
 }
 if(toggleHarness.counts().sends!==0||toggleHarness.state.choiceDeadline!==toggleDeadline||toggleHarness.counts().unavailable!==0){
   throw new Error("battle command toggles changed packet count, countdown, or availability");
+}
+/* BattleButtonJujutsu() does not hide or disable MP-starved/map-only
+   spells. It keeps the row/window alive, paints the native red/gray state,
+   and emits only SE 220. Exercise both the initial row click and the final
+   target click because BP can replace the authoritative MP in between. */
+const battleMagicHelperStart=script.indexOf("  function battleUsableMagic(entry)");
+const battleMagicHelperEnd=script.indexOf("  function battleActionCommand(action,target)",battleMagicHelperStart);
+const battleTargetSendStart=script.indexOf("  async function sendBattleTarget(target)");
+const battleTargetSendEnd=script.indexOf("  function battleActivePet(",battleTargetSendStart);
+const battleMagicPopupStart=script.indexOf("  function renderBattlePopup()");
+const battleMagicPopupEnd=script.indexOf("  function battleTargetPromptPlacement",battleMagicPopupStart);
+if(battleMagicHelperStart<0||battleMagicHelperEnd<=battleMagicHelperStart||battleTargetSendStart<0||battleTargetSendEnd<=battleTargetSendStart||battleMagicPopupStart<0||battleMagicPopupEnd<=battleMagicPopupStart){
+  throw new Error("battle Jujutsu production function boundary missing");
+}
+const battleMagicPopupSource=script.slice(battleMagicPopupStart,battleMagicPopupEnd);
+for(const expected of [
+  /app\.magic\.filter\(battleUsableMagic\)\.slice\(0,5\)/,
+  /mpCost:mp/,
+  /magic-insufficient/,
+  /magic-map-only/,
+  /aria-disabled","true"/,
+]) if(!expected.test(battleMagicPopupSource))throw new Error(`native battle Jujutsu row regression: ${expected}`);
+const makeBattleMagicHarness=new Function("magic","myMp","field",`
+  const state={pendingAction:null,myMp,choiceDeadline:777777,commandLocked:false,petCommandLocked:false};
+  const app={battle:true,battleState:state,battlePopup:{kind:"magic"},magic,pc:{mp:999}};
+  const panel={dataset:{},classList:{add(){},remove(){}}};
+  const $=()=>panel;
+  let sends=0,targets=0,popupRenders=0,worldRenders=0,battleRenders=0,unavailable=0;
+  const tones=[];
+  function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
+  function battleActionAllowed(){return true;}
+  function battleExplainUnavailable(){unavailable++;}
+  function battleButtonCommandForAction(action){return action?.kind==="magic"?"J":"";}
+  function closeBattlePopup(){app.battlePopup=null;}
+  function renderBattlePopup(){popupRenders++;}
+  function renderBattleWorld(){worldRenders++;}
+  function renderBattle(){battleRenders++;}
+  function battleTargetCandidates(){return [{battleId:10,name:"enemy"}];}
+  function battleUsesActorTarget(){return true;}
+  function renderBattleTargets(){targets++;}
+  function battleTargetSelectable(){return true;}
+  function battleActionCommand(action,target){return \`J|\${Number(action.index).toString(16).toUpperCase()}|\${Number(target.battleId).toString(16).toUpperCase()}\`;}
+  function battleSetCommandLock(current,kind,locked){if(kind==="player")current.commandLocked=locked;else current.petCommandLocked=locked;}
+  function battleStartCommandPending(current,kind,command){current.commandPending={kind,command};}
+  function battleClearCommandPending(){}
+  function maybeOpenBattlePetSkillMenu(){}
+  function reportError(error){throw error;}
+  function send(name,values){sends++;return new Promise(()=>{});}
+  function addChat(){}
+  ${script.slice(battleMagicHelperStart,battleMagicHelperEnd)}
+  ${script.slice(battleActionToggleStart,battleActionToggleEnd)}
+  ${script.slice(battleTargetSendStart,battleTargetSendEnd)}
+  return {
+    app,state,beginBattleAction,sendBattleTarget,
+    setMp(value){state.myMp=value;},
+    counts(){return {sends,targets,popupRenders,worldRenders,battleRenders,unavailable,tones:[...tones]};}
+  };
+`);
+const insufficientMagic=[{index:0,useFlag:1,mp:10,field:1,target:1,name:"测试咒术"}];
+const insufficientHarness=makeBattleMagicHarness(insufficientMagic,0,1),insufficientDeadline=insufficientHarness.state.choiceDeadline;
+if(insufficientHarness.beginBattleAction({kind:"magic",index:0,targetType:1,field:1,mpCost:10},{closePopup:true})!==false||
+   insufficientHarness.app.battlePopup?.kind!=="magic"||insufficientHarness.state.pendingAction!==null||
+   insufficientHarness.counts().targets!==0||insufficientHarness.counts().sends!==0||insufficientHarness.counts().tones.length!==1||
+   insufficientHarness.counts().tones[0][0]!==220||insufficientHarness.state.choiceDeadline!==insufficientDeadline||insufficientHarness.state.commandLocked){
+  throw new Error(`MP-starved Jujutsu must keep the native window/deadline and send only SE 220: ${JSON.stringify(insufficientHarness.counts())}`);
+}
+const exactMpHarness=makeBattleMagicHarness(insufficientMagic,10,1);
+if(!exactMpHarness.beginBattleAction({kind:"magic",index:0,targetType:1,field:1,mpCost:10},{closePopup:true})||
+   exactMpHarness.state.pendingAction?.kind!=="magic"||exactMpHarness.counts().targets!==1||exactMpHarness.counts().tones.length!==0){
+  throw new Error("Jujutsu cost equal to authoritative BP MP must remain selectable");
+}
+exactMpHarness.setMp(0);exactMpHarness.sendBattleTarget({battleId:10,name:"enemy"});
+if(exactMpHarness.counts().sends!==0||exactMpHarness.counts().tones.length!==1||exactMpHarness.counts().tones[0][0]!==220||
+   exactMpHarness.state.pendingAction!==null||exactMpHarness.app.battlePopup?.kind!=="magic"||exactMpHarness.state.commandLocked){
+  throw new Error(`late BP MP drop must reject J before the B write and restore Jujutsu: ${JSON.stringify(exactMpHarness.counts())}`);
+}
+const mapMagic=[{index:0,useFlag:1,mp:0,field:2,target:1,name:"地图咒术"}],mapMagicHarness=makeBattleMagicHarness(mapMagic,99,2);
+if(mapMagicHarness.beginBattleAction({kind:"magic",index:0,targetType:1,field:2,mpCost:0},{closePopup:true})!==false||
+   mapMagicHarness.app.battlePopup?.kind!=="magic"||mapMagicHarness.counts().sends!==0||mapMagicHarness.counts().tones[0]?.[0]!==220){
+  throw new Error("map-only Jujutsu must stay visible/clickable but reject locally with SE 220");
 }
 if(!/battlePetCommandHit\?\.addEventListener\("click",activateBattlePetCommandButton\)/.test(script)||
    !/activateBattlePetCommandButton[\s\S]{0,700}state\.pendingAction=null[\s\S]{0,420}openBattlePetSkillPopup\(\{surfaceReady:true\}\)/.test(script)){
