@@ -482,8 +482,14 @@
     #battle-target-overlay { position:absolute; inset:0; z-index:10; width:640px; height:480px; pointer-events:none; }
     #battle-target-overlay .battle-target-proxy { position:absolute; left:0; top:0; width:0; height:0; pointer-events:none; }
     #battle-target-overlay .battle-target-hit { position:absolute; left:-24px; top:-48px; width:48px; height:48px; padding:0; margin:0; border:0; background:transparent; box-shadow:none; opacity:0; z-index:1; pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    #battle-target-overlay .battle-target-frame { position:absolute; box-sizing:border-box; min-width:16px; min-height:16px; border:0; background:linear-gradient(#ffe58a,#ffe58a) left top/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) left top/3px 14px no-repeat,linear-gradient(#ffe58a,#ffe58a) right top/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) right top/3px 14px no-repeat,linear-gradient(#ffe58a,#ffe58a) left bottom/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) left bottom/3px 14px no-repeat,linear-gradient(#ffe58a,#ffe58a) right bottom/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) right bottom/3px 14px no-repeat; filter:drop-shadow(0 0 1px #241208) drop-shadow(0 0 4px rgba(255,207,76,.8)); opacity:0; z-index:30; pointer-events:none; }
+    /* MOUSE.CPP::HitMouseCursor() first hits the actor's 48x48 foot box and
+       then stocks one ordinary rectangle at sprite bounds +/-2.  Its
+       BoxColorTbl is green 250 -> 15 -> 2 -> 15 over sixty presentation
+       frames; it is not the four-corner gold glow used by the early Web
+       approximation. */
+    #battle-target-overlay .battle-target-frame { position:absolute; box-sizing:border-box; min-width:5px; min-height:5px; border:1px solid #00ff00; background:transparent; opacity:0; z-index:2; pointer-events:none; animation:battle-target-box-color 2s steps(1,end) infinite; }
     #battle-target-overlay .battle-target-frame.is-active { opacity:1; }
+    @keyframes battle-target-box-color{0%,74%{border-color:#00ff00}75%,83%{border-color:#28e128}84%,91%{border-color:#008000}92%,100%{border-color:#28e128}}
     /* BattleProc's native back-buffer keeps character actions and p_missile
        records in one depth-sorted paint list.  Retain decoded actor wrappers
        between paint ticks, rebuild only the short-lived missiles, and then
@@ -494,19 +500,6 @@
     #battle-actors-layer .battle-actor { position:absolute; width:0; height:0; }
     #battle-actors-layer .battle-actor.battle-fade { opacity:.55; }
     #battle-actors-layer .battle-actor.battle-dead .battle-sprite { filter:grayscale(.65) brightness(.72); }
-    #battle-actors-layer .battle-actor.battle-targetable { pointer-events:none; }
-    #battle-actors-layer .battle-target-hit { position:absolute; left:-24px; top:-48px; width:48px; height:48px; padding:0; margin:0; border:0; background:transparent; box-shadow:none; opacity:0; z-index:10; pointer-events:auto; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    /* ACT_ATR_HIT_BOX is drawn by the native mouse pass as a small animated
-       box around the actor under the pointer.  Keep the actual hit button
-       transparent, but expose that same feedback as a pixel-sharp brown/gold
-       frame so a target can be identified before the click. */
-    #battle-actors-layer .battle-target-frame { position:absolute; box-sizing:border-box; min-width:16px; min-height:16px; border:0; background:linear-gradient(#ffe58a,#ffe58a) left top/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) left top/3px 14px no-repeat,linear-gradient(#ffe58a,#ffe58a) right top/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) right top/3px 14px no-repeat,linear-gradient(#ffe58a,#ffe58a) left bottom/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) left bottom/3px 14px no-repeat,linear-gradient(#ffe58a,#ffe58a) right bottom/14px 3px no-repeat,linear-gradient(#ffe58a,#ffe58a) right bottom/3px 14px no-repeat; filter:drop-shadow(0 0 1px #241208) drop-shadow(0 0 4px rgba(255,207,76,.8)); opacity:0; z-index:30; pointer-events:none; }
-    #battle-actors-layer .battle-actor.battle-target-hover .battle-target-frame,
-    #battle-actors-layer .battle-target-hit:hover ~ .battle-target-frame,
-    #battle-actors-layer .battle-target-hit:focus ~ .battle-target-frame,
-    #battle-actors-layer .battle-target-hit:focus-visible ~ .battle-target-frame { opacity:1; }
-    #battle-actors-layer .battle-actor.battle-target-hover .battle-sprite,
-    #battle-actors-layer .battle-target-hit:focus-visible ~ .battle-sprite { filter:brightness(1.18) drop-shadow(0 0 3px #ffe56b); }
     #battle-actors-layer .battle-sprite { position:absolute; display:block; image-rendering:pixelated; }
     #battle-actors-layer .battle-name { position:absolute; transform:translate(-50%,-100%); color:#f8efd2; font:11px/12px Tahoma,"Microsoft YaHei",sans-serif; white-space:nowrap; text-shadow:1px 1px #080706,-1px -1px #080706; }
     #battle-actors-layer .battle-name.player { color:#ffe95d; }
@@ -6535,6 +6528,35 @@
     if(type===8)return itemSide>=0;
     if(type===4||type===10)return itemSide>=0;
     return battleTargetCandidates(action).some(candidate=>!candidate.special&&Number(candidate.battleId)===id);
+  }
+  /* HitMouseCursor() paints the clicked actor alone for ACT_ATR_HIT_BOX, but
+     CheckGroupSelect() paints every display record carrying the same
+     ACT_ATR_HIT_BOX_ALL flag.  Keep the wire target as the one clicked bid;
+     this helper controls only the native group outline feedback. */
+  function battleTargetHighlightIds(targetId,action=app.battleState?.pendingAction,state=app.battleState){
+    const selectedId=Number(targetId),result=new Set();
+    if(!Number.isInteger(selectedId)||!action||!state)return result;
+    const participants=Array.isArray(state.participants)?state.participants:[];
+    const selected=participants.find(item=>Number(item?.battleId)===selectedId);
+    if(!selected||!battleTargetSelectable(action,selected,state))return result;
+    const targetType=Number(action.targetType),selectedSide=battleSide(selectedId),selectedRow=Math.floor(selectedId/5);
+    const grouped=Boolean(
+      (action.kind==="attack"&&(Number(state.bpFlags)&BATTLE_BP_BOOMERANG))||
+      targetType===2||targetType===3||targetType===4||targetType===8||targetType===10||targetType===11
+    );
+    for(const item of participants){
+      if(!battleTargetSelectable(action,item,state))continue;
+      const id=Number(item.battleId),side=battleSide(id),row=Math.floor(id/5);
+      let include=id===selectedId;
+      if(grouped){
+        if(action.kind==="attack")include=row===selectedRow;
+        else if(targetType===8)include=side===selectedSide;
+        else if(targetType===10)include=row===selectedRow;
+        else include=true;
+      }
+      if(include)result.add(id);
+    }
+    return result;
   }
   function battleFieldAllowed(entry){ const field=Number(entry?.field); return !Number.isFinite(field)||field!==2; }
   function battleLevelAllowed(entry){ const required=Number(entry?.level),level=Number(app.pc?.level); return !Number.isFinite(required)||required<=0||!Number.isFinite(level)||level>=required; }
@@ -14261,12 +14283,15 @@
        bridge, so this gate removes the transparent ACT_ATR_HIT_BOX in the
        same frame and prevents a second click from racing the first packet. */
     const pendingTarget=state.pendingAction&&battleActionAllowed(state.pendingAction,state)?state.pendingAction:null;
-    /* The actor layer is decorative during normal battle rendering, but its
-       transparent target buttons are real controls while H/T is waiting for
-       a click.  Expose that temporary state to keyboard/screen-reader users
-       without making every sprite an accessibility node. */
-    layer.setAttribute("aria-hidden",pendingTarget?"false":"true");
+    /* The depth-sorted actor surface is always decorative.  The original
+       client creates one hitDispNo per actor; expose that single hit owner in
+       the compositor-stable overlay instead of duplicating buttons in both
+       layers (the lower semantic button was covered by the upper one). */
+    layer.setAttribute("aria-hidden","true");
+    if(targetOverlay)targetOverlay.setAttribute("aria-hidden",pendingTarget?"false":"true");
+    if(!pendingTarget)state.battleHoverTarget=null;
     const canClickBattleActor=item=>Boolean(pendingTarget&&battleTargetSelectable(pendingTarget,item,state));
+    const highlightedTargetIds=battleTargetHighlightIds(state.battleHoverTarget,pendingTarget,state);
     const specs=participants.filter(item=>{
       const pending=escapePending.get(Number(item.battleId));
       if(!pending?.success)return true;
@@ -14337,64 +14362,19 @@
          changing CHR_ACT only swaps the frame inside an existing action. */
       let wrapper=state.actorNodes.get(battleNo);
       if(!wrapper){wrapper=document.createElement("div");state.actorNodes.set(battleNo,wrapper);}
-      const targetHovered=Number(state.battleHoverTarget)===battleNo;
-      wrapper.className=`battle-actor${spec.fadeOut||spec.motion.fade?" battle-fade":""}${spec.item?.dead&&!spec.deathPending?" battle-dead":""}${spec.motion.attack?" battle-attacking":""}${spec.motion.hit?" battle-hurt":""}${targetHovered?" battle-target-hover":""}`;
+      const targetHovered=highlightedTargetIds.has(battleNo);
+      wrapper.className=`battle-actor${spec.fadeOut||spec.motion.fade?" battle-fade":""}${spec.item?.dead&&!spec.deathPending?" battle-dead":""}${spec.motion.attack?" battle-attacking":""}${spec.motion.hit?" battle-hurt":""}`;
       wrapper.style.left=`${spec.point[0]}px`;wrapper.style.top=`${spec.point[1]}px`;wrapper.style.transform=`translate(${spec.motion.dx}px,${spec.motion.dy}px)`;wrapper.style.opacity=String(spec.motion.opacity);
       const frame=actorFrame(spec.actor);
-      let hit=wrapper.querySelector(":scope > .battle-target-hit");
-      let targetFrame=wrapper.querySelector(":scope > .battle-target-frame");
-      if(canClickBattleActor(spec.item)){
-        if(!hit){
-          hit=document.createElement("button");hit.type="button";hit.className="battle-target-hit";
-          hit.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();const item=hit._battleItem;if(item)sendBattleTarget(item);});
-          const setHover=active=>{
-            const current=hit._battleItem;
-            if(!current)return;
-            if(active){state.battleHoverTarget=Number(current.battleId);wrapper.classList.add("battle-target-hover");}
-            else if(Number(state.battleHoverTarget)===Number(current.battleId)){state.battleHoverTarget=null;wrapper.classList.remove("battle-target-hover");}
-          };
-          hit.addEventListener("mouseenter",()=>setHover(true));
-          hit.addEventListener("mouseleave",()=>setHover(false));
-          /* Chromium normally dispatches mouseenter for a button, but the
-             scaled battle surface can promote the transparent hit layer to a
-             compositor surface on touch/pen devices.  Pointer enter/leave
-             keeps the native target-frame feedback in that path as well;
-             CSS :hover above remains the final paint-time fallback. */
-          hit.addEventListener("pointerenter",()=>setHover(true));
-          hit.addEventListener("pointerleave",()=>setHover(false));
-          hit.addEventListener("focus",()=>setHover(true));
-          hit.addEventListener("blur",()=>setHover(false));
-        }
-        hit._battleItem=spec.item;
-        hit.setAttribute("aria-label",`选择目标 ${spec.item.name||spec.item.battleId}`);
-        wrapper.classList.add("battle-targetable");
-        /* MOUSE.CPP does not make the entire (often 60–100px tall) sprite a
-           target.  For ACT_ATR_HIT_BOX it tests a fixed MOUSE_HIT_SIZE_X/Y
-           rectangle (48×48) centred on the bitmap and anchored at its
-           bottom/foot: x = sprite.x + width/2 - 24, y = sprite.y + height -
-           48.  The bitmap bounds are used separately for the native hover
-           outline (StockBoxDispBuffer), so keep hit and frame geometry
-           distinct.  The old web code used one padded full-sprite rectangle;
-           adjacent 32×24 formation slots then overlapped and clicks could be
-           routed to the wrong actor. */
-        /* Keep a usable native-sized fallback while the sprite is decoding.
-           Without explicit geometry the first hover would collapse at the
-           wrapper origin and select empty ground. */
-        let hitLeft="-24px",hitTop="-48px",hitWidth="48px",hitHeight="48px";
-        let frameLeft="-2px",frameTop="-2px",frameWidth="52px",frameHeight="52px";
-        if(frame?.image?.naturalWidth){
-          const left=Number(frame.x)||0,top=Number(frame.y)||0,width=Math.max(1,Number(frame.image.naturalWidth)||1),height=Math.max(1,Number(frame.image.naturalHeight)||1);
-          hitLeft=`${left+width*.5-24}px`;hitTop=`${top+height-48}px`;hitWidth="48px";hitHeight="48px";
-          frameLeft=`${left-2}px`;frameTop=`${top-2}px`;frameWidth=`${width+4}px`;frameHeight=`${height+4}px`;
-        }
-        hit.style.left=hitLeft;hit.style.top=hitTop;hit.style.width=hitWidth;hit.style.height=hitHeight;
-        if(!hit.parentNode)wrapper.append(hit);
-        if(!targetFrame){targetFrame=document.createElement("span");targetFrame.className="battle-target-frame";wrapper.append(targetFrame);}
-        targetFrame.style.left=frameLeft;targetFrame.style.top=frameTop;targetFrame.style.width=frameWidth;targetFrame.style.height=frameHeight;
-      }else{
-        if(hit){hit._battleItem=null;hit.remove();}
-        if(targetFrame)targetFrame.remove();
-        if(Number(state.battleHoverTarget)===battleNo)state.battleHoverTarget=null;
+      /* MOUSE.CPP tests the fixed MOUSE_HIT_SIZE_X/Y 48x48 rectangle at the
+         sprite's feet, then draws the feedback rectangle around the complete
+         decoded bitmap. Calculate both directly for the one overlay record. */
+      let hitLeft=-24,hitTop=-48,hitWidth=48,hitHeight=48;
+      let frameLeft=-2,frameTop=-2,frameWidth=52,frameHeight=52;
+      if(frame?.image?.naturalWidth){
+        const left=Number(frame.x)||0,top=Number(frame.y)||0,width=Math.max(1,Number(frame.image.naturalWidth)||1),height=Math.max(1,Number(frame.image.naturalHeight)||1);
+        hitLeft=left+width*.5-24;hitTop=top+height-48;
+        frameLeft=left-2;frameTop=top-2;frameWidth=width+4;frameHeight=height+4;
       }
       /* Mirror the native ACT_ATR_HIT_BOX in a compositor-independent layer.
          The actor wrapper remains depth-sorted for sprites, while this proxy
@@ -14407,20 +14387,22 @@
           proxyHit=document.createElement("button");proxyHit.type="button";proxyHit.className="battle-target-hit";proxy.append(proxyHit);
           const setProxyHover=active=>{
             const current=proxyHit._battleItem;if(!current)return;
-            if(active){state.battleHoverTarget=Number(current.battleId);wrapper.classList.add("battle-target-hover");proxyFrame?.classList.add("is-active");}
-            else if(Number(state.battleHoverTarget)===Number(current.battleId)){state.battleHoverTarget=null;wrapper.classList.remove("battle-target-hover");proxyFrame?.classList.remove("is-active");}
+            if(active)paintBattleHoverTarget(Number(current.battleId));
+            else if(Number(state.battleHoverTarget)===Number(current.battleId))paintBattleHoverTarget(null);
           };
           proxyHit.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();const item=proxyHit._battleItem;if(item)sendBattleTarget(item);});
           proxyHit.addEventListener("mouseenter",()=>setProxyHover(true));proxyHit.addEventListener("mouseleave",()=>setProxyHover(false));
           proxyHit.addEventListener("pointerenter",()=>setProxyHover(true));proxyHit.addEventListener("pointerleave",()=>setProxyHover(false));proxyHit.addEventListener("focus",()=>setProxyHover(true));proxyHit.addEventListener("blur",()=>setProxyHover(false));
         }
         if(!proxyFrame){proxyFrame=document.createElement("span");proxyFrame.className="battle-target-frame";proxy.append(proxyFrame);}
+        /* DOM hit testing resolves equal-z siblings in paint order.  Move an
+           existing proxy into this frame's native depth order as well, so an
+           overlap selects the same frontmost actor as HitMouseCursor(). */
+        targetOverlay.append(proxy);
         proxyHit._battleItem=spec.item;proxyHit.setAttribute("aria-label",`选择目标 ${spec.item.name||spec.item.battleId}`);
-        const parsedHitLeft=Number.parseFloat(hit?.style.left),parsedHitTop=Number.parseFloat(hit?.style.top),localLeft=Number.isFinite(parsedHitLeft)?parsedHitLeft:-24,localTop=Number.isFinite(parsedHitTop)?parsedHitTop:-48,localWidth=hit?.style.width||"48px",localHeight=hit?.style.height||"48px";
         proxy.style.left=`${Number(spec.point[0])+Number(spec.motion.dx||0)}px`;proxy.style.top=`${Number(spec.point[1])+Number(spec.motion.dy||0)}px`;
-        proxyHit.style.left=`${localLeft}px`;proxyHit.style.top=`${localTop}px`;proxyHit.style.width=localWidth;proxyHit.style.height=localHeight;
-        const frameLeft=targetFrame?.style.left||"-2px",frameTop=targetFrame?.style.top||"-2px",frameWidth=targetFrame?.style.width||"52px",frameHeight=targetFrame?.style.height||"52px";
-        proxyFrame.style.left=frameLeft;proxyFrame.style.top=frameTop;proxyFrame.style.width=frameWidth;proxyFrame.style.height=frameHeight;proxyFrame.classList.toggle("is-active",targetHovered);
+        proxyHit.style.left=`${hitLeft}px`;proxyHit.style.top=`${hitTop}px`;proxyHit.style.width=`${hitWidth}px`;proxyHit.style.height=`${hitHeight}px`;
+        proxyFrame.style.left=`${frameLeft}px`;proxyFrame.style.top=`${frameTop}px`;proxyFrame.style.width=`${frameWidth}px`;proxyFrame.style.height=`${frameHeight}px`;proxyFrame.classList.toggle("is-active",targetHovered);
       }
       if(frame?.image?.complete&&frame.image.naturalWidth){
         let img=wrapper.querySelector(":scope > .battle-sprite");
@@ -14982,10 +14964,10 @@
   function paintBattleHoverTarget(targetId){
     const state=app.battleState;if(!state)return;
     const next=Number.isInteger(Number(targetId))?Number(targetId):null;
-    state.battleHoverTarget=next;
-    for(const [id,node] of state.actorNodes||[])node.classList.toggle("battle-target-hover",next!==null&&Number(id)===next);
+    const highlighted=battleTargetHighlightIds(next,state.pendingAction,state);
+    state.battleHoverTarget=highlighted.size?next:null;
     document.querySelectorAll("#battle-target-overlay [data-battle-target]").forEach(proxy=>{
-      const active=next!==null&&Number(proxy.dataset.battleTarget)===next;
+      const active=highlighted.has(Number(proxy.dataset.battleTarget));
       proxy.querySelector(".battle-target-frame")?.classList.toggle("is-active",active);
     });
   }

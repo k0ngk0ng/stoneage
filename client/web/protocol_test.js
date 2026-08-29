@@ -823,9 +823,9 @@ for (const expected of [
      wraps the complete bitmap.  Keep those geometries separate so adjacent
      32×24 formation slots cannot swallow each other's target click. */
   /MOUSE_HIT_SIZE_X\/Y/,
-  /hitLeft=`\$\{left\+width\*\.5-24\}px/,
-  /frameLeft=`\$\{left-2\}px/,
-  /const parsedHitLeft=Number\.parseFloat\(hit\?\.style\.left\),parsedHitTop=Number\.parseFloat\(hit\?\.style\.top\)/,
+  /hitLeft=left\+width\*\.5-24;hitTop=top\+height-48/,
+  /frameLeft=left-2;frameTop=top-2;frameWidth=width\+4;frameHeight=height\+4/,
+  /proxyHit\.style\.left=`\$\{hitLeft\}px`;proxyHit\.style\.top=`\$\{hitTop\}px`/,
   /* BP_FLG_BOOMERANG follows BattleButtonAttack(): allow every living
      actor outside BattleMyNo's five-slot row, then send the clicked actor id
      unchanged so the 2.5 server can perform its bid/5 row conversion. */
@@ -1607,6 +1607,46 @@ if(battleContextMenuStart<0||battleContextMenuEnd<=battleContextMenuStart||
    !/app\.phase==="battle"&&app\.battle/.test(battleContextMenuSource)||!/cancelBattleSelectionFromContextMenu\(\)/.test(battleContextMenuSource)||
    /battleScreen\.addEventListener\("contextmenu"/.test(script)){
   throw new Error("top-level battle target overlay must route document contextmenu to native right-click cancel");
+}
+/* SPRDISP.CPP creates exactly one DISP_INFO/hitDispNo for each actor.  Keep
+   the compositor-stable overlay as that sole DOM owner: a second transparent
+   button in the depth-sorted actor wrapper is both non-native and covered by
+   the overlay during real/semantic clicks. */
+const battleWorldRenderStart=script.indexOf("  function renderBattleWorld(){");
+const battleWorldRenderEnd=script.indexOf("  function enterBattle(",battleWorldRenderStart);
+const battleWorldRenderSource=script.slice(battleWorldRenderStart,battleWorldRenderEnd);
+if(battleWorldRenderStart<0||battleWorldRenderEnd<=battleWorldRenderStart||
+   (battleWorldRenderSource.match(/document\.createElement\("button"\)/g)||[]).length!==1||
+   /wrapper\.querySelector\(":scope > \.battle-target-hit"\)/.test(battleWorldRenderSource)||
+   /#battle-actors-layer \.battle-target-hit/.test(html)||
+   !/layer\.setAttribute\("aria-hidden","true"\)/.test(battleWorldRenderSource)||
+   !/targetOverlay\.setAttribute\("aria-hidden",pendingTarget\?"false":"true"\)/.test(battleWorldRenderSource)||
+   !/targetOverlay\.append\(proxy\)/.test(battleWorldRenderSource)||
+   !/proxyHit\.style\.left=`\$\{hitLeft\}px`/.test(battleWorldRenderSource)){
+  throw new Error("each selectable battle actor must have exactly one ordered overlay hit owner");
+}
+for(const expected of [
+  /#battle-target-overlay \.battle-target-frame \{[^}]*border:1px solid #00ff00[^}]*background:transparent[^}]*animation:battle-target-box-color/,
+  /@keyframes battle-target-box-color\{0%,74%\{border-color:#00ff00\}75%,83%\{border-color:#28e128\}84%,91%\{border-color:#008000\}/,
+])if(!expected.test(html))throw new Error(`native green battle target rectangle regression: ${expected}`);
+/* CheckGroupSelect() outlines all actors that carry the clicked grouped
+   hitFlag.  Exercise ordinary, boomerang-row, side, row and all-target
+   expansion independently from the DOM renderer. */
+const battleHighlightStart=script.indexOf("  function battleTargetHighlightIds(");
+const battleHighlightEnd=script.indexOf("  function battleFieldAllowed(",battleHighlightStart);
+if(battleHighlightStart<0||battleHighlightEnd<=battleHighlightStart)throw new Error("battle target highlight helper boundary missing");
+const battleTargetHighlightIds=new Function("battleTargetSelectable","battleSide","BATTLE_BP_BOOMERANG","app",`${script.slice(battleHighlightStart,battleHighlightEnd)};return battleTargetHighlightIds;`)(
+  ()=>true,id=>Number(id)<10?0:1,1,{}
+);
+const highlightParticipants=[0,1,5,10,11,15].map(battleId=>({battleId}));
+const highlightState={participants:highlightParticipants,bpFlags:0};
+const highlighted=(id,action,state=highlightState)=>[...battleTargetHighlightIds(id,action,state)].sort((a,b)=>a-b).join(",");
+if(highlighted(10,{kind:"attack"})!=="10"||
+   highlighted(10,{kind:"attack"},{...highlightState,bpFlags:1})!=="10,11"||
+   highlighted(10,{kind:"magic",targetType:8})!=="10,11,15"||
+   highlighted(10,{kind:"magic",targetType:10})!=="10,11"||
+   highlighted(10,{kind:"magic",targetType:4})!=="0,1,5,10,11,15"){
+  throw new Error("native grouped battle target outlines drifted");
 }
 /* MOUSE.CPP only reports a target after the physical pointer enters the
    48x48 foot box; the complete sprite rectangle is an outline painted after
