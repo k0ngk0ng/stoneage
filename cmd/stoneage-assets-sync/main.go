@@ -364,6 +364,45 @@ func readManifest(bucket *oss.Bucket, key string) (clientManifest, error) {
 }
 
 func syncObjects(bucket *oss.Bucket, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
+	// Browser metadata is the index which makes the rest of the client
+	// addressable.  Upload it only after every image/map/audio object has
+	// finished so a CDN revalidation cannot observe a new index pointing at a
+	// file that is still being uploaded.  The publication manifest below is
+	// written after both phases as the final commit marker.
+	regular, metadata := partitionPublicationObjects(objects)
+	for _, batch := range [][]plannedObject{regular, metadata} {
+		batchUploaded, batchSkipped, batchErr := syncObjectBatch(bucket, batch, previous, workers)
+		uploaded += batchUploaded
+		skipped += batchSkipped
+		if batchErr != nil {
+			return uploaded, skipped, batchErr
+		}
+	}
+	return uploaded, skipped, nil
+}
+
+// partitionPublicationObjects returns ordinary payloads first and browser
+// indexes last.  JSON files are the generated sprite/bitmap manifests; the
+// auto.dat file is the map index used by the automatic-map decoder.
+func partitionPublicationObjects(objects []plannedObject) (regular, metadata []plannedObject) {
+	regular = make([]plannedObject, 0, len(objects))
+	metadata = make([]plannedObject, 0)
+	for _, object := range objects {
+		if publicationMetadataKey(object.Key) {
+			metadata = append(metadata, object)
+			continue
+		}
+		regular = append(regular, object)
+	}
+	return regular, metadata
+}
+
+func publicationMetadataKey(key string) bool {
+	clean := path.Clean(key)
+	return strings.HasSuffix(strings.ToLower(clean), ".json") || path.Base(clean) == "auto.dat"
+}
+
+func syncObjectBatch(bucket *oss.Bucket, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
 	type uploadJob struct{ object plannedObject }
 	jobs := make(chan uploadJob, workers*2)
 	done := make(chan struct{})
@@ -418,7 +457,7 @@ func syncObjects(bucket *oss.Bucket, objects []plannedObject, previous map[strin
 			}
 		}()
 	}
-	send:
+send:
 	for _, object := range objects {
 		select {
 		case <-done:

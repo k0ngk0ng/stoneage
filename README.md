@@ -147,7 +147,9 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 同步器会在固定根目录写入 `stoneage/_client-manifest.json`。清单记录每个公开对象的
 大小和 SHA-256；后续发布只上传变化的文件，全部成功后才更新清单，失败重试不会把
 客户端清单提前切到半套资源。资源 URL 仍然是不带 tag 的固定
-`stoneage/{assets,maps,audio}/`，因此不会按版本复制整套客户端。
+`stoneage/{assets,maps,audio}/`，因此不会按版本复制整套客户端。每次发布先上传图片、
+地图和音频，再上传浏览器索引（`*.json` 与 `audio/auto.dat`），最后才写发布清单，
+避免 CDN 在发布中途拿到新索引却找不到对应资源。
 
 首次配置 OSS 时，把凭据分别写入部署机上的两个 secret 文件（不要把值提交到
 `.env` 或 Git）：

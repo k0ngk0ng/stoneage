@@ -115,6 +115,36 @@ func TestBuildPlanContainsStableHashesAndKeys(t *testing.T) {
 	}
 }
 
+func TestPartitionPublicationObjectsUploadsPayloadBeforeIndexes(t *testing.T) {
+	objects := []plannedObject{
+		{Key: "stoneage/assets/manifest.json"},
+		{Key: "stoneage/assets/bitmaps/bitmap_1.png"},
+		{Key: "stoneage/audio/auto.dat"},
+		{Key: "stoneage/maps/100.MAP"},
+		{Key: "stoneage/assets/sprites.json"},
+	}
+	regular, metadata := partitionPublicationObjects(objects)
+	if got := []string{regular[0].Key, regular[1].Key}; !reflect.DeepEqual(got, []string{"stoneage/assets/bitmaps/bitmap_1.png", "stoneage/maps/100.MAP"}) {
+		t.Fatalf("regular publication objects = %#v", got)
+	}
+	if got := []string{metadata[0].Key, metadata[1].Key, metadata[2].Key}; !reflect.DeepEqual(got, []string{"stoneage/assets/manifest.json", "stoneage/audio/auto.dat", "stoneage/assets/sprites.json"}) {
+		t.Fatalf("metadata publication objects = %#v", got)
+	}
+}
+
+func TestPublicationMetadataKeyOnlyMatchesIndexes(t *testing.T) {
+	for _, key := range []string{"stoneage/assets/manifest.json", "stoneage/audio/auto.dat", "stoneage/assets/nested/SPRITES.JSON"} {
+		if !publicationMetadataKey(key) {
+			t.Errorf("publication metadata key %q was not recognized", key)
+		}
+	}
+	for _, key := range []string{"stoneage/assets/bitmap_1.png", "stoneage/maps/100.MAP", "stoneage/audio/bgm/0.wav"} {
+		if publicationMetadataKey(key) {
+			t.Errorf("payload key %q was recognized as metadata", key)
+		}
+	}
+}
+
 func TestClientManifestRoundTrips(t *testing.T) {
 	manifest := clientManifest{Format: 1, Generated: "2026-08-30T00:00:00Z", Objects: map[string]manifestObject{
 		"stoneage/assets/a": {Size: 3, SHA256: "abc"},
