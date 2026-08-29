@@ -976,6 +976,13 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			http.NotFound(response, request)
 			return
 		}
+		// Asset manifests retain stable URLs between releases but can acquire
+		// new logical-to-physical ADRN aliases.  Force revalidation so a browser
+		// reload cannot keep an old index and silently hide newly deployed item
+		// or sprite graphics.  The referenced binary assets remain cacheable.
+		if strings.HasSuffix(strings.ToLower(request.URL.Path), ".json") {
+			response.Header().Set("Cache-Control", "no-cache")
+		}
 		handler.assets.ServeHTTP(response, request)
 		return
 	}

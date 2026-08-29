@@ -1331,7 +1331,7 @@
   ]);
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
   const STONEAGE_25=Object.freeze({version:"2.5",executable:"sa_2903.exe",runningKey:"cary"});
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* renderWorld() calls scheduleWorldAnimation() at their tail.  During an
      animation tick that call must be ignored; otherwise each tick installs a
      second timeout before the original tick installs its continuation, and
@@ -2023,15 +2023,51 @@
       z-index:20;
     }
     #party-screen #party-close{left:92px;top:433px}
-    /* ITEM_WND is a bitmap inventory. Keep icon hit areas in the native
-       five-column grid and never fall back to data-card panels. */
-    #inventory-screen #inventory-list{left:0!important;top:0!important;width:640px!important;height:440px!important;display:block!important;overflow:visible!important;pointer-events:none}
-    #inventory-screen .legacy-item-slot{position:absolute;width:50px;height:48px;padding:0;margin:0;pointer-events:auto;background:transparent;border:0;box-shadow:none}
-    #inventory-screen .legacy-item-slot img{position:absolute;left:0;top:0;width:48px;height:48px;object-fit:contain;image-rendering:pixelated;pointer-events:none}
-    #inventory-screen .legacy-item-slot .item-label{position:absolute;left:-18px;top:48px;width:84px;color:#f5ecd4;font:10px/13px Tahoma,"Microsoft YaHei",sans-serif;white-space:nowrap;overflow:hidden;text-align:center;text-shadow:1px 1px #080706}
-    #inventory-screen #inventory-list .legacy-item-empty{position:absolute;left:382px;top:336px;width:236px;color:#b8ad8e;text-align:center;pointer-events:none}
+    /* MENU.CPP::InitItem stores the StockDispBuffer centre, not a CSS
+       top-left.  Each native hit box is centre-24 .. centre+26 horizontally
+       and centre-24 .. centre+23 vertically.  Preserve those 51x48 regions;
+       item PNGs keep the ADRN x/y offsets from manifest.json instead of being
+       stretched into guessed 48px squares. */
+    #inventory-screen #inventory-list{left:0!important;top:0!important;width:640px!important;height:480px!important;display:block!important;overflow:visible!important;pointer-events:none}
+    #inventory-screen .legacy-item-slot{position:absolute;width:51px;height:48px;padding:0;margin:0;pointer-events:auto;background:transparent;border:0;outline:1px solid transparent;box-shadow:none;appearance:none;-webkit-appearance:none;touch-action:none}
+    #inventory-screen .legacy-item-slot:hover,#inventory-screen .legacy-item-slot:focus-visible{outline-color:#fff6a8;filter:none}
+    #inventory-screen .legacy-item-slot.item-selected{outline-color:#60ffff;box-shadow:0 0 0 1px #178d91 inset}
+    #inventory-screen .legacy-item-slot .legacy-item-icon,#inventory-screen .inventory-drag-icon,#inventory-screen .inventory-magic-icon{position:absolute;display:block;max-width:none;max-height:none;object-fit:none;image-rendering:pixelated;pointer-events:none}
+    #inventory-screen .inventory-drag-icon{z-index:28}
+    #inventory-screen .inventory-item-name,#inventory-screen .inventory-item-memo,#inventory-screen .inventory-gold-value{position:absolute;margin:0;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;white-space:pre;pointer-events:none}
+    #inventory-screen .inventory-item-name{left:381px;top:335px;width:238px;height:16px;overflow:hidden}
+    #inventory-screen .inventory-item-memo{left:381px;top:362px;width:238px;height:72px;line-height:24px;overflow:hidden;white-space:pre-wrap}
+    #inventory-screen .inventory-gold-owned{left:557px;top:91px;width:70px;text-align:left;font-variant-numeric:tabular-nums}
+    #inventory-screen .inventory-gold-drop{left:557px;top:142px;width:70px;text-align:left;font-variant-numeric:tabular-nums}
+    #inventory-screen .inventory-jujutsu,#inventory-screen .inventory-gold-button,#inventory-screen .inventory-page-return,#inventory-screen #inventory-close,#inventory-screen .inventory-target-return{position:absolute;margin:0;padding:0;color:transparent;font-size:0;border:0;box-shadow:none;background-color:transparent;background-position:0 0;background-repeat:no-repeat;background-size:100% 100%;image-rendering:pixelated;pointer-events:auto;touch-action:none}
+    #inventory-screen .inventory-jujutsu{left:541px;top:30px;width:88px;height:27px;background-image:url('/assets/bitmaps/bitmap_9188.png')}
+    #inventory-screen .inventory-gold-drop-button{left:538px;top:116px;width:52px;height:17px;background-image:url('/assets/bitmaps/bitmap_9181.png')}
+    #inventory-screen .inventory-gold-drop-button:active,#inventory-screen .inventory-gold-drop-button.pressed{background-image:url('/assets/bitmaps/bitmap_9182.png');filter:none}
+    #inventory-screen .inventory-gold-increase{left:594px;top:118px;width:16px;height:14px;background-image:url('/assets/bitmaps/bitmap_9183.png')}
+    #inventory-screen .inventory-gold-increase:active,#inventory-screen .inventory-gold-increase.pressed{background-image:url('/assets/bitmaps/bitmap_9184.png');filter:none}
+    #inventory-screen .inventory-gold-decrease{left:613px;top:118px;width:16px;height:14px;background-image:url('/assets/bitmaps/bitmap_9185.png')}
+    #inventory-screen .inventory-gold-decrease:active,#inventory-screen .inventory-gold-decrease.pressed{background-image:url('/assets/bitmaps/bitmap_9186.png');filter:none}
+    #inventory-screen #inventory-close{left:460px;top:418px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9134.png')}
+    #inventory-screen .inventory-magic-row{position:absolute;left:394px;width:142px;height:18px;margin:0;padding:0;color:#f5ecd4;background:transparent;border:0;box-shadow:none;font:11px/18px Tahoma,"Microsoft YaHei",sans-serif;text-align:center;text-shadow:1px 1px #080706;pointer-events:auto;white-space:nowrap;overflow:hidden;appearance:none;-webkit-appearance:none}
+    #inventory-screen .inventory-magic-row:hover,#inventory-screen .inventory-magic-row:focus-visible{color:#ffe88b;filter:none;outline:0;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
+    #inventory-screen .inventory-magic-row.magic-selected{color:#60ffff}
+    #inventory-screen .inventory-magic-row.magic-insufficient{color:#f2695f}
+    #inventory-screen .inventory-magic-row.magic-disabled{color:#8b8984}
+    #inventory-screen .inventory-magic-empty{position:absolute;left:394px;top:39px;width:210px;height:18px;color:#f5ecd4;font:11px/18px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
+    #inventory-screen .inventory-magic-cost{position:absolute;left:519px;top:187px;width:66px;height:16px;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-align:left;text-shadow:1px 1px #080706;white-space:pre;pointer-events:none}
+    #inventory-screen .inventory-magic-memo{position:absolute;left:438px;top:212px;width:178px;height:64px;overflow:hidden;color:#f5ecd4;font:11px/24px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;white-space:pre-wrap;pointer-events:none}
+    #inventory-screen .inventory-page-return{left:460px;top:268px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9135.png')}
+    #inventory-screen .inventory-target-party{position:absolute;left:0;top:0;width:260px;height:456px;z-index:12;background:url('/assets/bitmaps/bitmap_9190.png') 4px 0/256px 456px no-repeat;image-rendering:pixelated;pointer-events:none}
+    #inventory-screen .inventory-target-party .legacy-party-row{position:absolute;left:0;width:256px;height:40px;margin:0;padding:0;color:#f5ecd4;background:transparent;border:0;box-shadow:none;font:11px/20px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:auto;appearance:none;-webkit-appearance:none}
+    #inventory-screen .inventory-target-party .legacy-party-row:disabled{pointer-events:none;color:#f5ecd4;opacity:1}
+    #inventory-screen .inventory-target-party .legacy-party-row:not(:disabled):hover,#inventory-screen .inventory-target-party .legacy-party-row:not(:disabled):focus-visible{color:#60ffff;filter:none;outline:1px solid #60ffff}
+    #inventory-screen .inventory-target-party .party-name{position:absolute;left:21px;top:0;width:128px;overflow:hidden;white-space:nowrap;text-align:center}
+    #inventory-screen .inventory-target-party .party-mp,#inventory-screen .inventory-target-party .party-hp,#inventory-screen .inventory-target-party .party-max-hp{position:absolute;top:20px;width:32px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+    #inventory-screen .inventory-target-party .party-mp{left:98px}
+    #inventory-screen .inventory-target-party .party-hp{left:163px}
+    #inventory-screen .inventory-target-party .party-max-hp{left:203px}
+    #inventory-screen .inventory-target-return{left:92px;top:433px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9135.png')}
     #inventory-screen #inventory-status{display:none}
-    #inventory-screen #inventory-close{left:462px;top:422px}
     #inventory-screen .toolbar-row,#party-screen .toolbar-row,#album-screen .toolbar-row{display:none!important}
     #album-screen #album-status{display:none}
     #album-screen #album-list{left:0!important;top:0!important;width:272px!important;height:448px!important;overflow:visible!important;pointer-events:none}
@@ -2673,7 +2709,10 @@
       status:{bitmap:9192,x:4,y:4,w:272,h:360},
       pets:{bitmap:9164,x:4,y:4,w:272,h:320},
       party:{bitmap:9190,x:4,y:0,w:256,h:456},
-      inventory:{bitmap:9179,bitmap2:9180,x:365,y:4,w:272,h:440},
+      /* MakeWindowDisp receives x=365 and width=271, so integer centre mx is
+         500.  Both CG_ITEM_WND records carry xoffset=-136: their visible
+         pixels therefore begin at 364, one pixel left of pActMenuWnd2->x. */
+      inventory:{bitmap:9179,bitmap2:9180,x:364,y:4,w:272,h:440},
       map:{bitmap:9200,x:388,y:4,w:248,h:240},
       social:{bitmap:9201,x:4,y:4,w:272,h:440},
       album:{bitmap:9286,x:4,y:4,w:272,h:448},
@@ -2712,7 +2751,7 @@
       if(spec.bitmap2)section.style.setProperty("--legacy-bg2",`url('/assets/bitmaps/bitmap_${spec.bitmap2}.png')`);
       if(name==="inventory"){
         section.style.setProperty("--legacy-bg-w","272px");section.style.setProperty("--legacy-bg-h","172px");
-        section.style.setProperty("--legacy-bg2-x","365px");section.style.setProperty("--legacy-bg2-y","163px");section.style.setProperty("--legacy-bg2-w","272px");section.style.setProperty("--legacy-bg2-h","281px");
+        section.style.setProperty("--legacy-bg2-x","364px");section.style.setProperty("--legacy-bg2-y","163px");section.style.setProperty("--legacy-bg2-w","272px");section.style.setProperty("--legacy-bg2-h","281px");
       }
       if(spec.native){
         section.classList.add("legacy-native-window");
@@ -3276,7 +3315,7 @@
      submit.  This makes a fresh page and a logout back to the title follow
      the same music lifecycle. */
   setMusicMode("title",2);
-  function openPanel(name){ if(app.trade?.active||(app.phase!=="world"&&name!=="journal"))return; advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`)); syncFieldOverlayVisibility(); setActivePanelButton(name); if(name==="inventory")renderInventory(); if(name==="pets"){app.petMenuPage="list";app.petSkillHover=-1;renderPets();} if(name==="status")renderStatus(); if(name==="party")renderPartyFixed(); if(name==="map")renderMapDetails(); if(name==="social")renderSocial(); if(name==="titles")renderTitles(); if(name==="album")renderAlbumFixed(); if(name==="system"){app.systemPage="menu";renderSystem();} if(name==="actions")renderProtocolFields(); if(name==="journal")renderJournal(); if(name==="help"){app.helpPage=0;renderHelp();} }
+  function openPanel(name){ if(app.trade?.active||(app.phase!=="world"&&name!=="journal"))return; if(name!=="inventory"){stopInventoryGoldHold();cancelInventoryDrag();} advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`)); syncFieldOverlayVisibility(); setActivePanelButton(name); if(name==="inventory"){app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.selectedItem=-1;app.selectedMagic=-1;renderInventory();} if(name==="pets"){app.petMenuPage="list";app.petSkillHover=-1;renderPets();} if(name==="status")renderStatus(); if(name==="party")renderPartyFixed(); if(name==="map")renderMapDetails(); if(name==="social")renderSocial(); if(name==="titles")renderTitles(); if(name==="album")renderAlbumFixed(); if(name==="system"){app.systemPage="menu";renderSystem();} if(name==="actions")renderProtocolFields(); if(name==="journal")renderJournal(); if(name==="help"){app.helpPage=0;renderHelp();} }
   function status(text,kind="") { $("connection").textContent=text; $("connection").style.color=kind==="error"?"var(--danger)":kind==="good"?"var(--good)":"var(--muted)"; }
   function loginStatus(text,kind="") { const element=$("login-status"); element.textContent=text; element.className="status"+(kind?" "+kind:""); }
   function characterStatus(text,kind="") { const element=$("character-status"); element.textContent=text; element.className="status"+(kind?" "+kind:""); }
@@ -4221,7 +4260,11 @@
     let timeout=0;
     const armTimeout=()=>{window.clearTimeout(timeout);timeout=window.setTimeout(()=>controller?.abort(),20000);};
     armTimeout();
-    assetState.loading=fetch(ASSET_MANIFEST_URL,{cache:"force-cache",signal:controller?.signal}).then(async response=>{
+    /* Manifests keep stable URLs across an MVP deploy while their logical
+       ADRN aliases can change (for example when the item pack is extended).
+       Revalidate the small index on each page load; the much larger PNG/WAV
+       payloads still retain their normal long-lived browser cache. */
+    assetState.loading=fetch(ASSET_MANIFEST_URL,{cache:"no-cache",signal:controller?.signal}).then(async response=>{
       if(!response.ok)throw new Error(`资源清单 HTTP ${response.status}`);
       const buffer=await readAssetResponseBytes(response,()=>{
         /* The timeout is a no-progress watchdog, not a total download limit;
@@ -4263,7 +4306,7 @@
     if(assetState.creationSpritesReady)return Promise.resolve(assetState.creationSprites);
     if(assetState.creationSpriteLoading)return assetState.creationSpriteLoading;
     assetState.creationSpritesFailed=false;
-    assetState.creationSpriteLoading=fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"force-cache"}).then(async response=>{
+    assetState.creationSpriteLoading=fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`人物精灵资源 HTTP ${response.status}`);
       return response.json();
     }).then(payload=>{
@@ -4285,7 +4328,7 @@
     if(assetState.fieldSpritesReady)return Promise.resolve(assetState.fieldSprites);
     if(assetState.fieldSpriteLoading)return assetState.fieldSpriteLoading;
     assetState.fieldSpritesFailed=false;
-    assetState.fieldSpriteLoading=fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"force-cache"}).then(async response=>{
+    assetState.fieldSpriteLoading=fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`场景动作资源 HTTP ${response.status}`);
       return response.json();
     }).then(payload=>{
@@ -4321,7 +4364,7 @@
     if(assetState.spriteLoading)return assetState.spriteLoading;
     assetState.spriteBytes=0;assetState.spriteTotalBytes=0;assetState.spritesFailed=false;
     const progress={_spriteProgress:true,spriteBytes:0,spriteTotalBytes:0};
-    assetState.spriteLoading=fetch(`${SPRITE_MANIFEST_URL}`,{cache:"force-cache"}).then(async response=>{
+    assetState.spriteLoading=fetch(`${SPRITE_MANIFEST_URL}`,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`精灵资源 HTTP ${response.status}`);
       const buffer=await readAssetResponseBytes(response,()=>{
         assetState.spriteBytes=Number(progress.spriteBytes)||0;
@@ -4736,25 +4779,207 @@
   function parsePipeRecords(text,width,mapper) { const tokens=String(text||"").split("|"); const result=[]; for(let offset=0;offset+width<=tokens.length;offset+=width){ if(offset===tokens.length-1&&tokens[offset]==="")break; result.push(mapper(tokens.slice(offset,offset+width),offset/width)); } return result; }
   function receiveInventory(text,indexed=true) {
     const tokens=String(text||"").split("|"),items=[],width=indexed?10:9;
+    /* NETPROC.CPP::lssproto_I_recv applies every indexed ten-field record to
+       pc.item[i] in place.  GMSV therefore answers DI with a one-record
+       tombstone such as `5|||||||||`; replacing the whole browser array here
+       made dropping one item hide every other item until the next login.
+       The unindexed login/status form is the complete 20-slot snapshot and
+       still replaces the old array. */
+    const merged=indexed?new Map(app.inventory.map(item=>[decimal(item?.index,-1),item])):null;
     for(let offset=0;offset+width<=tokens.length;offset+=width){
       const index=indexed?decimal(tokens[offset],offset/width):offset/width,base=indexed?offset+1:offset;
-      const name=tokens[base]||"";if(!name)continue;
+      if(index<0||index>=20)continue;
+      const name=tokens[base]||"";
+      if(!name){if(indexed)merged.delete(index);continue;}
       const targetRaw=decimal(tokens[base+6]),item={index,name:unescapeCharacterOption(name),name2:unescapeCharacterOption(tokens[base+1]||""),color:decimal(tokens[base+2]),memo:unescapeCharacterOption(tokens[base+3]||""),graphic:decimal(tokens[base+4]),field:decimal(tokens[base+5]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,level:decimal(tokens[base+7]),send:decimal(tokens[base+8])};
-      items.push(item);
+      if(indexed)merged.set(index,item);else items.push(item);
     }
-    app.inventory=items; $("inventory-status").textContent=`服务器背包记录 ${items.length} 件；${indexed?"更新包按 10 字段":"登录状态按 9 字段"}解析。`; renderInventory();if(app.trade?.active)renderTrade();
+    app.inventory=indexed?[...merged.values()].filter(item=>decimal(item?.index,-1)>=0).sort((left,right)=>decimal(left.index)-decimal(right.index)):items;
+    $("inventory-status").textContent=`服务器背包记录 ${app.inventory.length} 件；${indexed?"更新包按 10 字段":"登录状态按 9 字段"}解析。`; renderInventory();if(app.trade?.active)renderTrade();
   }
-  function renderInventory() {
-    const list=$("inventory-list"); if(!list)return; list.replaceChildren();
-    const fixed=[[501,63],[499,133],[426,133],[397,72],[448,72]];
-    for(let i=5;i<20;i++){const j=(i-5)%5,k=Math.floor((i-5)/5);fixed[i]=[397+j*51,204+k*48];}
-    for(const item of app.inventory){const index=decimal(item.index,-1),point=fixed[index];if(!point)continue;const slot=document.createElement("button");slot.type="button";slot.className="legacy-item-slot";slot.style.left=`${point[0]}px`;slot.style.top=`${point[1]}px`;slot.setAttribute("aria-label",item.name||`物品 ${index}`);slot.title=item.name||"";
-      const info=resolveBitmapInfo(item.graphic);if(info?.file){const icon=document.createElement("img");icon.src=`/assets/${info.file}`;icon.alt="";slot.append(icon);}
-      slot.addEventListener("dblclick",()=>send("ID",[app.position[0],app.position[1],index,0]).catch(reportError));
-      slot.addEventListener("contextmenu",event=>{event.preventDefault();send("DI",[app.position[0],app.position[1],index]).catch(reportError);});
-      list.append(slot);
+  const INVENTORY_SLOT_CENTERS=Object.freeze([
+    [501,63],[499,133],[426,133],[397,72],[448,72],
+    [397,204],[448,204],[499,204],[550,204],[601,204],
+    [397,252],[448,252],[499,252],[550,252],[601,252],
+    [397,300],[448,300],[499,300],[550,300],[601,300],
+  ]);
+  const INVENTORY_SURFACES=Object.freeze({
+    items:{x:364,y:4,w:272,h:172,bg:9179,x2:364,y2:163,w2:272,h2:281,bg2:9180},
+    /* itemWndNo=1 submits CG_JUJUTU_WND at (mx,my+10). Its ADRN origin
+       (-136,-152) makes the decoded pixels begin at (364,2). */
+    magic:{x:364,y:2,w:272,h:292,bg:9187,x2:0,y2:0,w2:0,h2:0,bg2:0},
+  });
+  function inventoryItem(index){return app.inventory.find(item=>decimal(item?.index,-1)===decimal(index,-2))||null;}
+  function inventoryLogicalPoint(event){
+    const screen=$("inventory-screen"),rect=screen?.getBoundingClientRect?.();
+    if(!rect||rect.width<=0||rect.height<=0)return null;
+    const clientX=Number(event?.clientX),clientY=Number(event?.clientY);if(!Number.isFinite(clientX)||!Number.isFinite(clientY))return null;
+    return {x:(clientX-rect.left)*640/rect.width,y:(clientY-rect.top)*480/rect.height};
+  }
+  function inventorySlotAtLogicalPoint(point){
+    if(!point)return -1;
+    for(let index=0;index<INVENTORY_SLOT_CENTERS.length;index++){
+      const [x,y]=INVENTORY_SLOT_CENTERS[index];
+      if(point.x>=x-24&&point.x<=x+26&&point.y>=y-24&&point.y<=y+23)return index;
     }
-    const close=imageButton("关闭物品窗口",9134,()=>show(worldScreen),80,16);close.id="inventory-close";list.append(close);
+    return -1;
+  }
+  function setInventorySurface(page){
+    const screen=$("inventory-screen"),surface=INVENTORY_SURFACES[page]||INVENTORY_SURFACES.items;if(!screen)return;
+    screen.dataset.inventoryPage=page;screen.style.setProperty("--legacy-bg",`url('/assets/bitmaps/bitmap_${surface.bg}.png')`);
+    screen.style.setProperty("--legacy-bg-x",`${surface.x}px`);screen.style.setProperty("--legacy-bg-y",`${surface.y}px`);screen.style.setProperty("--legacy-bg-w",`${surface.w}px`);screen.style.setProperty("--legacy-bg-h",`${surface.h}px`);
+    screen.style.setProperty("--legacy-bg2",surface.bg2?`url('/assets/bitmaps/bitmap_${surface.bg2}.png')`:"none");
+    screen.style.setProperty("--legacy-bg2-x",`${surface.x2}px`);screen.style.setProperty("--legacy-bg2-y",`${surface.y2}px`);screen.style.setProperty("--legacy-bg2-w",`${surface.w2}px`);screen.style.setProperty("--legacy-bg2-h",`${surface.h2}px`);
+  }
+  function appendInventoryBitmap(parent,info,centerX,centerY,className){
+    if(!parent||!info?.file)return null;
+    const image=document.createElement("img");image.className=className;image.alt="";image.draggable=false;image.src=`/assets/${info.file}`;
+    const width=Math.max(0,Number(info.width)||0),height=Math.max(0,Number(info.height)||0);
+    const offsetX=Number.isFinite(Number(info.xoffset))?Number(info.xoffset):-width/2,offsetY=Number.isFinite(Number(info.yoffset))?Number(info.yoffset):-height/2;
+    image.style.left=`${centerX+offsetX}px`;image.style.top=`${centerY+offsetY}px`;if(width)image.style.width=`${width}px`;if(height)image.style.height=`${height}px`;parent.append(image);return image;
+  }
+  function inventoryTextLines(value,maxBytes=28,maxLines=3){
+    const lines=[];
+    for(const physical of String(value||"").replace(/\r/g,"").split("\n")){
+      let line="",bytes=0;
+      for(const character of Array.from(physical)){
+        const width=character.charCodeAt(0)>0x7f?2:1;
+        if(line&&bytes+width>maxBytes){lines.push(line);line="";bytes=0;if(lines.length>=maxLines)return lines;}
+        line+=character;bytes+=width;
+      }
+      if(line||!physical)lines.push(line);if(lines.length>=maxLines)return lines;
+    }
+    return lines;
+  }
+  function inventoryItemFontColor(item){
+    if(decimal(app.pc?.level,0)<decimal(item?.level,0))return "#f2695f";
+    return ["#f5ecd4","#60ffff","#f2695f","#8b8984","#ffe85d","#6df47c"][Math.max(0,decimal(item?.color,0))]||"#f5ecd4";
+  }
+  function setInventoryHover(index){
+    app.inventoryHoveredItem=decimal(index,-1);const item=inventoryItem(index),name=$("inventory-item-name"),memo=$("inventory-item-memo");
+    if(name){name.textContent=item?.name||"";name.style.color=item?inventoryItemFontColor(item):"";}
+    if(memo)memo.textContent=item?inventoryTextLines(item.memo,28,3).join("\n"):"";
+  }
+  function updateInventoryDropGoldText(){
+    const owned=$("inventory-gold-owned"),drop=$("inventory-gold-drop");
+    if(owned)owned.textContent=String(Math.max(0,decimal(app.pc?.gold,0))).padStart(7," ");
+    if(drop)drop.textContent=String(Math.max(0,decimal(app.inventoryDropGold,0))).padStart(7," ");
+  }
+  function stopInventoryGoldHold(){
+    if(app.inventoryGoldHoldTimer)window.clearInterval(app.inventoryGoldHoldTimer);app.inventoryGoldHoldTimer=0;
+    app.inventoryGoldHoldButton?.classList?.remove("pressed");app.inventoryGoldHoldButton=null;app.inventoryGoldHoldInc=0;app.inventoryGoldHoldTicks=0;
+  }
+  function setInventoryDropGold(value){
+    app.inventoryDropGold=Math.max(0,Math.min(Math.max(0,decimal(app.pc?.gold,0)),Math.trunc(Number(value)||0)));updateInventoryDropGoldText();
+  }
+  function beginInventoryGoldHold(delta,button,event){
+    if(app.inventoryPage!=="items")return;event?.preventDefault?.();stopInventoryGoldHold();
+    const gold=Math.max(0,decimal(app.pc?.gold,0)),before=Math.max(0,decimal(app.inventoryDropGold,0)),next=Math.max(0,Math.min(gold,before+delta));setInventoryDropGold(next);
+    const reachedBoundary=delta>0?next>=gold:next<=0;
+    if(next===before||reachedBoundary){playSoundEffect(220);return;}
+    playSoundEffect(217);app.inventoryGoldHoldInc=0;app.inventoryGoldHoldTicks=0;app.inventoryGoldHoldButton=button;button?.classList?.add("pressed");
+    try{button?.setPointerCapture?.(event.pointerId);}catch(_){/* detached/mobile controls may reject capture */}
+    app.inventoryGoldHoldTimer=window.setInterval(()=>{
+      if(app.inventoryPage!=="items"){stopInventoryGoldHold();return;}
+      const step=delta*app.inventoryGoldHoldInc;if(step)setInventoryDropGold(decimal(app.inventoryDropGold,0)+step);
+      app.inventoryGoldHoldTicks++;
+      if(app.inventoryGoldHoldTicks>=30){app.inventoryGoldHoldTicks=0;app.inventoryGoldHoldInc=app.inventoryGoldHoldInc===0?1:Math.min(10000,app.inventoryGoldHoldInc*5);}
+      const amount=decimal(app.inventoryDropGold,0),limit=Math.max(0,decimal(app.pc?.gold,0));
+      if((delta>0&&amount>=limit)||(delta<0&&amount<=0)){playSoundEffect(220);stopInventoryGoldHold();}
+    },14);
+  }
+  function cancelInventoryDrag(sound=false){
+    $("inventory-drag-icon")?.remove();app.inventoryDrag=null;if(sound)playSoundEffect(217);
+  }
+  function updateInventoryDrag(event){
+    const drag=app.inventoryDrag;if(!drag||Number(event?.pointerId)!==Number(drag.pointerId))return;
+    const point=inventoryLogicalPoint(event);if(!point)return;drag.x=point.x;drag.y=point.y;
+    const image=$("inventory-drag-icon"),info=resolveBitmapInfo(inventoryItem(drag.index)?.graphic);if(!image||!info)return;
+    image.style.left=`${point.x+(Number(info.xoffset)||0)}px`;image.style.top=`${point.y+(Number(info.yoffset)||0)}px`;
+  }
+  function beginInventoryDrag(index,event){
+    if(app.inventoryPage!=="items"||event?.button!==0||!inventoryItem(index))return;
+    cancelInventoryDrag();app.selectedItem=-1;const point=inventoryLogicalPoint(event);if(!point)return;
+    app.inventoryDrag={index:decimal(index,-1),pointerId:event.pointerId,x:point.x,y:point.y};
+    const info=resolveBitmapInfo(inventoryItem(index)?.graphic),list=$("inventory-list");if(info?.file&&list){const image=appendInventoryBitmap(list,info,point.x,point.y,"inventory-drag-icon");if(image)image.id="inventory-drag-icon";}
+    try{event.currentTarget?.setPointerCapture?.(event.pointerId);}catch(_){/* pointer capture is an enhancement */}
+  }
+  function finishInventoryDrag(event,cancel=false){
+    const drag=app.inventoryDrag;if(!drag||Number(event?.pointerId)!==Number(drag.pointerId))return;
+    const point=inventoryLogicalPoint(event),from=drag.index,to=inventorySlotAtLogicalPoint(point);cancelInventoryDrag();
+    if(cancel){playSoundEffect(217);return;}
+    if(to>=0){if(to!==from){send("MI",[from,to]).catch(reportError);playSoundEffect(217);}return;}
+    if(point&&point.x<=365)send("DI",[app.position[0],app.position[1],from]).catch(reportError);
+    playSoundEffect(217);
+  }
+  function inventoryUseItem(index){
+    const item=inventoryItem(index);if(!item)return;
+    if(decimal(item.field,0)===1||decimal(app.pc?.level,0)<decimal(item.level,0)){playSoundEffect(220);return;}
+    cancelInventoryDrag();app.selectedMagic=-1;
+    if(decimal(item.target,0)===0){send("ID",[app.position[0],app.position[1],index,0]).catch(reportError);playSoundEffect(212);app.selectedItem=-1;return;}
+    if(decimal(item.target,0)===1){app.selectedItem=index;app.inventoryTargetPanel=true;playSoundEffect(217);renderInventory();}
+  }
+  function inventoryTargetEntries(){
+    const result=[],pc=app.pc||{};result.push({target:0,top:25,name:pc.name||app.character||"人物",mp:pc.mp,hp:pc.hp,maxHp:pc.maxHp});
+    let petTop=64;for(let slot=0;slot<5;slot++){const pet=app.petSlots?.[slot];if(!pet)continue;result.push({target:slot+1,top:petTop,name:petDisplayName(pet),hp:pet.hp,maxHp:pet.maxHp});petTop+=40;}
+    const ownId=Number(pc.id),hasOwnId=Number.isFinite(ownId),ownName=String(pc.name||app.character||"");let skippedOwnName=false,partyTop=268;
+    for(let slot=0;slot<5;slot++){const member=app.party?.[slot];if(!member)continue;if(hasOwnId&&Number(member.id)===ownId)continue;if(!hasOwnId&&!skippedOwnName&&ownName&&String(member.name||"")===ownName){skippedOwnName=true;continue;}result.push({target:slot+6,top:partyTop,name:member.name||"",mp:member.mp,hp:member.hp,maxHp:member.maxHp});partyTop+=40;}
+    return result;
+  }
+  function useInventoryTarget(target){
+    if(app.selectedMagic>=0){
+      const magic=app.magic?.[app.selectedMagic];if(!magic)return;send("MU",[app.position[0],app.position[1],app.selectedMagic,target]).catch(reportError);playSoundEffect(100);
+      const cost=Math.max(0,decimal(magic.mp,0)),mp=Math.max(0,decimal(app.pc?.mp,0));if(cost>mp-cost)app.selectedMagic=-1;
+    }else if(app.selectedItem>=0){send("ID",[app.position[0],app.position[1],app.selectedItem,target]).catch(reportError);playSoundEffect(212);app.selectedItem=-1;}
+    renderInventory();
+  }
+  function appendInventoryTargetPanel(list){
+    if(!app.inventoryTargetPanel)return;const panel=document.createElement("div");panel.className="inventory-target-party";panel.setAttribute("aria-label","选择使用对象");
+    const selectable=app.selectedItem>=0||app.selectedMagic>=0;
+    for(const entry of inventoryTargetEntries()){
+      const row=document.createElement("button");row.type="button";row.className="legacy-party-row";row.style.top=`${entry.top}px`;row.disabled=!selectable;row.setAttribute("aria-label",`${selectable?"选择":"队伍成员"} ${entry.name}`);row.addEventListener("click",()=>useInventoryTarget(entry.target));
+      const name=document.createElement("span");name.className="party-name";name.textContent=entry.name;row.append(name);
+      if(entry.mp!==undefined){const mp=document.createElement("span");mp.className="party-mp";mp.textContent=textOr(entry.mp,"-");row.append(mp);}
+      for(const [className,value] of [["party-hp",entry.hp],["party-max-hp",entry.maxHp]]){const field=document.createElement("span");field.className=className;field.textContent=textOr(value,"-");row.append(field);}panel.append(row);
+    }
+    const back=document.createElement("button");back.type="button";back.className="inventory-target-return";back.setAttribute("aria-label","关闭对象选择");back.addEventListener("click",()=>{app.inventoryTargetPanel=false;playSoundEffect(203);renderInventory();});panel.append(back);list.append(panel);
+  }
+  function inventoryControl(label,className){const node=document.createElement("button");node.type="button";node.className=className;node.setAttribute("aria-label",label);return node;}
+  function renderInventoryItems(list){
+    for(let index=0;index<INVENTORY_SLOT_CENTERS.length;index++){
+      const item=inventoryItem(index),[centerX,centerY]=INVENTORY_SLOT_CENTERS[index],slot=inventoryControl(item?.name||`空物品格 ${index}`,"legacy-item-slot");slot.dataset.itemIndex=String(index);slot.style.left=`${centerX-24}px`;slot.style.top=`${centerY-24}px`;slot.classList.toggle("item-selected",decimal(app.selectedItem,-1)===index);
+      if(item){slot.title=item.name||"";const info=resolveBitmapInfo(item.graphic);if(info?.file)appendInventoryBitmap(slot,info,24,24,"legacy-item-icon");slot.addEventListener("pointerenter",()=>setInventoryHover(index));slot.addEventListener("pointerleave",()=>{if(decimal(app.inventoryHoveredItem,-1)===index)setInventoryHover(-1);});slot.addEventListener("focus",()=>setInventoryHover(index));slot.addEventListener("blur",()=>{if(decimal(app.inventoryHoveredItem,-1)===index)setInventoryHover(-1);});slot.addEventListener("dblclick",event=>{event.preventDefault();inventoryUseItem(index);});}
+      slot.addEventListener("pointerdown",event=>beginInventoryDrag(index,event));slot.addEventListener("pointermove",updateInventoryDrag);slot.addEventListener("pointerup",event=>finishInventoryDrag(event));slot.addEventListener("pointercancel",event=>finishInventoryDrag(event,true));slot.addEventListener("contextmenu",event=>{event.preventDefault();if(app.inventoryDrag)finishInventoryDrag({pointerId:app.inventoryDrag.pointerId,clientX:event.clientX,clientY:event.clientY},true);});list.append(slot);
+    }
+    const name=document.createElement("span");name.id="inventory-item-name";name.className="inventory-item-name";list.append(name);const memo=document.createElement("span");memo.id="inventory-item-memo";memo.className="inventory-item-memo";list.append(memo);setInventoryHover(-1);
+    const owned=document.createElement("span");owned.id="inventory-gold-owned";owned.className="inventory-gold-value inventory-gold-owned";list.append(owned);const drop=document.createElement("span");drop.id="inventory-gold-drop";drop.className="inventory-gold-value inventory-gold-drop";list.append(drop);updateInventoryDropGoldText();
+    const jujutsu=inventoryControl("咒术","inventory-jujutsu");jujutsu.addEventListener("click",()=>{stopInventoryGoldHold();cancelInventoryDrag();app.inventoryPage="magic";app.inventoryTargetPanel=false;app.selectedItem=-1;app.selectedMagic=-1;playSoundEffect(202);renderInventory();});list.append(jujutsu);
+    const goldDrop=inventoryControl("丢下石币","inventory-gold-button inventory-gold-drop-button");goldDrop.addEventListener("pointerdown",()=>playSoundEffect(decimal(app.inventoryDropGold,0)>0?217:220));goldDrop.addEventListener("click",()=>{const amount=Math.max(0,decimal(app.inventoryDropGold,0));if(amount<=0)return;send("DG",[app.position[0],app.position[1],amount]).catch(reportError);playSoundEffect(212);setInventoryDropGold(0);});list.append(goldDrop);
+    for(const [label,className,delta] of [["增加丢下石币","inventory-gold-button inventory-gold-increase",1],["减少丢下石币","inventory-gold-button inventory-gold-decrease",-1]]){const control=inventoryControl(label,className);control.addEventListener("pointerdown",event=>beginInventoryGoldHold(delta,control,event));control.addEventListener("pointerup",stopInventoryGoldHold);control.addEventListener("pointercancel",stopInventoryGoldHold);control.addEventListener("pointerleave",stopInventoryGoldHold);list.append(control);}
+    const close=inventoryControl("关闭物品窗口","asset-button");close.id="inventory-close";close.addEventListener("click",closeInventoryPanel);list.append(close);appendInventoryTargetPanel(list);
+  }
+  function setInventoryMagicHover(index){
+    app.inventoryHoveredMagic=decimal(index,-1);const magic=app.magic?.[app.inventoryHoveredMagic],cost=$("inventory-magic-cost"),memo=$("inventory-magic-memo"),list=$("inventory-list");
+    if(cost)cost.textContent=magic?`${String(decimal(magic.mp,0)).padStart(2," ")}/${String(decimal(app.pc?.mp,0)).padStart(2," ")}`:"";
+    if(memo)memo.textContent=magic?inventoryTextLines(magic.memo,22,3).join("\n"):"";$("inventory-magic-icon")?.remove();
+    if(magic&&list){const item=inventoryItem(app.inventoryHoveredMagic),info=resolveBitmapInfo(item?.graphic);if(info?.file){const image=appendInventoryBitmap(list,info,401,224,"inventory-magic-icon");if(image)image.id="inventory-magic-icon";}}
+  }
+  function inventoryUseMagic(index){
+    const magic=app.magic?.[index];if(!magic)return;if(decimal(magic.field,0)===1||decimal(magic.mp,0)>decimal(app.pc?.mp,0)){playSoundEffect(220);return;}
+    app.selectedItem=-1;if(decimal(magic.target,0)===0){send("MU",[app.position[0],app.position[1],index,0]).catch(reportError);playSoundEffect(100);return;}
+    if(decimal(magic.target,0)===1){app.selectedMagic=index;app.inventoryTargetPanel=true;playSoundEffect(217);renderInventory();}
+  }
+  function renderInventoryMagic(list){
+    let y=39,found=false;
+    for(let index=0;index<5;index++){const magic=app.magic?.[index];if(!magic||!decimal(magic.useFlag,0))continue;found=true;const row=inventoryControl(magic.name||`咒术 ${index+1}`,"inventory-magic-row");row.style.top=`${y}px`;y+=28;row.textContent=magic.name||`咒术 ${index+1}`;row.classList.toggle("magic-selected",decimal(app.selectedMagic,-1)===index);row.classList.toggle("magic-disabled",decimal(magic.field,0)===1);row.classList.toggle("magic-insufficient",decimal(magic.mp,0)>decimal(app.pc?.mp,0));row.addEventListener("pointerenter",()=>setInventoryMagicHover(index));row.addEventListener("pointerleave",()=>{if(decimal(app.inventoryHoveredMagic,-1)===index)setInventoryMagicHover(-1);});row.addEventListener("focus",()=>setInventoryMagicHover(index));row.addEventListener("blur",()=>{if(decimal(app.inventoryHoveredMagic,-1)===index)setInventoryMagicHover(-1);});row.addEventListener("click",()=>inventoryUseMagic(index));list.append(row);}
+    if(!found){const empty=document.createElement("span");empty.className="inventory-magic-empty";empty.textContent="没有可使用的咒术";list.append(empty);}
+    const cost=document.createElement("span");cost.id="inventory-magic-cost";cost.className="inventory-magic-cost";list.append(cost);const memo=document.createElement("span");memo.id="inventory-magic-memo";memo.className="inventory-magic-memo";list.append(memo);setInventoryMagicHover(-1);
+    const back=inventoryControl("返回物品窗口","inventory-page-return");back.addEventListener("click",()=>{app.inventoryPage="items";app.inventoryTargetPanel=false;app.selectedMagic=-1;playSoundEffect(203);renderInventory();});list.append(back);appendInventoryTargetPanel(list);
+  }
+  function closeInventoryPanel(){stopInventoryGoldHold();cancelInventoryDrag();app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.selectedItem=-1;app.selectedMagic=-1;show(worldScreen);playSoundEffect(203);}
+  function renderInventory() {
+    const list=$("inventory-list");if(!list)return;stopInventoryGoldHold();cancelInventoryDrag();list.replaceChildren();
+    const page=app.inventoryPage==="magic"?"magic":"items";app.inventoryPage=page;setInventorySurface(page);if(page==="magic")renderInventoryMagic(list);else renderInventoryItems(list);
   }
   function newTradeState(peerFd,peerName){
     const candidates=tradePetCandidates();
@@ -5981,7 +6206,7 @@
         break;
       }
       case "E": app.status.encounterMin=stateNumber(parts[1]);app.status.encounterMax=stateNumber(parts[2]);break;
-      case "J": { const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:parts[5]||"",memo:parts[6]||""};app.magic[slot]=entry;break; }
+      case "J": { const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:unescapeCharacterOption(parts[5]||""),memo:unescapeCharacterOption(parts[6]||"")};app.magic[slot]=entry;break; }
       case "N": { const slot=decimal(kind.slice(1),0),target=app.party[slot]||{slot};if(Protocol.base62(parts[1]||"0")===0){app.party[slot]=null;}else{applyMaskedFields(parts,target,PARTY_FIELDS);target.slot=slot;app.party[slot]=target;}break; }
       case "I": receiveInventory([kind.slice(1),...parts.slice(1)].join("|"),false);break;
       case "W": { const slot=decimal(kind.slice(1),0),tokens=parts.slice(1),skills=[];for(let offset=0;offset+5<tokens.length;offset+=5){const name=tokens[offset+3]||"";if(!name)continue;const targetRaw=stateNumber(tokens[offset+2]);skills.push({index:offset/5,skillId:stateNumber(tokens[offset]),field:stateNumber(tokens[offset+1]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name,memo:tokens[offset+4]||""});}app.petSkills[slot]=skills;break; }
@@ -5991,6 +6216,7 @@
       default: app.serverState[kind]=parts.slice(1);break;
     }
     renderPets();renderStatus();renderPartyFixed();renderTitles();if(app.trade?.active)renderTrade();
+    if(!$("inventory-screen")?.classList.contains("hidden")&&!app.inventoryDrag&&!app.inventoryGoldHoldTimer)renderInventory();
   }
   function battleNumber(value){const text=String(value??"");if(!text)return 0;const parsed=parseInt(text,16);return Number.isFinite(parsed)?parsed:stateNumber(text);}
   function battleBase62(value,fallback=0){const text=String(value??"");if(!text)return fallback;const parsed=Protocol.base62(text);return Number.isFinite(parsed)?parsed:fallback;}
@@ -11453,7 +11679,7 @@
     characterStatus(`正在登入 ${name}…`);
     try { await send("CharLogin",[name]); } catch(error) { characterStatus(error.message,"error"); }
   }
-  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); app.inventory=[]; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
+  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
   /* enterWorld() replaces the battle state for a fresh field session.  Keep
      the watchdogs from a just-closed battle from firing against that new
      state, including logout/reconnect paths that do not pass through BU. */

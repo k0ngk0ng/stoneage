@@ -384,6 +384,55 @@ def emit_graphic(logical: int, records, by_number, real_path, palette, output, m
     return f"bitmaps/{filename}"
 
 
+def server_item_graphics() -> list[int]:
+    """Return every logical item graphic used by the running 2.5 GMSV.
+
+    ``ITEM_readItemConfFile()`` reads ``imagenumber`` from the eighteenth
+    comma-delimited itemset field.  Those values are logical ``bmp_number``
+    ids, not physical ADRN record indexes.  Sprite extraction can happen to
+    create a file named ``bitmap_24008.png`` for physical record 24008, while
+    the meat item whose logical image is 24008 actually resolves to physical
+    record 6926.  Keeping an explicit item pack prevents that namespace
+    collision from making valid inventory records render as empty slots.
+    """
+    path = REPO / "runtime" / "legacy-server" / "gmsv" / "data" / "itemset.txt"
+    numbers: set[int] = set()
+    try:
+        lines = path.read_bytes().splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        if not line or line.startswith(b"#"):
+            continue
+        fields = line.split(b",")
+        if len(fields) < 18:
+            continue
+        try:
+            number = int(fields[17].strip())
+        except ValueError:
+            continue
+        if number > 0:
+            numbers.add(number)
+    return sorted(numbers)
+
+
+def item_pack(records, by_number, real_path, palette, output, manifest):
+    """Emit and index all item icons referenced by the deployed 2.5 data."""
+    emitted = 0
+    missing = []
+    for logical in server_item_graphics():
+        try:
+            filename = emit_graphic(logical, records, by_number, real_path, palette, output, manifest)
+        except legacy.AssetError:
+            filename = None
+        if filename:
+            emitted += 1
+        else:
+            missing.append(logical)
+    manifest["item_visual_bitmap_count"] = emitted
+    manifest["missing_item_graphics"] = missing
+
+
 def ui_pack(records, by_number, real_path, palette, output, manifest):
     """Refresh the original UI bitmap subset without rebuilding map/SPR data."""
     manifest.setdefault("bitmaps", {})
@@ -748,6 +797,7 @@ def main() -> int:
     parser.add_argument("--all-battles", action="store_true", help="extract every original battleMap/*.sab viewport")
     parser.add_argument("--battles-only", action="store_true", help="refresh battle PNGs in an existing browser asset pack")
     parser.add_argument("--ui-only", action="store_true", help="refresh UI PNGs and aliases in an existing browser asset pack")
+    parser.add_argument("--items-only", action="store_true", help="refresh 2.5 item PNGs and logical ADRN aliases in an existing browser asset pack")
     parser.add_argument(
         "--creation-sprites-only",
         action="store_true",
@@ -782,6 +832,17 @@ def main() -> int:
         temporary_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary_manifest.replace(manifest_path)
         print(json.dumps({"output": str(args.output), "ui": len(manifest.get("ui", {}))}, ensure_ascii=False))
+        return 0
+    if args.items_only:
+        manifest_path = args.output / "manifest.json"
+        if not manifest_path.is_file():
+            parser.error("--items-only requires an existing manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        item_pack(records, by_number, real_path, palette, args.output, manifest)
+        temporary_manifest = manifest_path.with_name(manifest_path.name + ".tmp")
+        temporary_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary_manifest.replace(manifest_path)
+        print(json.dumps({"output": str(args.output), "items": manifest.get("item_visual_bitmap_count", 0), "missing": len(manifest.get("missing_item_graphics", []))}, ensure_ascii=False))
         return 0
     if args.battles_only:
         manifest_path = args.output / "manifest.json"
@@ -835,6 +896,7 @@ def main() -> int:
     }
 
     ui_pack(records, by_number, real_path, palette, args.output, manifest)
+    item_pack(records, by_number, real_path, palette, args.output, manifest)
     countdown_digits = {}
     for digit in range(10):
         logical = BATTLE_COUNTDOWN_LOGICAL_BASE + digit

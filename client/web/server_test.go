@@ -242,6 +242,9 @@ func TestHandlerServesConfiguredAssets(t *testing.T) {
 	if response.StatusCode != http.StatusOK || string(body) != `{"format":1}` {
 		t.Fatalf("asset status=%d body=%q", response.StatusCode, body)
 	}
+	if got := response.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("asset manifest cache header=%q", got)
+	}
 }
 
 func TestHandlerServesConfiguredMaps(t *testing.T) {

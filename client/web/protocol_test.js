@@ -88,6 +88,20 @@ if (transparentBattleFiles.join(",") !== "battle_129.png,battle_130.png,battle_1
 }
 const battleManifest = JSON.parse(fs.readFileSync(path.join(__dirname, "assets", "original", "manifest.json"), "utf8"));
 if (Object.keys(battleManifest.battles || {}).length !== 220) throw new Error("battle manifest must describe all 220 native SAB files");
+/* Item packets carry logical bmp_number values.  They must resolve through
+   ADRN aliases instead of colliding with an unrelated physical bitmap file
+   of the same number (24008 is the smallest reproducible meat-item case). */
+const meatPhysical = String(battleManifest.bitmap_aliases?.["24008"] || "");
+const meatBitmap = battleManifest.bitmaps?.[meatPhysical];
+if (!meatPhysical || meatPhysical === "24008" || meatBitmap?.bmp_number !== 24008 ||
+    !fs.existsSync(path.join(__dirname, "assets", "original", meatBitmap?.file || ""))) {
+  throw new Error(`2.5 item graphic 24008 lost its logical ADRN mapping: ${JSON.stringify({meatPhysical, meatBitmap})}`);
+}
+if (!battleExtractorSource.includes("def server_item_graphics()") ||
+    !battleExtractorSource.includes('parser.add_argument("--items-only"') ||
+    !battleExtractorSource.includes("item_pack(records, by_number")) {
+  throw new Error("item asset extractor lost the 2.5 itemset pack path");
+}
 for (let battle = 0; battle < 220; battle++) {
   const entry = battleManifest.battles?.[String(battle)], name = `battle_${String(battle).padStart(2, "0")}.png`;
   if (entry?.image !== `battle/${name}` || entry?.render?.width !== 640 || entry?.render?.height !== 480) {
@@ -97,6 +111,16 @@ for (let battle = 0; battle < 220; battle++) {
 
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+for (const expected of [
+  'fetch(ASSET_MANIFEST_URL,{cache:"no-cache"',
+  'fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"',
+  'fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"',
+  'fetch(`${SPRITE_MANIFEST_URL}`,{cache:"no-cache"',
+]) {
+  if (!script.includes(expected)) {
+    throw new Error(`asset manifest must revalidate across deployments: ${expected}`);
+  }
+}
 /* Most UI styles live inside the script's legacyStyle template literal.
    A stray backtick in a CSS comment can therefore leave a perfectly
    rendered static login page while preventing the complete client IIFE from
@@ -234,6 +258,72 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
 if (!/\.legacy-screen \.card-grid>button\[id\$="-close"\][\s\S]{0,700}pointer-events:auto!important/.test(html) ||
     /<button id="(?:inventory|pets|party|titles|album)-close"/.test(html)) {
   throw new Error("fixed field window close buttons must have one explicit hit target");
+}
+/* MENU.CPP::InitItem records StockDisp centres.  Keep the item window's odd
+   271px MakeWindowDisp centre, original ADRN offsets and the complete 2.5
+   interaction contract covered together: a context click must never become
+   the web MVP's old destructive DI shortcut. */
+for (const expected of [
+  /inventory:\{bitmap:9179,bitmap2:9180,x:364,y:4,w:272,h:440\}/,
+  /const INVENTORY_SLOT_CENTERS=Object\.freeze\(\[\s*\[501,63\],\[499,133\],\[426,133\],\[397,72\],\[448,72\]/,
+  /\[397,204\],\[448,204\],\[499,204\],\[550,204\],\[601,204\]/,
+  /slot\.style\.left=`\$\{centerX-24\}px`;slot\.style\.top=`\$\{centerY-24\}px`/,
+  /appendInventoryBitmap\(slot,info,24,24,"legacy-item-icon"\)/,
+  /image\.style\.left=`\$\{centerX\+offsetX\}px`;image\.style\.top=`\$\{centerY\+offsetY\}px`/,
+  /#inventory-screen #inventory-close\{left:460px;top:418px/,
+  /inventory-jujutsu\{left:541px;top:30px;width:88px;height:27px;background-image:url\('\/assets\/bitmaps\/bitmap_9188\.png'\)/,
+  /inventory-gold-drop-button\{left:538px;top:116px;width:52px;height:17px/,
+  /inventory-gold-increase\{left:594px;top:118px;width:16px;height:14px/,
+  /inventory-gold-decrease\{left:613px;top:118px;width:16px;height:14px/,
+  /send\("MI",\[from,to\]\)/,
+  /point&&point\.x<=365\)send\("DI",\[app\.position\[0\],app\.position\[1\],from\]\)/,
+  /send\("DG",\[app\.position\[0\],app\.position\[1\],amount\]\)/,
+  /send\("ID",\[app\.position\[0\],app\.position\[1\],app\.selectedItem,target\]\)/,
+  /send\("MU",\[app\.position\[0\],app\.position\[1\],app\.selectedMagic,target\]\)/,
+  /inventory-target-party[\s\S]{0,400}bitmap_9190\.png/,
+]) {
+  if (!expected.test(html)) throw new Error(`native item-window contract drifted: ${expected}`);
+}
+if (/contextmenu[^\n]{0,500}send\("DI"/.test(script)) {
+  throw new Error("item context click must not drop an item; DI is drag-left only");
+}
+/* NETPROC.CPP::lssproto_I_recv mutates only the indexed pc.item slots named
+   in an I packet.  DI returns a single empty ten-field record for the dropped
+   slot; treating that delta as a full snapshot used to blank the other 19
+   browser slots. */
+const inventoryParserStart = script.indexOf("  function receiveInventory");
+const inventoryParserEnd = script.indexOf("  const INVENTORY_SLOT_CENTERS", inventoryParserStart);
+if (inventoryParserStart < 0 || inventoryParserEnd <= inventoryParserStart) {
+  throw new Error("inventory delta parser boundary missing");
+}
+const inventoryStatusNode = {textContent: ""};
+const inventoryContext = {
+  app: {
+    inventory: [5, 6, 7, 8].map(index => ({index, name: `meat-${index}`, graphic: 24008})),
+    trade: null,
+  },
+  decimal(value, fallback = 0) {
+    const number = Number.parseInt(String(value), 10);
+    return Number.isFinite(number) ? number : fallback;
+  },
+  unescapeCharacterOption(value) { return String(value || ""); },
+  $(id) { if (id !== "inventory-status") throw new Error(`unexpected inventory test node ${id}`); return inventoryStatusNode; },
+  renderInventory() {},
+  renderTrade() {},
+};
+vm.createContext(inventoryContext);
+vm.runInContext(script.slice(inventoryParserStart, inventoryParserEnd) + `
+receiveInventory("5|||||||||", true);
+receiveInventory("9|new-meat||0|memo|24008|0|1|0|1", true);
+this.inventoryDeltaResult = app.inventory.map(item => ({index:item.index,name:item.name,graphic:item.graphic,target:item.target}));
+`, inventoryContext);
+if (JSON.stringify(inventoryContext.inventoryDeltaResult) !== JSON.stringify([
+  {index: 6, name: "meat-6", graphic: 24008},
+  {index: 7, name: "meat-7", graphic: 24008},
+  {index: 8, name: "meat-8", graphic: 24008},
+  {index: 9, name: "new-meat", graphic: 24008, target: 1},
+]) || !inventoryStatusNode.textContent.includes("4 件")) {
+  throw new Error(`indexed I packets must merge one slot like native lssproto_I_recv: ${JSON.stringify(inventoryContext.inventoryDeltaResult)}`);
 }
 /* FIELD.CPP::ClearBackSurface() fills an opaque colour-0 back-buffer before
    PutBmp().  The browser world surface must not regress to a transparent
