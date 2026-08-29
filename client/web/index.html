@@ -1725,6 +1725,12 @@
     #world-tools button:nth-child(7):hover,#world-tools button:nth-child(7):focus-visible,#world-tools button:nth-child(7):active,#world-tools button:nth-child(7).is-active{background-image:url('/assets/bitmaps/bitmap_9262.png')}
     #world-tools button:hover,#world-tools button:focus{filter:none;outline:0}
     #world-tools button:nth-child(n+8){display:none}
+    /* The four directional controls are an invisible accessibility/touch hit
+       layer over the native field back-buffer.  The base rule intentionally
+       disables the parent hit surface so map clicks keep working, but the
+       buttons themselves must opt back in; otherwise Chromium's hit test
+       lands on #world and every mobile/keyboard direction appears broken. */
+    #world-actions [data-dir]{pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
     #battle-world{position:absolute;inset:0}
     @media(min-width:700px) and (min-height:800px){#field-ui,#world-actions,#world-tools,#chat-log,#world-actors-layer,#battle-actors-layer,#battle-target-overlay,#battle-field-ui{transform:scale(1.5);transform-origin:0 0}.advanced-screen{transform:translate(-50%,-50%) scale(1.5);transform-origin:center}}
 
