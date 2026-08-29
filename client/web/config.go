@@ -148,8 +148,17 @@ func normalizeOSSConfig(value OSSConfig) (OSSConfig, error) {
 	if value.Provider == "" {
 		value.Provider = "aliyun-oss"
 	}
-	if value.Provider != "aliyun-oss" {
-		return OSSConfig{}, fmt.Errorf("provider %q is unsupported", value.Provider)
+	switch value.Provider {
+	case "aliyun", "aliyun-oss":
+		value.Provider = "aliyun-oss"
+	case "r2", "cloudflare", "cloudflare-r2":
+		value.Provider = "cloudflare-r2"
+		if value.Region == "" {
+			// Cloudflare's S3-compatible API uses the literal region "auto".
+			value.Region = "auto"
+		}
+	default:
+		return OSSConfig{}, fmt.Errorf("provider %q is unsupported (supported: aliyun-oss, cloudflare-r2)", value.Provider)
 	}
 	if (value.Endpoint == "") != (value.Bucket == "") {
 		return OSSConfig{}, fmt.Errorf("endpoint and bucket must be configured together")
@@ -160,7 +169,7 @@ func normalizeOSSConfig(value OSSConfig) (OSSConfig, error) {
 			return OSSConfig{}, fmt.Errorf("endpoint must be an absolute HTTP(S) origin without credentials, path, query or fragment")
 		}
 		if !ossBucketNamePattern.MatchString(value.Bucket) {
-			return OSSConfig{}, fmt.Errorf("bucket %q is not a valid Aliyun OSS bucket name", value.Bucket)
+			return OSSConfig{}, fmt.Errorf("bucket %q is not a valid object-storage bucket name", value.Bucket)
 		}
 	}
 	if strings.ContainsAny(value.Prefix, "\"'`<>\\?#\r\n\t ") {
@@ -176,6 +185,12 @@ func normalizeOSSConfig(value OSSConfig) (OSSConfig, error) {
 
 func ossPublicBaseURL(value OSSConfig) string {
 	if value.Endpoint == "" || value.Bucket == "" {
+		return ""
+	}
+	// R2 buckets are private by default and their S3 endpoint requires signed
+	// requests.  A Cloudflare custom domain belongs in static.cdn.base_url;
+	// never expose an authenticated R2 API URL as a browser asset origin.
+	if value.Provider == "cloudflare-r2" {
 		return ""
 	}
 	parsed, err := url.Parse(value.Endpoint)

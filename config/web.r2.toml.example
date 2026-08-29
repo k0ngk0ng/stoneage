@@ -1,0 +1,33 @@
+# Cloudflare R2 + Cloudflare CDN example.
+# Copy this file to a private deployment path (or set
+# STONEAGE_WEB_CONFIG_FILE) and replace the placeholders.  Never put the R2
+# access key or secret in this file; mount them through the two secret files
+# configured in .env.
+listen_address = "0.0.0.0:8088"
+tcp_upstream = "gateway:9065"
+packet_limit = 4194304
+max_sessions = 64
+poll_timeout = "25s"
+idle_timeout = "10m"
+dial_timeout = "5s"
+allowed_origin = ""
+
+[static]
+assets_directory = "/opt/stoneage/web-assets"
+maps_directory = "/game/client/map"
+audio_directory = "/game/client/data"
+npc_directory = "/game/gmsv/data/npc"
+
+[static.oss]
+provider = "cloudflare-r2"
+# R2 S3 endpoint: https://<account-id>.r2.cloudflarestorage.com
+endpoint = "https://<account-id>.r2.cloudflarestorage.com"
+region = "auto"
+bucket = "stoneage-assets"
+# Keep this stable.  Do not append the release tag here.
+prefix = "stoneage"
+
+[static.cdn]
+# Cloudflare CDN custom domain (the browser uses this for assets/maps/audio).
+# The URL should point at the same R2 bucket and prefix.
+base_url = "https://cdn.example.com/stoneage"

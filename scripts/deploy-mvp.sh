@@ -26,7 +26,7 @@ Options:
   --init             Create .env with a random administrator password.
   --build            Build the configured control-plane and legacy images.
   --pull             Pull the configured versioned images from a registry.
-  --sync-assets      Publish the complete client asset tree to OSS after the
+  --sync-assets      Publish the complete client asset tree to OSS/R2 after the
                      control-plane image is ready (one-shot, opt-in).
   --no-image-update  Do not build or pull images (use images already present).
   --check            Validate .env, bind paths and Compose without starting services.
@@ -153,7 +153,7 @@ env_value()
     ' "$env_file"
 }
 
-# Compose file-backed secrets must exist before service-control is started.
+# Compose file-backed object-storage secrets must exist before service-control is started.
 # Keep empty defaults for ordinary deployments (the uploader then fails closed)
 # and materialize values only when an operator supplied the legacy variables.
 prepare_asset_secret()
@@ -209,10 +209,24 @@ web_config_file="${web_config_file:-./config/web.toml}"
 
 asset_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
 asset_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
+asset_key_file="${asset_key_file:-${CLOUDFLARE_R2_ACCESS_KEY_ID_FILE:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID_FILE || true)}}"
+asset_secret_file="${asset_secret_file:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE || true)}}"
+asset_key_file="${asset_key_file:-${AWS_ACCESS_KEY_ID_FILE:-$(env_value AWS_ACCESS_KEY_ID_FILE || true)}}"
+asset_secret_file="${asset_secret_file:-${AWS_SECRET_ACCESS_KEY_FILE:-$(env_value AWS_SECRET_ACCESS_KEY_FILE || true)}}"
+asset_key_file="${asset_key_file:-${ALIBABA_CLOUD_ACCESS_KEY_ID_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID_FILE || true)}}"
+asset_secret_file="${asset_secret_file:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE || true)}}"
 asset_key_file="${asset_key_file:-./.secrets/oss-access-key-id}"
 asset_secret_file="${asset_secret_file:-./.secrets/oss-access-key-secret}"
-legacy_asset_key="${ALIBABA_CLOUD_ACCESS_KEY_ID:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)}"
-legacy_asset_secret="${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)}"
+legacy_asset_key="${STONEAGE_ASSET_SYNC_ACCESS_KEY:-${CLOUDFLARE_R2_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-${ALIBABA_CLOUD_ACCESS_KEY_ID:-}}}}"
+legacy_asset_secret="${STONEAGE_ASSET_SYNC_ACCESS_SECRET:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}}}}"
+legacy_asset_key="${legacy_asset_key:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY || true)}"
+legacy_asset_secret="${legacy_asset_secret:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET || true)}"
+legacy_asset_key="${legacy_asset_key:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID || true)}"
+legacy_asset_secret="${legacy_asset_secret:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY || true)}"
+legacy_asset_key="${legacy_asset_key:-$(env_value AWS_ACCESS_KEY_ID || true)}"
+legacy_asset_secret="${legacy_asset_secret:-$(env_value AWS_SECRET_ACCESS_KEY || true)}"
+legacy_asset_key="${legacy_asset_key:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)}"
+legacy_asset_secret="${legacy_asset_secret:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)}"
 asset_key_file="$(prepare_asset_secret "$asset_key_file" "$legacy_asset_key" "OSS access-key-id")"
 asset_secret_file="$(prepare_asset_secret "$asset_secret_file" "$legacy_asset_secret" "OSS access-key-secret")"
 export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$asset_key_file"

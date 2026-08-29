@@ -7,7 +7,7 @@
 Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖移动硬盘。
 
 浏览器 Web 后端是 Go（`client/web`），不是 Node.js；页面前端是随 Go 二进制嵌入的
-HTML/CSS/JavaScript。Web 进程只负责游戏协议和公开静态资源 URL，OSS 上传由独立的
+HTML/CSS/JavaScript。Web 进程只负责游戏协议和公开静态资源 URL，对象存储上传由独立的
 `stoneage-assets-sync` 控制面命令完成。
 
 ## 已验证状态（2026-08-13）
@@ -71,7 +71,7 @@ Linux 也可以把旧版游戏服务、Go 网关、浏览器客户端、管理�
 ./scripts/deploy-mvp.sh --init   # 只执行一次，生成 0600 的 .env 和随机后台密码
 # 编辑 .env：生产镜像填 GHCR 的仓库和 v* 版本；本地 MVP 保持 VERSION=local
 ./scripts/deploy-mvp.sh          # VERSION=local 自动构建；v* 自动拉取
-# 如果这次发布也要更新 CDN/OSS 上的客户端整体资源：
+# 如果这次发布也要更新 CDN/OSS/R2 上的客户端整体资源：
 ./scripts/deploy-mvp.sh --sync-assets
 docker compose --env-file .env ps
 docker compose --env-file .env logs -f saac gmsv gateway web
@@ -82,7 +82,7 @@ docker compose --env-file .env logs -f saac gmsv gateway web
 网页仍会启动，但地图自动地图、音乐等功能会缺少数据。脚本的 `--build`、`--pull`
 和 `--no-image-update` 可分别强制本地构建、拉取或完全跳过镜像更新。
 
-图片、地图、音效和音乐可以直接由阿里云 OSS/CDN 提供，避免所有玩家从 8088
+图片、地图、音效和音乐可以直接由阿里云 OSS、Cloudflare R2/CDN 提供，避免所有玩家从 8088
 重复下载大文件。资源使用一个固定根目录，版本发布时做增量同步，不按 tag 重复
 保存整套原版数据；根目录下保持下面的目录名：
 
@@ -108,8 +108,8 @@ SHA-256，只上传变化文件，最后才更新发布清单：
 指定本地路径、bucket 或任意命令。
 
 Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
-`static.oss` 中填写阿里云 OSS 的 `endpoint`、`region`、`bucket` 和固定
-`prefix`，在 `static.cdn.base_url` 中填写 CDN 公开根地址，例如：
+`static.oss` 中填写对象存储的 `provider`、`endpoint`、`region`、`bucket` 和固定
+`prefix`，在 `static.cdn.base_url` 中填写 CDN 公开根地址。阿里云 OSS 例如：
 
 ```toml
 [static.oss]
@@ -123,16 +123,23 @@ prefix = "stoneage"
 base_url = "https://cdn.example.com/stoneage"
 ```
 
+Cloudflare R2 使用相同配置格式：`provider = "cloudflare-r2"`、endpoint 为
+`https://<account-id>.r2.cloudflarestorage.com`、region 为 `auto`，CDN 填写
+Cloudflare 自定义域名（完整模板见 [`config/web.r2.toml.example`](config/web.r2.toml.example)）。
+R2 的 S3 API 默认不是公开下载端点，因此生产环境应配置 CDN；Web 不会把带签名的
+R2 API 地址暴露给浏览器。
+
 `prefix` 和 `base_url` 都是跨版本复用的固定根目录，不追加 `v*` tag。Compose
 通过 `.env` 的 `STONEAGE_WEB_CONFIG_FILE` 把这个 TOML 配置只读挂载到 Web 容器；AccessKey
 明文只应放在权限为 0600 的 secret 文件中，不应直接写进 TOML 或提交到 Git。CDN 有值时优先
-使用 CDN；CDN 留空但 OSS endpoint/bucket 已配置时，后端会直接生成公开 OSS 根地址。网页会把
+使用 CDN；CDN 留空但阿里云 OSS endpoint/bucket 已配置时，后端会直接生成公开 OSS 根地址。R2
+不会自动暴露 S3 endpoint。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
-仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 建议分别写入权限为 0600 的
+仍只访问 8088。当前资源模式是公开只读 OSS/R2/CDN；AK/SK 建议分别写入权限为 0600 的
 `.secrets/oss-access-key-id` 和 `.secrets/oss-access-key-secret`（或由 CI 注入），由一次性
 批量资源同步工具读取，Web 游戏进程和 admin HTTP 进程不会读取或上传。admin 页面如果启用
 同步，只能请求 service-control 的固定整包任务；service-control 只挂载这两个 Docker secret
-文件，并在任务启动时传给上传子进程，任务结束后不保留密钥。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
+文件，并在任务启动时传给上传子进程，任务结束后不保留密钥。OSS/R2/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露
 `Content-Length`、`Content-Range`、`Accept-Ranges`、`ETag`。生产环境必须使用
 HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网页会拦截混合
@@ -140,7 +147,7 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 缓存。同名二进制确实发生变化时，只刷新对应 CDN URL，不需要复制整套资源目录。
 
 客户端资源是一个整体发布单元，生产发布时建议由部署脚本或 CI 执行。Admin 是独立
-的运维应用，不会被打进客户端资源包，也不会拿到 OSS AK/SK：
+的运维应用，不会被打进客户端资源包，也不会拿到 OSS/R2 AK/SK：
 
 ```bash
 ./scripts/sync-client-assets.sh --dry-run   # 先检查目录和对象数量
@@ -149,12 +156,12 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 
 同步器会在固定根目录写入 `stoneage/_client-manifest.json`。清单记录每个公开对象的
 大小和 SHA-256；后续发布只上传变化的文件，全部成功后才更新清单，失败重试不会把
-客户端清单提前切到半套资源。资源 URL 仍然是不带 tag 的固定
+客户端清单提前切到半套资源；上传器还会在写入清单前确认源文件没有在上传过程中被替换。资源 URL 仍然是不带 tag 的固定
 `stoneage/{assets,maps,audio}/`，因此不会按版本复制整套客户端。每次发布先上传图片、
 地图和音频，再上传浏览器索引（`*.json` 与 `audio/auto.dat`），最后才写发布清单，
 避免 CDN 在发布中途拿到新索引却找不到对应资源。
 
-首次配置 OSS 时，把凭据分别写入部署机上的两个 secret 文件（不要把值提交到
+首次配置 OSS 或 R2 时，把凭据分别写入部署机上的两个 secret 文件（不要把值提交到
 `.env` 或 Git）：
 
 ```bash
@@ -167,12 +174,18 @@ unset oss_id oss_secret
 chmod 600 .secrets/oss-access-key-id .secrets/oss-access-key-secret
 ```
 
+R2 这里填写 Cloudflare 控制台创建的 R2 API Token（Access Key ID/Secret
+Access Key），不是 Cloudflare Global API Key；该 Token 只需 `Object Read & Write`
+到目标 bucket。若使用 CI 临时环境，也可用 `AWS_ACCESS_KEY_ID`/
+`AWS_SECRET_ACCESS_KEY` 或 `CLOUDFLARE_R2_ACCESS_KEY_ID`/
+`CLOUDFLARE_R2_SECRET_ACCESS_KEY`，同步脚本会优先使用 0600 secret 文件。
+
 脚本启动 Compose 的一次性 `assets-sync` profile；任务结束后容器即被删除，Web、网关和
 admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目标仍是固定的
 `stoneage/{assets,maps,audio}/` 根目录，不包含 release tag。同步器只上传公开的
 `client/web/assets/original`、`map/`、`data/auto.dat`、`data/bgm/`、`data/se/` 和 `data/pal/`；不会把
 `savedata.dat`、聊天记录、PE 支持文件等 `data/` 私有内容上传。CI 也可以直接调用同一个
-`stoneage-assets-sync` 二进制或等价的 OSS 同步步骤。admin 的资源按钮（如启用）只会
+`stoneage-assets-sync` 二进制或等价的 OSS/R2 同步步骤。admin 的资源按钮（如启用）只会
 请求 service-control 的固定整包任务，不接受路径、bucket 或命令参数；service-control
 只读挂载两个 Docker secret，不会把它持久化进镜像或传给 admin。
 

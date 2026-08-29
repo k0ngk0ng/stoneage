@@ -2,7 +2,7 @@
 <div class="page-heading">
   <div>
     <h1>静态资源</h1>
-    <p class="muted">把当前 2.5 客户端的精灵图、地图、音效和音乐一次性同步到配置中的 OSS。不会把文件逐个上传，也不会把 AK/SK 发送给浏览器。</p>
+    <p class="muted">把当前 2.5 客户端的精灵图、地图、音效和音乐一次性同步到配置中的对象存储（阿里云 OSS 或 Cloudflare R2）。不会把文件逐个上传，也不会把 AK/SK 发送给浏览器。</p>
   </div>
   <span class="page-kicker">批量同步</span>
 </div>
@@ -11,7 +11,7 @@
 
 <section class="card release-card">
   <div class="card-heading">
-    <div><h2>OSS 资源同步</h2><p class="muted">同步固定的 <code>assets/</code>、<code>maps/</code>、<code>audio/</code> 目录。目标 bucket、prefix 和凭据只由服务控制容器读取。</p></div>
+    <div><h2>对象存储资源同步</h2><p class="muted">同步固定的 <code>assets/</code>、<code>maps/</code>、<code>audio/</code> 目录。目标 provider、bucket、prefix 和凭据只由服务控制容器读取。</p></div>
     <span class="status-pill {{.AssetSync.Phase}}">{{if .AssetSync.Phase}}{{.AssetSync.Phase}}{{else}}idle{{end}}</span>
   </div>
   <dl class="details release-details">
@@ -23,7 +23,7 @@
   {{if .AssetSyncAvailable}}
   <form method="post" action="/assets/sync" class="release-form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <div class="form-footer"><small>同步任务在后台运行；已有任务运行时不会重复启动。</small><button class="primary" type="submit" data-confirm="将把当前静态资源批量上传到 OSS，确认继续？">开始同步</button></div>
+    <div class="form-footer"><small>同步任务在后台运行；已有任务运行时不会重复启动。</small><button class="primary" type="submit" data-confirm="将把当前静态资源批量上传到对象存储，确认继续？">开始同步</button></div>
   </form>
   {{else}}
   <div class="empty config-readonly"><p>当前服务控制接口未提供资源同步能力。</p><a class="button" href="/server">返回服务</a></div>

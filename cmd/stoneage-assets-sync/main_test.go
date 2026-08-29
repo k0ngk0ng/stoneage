@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -91,6 +96,104 @@ func TestCredentialValueFallsBackToEnvironment(t *testing.T) {
 	value, err := credentialValue("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE")
 	if err != nil || value != "environment-value" {
 		t.Fatalf("credentialValue=%q err=%v", value, err)
+	}
+}
+
+func TestStorageProviderAliases(t *testing.T) {
+	for _, value := range []string{"aliyun-oss", "aliyun"} {
+		if got, err := normalizeStorageProvider(value); err != nil || got != "aliyun-oss" {
+			t.Fatalf("Aliyun provider %q normalized to %q, err=%v", value, got, err)
+		}
+	}
+	for _, value := range []string{"cloudflare-r2", "r2", "cloudflare"} {
+		if got, err := normalizeStorageProvider(value); err != nil || got != "cloudflare-r2" {
+			t.Fatalf("R2 provider %q normalized to %q, err=%v", value, got, err)
+		}
+	}
+	if _, err := normalizeStorageProvider("minio"); err == nil {
+		t.Fatal("unsupported object-storage provider accepted")
+	}
+}
+
+func TestValidateStorageEndpoint(t *testing.T) {
+	if err := validateStorageEndpoint("https://account-id.r2.cloudflarestorage.com", "stoneage-assets"); err != nil {
+		t.Fatal(err)
+	}
+	for _, endpoint := range []string{
+		"https://user:secret@example.com",
+		"https://example.com/path",
+		"https://example.com?x=1",
+		"ftp://example.com",
+	} {
+		if err := validateStorageEndpoint(endpoint, "stoneage-assets"); err == nil {
+			t.Errorf("unsafe endpoint accepted: %q", endpoint)
+		}
+	}
+}
+
+func TestCredentialValueAnyPrefersGenericSecret(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "r2-key")
+	if err := os.WriteFile(filename, []byte("generic-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE", filename)
+	t.Setenv("AWS_ACCESS_KEY_ID", "aws-key")
+	value, err := credentialValueAny(
+		[]string{"STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE", "AWS_ACCESS_KEY_ID_FILE"},
+		[]string{"STONEAGE_ASSET_SYNC_ACCESS_KEY", "AWS_ACCESS_KEY_ID"},
+	)
+	if err != nil || value != "generic-key" {
+		t.Fatalf("generic credential=%q err=%v", value, err)
+	}
+}
+
+func TestNewObjectStoreSupportsR2S3Endpoint(t *testing.T) {
+	store, err := newObjectStore("cloudflare-r2", "https://account-id.r2.cloudflarestorage.com", "auto", "stoneage-assets", "id", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.(r2ObjectStore); !ok {
+		t.Fatalf("R2 store type=%T", store)
+	}
+}
+
+func TestR2ObjectStoreUsesPathStyleS3Requests(t *testing.T) {
+	var receivedPath string
+	var receivedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		receivedPath = request.URL.Path
+		if request.Method == http.MethodPut {
+			receivedBody, _ = io.ReadAll(request.Body)
+			response.WriteHeader(http.StatusOK)
+			return
+		}
+		if request.Method == http.MethodGet {
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write([]byte(`{"format":1,"objects":{}}`))
+			return
+		}
+		response.WriteHeader(http.StatusMethodNotAllowed)
+	}))
+	defer server.Close()
+	store, err := newObjectStore("cloudflare-r2", server.URL, "auto", "stoneage-assets", "id", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := store.(r2ObjectStore)
+	if err := r2.Put("stoneage/_client-manifest.json", []byte("manifest"), objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
+		t.Fatal(err)
+	}
+	if receivedPath != "/stoneage-assets/stoneage/_client-manifest.json" || !bytes.Equal(receivedBody, []byte("manifest")) {
+		t.Fatalf("R2 PUT path=%q body=%q", receivedPath, receivedBody)
+	}
+	reader, err := r2.GetObject("stoneage/_client-manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	body, err := io.ReadAll(reader)
+	if err != nil || !strings.Contains(string(body), `"format":1`) {
+		t.Fatalf("R2 GET body=%q err=%v", body, err)
 	}
 }
 

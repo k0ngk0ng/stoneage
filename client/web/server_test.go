@@ -327,6 +327,38 @@ func TestHandlerUsesPublicOSSRootWhenCDNIsUnset(t *testing.T) {
 	}
 }
 
+func TestCloudflareR2ConfigUsesCDNWithoutExposingS3Endpoint(t *testing.T) {
+	value, err := normalizeOSSConfig(OSSConfig{
+		Provider: "cloudflare-r2",
+		Endpoint: "https://account-id.r2.cloudflarestorage.com/",
+		Bucket:   "stoneage-assets",
+		Prefix:   "/stoneage/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Provider != "cloudflare-r2" || value.Region != "auto" {
+		t.Fatalf("normalized R2 config=%+v", value)
+	}
+	if got := ossPublicBaseURL(value); got != "" {
+		t.Fatalf("R2 S3 endpoint was exposed as public asset root %q", got)
+	}
+	cfg := testConfig("127.0.0.1:1")
+	cfg.OSS = value
+	cfg.CDNBaseURL = "https://cdn.example.com/stoneage"
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	if !strings.Contains(string(handler.page), "https://cdn.example.com/stoneage/assets/") {
+		t.Fatal("R2 CDN base was not used for browser assets")
+	}
+	if strings.Contains(string(handler.page), "r2.cloudflarestorage.com") {
+		t.Fatal("R2 S3 endpoint leaked into browser page")
+	}
+}
+
 func TestWebConfigFileAndOSSValidationFailClosed(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "web.toml")
 	if err := os.WriteFile(filename, []byte("[static.cdn]\ndomain = \"https://cdn.example.com\"\n"), 0o600); err != nil {

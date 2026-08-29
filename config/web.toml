@@ -13,6 +13,9 @@ maps_directory = "/game/client/map"
 audio_directory = "/game/client/data"
 npc_directory = "/game/gmsv/data/npc"
 
+# Storage provider used by the one-shot asset uploader.  Supported values are
+# "aliyun-oss" and "cloudflare-r2".  The Web process only uses this section
+# to derive a public Aliyun fallback URL; it never reads credentials.
 [static.oss]
 provider = "aliyun-oss"
 endpoint = ""

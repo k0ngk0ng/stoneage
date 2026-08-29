@@ -129,7 +129,7 @@ services:
     command: ["/opt/stoneage/bin/stoneage-web", "-config", "/etc/stoneage/web.toml"]
     environment:
       # Environment variables are emergency/secret-safe overrides. Normal
-      # Web, OSS and CDN settings live in the mounted TOML configuration.
+      # Web, object-storage and CDN settings live in the mounted TOML configuration.
       STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:
@@ -147,7 +147,7 @@ services:
 
   # Client publication is a one-shot control-plane job, not part of the
   # browser or admin runtime.  It is opt-in via `--profile assets-sync` so an
-  # ordinary deployment never uploads anything (and never needs OSS keys).
+  # ordinary deployment never uploads anything (and never needs storage keys).
   # The three trees are mounted together and published as one stable client
   # root: stoneage/{assets,maps,audio}/.
   assets-sync:
@@ -171,8 +171,8 @@ services:
       # Credentials are Docker secrets, not Compose environment values. They
       # exist only in this short-lived uploader and are never visible to web,
       # gateway or admin HTTP containers.
-      ALIBABA_CLOUD_ACCESS_KEY_ID_FILE: /run/secrets/stoneage-oss-access-key-id
-      ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
+      STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE: /run/secrets/stoneage-oss-access-key-id
+      STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
     secrets:
       - stoneage-oss-access-key-id
       - stoneage-oss-access-key-secret
@@ -250,10 +250,10 @@ services:
       STONEAGE_GMSV_DATA_ROOT: ${STONEAGE_GMSV_DATA_ROOT:-}
       STONEAGE_SAAC_DATA_ROOT: ${STONEAGE_SAAC_DATA_ROOT:-}
       STONEAGE_AUTH_VOLUME: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
-      # The fixed sync script reads only the two OSS secret files when an
+      # The fixed sync script reads only the two storage secret files when an
       # admin explicitly starts a job. They are not injected into admin/web.
-      ALIBABA_CLOUD_ACCESS_KEY_ID_FILE: /run/secrets/stoneage-oss-access-key-id
-      ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
+      STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE: /run/secrets/stoneage-oss-access-key-id
+      STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
     volumes:
       - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
       - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
@@ -334,10 +334,10 @@ volumes:
   operator-state:
     name: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
 
-# File-backed Compose secrets keep OSS credentials out of the rendered service
+# File-backed Compose secrets keep object-storage credentials out of the rendered service
 # environment and out of the web/admin containers. deploy-mvp.sh creates empty
 # 0600 defaults when no upload credentials are configured, so ordinary game
-# deployments do not need an OSS account; an upload fails closed until both
+# deployments do not need a storage account; an upload fails closed until both
 # files contain values.
 secrets:
   stoneage-oss-access-key-id:

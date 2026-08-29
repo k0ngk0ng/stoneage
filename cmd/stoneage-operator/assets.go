@@ -12,7 +12,7 @@ func (value *operator) startAssetSync() error {
 		return errors.New("资源同步任务正在运行，请稍后刷新")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	value.assetSync = assetSyncStatus{Phase: "running", StartedAt: now, UpdatedAt: now, Message: "正在把 assets、maps、audio 批量同步到 OSS"}
+	value.assetSync = assetSyncStatus{Phase: "running", StartedAt: now, UpdatedAt: now, Message: "正在把 assets、maps、audio 批量同步到对象存储"}
 	value.assetSyncMu.Unlock()
 
 	// Do not hold the operator request open while a complete 2.5 client data
@@ -25,7 +25,7 @@ func (value *operator) startAssetSync() error {
 		updated := time.Now().UTC().Format(time.RFC3339)
 		value.assetSync.UpdatedAt = updated
 		value.assetSync.Phase = "succeeded"
-		value.assetSync.Message = "资源已同步到 OSS"
+		value.assetSync.Message = "资源已同步到对象存储"
 		if err != nil {
 			value.assetSync.Phase = "failed"
 			value.assetSync.Message = err.Error()

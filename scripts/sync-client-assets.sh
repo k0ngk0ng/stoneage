@@ -20,7 +20,7 @@ usage()
 Usage: scripts/sync-client-assets.sh [options]
 
 Publish the complete public 2.5 browser client (sprites, maps, BGM and SE)
-to the OSS origin configured in config/web.toml. The destination is the
+to the Aliyun OSS or Cloudflare R2 origin configured in config/web.toml. The destination is the
 stable <prefix>/{assets,maps,audio}/ root; no release tag is added to the URL.
 The uploader keeps a SHA-256 client manifest at <prefix>/_client-manifest.json
 and only uploads changed objects on later runs. The sync job deliberately
@@ -34,10 +34,10 @@ Options:
   -h, --help      Show this help.
 
 Set STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE and
-STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE to 0600 files containing the two OSS
-credentials. For CI/direct use, ALIBABA_CLOUD_ACCESS_KEY_ID and
-ALIBABA_CLOUD_ACCESS_KEY_SECRET are accepted and copied to those files for
-the one-shot container. The admin UI is not involved.
+STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE to 0600 files containing the two
+object-storage credentials. For CI/direct use, provider-compatible variables
+(AWS_*, CLOUDFLARE_R2_* or the legacy ALIBABA_CLOUD_*) are accepted and copied
+to those files for the one-shot container. The admin UI is not involved.
 EOF
 }
 
@@ -138,12 +138,24 @@ fi
 if [[ "$dry_run" != 1 ]]; then
     # Do not silently start an upload with empty credentials. Prefer secret
     # files so the values never enter Compose's rendered environment.
-    access_key="${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
-    access_secret="${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+    access_key="${STONEAGE_ASSET_SYNC_ACCESS_KEY:-${CLOUDFLARE_R2_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-${ALIBABA_CLOUD_ACCESS_KEY_ID:-}}}}"
+    access_secret="${STONEAGE_ASSET_SYNC_ACCESS_SECRET:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}}}}"
+    access_key="${access_key:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY || true)}"
+    access_secret="${access_secret:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET || true)}"
+    access_key="${access_key:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID || true)}"
+    access_secret="${access_secret:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY || true)}"
+    access_key="${access_key:-$(env_value AWS_ACCESS_KEY_ID || true)}"
+    access_secret="${access_secret:-$(env_value AWS_SECRET_ACCESS_KEY || true)}"
     access_key="${access_key:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)}"
     access_secret="${access_secret:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)}"
     access_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
     access_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
+    access_key_file="${access_key_file:-${CLOUDFLARE_R2_ACCESS_KEY_ID_FILE:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID_FILE || true)}}"
+    access_secret_file="${access_secret_file:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE || true)}}"
+    access_key_file="${access_key_file:-${AWS_ACCESS_KEY_ID_FILE:-$(env_value AWS_ACCESS_KEY_ID_FILE || true)}}"
+    access_secret_file="${access_secret_file:-${AWS_SECRET_ACCESS_KEY_FILE:-$(env_value AWS_SECRET_ACCESS_KEY_FILE || true)}}"
+    access_key_file="${access_key_file:-${ALIBABA_CLOUD_ACCESS_KEY_ID_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID_FILE || true)}}"
+    access_secret_file="${access_secret_file:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE || true)}}"
     access_key_file="${access_key_file:-.secrets/oss-access-key-id}"
     access_secret_file="${access_secret_file:-.secrets/oss-access-key-secret}"
     case "$access_key_file" in /*) ;; *) access_key_file="$project_root/${access_key_file#./}" ;; esac
@@ -160,7 +172,7 @@ if [[ "$dry_run" != 1 ]]; then
     fi
     chmod 600 "$access_key_file" "$access_secret_file"
     if [[ ! -s "$access_key_file" || ! -s "$access_secret_file" ]]; then
-        echo "OSS credentials are missing; provide the two secret files or ALIBABA_CLOUD_ACCESS_KEY_ID(_FILE) and ALIBABA_CLOUD_ACCESS_KEY_SECRET(_FILE)." >&2
+        echo "object-storage credentials are missing; provide the two secret files or provider-compatible access-key variables." >&2
         exit 2
     fi
     # Compose resolves secret file paths against the project directory. Pass
@@ -173,6 +185,12 @@ else
     # local defaults; custom external paths are an operator error.
     access_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
     access_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
+    access_key_file="${access_key_file:-${CLOUDFLARE_R2_ACCESS_KEY_ID_FILE:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID_FILE || true)}}"
+    access_secret_file="${access_secret_file:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE || true)}}"
+    access_key_file="${access_key_file:-${AWS_ACCESS_KEY_ID_FILE:-$(env_value AWS_ACCESS_KEY_ID_FILE || true)}}"
+    access_secret_file="${access_secret_file:-${AWS_SECRET_ACCESS_KEY_FILE:-$(env_value AWS_SECRET_ACCESS_KEY_FILE || true)}}"
+    access_key_file="${access_key_file:-${ALIBABA_CLOUD_ACCESS_KEY_ID_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID_FILE || true)}}"
+    access_secret_file="${access_secret_file:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE || true)}}"
     access_key_file="${access_key_file:-.secrets/oss-access-key-id}"
     access_secret_file="${access_secret_file:-.secrets/oss-access-key-secret}"
     case "$access_key_file" in /*) ;; *) access_key_file="$project_root/${access_key_file#./}" ;; esac

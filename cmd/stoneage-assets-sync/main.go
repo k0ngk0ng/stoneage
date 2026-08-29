@@ -1,11 +1,13 @@
 // stoneage-assets-sync publishes the browser's immutable static trees to an
-// Aliyun OSS bucket. It is intentionally a separate control-plane command:
+// Aliyun OSS or Cloudflare R2 bucket. It is intentionally a separate
+// control-plane command:
 // the game Web process only serves protocol traffic and public asset URLs,
-// while this command is the only component that receives OSS credentials.
+// while this command is the only component that receives storage credentials.
 package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,9 +16,11 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +29,12 @@ import (
 	"time"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	awsV2 "github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awscredentials "github.com/aws/aws-sdk-go-v2/credentials"
+	awsS3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -100,6 +110,117 @@ type clientManifest struct {
 	Objects   map[string]manifestObject `json:"objects"`
 }
 
+// objectMetadata is the small provider-neutral subset needed by the browser
+// client.  Both Aliyun OSS and Cloudflare R2 preserve these HTTP headers and
+// the sha256 metadata used to audit a publication.
+type objectMetadata struct {
+	ContentType  string
+	CacheControl string
+	SHA256       string
+}
+
+var errObjectNotFound = errors.New("object not found")
+
+var storageBucketNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+
+// objectStore hides the two S3-like APIs from the publication planner.  The
+// web and admin processes never construct one; only this short-lived command
+// receives credentials and writes public client objects.
+type objectStore interface {
+	GetObject(key string) (io.ReadCloser, error)
+	PutFile(key, filename string, metadata objectMetadata) error
+	Put(key string, payload []byte, metadata objectMetadata) error
+}
+
+type aliyunObjectStore struct{ bucket *oss.Bucket }
+
+func (store aliyunObjectStore) GetObject(key string) (io.ReadCloser, error) {
+	reader, err := store.bucket.GetObject(key)
+	if err != nil {
+		var serviceErr oss.ServiceError
+		if errors.As(err, &serviceErr) && serviceErr.StatusCode == 404 {
+			return nil, errObjectNotFound
+		}
+		return nil, err
+	}
+	return reader, nil
+}
+
+func aliyunOptions(metadata objectMetadata) []oss.Option {
+	options := []oss.Option{oss.ContentType(metadata.ContentType), oss.CacheControl(metadata.CacheControl)}
+	if metadata.SHA256 != "" {
+		options = append(options, oss.Meta("sha256", metadata.SHA256))
+	}
+	return options
+}
+
+func (store aliyunObjectStore) PutFile(key, filename string, metadata objectMetadata) error {
+	return store.bucket.PutObjectFromFile(key, filename, aliyunOptions(metadata)...)
+}
+
+func (store aliyunObjectStore) Put(key string, payload []byte, metadata objectMetadata) error {
+	return store.bucket.PutObject(key, bytes.NewReader(payload), aliyunOptions(metadata)...)
+}
+
+type r2ObjectStore struct {
+	client *awsS3.Client
+	bucket string
+}
+
+func (store r2ObjectStore) GetObject(key string) (io.ReadCloser, error) {
+	output, err := store.client.GetObject(context.Background(), &awsS3.GetObjectInput{Bucket: awsV2.String(store.bucket), Key: awsV2.String(key)})
+	if err != nil {
+		var noSuchKey *s3types.NoSuchKey
+		var responseErr *smithyhttp.ResponseError
+		if errors.As(err, &noSuchKey) || (errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == 404) {
+			return nil, errObjectNotFound
+		}
+		return nil, err
+	}
+	return output.Body, nil
+}
+
+func (store r2ObjectStore) PutFile(key, filename string, metadata objectMetadata) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	input := &awsS3.PutObjectInput{
+		Bucket:        awsV2.String(store.bucket),
+		Key:           awsV2.String(key),
+		Body:          file,
+		ContentType:   awsV2.String(metadata.ContentType),
+		CacheControl:  awsV2.String(metadata.CacheControl),
+		ContentLength: awsV2.Int64(info.Size()),
+	}
+	if metadata.SHA256 != "" {
+		input.Metadata = map[string]string{"sha256": metadata.SHA256}
+	}
+	_, err = store.client.PutObject(context.Background(), input)
+	return err
+}
+
+func (store r2ObjectStore) Put(key string, payload []byte, metadata objectMetadata) error {
+	input := &awsS3.PutObjectInput{
+		Bucket:        awsV2.String(store.bucket),
+		Key:           awsV2.String(key),
+		Body:          bytes.NewReader(payload),
+		ContentLength: awsV2.Int64(int64(len(payload))),
+		ContentType:   awsV2.String(metadata.ContentType),
+		CacheControl:  awsV2.String(metadata.CacheControl),
+	}
+	if metadata.SHA256 != "" {
+		input.Metadata = map[string]string{"sha256": metadata.SHA256}
+	}
+	_, err := store.client.PutObject(context.Background(), input)
+	return err
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "stoneage-assets-sync: %v\n", err)
@@ -113,8 +234,8 @@ func run(arguments []string) error {
 	configPath := flags.String("config", envOr("STONEAGE_WEB_CONFIG", "/etc/stoneage/web.toml"), "Web TOML configuration")
 	assetsRoot := flags.String("assets", "", "sprite asset directory (defaults to static.assets_directory)")
 	clientRoot := flags.String("client-data", "/game/client", "2.5 client root containing map/ and data/{auto.dat,bgm,se}")
-	dryRun := flags.Bool("dry-run", false, "list the upload plan without writing OSS objects")
-	workers := flags.Int("workers", envPositiveInt("STONEAGE_ASSET_SYNC_WORKERS", 8), "parallel OSS uploads")
+	dryRun := flags.Bool("dry-run", false, "list the upload plan without writing object-storage objects")
+	workers := flags.Int("workers", envPositiveInt("STONEAGE_ASSET_SYNC_WORKERS", 8), "parallel object-storage uploads")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -129,23 +250,34 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if strings.ToLower(strings.TrimSpace(disk.Static.OSS.Provider)) != "" && strings.ToLower(strings.TrimSpace(disk.Static.OSS.Provider)) != "aliyun-oss" {
-		return fmt.Errorf("unsupported OSS provider %q", disk.Static.OSS.Provider)
+	provider, err := normalizeStorageProvider(disk.Static.OSS.Provider)
+	if err != nil {
+		return err
 	}
 	endpoint := strings.TrimRight(strings.TrimSpace(disk.Static.OSS.Endpoint), "/")
 	bucketName := strings.TrimSpace(disk.Static.OSS.Bucket)
 	if !*dryRun && (endpoint == "" || bucketName == "") {
-		return errors.New("static.oss.endpoint and static.oss.bucket must be configured before syncing")
+		return fmt.Errorf("static.oss.endpoint and static.oss.bucket must be configured before syncing (%s)", provider)
 	}
-	if !*dryRun && strings.TrimSpace(disk.Static.OSS.Region) == "" {
-		return errors.New("static.oss.region must be configured for OSS V4 uploads")
+	if endpoint != "" || bucketName != "" {
+		if err := validateStorageEndpoint(endpoint, bucketName); err != nil {
+			return err
+		}
+	}
+	region := strings.TrimSpace(disk.Static.OSS.Region)
+	if provider == "cloudflare-r2" && region == "" {
+		// R2's S3 API uses the literal region "auto".  Keep it as a
+		// convenient default while still allowing a future compatible
+		// endpoint to provide an explicit region.
+		region = "auto"
+	}
+	if !*dryRun && region == "" {
+		return errors.New("static.oss.region must be configured for Aliyun OSS V4 uploads")
 	}
 	prefix := strings.Trim(strings.TrimSpace(disk.Static.OSS.Prefix), "/")
 	if err := validateObjectPrefix(prefix); err != nil {
 		return err
 	}
-	const accessKeyIDEnv = "ALIBABA_CLOUD_ACCESS_KEY_ID"
-	const accessKeySecretEnv = "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
 	// Prefer file-mounted credentials (Docker secrets, Kubernetes secrets, or
 	// a CI secret file). Environment variables remain a deliberate fallback so
 	// the binary can still be used directly by existing CI jobs. The file form
@@ -153,17 +285,23 @@ func run(arguments []string) error {
 	// the long-running web/admin processes.
 	accessKeyID, accessKeySecret := "", ""
 	if !*dryRun {
-		accessKeyID, err = credentialValue(accessKeyIDEnv, "ALIBABA_CLOUD_ACCESS_KEY_ID_FILE")
+		accessKeyID, err = credentialValueAny(
+			[]string{"STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE", "CLOUDFLARE_R2_ACCESS_KEY_ID_FILE", "AWS_ACCESS_KEY_ID_FILE", "ALIBABA_CLOUD_ACCESS_KEY_ID_FILE"},
+			[]string{"STONEAGE_ASSET_SYNC_ACCESS_KEY", "CLOUDFLARE_R2_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_ID"},
+		)
 		if err != nil {
 			return err
 		}
-		accessKeySecret, err = credentialValue(accessKeySecretEnv, "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE")
+		accessKeySecret, err = credentialValueAny(
+			[]string{"STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE", "CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE", "AWS_SECRET_ACCESS_KEY_FILE", "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE"},
+			[]string{"STONEAGE_ASSET_SYNC_ACCESS_SECRET", "CLOUDFLARE_R2_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "ALIBABA_CLOUD_ACCESS_KEY_SECRET"},
+		)
 		if err != nil {
 			return err
 		}
 	}
 	if !*dryRun && (accessKeyID == "" || accessKeySecret == "") {
-		return fmt.Errorf("OSS credentials are missing: set %s/%s files or %s and %s", "ALIBABA_CLOUD_ACCESS_KEY_ID_FILE", "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE", accessKeyIDEnv, accessKeySecretEnv)
+		return errors.New("object-storage credentials are missing: set STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE and STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE (or provider-compatible environment variables)")
 	}
 
 	assetDirectory := strings.TrimSpace(*assetsRoot)
@@ -209,40 +347,31 @@ func run(arguments []string) error {
 		}
 	}
 
-	var bucket *oss.Bucket
+	var store objectStore
 	if !*dryRun {
-		options := []oss.ClientOption{oss.Timeout(10, 300), oss.AuthVersion(oss.AuthV4)}
-		if region := strings.TrimSpace(disk.Static.OSS.Region); region != "" {
-			options = append(options, oss.Region(region))
-		}
-		client, clientErr := oss.New(endpoint, accessKeyID, accessKeySecret, options...)
-		if clientErr != nil {
-			return fmt.Errorf("create OSS client: %w", clientErr)
-		}
-		bucket, err = client.Bucket(bucketName)
+		store, err = newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
 		if err != nil {
-			return fmt.Errorf("open OSS bucket %q: %w", bucketName, err)
+			return err
 		}
 	}
 
 	if *dryRun {
-		count := 0
-		for _, tree := range trees {
-			uploaded, syncErr := syncTree(nil, tree, prefix, true, *workers)
-			if syncErr != nil {
-				return syncErr
-			}
-			count += uploaded
+		// Use the same snapshot/planner as a real publication.  Apart from
+		// making the object count accurate, this catches duplicate keys and
+		// unsafe relative paths before an operator starts a long upload.
+		objects, planErr := buildPlan(trees, prefix)
+		if planErr != nil {
+			return planErr
 		}
 		targetBucket := bucketName
 		if targetBucket == "" {
 			targetBucket = "<bucket-not-configured>"
 		}
-		fmt.Printf("dry-run: %d objects would be uploaded to oss://%s/%s\n", count, targetBucket, prefix)
+		fmt.Printf("dry-run: %d objects would be uploaded to %s://%s/%s\n", len(objects), storageURI(provider), targetBucket, prefix)
 		return nil
 	}
 
-	previous, err := readManifest(bucket, path.Join(prefix, clientManifestName))
+	previous, err := readManifest(store, path.Join(prefix, clientManifestName))
 	if err != nil {
 		return err
 	}
@@ -250,7 +379,7 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	uploaded, skipped, err := syncObjects(bucket, objects, previous.Objects, *workers)
+	uploaded, skipped, err := syncObjects(store, objects, previous.Objects, *workers)
 	if err != nil {
 		return err
 	}
@@ -262,11 +391,18 @@ func run(arguments []string) error {
 	for _, object := range objects {
 		manifest.Objects[object.Key] = manifestObject{Size: object.Size, SHA256: object.SHA256}
 	}
-	if err := writeManifest(bucket, path.Join(prefix, clientManifestName), manifest); err != nil {
+	if err := writeManifest(store, path.Join(prefix, clientManifestName), manifest); err != nil {
 		return err
 	}
-	fmt.Printf("uploaded %d objects, skipped %d unchanged objects (total %d) to oss://%s/%s; manifest=%s\n", uploaded, skipped, len(objects), bucketName, prefix, path.Join(prefix, clientManifestName))
+	fmt.Printf("uploaded %d objects, skipped %d unchanged objects (total %d) to %s://%s/%s; manifest=%s\n", uploaded, skipped, len(objects), storageURI(provider), bucketName, prefix, path.Join(prefix, clientManifestName))
 	return nil
+}
+
+func storageURI(provider string) string {
+	if provider == "cloudflare-r2" {
+		return "r2"
+	}
+	return "oss"
 }
 
 // credentialValue reads one credential from a secret file when configured,
@@ -276,21 +412,104 @@ func credentialValue(valueEnv, fileEnv string) (string, error) {
 	if filename := strings.TrimSpace(os.Getenv(fileEnv)); filename != "" {
 		content, err := os.ReadFile(filename)
 		if err != nil {
-			return "", fmt.Errorf("read OSS credential file %s: %w", fileEnv, err)
+			return "", fmt.Errorf("read object-storage credential file %s: %w", fileEnv, err)
 		}
 		value := strings.TrimSpace(string(content))
 		if strings.ContainsAny(value, "\r\n\x00") {
-			return "", fmt.Errorf("OSS credential file %s must contain one value", fileEnv)
+			return "", fmt.Errorf("object-storage credential file %s must contain one value", fileEnv)
 		}
 		return value, nil
 	}
 	return strings.TrimSpace(os.Getenv(valueEnv)), nil
 }
 
+// credentialValueAny checks provider-neutral names first, then the aliases
+// used by AWS, R2 and the original Aliyun-only uploader.  This lets existing
+// deployments upgrade without renaming their secret files.
+func credentialValueAny(fileEnvs, valueEnvs []string) (string, error) {
+	for index, fileEnv := range fileEnvs {
+		valueEnv := ""
+		if index < len(valueEnvs) {
+			valueEnv = valueEnvs[index]
+		}
+		value, err := credentialValue(valueEnv, fileEnv)
+		if err != nil {
+			return "", err
+		}
+		if value != "" {
+			return value, nil
+		}
+	}
+	return "", nil
+}
+
+func normalizeStorageProvider(value string) (string, error) {
+	provider := strings.ToLower(strings.TrimSpace(value))
+	if provider == "" {
+		provider = "aliyun-oss"
+	}
+	switch provider {
+	case "aliyun-oss", "aliyun":
+		return "aliyun-oss", nil
+	case "cloudflare-r2", "r2", "cloudflare":
+		return "cloudflare-r2", nil
+	default:
+		return "", fmt.Errorf("unsupported object-storage provider %q (supported: aliyun-oss, cloudflare-r2)", value)
+	}
+}
+
+func validateStorageEndpoint(endpoint, bucketName string) error {
+	if endpoint == "" || bucketName == "" {
+		return errors.New("static.oss.endpoint and static.oss.bucket must be configured together")
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return errors.New("static.oss.endpoint must be an absolute HTTP(S) origin without credentials, path, query or fragment")
+	}
+	if !storageBucketNamePattern.MatchString(bucketName) {
+		return fmt.Errorf("bucket %q is not a valid object-storage bucket name", bucketName)
+	}
+	return nil
+}
+
+func newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret string) (objectStore, error) {
+	switch provider {
+	case "aliyun-oss":
+		options := []oss.ClientOption{oss.Timeout(10, 300), oss.AuthVersion(oss.AuthV4), oss.Region(region)}
+		client, err := oss.New(endpoint, accessKeyID, accessKeySecret, options...)
+		if err != nil {
+			return nil, fmt.Errorf("create Aliyun OSS client: %w", err)
+		}
+		bucket, err := client.Bucket(bucketName)
+		if err != nil {
+			return nil, fmt.Errorf("open Aliyun OSS bucket %q: %w", bucketName, err)
+		}
+		return aliyunObjectStore{bucket: bucket}, nil
+	case "cloudflare-r2":
+		// R2 exposes an S3-compatible endpoint.  Path-style addressing avoids
+		// certificate/DNS issues with bucket names and works for both account
+		// endpoints and local S3-compatible test servers.
+		awsConfig, err := awsconfig.LoadDefaultConfig(context.Background(),
+			awsconfig.WithRegion(region),
+			awsconfig.WithCredentialsProvider(awscredentials.NewStaticCredentialsProvider(accessKeyID, accessKeySecret, "")),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create Cloudflare R2 client: %w", err)
+		}
+		return r2ObjectStore{client: awsS3.NewFromConfig(awsConfig, func(options *awsS3.Options) {
+			options.BaseEndpoint = awsV2.String(endpoint)
+			options.UsePathStyle = true
+		}), bucket: bucketName}, nil
+	default:
+		return nil, fmt.Errorf("unsupported object-storage provider %q", provider)
+	}
+}
+
 // buildPlan walks the explicit client allow-list once and hashes each file.
 // Hashes are calculated before any upload starts, so the manifest is stable for
-// this invocation. If a source file is edited while a deployment is in
-// progress, the next invocation recomputes its hash and uploads it again.
+// this invocation. Each uploaded file is hashed once more after PutObject; if
+// a source file is edited while a deployment is in progress, this invocation
+// fails before publishing the manifest and the next retry takes a fresh plan.
 func buildPlan(trees []sourceTree, prefix string) ([]plannedObject, error) {
 	objects := make([]plannedObject, 0)
 	seen := make(map[string]struct{})
@@ -340,11 +559,10 @@ func fileDigest(filename string) (string, int64, error) {
 	return hex.EncodeToString(hash.Sum(nil)), size, nil
 }
 
-func readManifest(bucket *oss.Bucket, key string) (clientManifest, error) {
-	reader, err := bucket.GetObject(key)
+func readManifest(store objectStore, key string) (clientManifest, error) {
+	reader, err := store.GetObject(key)
 	if err != nil {
-		var serviceErr oss.ServiceError
-		if errors.As(err, &serviceErr) && serviceErr.StatusCode == 404 {
+		if errors.Is(err, errObjectNotFound) {
 			return clientManifest{Format: 1, Objects: make(map[string]manifestObject)}, nil
 		}
 		return clientManifest{}, fmt.Errorf("read existing client manifest: %w", err)
@@ -363,7 +581,7 @@ func readManifest(bucket *oss.Bucket, key string) (clientManifest, error) {
 	return manifest, nil
 }
 
-func syncObjects(bucket *oss.Bucket, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
+func syncObjects(store objectStore, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
 	// Browser metadata is the index which makes the rest of the client
 	// addressable.  Upload it only after every image/map/audio object has
 	// finished so a CDN revalidation cannot observe a new index pointing at a
@@ -371,7 +589,7 @@ func syncObjects(bucket *oss.Bucket, objects []plannedObject, previous map[strin
 	// written after both phases as the final commit marker.
 	regular, metadata := partitionPublicationObjects(objects)
 	for _, batch := range [][]plannedObject{regular, metadata} {
-		batchUploaded, batchSkipped, batchErr := syncObjectBatch(bucket, batch, previous, workers)
+		batchUploaded, batchSkipped, batchErr := syncObjectBatch(store, batch, previous, workers)
 		uploaded += batchUploaded
 		skipped += batchSkipped
 		if batchErr != nil {
@@ -402,7 +620,7 @@ func publicationMetadataKey(key string) bool {
 	return strings.HasSuffix(strings.ToLower(clean), ".json") || path.Base(clean) == "auto.dat"
 }
 
-func syncObjectBatch(bucket *oss.Bucket, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
+func syncObjectBatch(store objectStore, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
 	type uploadJob struct{ object plannedObject }
 	jobs := make(chan uploadJob, workers*2)
 	done := make(chan struct{})
@@ -448,8 +666,21 @@ func syncObjectBatch(bucket *oss.Bucket, objects []plannedObject, previous map[s
 					if strings.EqualFold(filepath.Ext(object.Filename), ".json") {
 						cacheControl = "no-cache"
 					}
-					if err := bucket.PutObjectFromFile(object.Key, object.Filename, oss.ContentType(contentType), oss.CacheControl(cacheControl), oss.Meta("sha256", object.SHA256)); err != nil {
+					if err := store.PutFile(object.Key, object.Filename, objectMetadata{ContentType: contentType, CacheControl: cacheControl, SHA256: object.SHA256}); err != nil {
 						setError(fmt.Errorf("upload %s: %w", object.Key, err))
+						return
+					}
+					// PutObjectFromFile opens the source after buildPlan has
+					// hashed it.  A running asset extraction/copy could therefore
+					// replace the file between those two operations.  Do not write
+					// a publication manifest that claims the old digest for the
+					// newly uploaded bytes; fail this batch and let the next retry
+					// take a fresh snapshot instead.
+					if digest, size, digestErr := fileDigest(object.Filename); digestErr != nil {
+						setError(fmt.Errorf("verify source %s after upload: %w", object.Key, digestErr))
+						return
+					} else if digest != object.SHA256 || size != object.Size {
+						setError(fmt.Errorf("source changed while uploading %s", object.Key))
 						return
 					}
 					uploadedCount.Add(1)
@@ -476,13 +707,13 @@ send:
 	return int(uploadedCount.Load()), int(skippedCount.Load()), nil
 }
 
-func writeManifest(bucket *oss.Bucket, key string, manifest clientManifest) error {
+func writeManifest(store objectStore, key string, manifest clientManifest) error {
 	payload, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode client manifest: %w", err)
 	}
 	payload = append(payload, '\n')
-	if err := bucket.PutObject(key, bytes.NewReader(payload), oss.ContentType("application/json"), oss.CacheControl("no-cache")); err != nil {
+	if err := store.Put(key, payload, objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
 		return fmt.Errorf("upload client manifest %s: %w", key, err)
 	}
 	return nil
@@ -499,96 +730,6 @@ func loadConfig(filename string) (configFile, error) {
 		return configFile{}, fmt.Errorf("decode TOML config %q: %w", filename, err)
 	}
 	return disk, nil
-}
-
-func syncTree(bucket *oss.Bucket, tree sourceTree, prefix string, dryRun bool, workers int) (int, error) {
-	if dryRun {
-		count := 0
-		err := walkTree(tree, func(_, _ string) error {
-			count++
-			return nil
-		})
-		if err != nil {
-			return count, fmt.Errorf("sync %s: %w", tree.Name, err)
-		}
-		return count, nil
-	}
-
-	type uploadJob struct {
-		filename string
-		key      string
-	}
-	jobs := make(chan uploadJob, workers*2)
-	done := make(chan struct{})
-	var stopOnce sync.Once
-	var firstErr error
-	var errMu sync.Mutex
-	var count atomic.Int64
-	setError := func(err error) {
-		if err == nil {
-			return
-		}
-		errMu.Lock()
-		if firstErr == nil {
-			firstErr = err
-			stopOnce.Do(func() { close(done) })
-		}
-		errMu.Unlock()
-	}
-	var workerGroup sync.WaitGroup
-	for index := 0; index < workers; index++ {
-		workerGroup.Add(1)
-		go func() {
-			defer workerGroup.Done()
-			for {
-				select {
-				case <-done:
-					return
-				case job, ok := <-jobs:
-					if !ok {
-						return
-					}
-					contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(job.filename)))
-					if contentType == "" {
-						contentType = "application/octet-stream"
-					}
-					cacheControl := "public, max-age=3600, must-revalidate"
-					if strings.EqualFold(filepath.Ext(job.filename), ".json") {
-						cacheControl = "no-cache"
-					}
-					if err := bucket.PutObjectFromFile(job.key, job.filename, oss.ContentType(contentType), oss.CacheControl(cacheControl)); err != nil {
-						setError(fmt.Errorf("upload %s: %w", job.key, err))
-						return
-					}
-					count.Add(1)
-				}
-			}
-		}()
-	}
-	walkErr := walkTree(tree, func(filename, relative string) error {
-		key := path.Join(prefix, tree.Name, filepath.ToSlash(relative))
-		if key == "." || strings.HasPrefix(key, "../") {
-			return fmt.Errorf("unsafe object key for %q", filename)
-		}
-		select {
-		case <-done:
-			return errors.New("upload aborted after an earlier error")
-		case jobs <- uploadJob{filename: filename, key: key}:
-		}
-		return nil
-	})
-	close(jobs)
-	workerGroup.Wait()
-	if walkErr != nil {
-		setError(walkErr)
-	}
-	errMu.Lock()
-	err := firstErr
-	errMu.Unlock()
-	if err != nil {
-		return int(count.Load()), fmt.Errorf("sync %s: %w", tree.Name, err)
-	}
-	return int(count.Load()), nil
 }
 
 // walkTree visits files in a source tree without ever following a symlink.

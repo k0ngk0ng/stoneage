@@ -1413,12 +1413,14 @@ func run() error {
 		log.Printf("web configuration loaded from %s", configPath)
 	}
 	if config.OSS.Endpoint != "" {
-		log.Printf("static OSS origin configured: provider=%s bucket=%s endpoint=%s prefix=%s", config.OSS.Provider, config.OSS.Bucket, config.OSS.Endpoint, config.OSS.Prefix)
+		log.Printf("static object-storage origin configured: provider=%s bucket=%s endpoint=%s prefix=%s", config.OSS.Provider, config.OSS.Bucket, config.OSS.Endpoint, config.OSS.Prefix)
 	}
 	if config.CDNBaseURL != "" {
 		log.Printf("static CDN root configured: %s", config.CDNBaseURL)
 	} else if publicOSSURL := ossPublicBaseURL(config.OSS); publicOSSURL != "" {
-		log.Printf("static assets use public OSS root: %s", publicOSSURL)
+		log.Printf("static assets use public object-storage root: %s", publicOSSURL)
+	} else if config.OSS.Provider == "cloudflare-r2" && config.OSS.Endpoint != "" {
+		log.Printf("warning: Cloudflare R2 is configured without static.cdn.base_url; browser assets will use the local Web origin")
 	}
 	log.Printf("web listening on %s -> TCP %s", config.ListenAddress, config.TCPUpstream)
 	err = server.ListenAndServe()
