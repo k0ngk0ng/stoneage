@@ -5,17 +5,24 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"mime"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/pelletier/go-toml/v2"
@@ -66,6 +73,31 @@ type sourceTree struct {
 type sourceRoot struct {
 	Path   string
 	Prefix string
+}
+
+// clientManifestName deliberately lives beside (rather than inside) the three
+// public trees.  It is a publication marker for the uploader and is never
+// requested by the browser.  A manifest is written only after every changed
+// object has uploaded successfully, so a retry can safely reuse the last
+// complete publication and skip unchanged files.
+const clientManifestName = "_client-manifest.json"
+
+type plannedObject struct {
+	Filename string
+	Key      string
+	Size     int64
+	SHA256   string
+}
+
+type manifestObject struct {
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
+type clientManifest struct {
+	Format    int                       `json:"format"`
+	Generated string                    `json:"generated_at"`
+	Objects   map[string]manifestObject `json:"objects"`
 }
 
 func main() {
@@ -193,23 +225,47 @@ func run(arguments []string) error {
 		}
 	}
 
-	count := 0
-	for _, tree := range trees {
-		uploaded, syncErr := syncTree(bucket, tree, prefix, *dryRun, *workers)
-		if syncErr != nil {
-			return syncErr
-		}
-		count += uploaded
-	}
 	if *dryRun {
+		count := 0
+		for _, tree := range trees {
+			uploaded, syncErr := syncTree(nil, tree, prefix, true, *workers)
+			if syncErr != nil {
+				return syncErr
+			}
+			count += uploaded
+		}
 		targetBucket := bucketName
 		if targetBucket == "" {
 			targetBucket = "<bucket-not-configured>"
 		}
 		fmt.Printf("dry-run: %d objects would be uploaded to oss://%s/%s\n", count, targetBucket, prefix)
-	} else {
-		fmt.Printf("uploaded %d objects to oss://%s/%s\n", count, bucketName, prefix)
+		return nil
 	}
+
+	previous, err := readManifest(bucket, path.Join(prefix, clientManifestName))
+	if err != nil {
+		return err
+	}
+	objects, err := buildPlan(trees, prefix)
+	if err != nil {
+		return err
+	}
+	uploaded, skipped, err := syncObjects(bucket, objects, previous.Objects, *workers)
+	if err != nil {
+		return err
+	}
+	manifest := clientManifest{
+		Format:    1,
+		Generated: time.Now().UTC().Format(time.RFC3339),
+		Objects:   make(map[string]manifestObject, len(objects)),
+	}
+	for _, object := range objects {
+		manifest.Objects[object.Key] = manifestObject{Size: object.Size, SHA256: object.SHA256}
+	}
+	if err := writeManifest(bucket, path.Join(prefix, clientManifestName), manifest); err != nil {
+		return err
+	}
+	fmt.Printf("uploaded %d objects, skipped %d unchanged objects (total %d) to oss://%s/%s; manifest=%s\n", uploaded, skipped, len(objects), bucketName, prefix, path.Join(prefix, clientManifestName))
 	return nil
 }
 
@@ -229,6 +285,168 @@ func credentialValue(valueEnv, fileEnv string) (string, error) {
 		return value, nil
 	}
 	return strings.TrimSpace(os.Getenv(valueEnv)), nil
+}
+
+// buildPlan walks the explicit client allow-list once and hashes each file.
+// Hashes are calculated before any upload starts, so the manifest is stable for
+// this invocation. If a source file is edited while a deployment is in
+// progress, the next invocation recomputes its hash and uploads it again.
+func buildPlan(trees []sourceTree, prefix string) ([]plannedObject, error) {
+	objects := make([]plannedObject, 0)
+	seen := make(map[string]struct{})
+	for _, tree := range trees {
+		err := walkTree(tree, func(filename, relative string) error {
+			key := path.Join(prefix, tree.Name, filepath.ToSlash(relative))
+			if key == "." || strings.HasPrefix(key, "../") {
+				return fmt.Errorf("unsafe object key for %q", filename)
+			}
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("duplicate object key %q", key)
+			}
+			info, err := os.Stat(filename)
+			if err != nil {
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("source path is not a regular file: %q", filename)
+			}
+			digest, size, err := fileDigest(filename)
+			if err != nil {
+				return fmt.Errorf("hash %s: %w", filename, err)
+			}
+			seen[key] = struct{}{}
+			objects = append(objects, plannedObject{Filename: filename, Key: key, Size: size, SHA256: digest})
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("plan %s: %w", tree.Name, err)
+		}
+	}
+	sort.Slice(objects, func(i, j int) bool { return objects[i].Key < objects[j].Key })
+	return objects, nil
+}
+
+func fileDigest(filename string) (string, int64, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	size, err := io.Copy(hash, file)
+	if err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), size, nil
+}
+
+func readManifest(bucket *oss.Bucket, key string) (clientManifest, error) {
+	reader, err := bucket.GetObject(key)
+	if err != nil {
+		var serviceErr oss.ServiceError
+		if errors.As(err, &serviceErr) && serviceErr.StatusCode == 404 {
+			return clientManifest{Format: 1, Objects: make(map[string]manifestObject)}, nil
+		}
+		return clientManifest{}, fmt.Errorf("read existing client manifest: %w", err)
+	}
+	defer reader.Close()
+	var manifest clientManifest
+	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
+		return clientManifest{}, fmt.Errorf("decode existing client manifest: %w", err)
+	}
+	if manifest.Format != 1 {
+		return clientManifest{}, fmt.Errorf("unsupported client manifest format %d", manifest.Format)
+	}
+	if manifest.Objects == nil {
+		manifest.Objects = make(map[string]manifestObject)
+	}
+	return manifest, nil
+}
+
+func syncObjects(bucket *oss.Bucket, objects []plannedObject, previous map[string]manifestObject, workers int) (uploaded, skipped int, err error) {
+	type uploadJob struct{ object plannedObject }
+	jobs := make(chan uploadJob, workers*2)
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	var firstErr error
+	var errMu sync.Mutex
+	var uploadedCount atomic.Int64
+	var skippedCount atomic.Int64
+	setError := func(value error) {
+		if value == nil {
+			return
+		}
+		errMu.Lock()
+		if firstErr == nil {
+			firstErr = value
+			stopOnce.Do(func() { close(done) })
+		}
+		errMu.Unlock()
+	}
+	var group sync.WaitGroup
+	for index := 0; index < workers; index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for {
+				select {
+				case <-done:
+					return
+				case job, ok := <-jobs:
+					if !ok {
+						return
+					}
+					object := job.object
+					if old, ok := previous[object.Key]; ok && old.Size == object.Size && old.SHA256 == object.SHA256 {
+						skippedCount.Add(1)
+						continue
+					}
+					contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(object.Filename)))
+					if contentType == "" {
+						contentType = "application/octet-stream"
+					}
+					cacheControl := "public, max-age=3600, must-revalidate"
+					if strings.EqualFold(filepath.Ext(object.Filename), ".json") {
+						cacheControl = "no-cache"
+					}
+					if err := bucket.PutObjectFromFile(object.Key, object.Filename, oss.ContentType(contentType), oss.CacheControl(cacheControl), oss.Meta("sha256", object.SHA256)); err != nil {
+						setError(fmt.Errorf("upload %s: %w", object.Key, err))
+						return
+					}
+					uploadedCount.Add(1)
+				}
+			}
+		}()
+	}
+	send:
+	for _, object := range objects {
+		select {
+		case <-done:
+			break send
+		case jobs <- uploadJob{object: object}:
+		}
+	}
+	close(jobs)
+	group.Wait()
+	errMu.Lock()
+	err = firstErr
+	errMu.Unlock()
+	if err != nil {
+		return int(uploadedCount.Load()), int(skippedCount.Load()), fmt.Errorf("sync client objects: %w", err)
+	}
+	return int(uploadedCount.Load()), int(skippedCount.Load()), nil
+}
+
+func writeManifest(bucket *oss.Bucket, key string, manifest clientManifest) error {
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode client manifest: %w", err)
+	}
+	payload = append(payload, '\n')
+	if err := bucket.PutObject(key, bytes.NewReader(payload), oss.ContentType("application/json"), oss.CacheControl("no-cache")); err != nil {
+		return fmt.Errorf("upload client manifest %s: %w", key, err)
+	}
+	return nil
 }
 
 func loadConfig(filename string) (configFile, error) {

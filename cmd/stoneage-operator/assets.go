@@ -19,7 +19,7 @@ func (value *operator) startAssetSync() error {
 	// tree is uploaded. The fixed script and its fixed source paths are the
 	// security boundary; the admin only starts this asynchronous job.
 	go func() {
-		err := value.runScript("sync-assets.sh", 30*time.Minute)
+		err := value.runAssetSyncScript(30 * time.Minute)
 		value.assetSyncMu.Lock()
 		defer value.assetSyncMu.Unlock()
 		updated := time.Now().UTC().Format(time.RFC3339)

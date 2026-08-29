@@ -20,10 +20,12 @@ usage()
 Usage: scripts/sync-client-assets.sh [options]
 
 Publish the complete public 2.5 browser client (sprites, maps, BGM and SE)
-to the OSS origin configured in config/web.toml.  The destination is the
+to the OSS origin configured in config/web.toml. The destination is the
 stable <prefix>/{assets,maps,audio}/ root; no release tag is added to the URL.
-The sync job deliberately excludes private files from data/ such as saves,
-chat history and PE support binaries.
+The uploader keeps a SHA-256 client manifest at <prefix>/_client-manifest.json
+and only uploads changed objects on later runs. The sync job deliberately
+excludes private files from data/ such as saves, chat history and PE support
+binaries.
 
 Options:
   --dry-run       Validate the source trees and print the object count only.

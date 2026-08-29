@@ -136,13 +136,18 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 内容。`assets/*.json` 等清单应使用短缓存或 `no-cache`；PNG、地图和音频可以长期
 缓存。同名二进制确实发生变化时，只刷新对应 CDN URL，不需要复制整套资源目录。
 
-客户端资源是一个整体发布单元，生产发布时建议由部署脚本或 CI 执行（admin 仍可作为
-受限运维入口，但不是客户端的一部分）：
+客户端资源是一个整体发布单元，生产发布时建议由部署脚本或 CI 执行。Admin 是独立
+的运维应用，不会被打进客户端资源包，也不会拿到 OSS AK/SK：
 
 ```bash
 ./scripts/sync-client-assets.sh --dry-run   # 先检查目录和对象数量
 ./scripts/sync-client-assets.sh              # 一次发布 assets、maps、audio
 ```
+
+同步器会在固定根目录写入 `stoneage/_client-manifest.json`。清单记录每个公开对象的
+大小和 SHA-256；后续发布只上传变化的文件，全部成功后才更新清单，失败重试不会把
+客户端清单提前切到半套资源。资源 URL 仍然是不带 tag 的固定
+`stoneage/{assets,maps,audio}/`，因此不会按版本复制整套客户端。
 
 首次配置 OSS 时，把凭据分别写入部署机上的两个 secret 文件（不要把值提交到
 `.env` 或 Git）：

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -90,5 +91,43 @@ func TestCredentialValueFallsBackToEnvironment(t *testing.T) {
 	value, err := credentialValue("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE")
 	if err != nil || value != "environment-value" {
 		t.Fatalf("credentialValue=%q err=%v", value, err)
+	}
+}
+
+func TestBuildPlanContainsStableHashesAndKeys(t *testing.T) {
+	root := t.TempDir()
+	assets := filepath.Join(root, "assets")
+	if err := os.MkdirAll(filepath.Join(assets, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assets, "nested", "sprite.png"), []byte("sprite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	objects, err := buildPlan([]sourceTree{{Name: "assets", Roots: []sourceRoot{{Path: assets}}}}, "stoneage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 || objects[0].Key != "stoneage/assets/nested/sprite.png" || objects[0].Size != 6 {
+		t.Fatalf("planned objects = %#v", objects)
+	}
+	if objects[0].SHA256 != "4a046e33ecf7aced9bfd000747bb1fda7836c8ceeff662af33c2a2c288b4e78c" {
+		t.Fatalf("unexpected digest %q", objects[0].SHA256)
+	}
+}
+
+func TestClientManifestRoundTrips(t *testing.T) {
+	manifest := clientManifest{Format: 1, Generated: "2026-08-30T00:00:00Z", Objects: map[string]manifestObject{
+		"stoneage/assets/a": {Size: 3, SHA256: "abc"},
+	}}
+	payload, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded clientManifest
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(manifest, decoded) {
+		t.Fatalf("manifest round trip = %#v, want %#v", decoded, manifest)
 	}
 }

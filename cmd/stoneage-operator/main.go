@@ -79,6 +79,7 @@ type operator struct {
 	gmsvDataRoot    string
 	saacDataRoot    string
 	restartMu       sync.Mutex
+	assetExecMu     sync.Mutex
 	assetSyncMu     sync.Mutex
 	assetSync       assetSyncStatus
 }
@@ -350,6 +351,20 @@ func (value *operator) runScript(script string, timeout time.Duration) error {
 func (value *operator) runScriptWithArgs(script string, timeout time.Duration, args ...string) error {
 	value.restartMu.Lock()
 	defer value.restartMu.Unlock()
+	return value.execFixedScript(script, timeout, args...)
+}
+
+// Asset publication is intentionally independent of service restarts. A full
+// client tree can take a while to upload; do not make the admin's gateway/GMSV
+// controls wait behind that unrelated operation. The asset mutex still keeps
+// two publication jobs from running concurrently.
+func (value *operator) runAssetSyncScript(timeout time.Duration) error {
+	value.assetExecMu.Lock()
+	defer value.assetExecMu.Unlock()
+	return value.execFixedScript("sync-assets.sh", timeout)
+}
+
+func (value *operator) execFixedScript(script string, timeout time.Duration, args ...string) error {
 	command := filepath.Join(value.packageRoot, script)
 	info, err := os.Lstat(command)
 	if err != nil {
