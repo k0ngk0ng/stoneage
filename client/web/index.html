@@ -15311,6 +15311,11 @@
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     const actor=ensureOwnFieldActor();
     setLocalActorAction(actor,actionNo);actor.walking=false;
+    /* FIELD.CPP plays the standard menu-confirm sound for every selected
+       action.  Keep the feedback tied to the local selection (before the
+       asynchronous AC write) so a slow bridge cannot make a valid action
+       feel ignored. */
+    unlockAudio();playSoundEffect(217);
     /* The map curtain is dismissed before the optional split SPR table is
        fetched.  A fast tap on Action can therefore land in the small window
        where actorFrame() only has the static REALBIN bitmap and the native
