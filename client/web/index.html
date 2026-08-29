@@ -7580,6 +7580,18 @@
     const members=state.participants.filter(item=>battleSide(item?.battleId)===side);
     return members.length>0&&members.every(battleParticipantDefeated);
   }
+  function battleServerPlayerSlot(item,local=null){
+    const bid=Number(item?.battleId);
+    if(item===local)return true;
+    if(!Number.isInteger(bid)||battleSide(bid)<0)return false;
+    /* BATTLE_NewEntry() reserves entry 0..4 for players and the matching
+       5..9 slots for their pets on each side (SIDE_OFFSET=10).  A terminal
+       2.5 BC row can lose BC_FLG_PLAYER at a gateway boundary, but it cannot
+       lose this battle slot.  Use the server layout only for the local-side
+       BATTLE_CountAlive() mirror; general actor/target classification still
+       follows BC_FLG_PLAYER because enemy formations use the same bid range. */
+    return bid%10<5;
+  }
   /* GMSV's BATTLE_CountAlive() skips pet rows when deciding whether a side
      can continue.  Keep battleLocalSideDefeated()'s roster-level meaning for
      diagnostics/legacy callers, but use this server-accurate predicate for
@@ -7587,7 +7599,11 @@
   function battleServerSideDefeated(state=app.battleState){
     const local=battleLocalParticipant(state),side=battleSide(local?.battleId);
     if(side<0)return false;
-    const players=state.participants.filter(item=>battleSide(item?.battleId)===side&&item.player!==false);
+    /* Do not filter on item.player here. receiveBattleStatus() correctly
+       records an omitted BC_FLG_PLAYER as false; using that decoded flag for
+       terminal defeat discarded the dead local master, left players empty,
+       and prevented both the BC watchdog and the later XYD exit. */
+    const players=state.participants.filter(item=>battleSide(item?.battleId)===side&&battleServerPlayerSlot(item,local));
     return players.length>0&&players.every(battleParticipantDefeated);
   }
   function finishLocalBattleDeath(state){
@@ -8728,9 +8744,16 @@
        counters, guard reactions and VCT250 corpse tails at once.  The old
        48-entry cap dropped still-future tuples from the tail, so a later
        actor appeared to freeze or skipped its death animation.  Keep a
-       bounded native-sized presentation queue, pruning only the oldest
-       records after all 128 slots are occupied. */
-    if(motions.length>128)motions.splice(0,motions.length-128);
+       native-sized presentation queue.  A complex movie can legitimately
+       schedule more than 128 future records before the first one starts, so
+       the cap is only a cleanup threshold: discard completed records, never
+       a not-yet-started speed-sorted action.  renderBattleWorld() performs
+       the same expiry pass every frame and naturally shrinks the queue. */
+    if(motions.length>128){
+      let write=0;
+      for(const queued of motions)if(Number(queued?.until)>now)motions[write++]=queued;
+      motions.length=write;
+    }
   }
   /* oft.cpp creates a T_PRIO_BOW action for ATT_BOW (arrow/axe/stone) and
      ATT_BOOMERANG.  Keep that second action separate from the attacking
@@ -8748,7 +8771,14 @@
     const entry={...projectile,from:[Number(from[0])||0,Number(from[1])||0],to:[Number(to[0])||0,Number(to[1])||0],startedAt:startAt,duration:endAt-startAt,until:endAt};
     if(!Array.isArray(state.projectiles))state.projectiles=[];
     state.projectiles.push(entry);
-    if(state.projectiles.length>128)state.projectiles.splice(0,state.projectiles.length-128);
+    /* A multi-target/model movie is parsed in one pass.  Keep every future
+       projectile from that pass; deleting index 0 at 129 entries could erase
+       the projectile currently on screen before its contact frame. */
+    if(state.projectiles.length>128){
+      let write=0;
+      for(const queued of state.projectiles)if(Number(queued?.until)>now)state.projectiles[write++]=queued;
+      state.projectiles.length=write;
+    }
   }
   function battleProjectileValue(projectile,now=Date.now()){
     const start=Number(projectile?.startedAt)||now,end=Number(projectile?.until)||start+Math.max(1,Number(projectile?.duration)||1),progress=Math.max(0,Math.min(1,(now-start)/Math.max(1,end-start))),from=projectile?.from||[0,0],to=projectile?.to||from,kind=String(projectile?.kind||"arrow");

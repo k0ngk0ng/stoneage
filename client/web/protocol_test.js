@@ -1977,7 +1977,7 @@ const localDefeatStart = script.indexOf("  function battleLocalParticipant");
 const localDefeatEnd = script.indexOf("  function finishLocalBattleDeath", localDefeatStart);
 if (localDefeatStart < 0 || localDefeatEnd <= localDefeatStart) throw new Error("local-side defeat helper boundary missing");
 const localDefeatApp = {character:"Hero",battleState:null};
-const localDefeat = new Function("app","BATTLE_BC_DEATH","battleSide",`${script.slice(localDefeatStart,localDefeatEnd)}; return {battleLocalDeath,battleLocalSideDefeated};`)(
+const localDefeat = new Function("app","BATTLE_BC_DEATH","battleSide",`${script.slice(localDefeatStart,localDefeatEnd)}; return {battleLocalDeath,battleLocalSideDefeated,battleServerSideDefeated};`)(
   localDefeatApp,
   2,
   id=>Number(id)>=0&&Number(id)<10?0:Number(id)>=10&&Number(id)<20?1:-1,
@@ -1991,8 +1991,31 @@ const wholeSideDown = {myNoKnown:true,myNo:0,participants:[deadHero,deadPet,livi
 if (!localDefeat.battleLocalDeath(masterDownPetAlive) || localDefeat.battleLocalSideDefeated(masterDownPetAlive) || !localDefeat.battleLocalSideDefeated(wholeSideDown)) {
   throw new Error("local player death incorrectly exits while a same-side pet/teammate is alive");
 }
+/* BATTLE_CountAlive() checks character type, but the browser only has the
+   fixed 2.5 battle slots after a gateway has stripped BC_FLG_PLAYER.  Players
+   occupy 0..4/10..14 and their pets 5..9/15..19.  Exercise the production
+   predicate, including the exact false value written by receiveBattleStatus
+   for a missing flag, on both sides. */
+const deadHeroWithoutPlayerFlag = {...deadHero,player:false};
+const livingTeammate = {battleId:1,name:"Ally",player:true,hp:42,flags:0,dead:false};
+const deadTeammate = {...livingTeammate,hp:0,flags:2,dead:true};
+const missingFlagMasterDownPetAlive = {myNoKnown:true,myNo:0,participants:[deadHeroWithoutPlayerFlag,livingPet,livingEnemy]};
+const missingFlagMasterDownTeammateAlive = {myNoKnown:true,myNo:0,participants:[deadHeroWithoutPlayerFlag,livingTeammate,livingPet,livingEnemy]};
+const missingFlagPlayersDownPetAlive = {myNoKnown:true,myNo:0,participants:[deadHeroWithoutPlayerFlag,deadTeammate,livingPet,livingEnemy]};
+const sideOneDeadHero = {...deadHeroWithoutPlayerFlag,battleId:10};
+const sideOneLivingPet = {...livingPet,battleId:15};
+const sideOneLivingTeammate = {...livingTeammate,battleId:11};
+const sideOneEnemy = {...livingEnemy,battleId:0};
+if (!localDefeat.battleServerSideDefeated(missingFlagMasterDownPetAlive) ||
+    localDefeat.battleServerSideDefeated(missingFlagMasterDownTeammateAlive) ||
+    !localDefeat.battleServerSideDefeated(missingFlagPlayersDownPetAlive) ||
+    !localDefeat.battleServerSideDefeated({myNoKnown:true,myNo:10,participants:[sideOneDeadHero,sideOneLivingPet,sideOneEnemy]}) ||
+    localDefeat.battleServerSideDefeated({myNoKnown:true,myNo:10,participants:[sideOneDeadHero,sideOneLivingTeammate,sideOneLivingPet,sideOneEnemy]})) {
+  throw new Error("server-side defeat must use the 2.5 player slots when terminal BC omits BC_FLG_PLAYER");
+}
 const localExitSource = script.slice(script.indexOf("  function finishLocalBattleDeath"), script.indexOf("  function battleStartCommandPending"));
-if (/send\("EO"/.test(localExitSource) || !/battleLocalSideDefeated\(state\)/.test(localExitSource) || !/battleTerminalHoldUntil\(state\)/.test(localExitSource) || !/sendBattleEndOnce\(state,"local-side-defeat"\)/.test(localExitSource)) {
+const executableLocalExitSource = localExitSource.replace(/\/\*[\s\S]*?\*\//g,"").replace(/\/\/.*$/gm,"");
+if (/send\("EO"/.test(executableLocalExitSource) || !/battleServerSideDefeated\(state\)/.test(executableLocalExitSource) || !/battleTerminalHoldUntil\(state\)/.test(executableLocalExitSource) || !/sendBattleEndOnce\(state,"local-side-defeat"\)/.test(executableLocalExitSource)) {
   throw new Error("all-side defeat exit must wait for corpse terminal frames and send EO through the idempotent boundary");
 }
 const battleEndStart = script.indexOf("  function sendBattleEndOnce");
@@ -2024,7 +2047,9 @@ if (/send\("EO"/.test(resultCloseSource) || /sendBattleEndOnce/.test(resultClose
   throw new Error("battle result close must not send a second EO");
 }
 const receiveBattleStatusSource = script.slice(script.indexOf("  function receiveBattleStatus"), script.indexOf("  function receiveBattlePacket"));
-if (!/if\(battleLocalSideDefeated\(state\)\)scheduleBattleDeathExit\(state,false\)/.test(receiveBattleStatusSource) || !/case "XYD"[\s\S]{0,900}battleLocalSideDefeated\(app\.battleState\)/.test(script)) {
+const executableReceiveBattleStatusSource = receiveBattleStatusSource.replace(/\/\*[\s\S]*?\*\//g,"").replace(/\/\/.*$/gm,"");
+const executablePacketSource = script.slice(script.indexOf("  function handlePacket"),script.indexOf("  function unescapeCharacterOption",script.indexOf("  function handlePacket"))).replace(/\/\*[\s\S]*?\*\//g,"").replace(/\/\/.*$/gm,"");
+if (!/if\(battleServerSideDefeated\(state\)\)scheduleBattleDeathExit\(state,false\)/.test(executableReceiveBattleStatusSource) || !/case "XYD"[\s\S]{0,900}battleServerSideDefeated\(app\.battleState\)/.test(executablePacketSource)) {
   throw new Error("BC/XYD still treats the local character alone as the whole defeated side");
 }
 /* RS/RD can race the final BC that is drained behind the last B movie.  Once
@@ -2148,6 +2173,21 @@ const projectilePushStart = script.indexOf("  function battlePushProjectile");
 const projectileValueStart = script.indexOf("  function battleProjectileValue");
 const projectileEnd = script.indexOf("  function battleQueueDeath", projectileValueStart);
 if (projectilePushStart < 0 || projectileValueStart <= projectilePushStart || projectileEnd <= projectileValueStart) throw new Error("battle projectile helper boundary missing");
+const motionPushStart = script.indexOf("  function battlePushMotion");
+if (motionPushStart < 0 || motionPushStart >= projectilePushStart) throw new Error("battle motion queue helper boundary missing");
+const battlePushMotion = new Function(`${script.slice(motionPushStart, projectilePushStart)}; return battlePushMotion;`)();
+const futureMotionNow = Date.now(), futureMotions = [];
+for (let index = 0; index < 140; index++) {
+  battlePushMotion(futureMotions,{kind:"attack",actor:index,startedAt:futureMotionNow+60000+index*10,duration:300});
+}
+if (futureMotions.length !== 140 || futureMotions[0]?.actor !== 0 || futureMotions[139]?.actor !== 139) {
+  throw new Error(`future speed-sorted motions were truncated at the cleanup threshold: ${JSON.stringify({length:futureMotions.length,first:futureMotions[0]?.actor,last:futureMotions.at(-1)?.actor})}`);
+}
+futureMotions.unshift({kind:"expired",actor:-1,until:futureMotionNow-1});
+battlePushMotion(futureMotions,{kind:"attack",actor:140,startedAt:futureMotionNow+62000,duration:300});
+if (futureMotions.length !== 141 || futureMotions.some(item=>item.actor===-1) || futureMotions.at(-1)?.actor !== 140) {
+  throw new Error("battle motion cleanup must remove only completed records and preserve all future records");
+}
 const projectileFns = new Function(`${script.slice(projectilePushStart, projectileEnd)}; return {battlePushProjectile,battleProjectileValue};`)();
 const projectileState = {}, projectileNow = Date.now();
 projectileFns.battlePushProjectile(projectileState, {kind:"arrow", from:[0, 0], to:[100, 0], startAt:projectileNow + 120, endAt:projectileNow + 420});
@@ -2156,6 +2196,18 @@ if (!arrow || Math.abs(arrowMid.x - 50) > 2 || Math.abs(arrowMid.y) > 2) throw n
 projectileFns.battlePushProjectile(projectileState, {kind:"boomerang", from:[0, 0], to:[100, 0], waypoints:[[0, 0], [100, 0], [0, 0]], waypointOffsets:[0, 120, 240], startAt:projectileNow + 120, endAt:projectileNow + 360});
 const boomerang = projectileState.projectiles?.[1], boomerangAtTarget = projectileFns.battleProjectileValue(boomerang, Number(boomerang?.startedAt) + 120), boomerangAtReturn = projectileFns.battleProjectileValue(boomerang, Number(boomerang?.startedAt) + 240);
 if (!boomerang || Math.abs(boomerangAtTarget.x - 100) > 2 || Math.abs(boomerangAtReturn.x) > 2) throw new Error(`boomerang waypoint geometry failed: ${JSON.stringify({boomerangAtTarget,boomerangAtReturn})}`);
+const futureProjectileState = {}, futureProjectileNow = Date.now();
+for (let index = 0; index < 140; index++) {
+  projectileFns.battlePushProjectile(futureProjectileState,{kind:"model",target:index,from:[0,0],to:[10,0],startAt:futureProjectileNow+60000+index*10,endAt:futureProjectileNow+60400+index*10});
+}
+if (futureProjectileState.projectiles?.length !== 140 || futureProjectileState.projectiles[0]?.target !== 0 || futureProjectileState.projectiles.at(-1)?.target !== 139) {
+  throw new Error("future battle projectiles were truncated at the cleanup threshold");
+}
+futureProjectileState.projectiles.unshift({kind:"expired",target:-1,until:futureProjectileNow-1});
+projectileFns.battlePushProjectile(futureProjectileState,{kind:"model",target:140,from:[0,0],to:[10,0],startAt:futureProjectileNow+62000,endAt:futureProjectileNow+62400});
+if (futureProjectileState.projectiles.length !== 141 || futureProjectileState.projectiles.some(item=>item.target===-1) || futureProjectileState.projectiles.at(-1)?.target !== 140) {
+  throw new Error("battle projectile cleanup must remove only completed records and preserve all future records");
+}
 const context = {window: {}, TextEncoder, TextDecoder, console};
 vm.runInNewContext(script.slice(0, protocolEnd) + "\n})();", context, {filename: "index.html"});
 const P = context.window.StoneAgeProtocol;
