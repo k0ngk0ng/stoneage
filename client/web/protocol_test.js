@@ -2614,6 +2614,10 @@ if (pageServerSchemas.size - serverSchemaAliases.size !== bridgeServerSchemas.si
    unconditional openFieldWindow() call. */
 const fieldActionToggle = /function fieldAction\(name\)\{[\s\S]{0,1200}if\(name==="settings"\|\|name==="action"\)\{[\s\S]{0,700}if\(target&&!target\.classList\.contains\("hidden"\)\)\{closeFieldWindow\(\);return;\}[\s\S]{0,240}openFieldWindow\(name==="settings"\?"settings":"actions"\);return;\s*\}/;
 if (!fieldActionToggle.test(script)) throw new Error("field settings/action windows are not toggleable");
+if (!/function setActivePanelButton\(name=""\)\{[\s\S]{0,500}node\.dataset\.fieldAction===name/.test(script) ||
+    !/function openFieldWindow\(name\)\{[\s\S]{0,700}setActivePanelButton\(name==="actions"\?"action":"settings"\)/.test(script)) {
+  throw new Error("field MENU/Action pressed artwork is not synchronized");
+}
 
 /* BATTLE_ActSettingSend() has two broadcast loops: the primary battle and
    any linked/parent battle.  The latter must send BA to its local

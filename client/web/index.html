@@ -3098,9 +3098,9 @@
     if(typeof renderWorldOverlay==="function")renderWorldOverlay();
   }
   function setActivePanelButton(name=""){
-    const nodes=document.querySelectorAll("#world-tools [data-panel],#field-ui [data-panel]");
+    const nodes=document.querySelectorAll("#world-tools [data-panel],#field-ui [data-panel],#field-ui [data-field-action]");
     nodes.forEach(node=>{
-      const active=Boolean(name)&&node.dataset.panel===name;
+      const active=Boolean(name)&&(node.dataset.panel===name||node.dataset.fieldAction===name);
       node.classList.toggle("is-active",active);
       /* Image buttons keep their pressed bitmap while the matching legacy
          window is open.  Task-bar <button> nodes use the CSS pair above. */
@@ -3204,7 +3204,7 @@
     const target=$(name==="settings"?"field-settings-screen":"field-actions-screen");
     if(!target)return;
     advancedScreens.forEach(screen=>screen.classList.toggle("hidden",screen!==target));
-    syncFieldOverlayVisibility();setActivePanelButton("");
+    syncFieldOverlayVisibility();setActivePanelButton(name==="actions"?"action":"settings");
     if(name==="settings")renderFieldSettings();
     else if(name==="actions"){
       /* The action list is a native field window, so make its current
@@ -15162,7 +15162,11 @@
       const node=$(id);if(!node)continue;
       const normalURL=`/assets/bitmaps/bitmap_${normal}.png`,pressedURL=`/assets/bitmaps/bitmap_${pressed}.png`;
       node.dataset.normalSrc=normalURL;node.dataset.pressedSrc=pressedURL;
-      const set=(url)=>{if(node.getAttribute("src")!==url)node.setAttribute("src",url);};
+      /* Pointer hover/press events can fire after the window-opening click.
+         Once the owning native window is active, keep the ON bitmap even if
+         the physical pointer leaves the small icon; otherwise a harmless
+         hover would visually release an open MENU/Action button. */
+      const set=(url)=>{const resolved=node.classList.contains("is-active")?pressedURL:url;if(node.getAttribute("src")!==resolved)node.setAttribute("src",resolved);};
       node.addEventListener("pointerenter",()=>set(normalURL));
       node.addEventListener("pointerleave",()=>set(normalURL));
       node.addEventListener("pointerdown",event=>{if(event.button===0)set(pressedURL);});
