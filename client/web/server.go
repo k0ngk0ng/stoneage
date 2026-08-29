@@ -22,6 +22,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -116,6 +117,10 @@ type Config struct {
 	IdleTimeout     time.Duration
 	DialTimeout     time.Duration
 	AllowedOrigin   string
+	// CDNBaseURL is the public, versioned root which contains assets/, maps/
+	// and audio/.  It changes only browser static-resource URLs; the account,
+	// NPC and game-session APIs always remain on this process.
+	CDNBaseURL string
 }
 
 func DefaultConfig() Config {
@@ -170,7 +175,37 @@ func configFromEnvironment() Config {
 		cfg.DialTimeout = value
 	}
 	cfg.AllowedOrigin = strings.TrimSpace(os.Getenv("STONEAGE_WEB_ALLOWED_ORIGIN"))
+	cfg.CDNBaseURL = strings.TrimSpace(os.Getenv("STONEAGE_WEB_CDN_BASE_URL"))
 	return cfg
+}
+
+func normalizeCDNBaseURL(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	// This value is interpolated into CSS, HTML attributes and JavaScript
+	// string/template literals.  Require a plain URL rather than trying to
+	// escape one attacker-controlled spelling three different ways.
+	if strings.ContainsAny(value, "\"'`<>\\\r\n\t ") {
+		return "", errors.New("CDN base URL contains unsafe characters")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("CDN base URL must be an absolute HTTP(S) URL without credentials, query or fragment")
+	}
+	return strings.TrimRight(value, "/"), nil
+}
+
+func pageWithCDNBase(source []byte, baseURL string) []byte {
+	if baseURL == "" {
+		return source
+	}
+	result := append([]byte(nil), source...)
+	for _, prefix := range []string{"/assets/", "/maps/", "/audio/"} {
+		result = bytes.ReplaceAll(result, []byte(prefix), []byte(baseURL+prefix))
+	}
+	return result
 }
 
 func positiveIntEnv(name string) int {
@@ -560,6 +595,7 @@ func (store *sessionStore) closeAll() {
 type Handler struct {
 	config   Config
 	sessions *sessionStore
+	page     []byte
 	assets   http.Handler
 	maps     http.Handler
 	audio    http.Handler
@@ -836,7 +872,12 @@ func NewHandler(config Config) (*Handler, error) {
 	if config.DialTimeout <= 0 {
 		config.DialTimeout = defaultDialTimeout
 	}
-	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
+	cdnBaseURL, err := normalizeCDNBaseURL(config.CDNBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	config.CDNBaseURL = cdnBaseURL
+	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithCDNBase(page, cdnBaseURL), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository
@@ -951,7 +992,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		if request.Method == http.MethodHead {
 			return
 		}
-		_, _ = response.Write(page)
+		_, _ = response.Write(handler.page)
 		return
 	}
 	if request.URL.Path == "/manifest.webmanifest" {

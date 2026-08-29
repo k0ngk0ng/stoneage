@@ -30,11 +30,14 @@ STONEAGE_TCP_UPSTREAM=127.0.0.1:9065 \
 STONEAGE_WEB_ASSETS=assets/original \
 STONEAGE_WEB_MAPS=runtime/legacy-client/map \
 STONEAGE_WEB_AUDIO=runtime/legacy-client/data \
+STONEAGE_WEB_CDN_BASE_URL=https://cdn.example.com/stoneage/v0.1.4 \
 STONEAGE_WEB_MAX_SESSIONS=64 \
 GOFLAGS=-mod=mod go run .
 ```
 
 从仓库的 `client/web` 目录启动时，`STONEAGE_WEB_ASSETS` 默认就是 `assets/original`。这组资源直接从 `runtime/legacy-client/sa_2903.exe` 的伴随数据（`real_15.bin`、`adrn_15.bin`、`spr_4.bin`、`spradrn_5.bin`、地图和 `Palet_1.sap`）提取，不引用 `/client/mobile` 的图片；所有已同步的地图、物件、角色和战斗场景都使用原版索引与位图。部署到别的目录时请显式设置该变量。资源通过只读 `/assets/` 路径提供，不接受浏览器指定任意目录。
+
+`STONEAGE_WEB_CDN_BASE_URL` 是可选的公开静态资源根地址。设置后，返回给浏览器的页面会把 `/assets/`、`/maps/` 和 `/audio/` 改写为这个根地址下的同名目录；`/api/sessions`、`/api/npcs` 等动态接口不会改写。基址只接受不含账号、查询串和片段的绝对 HTTP(S) URL，末尾斜线会自动去除。生产部署应使用 HTTPS、按版本划分目录，并在 CDN/OSS 源站为网页域名配置 CORS 和 `Timing-Allow-Origin`（下载进度需要）。未设置时仍由当前 Web 进程提供本地文件，便于开发和故障排查。
 
 音乐通过只读 `/audio/bgm/` 和 `/audio/se/` 路径提供。网页按 `_SA_VERSION_25` 客户端的时机切换标题、地图、战斗/首领 BGM，并按服务器 `SE` 包播放对应音效；浏览器第一次用户操作后才会解锁音频，这是浏览器自动播放策略的限制。WAV 使用长期缓存，地图音乐标记只接受随附 `sa_2903` 2.5 客户端源码的 40–46 范围；47–53 属于后续 8.5 表，不会在本网页端启用。
 

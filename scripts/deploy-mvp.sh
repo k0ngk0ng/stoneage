@@ -157,9 +157,25 @@ control_image="${control_image:-stoneage-control-plane}"
 legacy_image="${legacy_image:-stoneage-legacy-runtime}"
 admin_password="$(env_value STONEAGE_ADMIN_PASSWORD || true)"
 setup_token="$(env_value STONEAGE_ADMIN_SETUP_TOKEN || true)"
+cdn_base="$(env_value STONEAGE_WEB_CDN_BASE_URL || true)"
 if [[ "$check_only" != 1 && "$admin_password" == "replace-with-a-long-random-password" && -z "$setup_token" ]]; then
     echo "Set STONEAGE_ADMIN_PASSWORD (or a one-time STONEAGE_ADMIN_SETUP_TOKEN) in $env_file before deploying." >&2
     exit 2
+fi
+if [[ -n "$cdn_base" ]]; then
+    if [[ "$cdn_base" != https://* && "$cdn_base" != http://* ]]; then
+        echo "STONEAGE_WEB_CDN_BASE_URL must be an absolute HTTP(S) URL." >&2
+        exit 2
+    fi
+    cdn_authority="${cdn_base#*://}"
+    cdn_authority="${cdn_authority%%/*}"
+    if [[ -z "$cdn_authority" || "$cdn_authority" == *@* || "$cdn_base" == *\?* || "$cdn_base" == *\#* ]]; then
+        echo "STONEAGE_WEB_CDN_BASE_URL must not contain credentials, a query or a fragment." >&2
+        exit 2
+    fi
+    if [[ "$cdn_base" == http://* ]]; then
+        echo "WARNING: an HTTP CDN is blocked when the browser client is served over HTTPS; use an HTTPS CDN in production." >&2
+    fi
 fi
 case "$mode" in
     auto)
@@ -199,6 +215,9 @@ echo "Validating Compose configuration ($env_file)..."
 compose config --quiet
 if [[ "$check_only" == 1 ]]; then
     echo "Compose configuration is valid."
+    if [[ -n "$cdn_base" ]]; then
+        echo "Static CDN: ${cdn_base%/}/"
+    fi
     exit 0
 fi
 
@@ -271,5 +290,8 @@ echo
 echo "MVP is healthy."
 echo "Browser client: http://${web_bind:-127.0.0.1}:${web_port:-8088}/"
 echo "Admin console:  http://${admin_bind:-127.0.0.1}:${admin_port:-8080}/"
+if [[ -n "$cdn_base" ]]; then
+    echo "Static CDN:    ${cdn_base%/}/"
+fi
 echo "Use the admin console to create a game account before logging in."
 echo "Do not run 'docker compose down -v'; it removes the persistent auth volume."

@@ -175,6 +175,78 @@ func TestHandlerServesPageAndHealth(t *testing.T) {
 	}
 }
 
+func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	cfg := testConfig(fake.address())
+	cfg.CDNBaseURL = "https://cdn.example.com/stoneage/v0.1.4/"
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("page status=%d", response.StatusCode)
+	}
+	text := string(body)
+	base := "https://cdn.example.com/stoneage/v0.1.4"
+	for _, fragment := range []string{
+		base + "/assets/bitmaps/bitmap_9113.png",
+		base + "/assets/manifest.json",
+		base + "/maps/${encodeURIComponent(candidates[index])}",
+		base + "/audio/${kind}/${encodeURIComponent(String(file||\"\"))}",
+		base + "/audio/auto.dat",
+		`const ASSET_RESOURCE_ROOT=new URL("` + base + `/assets/",window.location.href)`,
+		`url.origin!==ASSET_RESOURCE_ROOT.origin`,
+		`url.pathname.startsWith(ASSET_RESOURCE_ROOT.pathname)`,
+		`image=new Image();image.crossOrigin="anonymous";image.decoding="async"`,
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Errorf("CDN page lost rewritten static fragment %q", fragment)
+		}
+	}
+	for _, fragment := range []string{`src="/assets/`, `fetch("/audio/`, "fetch(`/maps/"} {
+		if strings.Contains(text, fragment) {
+			t.Errorf("CDN page retained origin-relative static fragment %q", fragment)
+		}
+	}
+	for _, fragment := range []string{`this.base+"/api/sessions"`, "fetch(`/api/npcs?floor="} {
+		if !strings.Contains(text, fragment) {
+			t.Errorf("CDN page rewrote origin API fragment %q", fragment)
+		}
+	}
+	if handler.config.CDNBaseURL != base {
+		t.Fatalf("normalized CDN base=%q want %q", handler.config.CDNBaseURL, base)
+	}
+}
+
+func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
+	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "https://cdn.example.com/releases/v0.1.4/")
+	if got := configFromEnvironment().CDNBaseURL; got != "https://cdn.example.com/releases/v0.1.4/" {
+		t.Fatalf("environment CDN base=%q", got)
+	}
+	for _, value := range []string{
+		"//cdn.example.com/stoneage",
+		"ftp://cdn.example.com/stoneage",
+		"https://user:secret@cdn.example.com/stoneage",
+		"https://cdn.example.com/stoneage?release=v1",
+		"https://cdn.example.com/stoneage#release",
+		`https://cdn.example.com/'></style>`,
+	} {
+		if _, err := normalizeCDNBaseURL(value); err == nil {
+			t.Errorf("unsafe CDN base accepted: %q", value)
+		}
+	}
+}
+
 func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 	body := string(page)
 	required := []string{

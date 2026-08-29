@@ -3991,6 +3991,11 @@
   const MAP_DATA_CACHE_PREFIX="stoneage25.v1.map-data.";
   const MAP_TILE_CACHE_MAX_BYTES=768*1024;
   const MAP_DATA_CACHE_MAX_BYTES=2*1024*1024;
+  /* The server can rewrite this root to a versioned CDN.  ResourceTiming
+     entries expose a URL origin and pathname separately, so compare both
+     against the resolved root instead of assuming every asset is same-origin
+     at /assets/.  The CDN should send Timing-Allow-Origin for byte progress. */
+  const ASSET_RESOURCE_ROOT=new URL("/assets/",window.location.href);
   const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
   function rememberAssetResourceSize(file,entryOrSize){
     const key=String(file||"").replace(/^\//,"");if(!key)return 0;
@@ -4004,8 +4009,8 @@
     if(!entry?.name)return;
     try{
       const url=new URL(entry.name,window.location.href);
-      if(url.origin!==window.location.origin||!url.pathname.startsWith("/assets/"))return;
-      rememberAssetResourceSize(decodeURIComponent(url.pathname.slice("/assets/".length)),entry);
+      if(url.origin!==ASSET_RESOURCE_ROOT.origin||!url.pathname.startsWith(ASSET_RESOURCE_ROOT.pathname))return;
+      rememberAssetResourceSize(decodeURIComponent(url.pathname.slice(ASSET_RESOURCE_ROOT.pathname.length)),entry);
     }catch(_){/* malformed resource entries are not progress-critical */}
   }
   /* Observe entries as they finish so the byte total survives ResourceTiming
@@ -4239,7 +4244,11 @@
     const mapAsset=Boolean(options.map);
     let image=assetState.images.get(file);
     if(!image){
-      image=new Image();image.decoding="async";
+      /* CDN sprites must remain origin-clean: palette variants and the
+         native auto-map colour table read pixels back from a canvas.  The
+         deployment CORS rule therefore pairs with anonymous image loading;
+         same-origin development assets continue to work unchanged. */
+      image=new Image();image.crossOrigin="anonymous";image.decoding="async";
       image.onload=()=>{
         rememberAssetResourceSize(file,assetNetworkBytes(file));
         const settled=settleMapAsset(file,false);
