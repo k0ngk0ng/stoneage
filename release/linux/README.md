@@ -49,10 +49,10 @@ printf '%s\n' '请替换为强密码' | \
 `-auth-required`，未知账号或错误密码会被拒绝；不要把它改回无认证模式后公开到
 互联网。
 
-如果希望由 Docker Compose 统一编排网关、后台、operator 和旧版游戏服务，请在
-仓库根目录使用 `docker-compose.yml`；本地镜像先执行
-`./scripts/build-local-images.sh`，生产环境则把 `.env` 指向 GHCR 的版本镜像后执行
-`docker compose up -d`。Compose 的 operator 需要访问 Docker socket 执行
+如果希望由 Docker Compose 统一编排网关、网页客户端、后台、operator 和旧版游戏服务，
+请在仓库根目录使用 `docker-compose.yml`；推荐执行
+`./scripts/deploy-mvp.sh --init` 后再运行 `./scripts/deploy-mvp.sh`，它会按
+`.env` 自动构建本地镜像或拉取 GHCR 版本镜像。Compose 的 operator 需要访问 Docker socket 执行
 经过固定白名单的服务脚本，后台本身不挂载该 socket。默认端口仍只绑定回环地址。
 
 可信局域网或 VPN 联机时，可令 Go 网关监听所有接口：
@@ -62,7 +62,7 @@ STONEAGE_GATEWAY_LISTEN=0.0.0.0:9065 ./start-server.sh
 ```
 
 只允许受信任设备访问 TCP 9065。不要公开 GMSV 的 19065、SAAC 的 9300、管理
-后台 8080 或 SQLite 文件。需要互联网访问时，请将后台放在 Caddy/Nginx HTTPS
+后台 8080 或 SQLite 文件。网页入口默认是 8088；需要互联网访问时，请将网页和后台放在 Caddy/Nginx HTTPS
 反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE=true` 传给 `start-admin.sh`；
 游戏端优先使用 Tailscale/WireGuard 等 VPN。
 

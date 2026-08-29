@@ -1,10 +1,10 @@
 # Production single-line deployment for one Linux host:
-#   saac -> gmsv -> gateway
+#   saac -> gmsv -> gateway -> web client
 #              └-> service-control -> admin
 #
 # This file is the single-machine, single-line production deployment. Do not
-# expose GMSV or SAAC ports on the host; only the gateway and (optionally) the
-# admin UI are published.
+# expose GMSV or SAAC ports on the host; only the browser endpoint, gateway and
+# (optionally) the admin UI are published.
 name: ${STONEAGE_COMPOSE_PROJECT_NAME:-stoneage}
 
 x-logging: &default-logging
@@ -102,6 +102,46 @@ services:
       - ${STONEAGE_GATEWAY_BIND:-127.0.0.1}:${STONEAGE_GATEWAY_PORT:-9065}:9065
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  # Browser client. It only reaches the authenticated gateway over the
+  # private Compose network; the browser never receives a raw GMSV socket.
+  # The generated sprite pack is in the control image. Matching 2.5 client
+  # maps/audio are mounted read-only from STONEAGE_CLIENT_DATA_ROOT.
+  web:
+    build:
+      context: .
+      dockerfile: deploy/linux/Dockerfile
+    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    container_name: ${STONEAGE_WEB_CONTAINER:-stoneage-web}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 10s
+    logging: *default-logging
+    networks:
+      - backend
+    depends_on:
+      gateway:
+        condition: service_healthy
+    command: ["/opt/stoneage/bin/stoneage-web"]
+    environment:
+      STONEAGE_WEB_LISTEN: 0.0.0.0:8088
+      STONEAGE_TCP_UPSTREAM: gateway:9065
+      STONEAGE_WEB_ASSETS: /opt/stoneage/web-assets
+      STONEAGE_WEB_MAPS: /game/client/map
+      STONEAGE_WEB_AUDIO: /game/client/data
+      STONEAGE_WEB_NPCS: /game/gmsv/data/npc
+      STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
+    volumes:
+      - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
+      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv:ro
+    ports:
+      - ${STONEAGE_WEB_BIND:-127.0.0.1}:${STONEAGE_WEB_PORT:-8088}:8088
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8088"]
       interval: 5s
       timeout: 2s
       retries: 30

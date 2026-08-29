@@ -395,7 +395,8 @@ if(!/const FIELD_LOOPING_SPRITE_ACTION=Object\.freeze\(\{3:true,4:true,6:true,7:
   throw new Error("field Action selection must start the native per-frame animation clock");
 }
 if(!/function preloadFieldActionFrames\(actor\)[\s\S]{0,2200}image\.decode\(\)/.test(localActionAnimationSource) ||
-   !/const prepare=\(assetState\.fieldSpritesReady\|\|assetState\.spritesReady\)[\s\S]{0,520}preloadFieldActionFrames\(actor\)/.test(script) ||
+   !/function ensureFieldActionSprites\(actor\)[\s\S]{0,900}loadFieldSpriteManifest\(\)[\s\S]{0,900}loadSpriteManifest\(\)/.test(localActionAnimationSource) ||
+   !/const prepare=ensureFieldActionSprites\(actor\)\.then\(sprites=>sprites\?preloadFieldActionFrames\(actor\):false\)/.test(script) ||
    !/Promise\.resolve\(prepare\)\.then\(\(\)=>/.test(script)) {
   throw new Error("field Action selection must wait for decoded SPR frames before replaying from frame zero");
 }

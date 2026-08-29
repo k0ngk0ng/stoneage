@@ -3128,7 +3128,7 @@
         for(const row of rows){row.disabled=Boolean(busy);row.setAttribute("aria-disabled",busy?"true":"false");}
       };
       setBusy(true);
-      const table=loadFieldSpriteManifest();
+      const table=ensureFieldActionSprites(actor);
       Promise.resolve(table).then(()=>preloadFieldActionFrames(actor)).finally(()=>{
         /* Closing the window while a slow SPR request is in flight must not
            reopen it or leave stale disabled controls in the next visit. */
@@ -4523,6 +4523,21 @@
       });
     });
     return Promise.all(decoded).then(result=>result.some(Boolean));
+  }
+  /* The compact field pack contains the stock player graphics used by the
+     title screen.  A character can nevertheless carry any REALBIN/SPR
+     graphic (GM-created characters and imported saves commonly do), so a
+     missing compact entry must promote the request to the complete table.
+     Without this second lookup actorFrame() quite correctly falls back to a
+     single REALBIN bitmap and every Action row appears frozen for that
+     character.  Keep the large request lazy: normal players never pay its
+     cost before the background warm-up has already started. */
+  function ensureFieldActionSprites(actor){
+    const compact=loadFieldSpriteManifest();
+    return Promise.resolve(compact).then(table=>{
+      if(spriteEntryForActor(actor)||assetState.spritesReady)return table;
+      return loadSpriteManifest();
+    });
   }
   function spriteAnimationTiming(animation){
     const frames=Array.isArray(animation?.frames)?animation.frames:[];
@@ -11981,7 +11996,19 @@
       const nextDirection=(wireDirection+3)%8;
       const actionChanged=!existing||Number(existing.caAction)!==action||Number(existing.wireDirection)!==wireDirection||Number(existing.direction)!==nextDirection;
       const hadAnimationStart=Number.isFinite(Number(actor.animationStartedAt))&&Number(actor.animationStartedAt)>0;
-      actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;actor.animationLoop=fieldActionLoops(CA_TO_SPRITE_ACTION[action]??3);
+      actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;
+      /* The owner is previewing an Action locally and the 2.5 server may
+         still echo a CA record while the HTTP poll is draining.  CA's
+         CHAR_ACT_* value is a wire enum, not the ANIM_LIST row selected by
+         the Action window (for example CHAR_ACTACTIONSTAND=18 maps to NOD).
+         Keep the local row's loop policy until a walk or a new local Action
+         replaces it; otherwise a perfectly valid looping row is changed to
+         ANM_NO_LOOP and freezes on its first/last bitmap.  Remote actors do
+         use the CA conversion below exactly like CHARACTER.CPP. */
+      const localAction=Number.isFinite(Number(actor.localActionNo))?Number(actor.localActionNo):NaN;
+      actor.animationLoop=Number.isFinite(localAction)
+        ?fieldActionLoops(localAction)
+        :fieldActionLoops(CA_TO_SPRITE_ACTION[action]??3);
       if(actionChanged||!hadAnimationStart)actor.animationStartedAt=performance.now();
       actor.direction=nextDirection;actor.wireDirection=wireDirection;actor.effect=stateNumber(parts[5]);
       actor.effectParam1=stateNumber(parts[6]);actor.effectParam2=stateNumber(parts[7]);app.actors.set(id,actor);
@@ -14681,9 +14708,7 @@
        that request can continue in the background while these frames are
        decoded.  The full table remains available to spriteManifest() once it
        arrives. */
-    const prepare=(assetState.fieldSpritesReady||assetState.spritesReady)
-      ? preloadFieldActionFrames(actor)
-      : loadFieldSpriteManifest().then(sprites=>sprites?preloadFieldActionFrames(actor):false);
+    const prepare=ensureFieldActionSprites(actor).then(sprites=>sprites?preloadFieldActionFrames(actor):false);
     Promise.resolve(prepare).then(()=>{
       if(app.phase!=="world"||app.battle)return;
       const current=app.actors.get(actor.id);

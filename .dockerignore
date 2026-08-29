@@ -3,6 +3,12 @@
 build
 dist
 runtime
+# These are local reverse-engineering/mobile build artifacts and are not
+# inputs to either Linux image. Keeping them out makes a first Docker build
+# practical on a small deployment host.
+reference
+dogfood-output
+client/mobile
 vendor/assets
 vendor/archives
 vendor/upstream

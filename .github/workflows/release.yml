@@ -86,10 +86,18 @@ jobs:
             local bin_root="$package_root/bin"
 
             mkdir -p "$bin_root"
-            for command in stoneage-gateway stoneage-admin stoneage-operator; do
+            commands=(stoneage-gateway stoneage-admin stoneage-operator)
+            if [[ "$goos" == linux ]]; then
+              commands+=(stoneage-web)
+            fi
+            for command in "${commands[@]}"; do
               local output="$bin_root/$command$suffix"
+              local package="./cmd/$command"
+              if [[ "$command" == stoneage-web ]]; then
+                package="./client/web"
+              fi
               CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-                go build -trimpath -ldflags='-s -w' -o "$output" "./cmd/$command"
+                go build -trimpath -ldflags='-s -w' -o "$output" "$package"
             done
 
             cp README.md "$package_root/README.md"

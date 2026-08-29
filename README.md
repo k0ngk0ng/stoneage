@@ -59,24 +59,32 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 
 ### Linux Docker Compose
 
-Linux 也可以把旧版游戏服务、Go 网关、管理后台和受限 operator 一起交给
-Compose 编排。复制 `.env.compose.example` 为 `.env` 并修改管理员密码；本地测试先
-构建两个镜像，然后执行（这是单机单线路部署）：
+Linux 也可以把旧版游戏服务、Go 网关、浏览器客户端、管理后台和受限 operator
+一起交给 Compose 编排。首次部署推荐使用仓库内的入口脚本；它会创建持久化目录、
+校验配置、按版本构建/拉取镜像，最后逐个等待健康检查：
 
 ```bash
-cp .env.compose.example .env
-chmod 600 .env
-docker compose config --quiet
-./scripts/build-local-images.sh
-docker compose up -d
-docker compose ps
-docker compose logs -f saac gmsv gateway
+./scripts/deploy-mvp.sh --init   # 只执行一次，生成 0600 的 .env 和随机后台密码
+# 编辑 .env：生产镜像填 GHCR 的仓库和 v* 版本；本地 MVP 保持 VERSION=local
+./scripts/deploy-mvp.sh          # VERSION=local 自动构建；v* 自动拉取
+docker compose --env-file .env ps
+docker compose --env-file .env logs -f saac gmsv gateway web
 ```
 
-Compose 默认只把游戏网关 9065 和后台 8080 绑定到 `127.0.0.1`；需要局域网或
- VPN 访问时，显式设置 `STONEAGE_GATEWAY_BIND`/`STONEAGE_ADMIN_BIND` 并配合防火墙。
-如果玩家从公网连接，只将网关端口通过防火墙/VPN 暴露；后台应继续绑定回环地址，或
-放在带 HTTPS 和访问控制的反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE` 设为
+`STONEAGE_CLIENT_DATA_ROOT` 必须指向匹配的 2.5 客户端 `map/` 和 `data/`（至少
+包含 BGM/SE）目录；网页精灵图已随 control-plane 镜像发布。没有这些只读资源时，
+网页仍会启动，但地图自动地图、音乐等功能会缺少数据。脚本的 `--build`、`--pull`
+和 `--no-image-update` 可分别强制本地构建、拉取或完全跳过镜像更新。
+
+使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
+再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和
+`ghcr.io/<owner>/<repo>/legacy-runtime`，填入对应的 `v*` 版本并运行
+`./scripts/deploy-mvp.sh --pull`。
+
+Compose 默认把浏览器端 8088、游戏网关 9065 和后台 8080 绑定到 `127.0.0.1`；
+需要让朋友访问网页时，把 `STONEAGE_WEB_BIND` 设为服务器的 LAN/VPN 地址（或
+`0.0.0.0`）并只在防火墙放行 8088。原生客户端才需要 9065；后台应继续绑定回环，
+或放在带 HTTPS 和访问控制的反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE` 设为
 `true`。不要执行 `docker compose down -v`，否则会删除 SQLite 认证卷。
 GMSV 的 9065、SAAC 的 9300 只在 Compose 内网可见。`saac` 与 `gmsv` 是独立容器；
 operator 通过固定脚本控制

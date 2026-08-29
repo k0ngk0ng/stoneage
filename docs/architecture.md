@@ -12,6 +12,8 @@ Go stoneage-gateway（SQLite ClientLogin 校验 + 函数名协议 ↔ 数字协�
 Linux 2.5 GMSV 进程 ── SAAC RPC ── Linux 2.5 SAAC 进程
                                     └─ 平面文件角色/账号数据
 
+网页玩家浏览器 ── HTTP(S) ── stoneage-web ── gateway:9065
+
 管理员浏览器 ── HTTPS 反向代理 ── stoneage-admin（SQLite 会话/审计）
                                       │ Unix socket：status/固定重启动作/通知
                                       ▼
@@ -20,7 +22,7 @@ SQLite stoneage-auth.db ────────┘
 ```
 
 Linux 服务器也提供根目录 `docker-compose.yml`：`saac` 和 `gmsv` 是两个独立的
-Compose 容器，`gateway`、`admin` 和 `operator` 作为独立 Compose 服务运行。
+Compose 容器，`gateway`、`web`、`admin` 和 `operator` 作为独立 Compose 服务运行。
 operator 才挂载 Docker socket，并且只调用 `deploy/linux/compose/` 下的固定脚本；
 后台通过共享的 Unix socket 请求状态、通知和服务控制。SQLite 认证库、配置和角色
 目录保持持久化。
