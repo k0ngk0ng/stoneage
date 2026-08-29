@@ -135,9 +135,9 @@ services:
       STONEAGE_WEB_AUDIO: /game/client/data
       STONEAGE_WEB_NPCS: /game/gmsv/data/npc
       STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
-      # Optional versioned public root, for example
-      # https://cdn.example.com/stoneage/v0.1.4.  Only assets/, maps/ and
-      # audio/ are fetched there; game/account APIs stay on this container.
+      # Optional public resource root, for example
+      # https://cdn.example.com/stoneage.  Only assets/, maps/ and audio/ are
+      # fetched there; game/account APIs stay on this container.
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:
       - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro

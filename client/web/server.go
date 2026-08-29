@@ -117,9 +117,9 @@ type Config struct {
 	IdleTimeout     time.Duration
 	DialTimeout     time.Duration
 	AllowedOrigin   string
-	// CDNBaseURL is the public, versioned root which contains assets/, maps/
-	// and audio/.  It changes only browser static-resource URLs; the account,
-	// NPC and game-session APIs always remain on this process.
+	// CDNBaseURL is the public static root which contains assets/, maps/ and
+	// audio/.  It changes only browser static-resource URLs; the account, NPC
+	// and game-session APIs always remain on this process.
 	CDNBaseURL string
 }
 

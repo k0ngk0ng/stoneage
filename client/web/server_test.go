@@ -178,7 +178,7 @@ func TestHandlerServesPageAndHealth(t *testing.T) {
 func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 	fake := newFakeTCP(t, []byte{'L', 0}, nil)
 	cfg := testConfig(fake.address())
-	cfg.CDNBaseURL = "https://cdn.example.com/stoneage/v0.1.4/"
+	cfg.CDNBaseURL = "https://cdn.example.com/stoneage/"
 	handler, err := NewHandler(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 		t.Fatalf("page status=%d", response.StatusCode)
 	}
 	text := string(body)
-	base := "https://cdn.example.com/stoneage/v0.1.4"
+	base := "https://cdn.example.com/stoneage"
 	for _, fragment := range []string{
 		base + "/assets/bitmaps/bitmap_9113.png",
 		base + "/assets/manifest.json",
@@ -229,8 +229,8 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 }
 
 func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
-	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "https://cdn.example.com/releases/v0.1.4/")
-	if got := configFromEnvironment().CDNBaseURL; got != "https://cdn.example.com/releases/v0.1.4/" {
+	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "https://cdn.example.com/stoneage/")
+	if got := configFromEnvironment().CDNBaseURL; got != "https://cdn.example.com/stoneage/" {
 		t.Fatalf("environment CDN base=%q", got)
 	}
 	for _, value := range []string{

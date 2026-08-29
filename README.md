@@ -77,32 +77,33 @@ docker compose --env-file .env logs -f saac gmsv gateway web
 和 `--no-image-update` 可分别强制本地构建、拉取或完全跳过镜像更新。
 
 图片、地图、音效和音乐可以直接由阿里云 OSS/CDN 提供，避免所有玩家从 8088
-重复下载大文件。CDN 根目录必须按版本隔离，并保持下面的目录名：
+重复下载大文件。资源使用一个固定根目录，版本发布时做增量同步，不按 tag 重复
+保存整套原版数据；根目录下保持下面的目录名：
 
 ```text
-stoneage/v0.1.4/
+stoneage/
 ├── assets/   # client/web/assets/original 的内容
 ├── maps/     # 2.5 客户端 map/ 的内容
 └── audio/    # 2.5 客户端 data/ 的内容（包括 bgm、se、pal、auto.dat）
 ```
 
-例如使用 `ossutil` 上传（bucket 和版本目录按实际环境替换）：
+例如使用 `ossutil` 增量上传（bucket 和目录按实际环境替换）：
 
 ```bash
-ossutil sync client/web/assets/original oss://my-bucket/stoneage/v0.1.4/assets
-ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/v0.1.4/maps
-ossutil sync runtime/legacy-client/data oss://my-bucket/stoneage/v0.1.4/audio
+ossutil sync client/web/assets/original oss://my-bucket/stoneage/assets
+ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/maps
+ossutil sync runtime/legacy-client/data oss://my-bucket/stoneage/audio
 ```
 
 然后在 `.env` 设置
-`STONEAGE_WEB_CDN_BASE_URL=https://cdn.example.com/stoneage/v0.1.4`。网页会把
+`STONEAGE_WEB_CDN_BASE_URL=https://cdn.example.com/stoneage`。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
 仍只访问 8088。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露
 `Content-Length`、`Content-Range`、`Accept-Ranges`、`ETag`。生产环境必须使用
 HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网页会拦截混合
-内容。使用带版本号的目录后，CDN 可以安全设置
-长期缓存；升级版本时换目录和环境变量，不要覆盖正在使用的旧目录。
+内容。`assets/*.json` 等清单应使用短缓存或 `no-cache`；PNG、地图和音频可以长期
+缓存。同名二进制确实发生变化时，只刷新对应 CDN URL，不需要复制整套资源目录。
 
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和

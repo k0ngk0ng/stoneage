@@ -669,6 +669,7 @@ for (const expected of [
      250 ms; the browser must keep the gesture separate from ordinary UI
      clicks and hide the fish-bone until the physical button is released. */
   /const LEGACY_MOVE_SPEED=4;[\s\S]{0,420}const LEGACY_PROC_TICK_MS=8;[\s\S]{0,260}const MOVE_CARDINAL_DURATION=LEGACY_GRID_SIZE\/LEGACY_MOVE_SPEED\*LEGACY_PROC_TICK_MS;/,
+  /const BATTLE_PROC_TICK_MS=1000\/60;/,
   /function moveStepDuration\(from,target\)[\s\S]{0,360}const distance=Math\.hypot\(dx,dy\)[\s\S]{0,120}distance\|\|1/,
   /* A normal 2.5 owner walk has no self C/XYD echo.  The prediction
      watchdog may issue one diagnostic S:c probe, but must stop there rather
@@ -850,7 +851,7 @@ for (const expected of [
   /battleStartCommandPending\(state,kind,command\);[\s\S]{0,800}renderBattleWorld\(\);/,
   /* EntrySort() already orders B segments by dex; the browser must append
      every segment to one timeline instead of assigning all of them now. */
-  /state\.motionQueueAt=start\+length\+Math\.max\(0,Number\(gap\)\|\|0\)/,
+  /state\.motionQueueAt=start\+length;/,
   /if\(!Number\.isFinite\(Number\(state\.motionQueueAt\)\)\)state\.motionQueueAt=now;/,
   /pendingBattleControls/,
   /* A late BP must join an already buffered BC/BA group even after the
@@ -866,7 +867,7 @@ for (const expected of [
   /const movieHold=Number\(state\.movieActive\?state\.movieHoldUntil:0\)\|\|0;/,
   /marker===\"BY\"[\s\S]{0,1800}BATTLE_COM_COMBO/,
   /const BATTLE_STATUS_NAMES=\{1:\"中毒\",2:\"麻痹\"[\s\S]*11:\"SARS\"\}/,
-  /state\.motionQueueAt=Math\.max\(Number\(state\.motionQueueAt\)\|\|queuedNow,end\+40\)/,
+  /state\.motionQueueAt=Math\.max\(Number\(state\.motionQueueAt\)\|\|queuedNow,end\)/,
   /const BATTLE_BC_STATUS_DEFS=Object\.freeze\(\[[\s\S]*?graphic:100555[\s\S]*?graphic:101419[\s\S]*?\]\);/,
   /function battleRosterStatuses\(flags\)\{[\s\S]*?1<<10[\s\S]*?graphic:100556/,
   /const BATTLE_FLAG_GRAPHICS=Object\.freeze\(\{[\s\S]*?graphic:26514[\s\S]*?graphic:25869[\s\S]*?graphic:101416[\s\S]*?\}\);/,
@@ -2009,12 +2010,12 @@ if (
 const spriteTimingStart = script.indexOf("  function spriteAnimationTiming");
 const spriteTimingEnd = script.indexOf("  function battleActorAnimationTiming", spriteTimingStart);
 if (spriteTimingStart < 0 || spriteTimingEnd <= spriteTimingStart) throw new Error("sprite timing helper boundary missing");
-/* GAMEMAIN.CPP's default (non-_OPTIMIZATIONFLIP_) ProcTime is 14ms.  The
-   renderer may paint at 60Hz, but simulation/battle timing follows this
-   legacy process clock. */
-const nativeProcTickMs = 14;
+/* The preserved 2.5 GAMEMAIN.CPP uses a 60Hz ProcTime (16.666667ms).  The
+   8ms clock belongs to the later _OPTIMIZATIONFLIP_ build and must not drive
+   this 2.5 battle timing. */
+const nativeProcTickMs = 1000 / 60;
 const nearlyEqual = (actual, expected, epsilon = 1e-9) => Math.abs(Number(actual) - Number(expected)) <= epsilon;
-const spriteAnimationTiming = new Function("LEGACY_PROC_TICK_MS", `${script.slice(spriteTimingStart, spriteTimingEnd)}; return spriteAnimationTiming;`)(nativeProcTickMs);
+const spriteAnimationTiming = new Function("BATTLE_PROC_TICK_MS", `${script.slice(spriteTimingStart, spriteTimingEnd)}; return spriteAnimationTiming;`)(nativeProcTickMs);
 const nativeAttackTiming = spriteAnimationTiming({frame_ms:5,frames:[{sound:51},{sound:0},{sound:10000},{sound:10100}]});
 if (!nativeAttackTiming || !nearlyEqual(nativeAttackTiming.duration, 5 * 4 * nativeProcTickMs) || !nearlyEqual(nativeAttackTiming.contactOffset, 5 * 2 * nativeProcTickMs) || nativeAttackTiming.contacts.length !== 2 || nativeAttackTiming.soundEvents.find(event=>event.sound===10000)?.kind !== "contact" || nativeAttackTiming.soundEvents.find(event=>event.sound===10100)?.kind !== "combo") {
   throw new Error(`native SPR timing failed: ${JSON.stringify(nativeAttackTiming)}`);
@@ -2022,7 +2023,7 @@ if (!nativeAttackTiming || !nearlyEqual(nativeAttackTiming.duration, 5 * 4 * nat
 const contactTimingStart = script.indexOf("  const BATTLE_CONTACT_HOLD_NORMAL_TICKS");
 const contactTimingEnd = script.indexOf("  function battleAttackMotionSpec", contactTimingStart);
 if (contactTimingStart < 0 || contactTimingEnd <= contactTimingStart) throw new Error("contact hold helper boundary missing");
-const battleContactTiming = new Function("BATTLE_FLAG","LEGACY_PROC_TICK_MS",`${script.slice(contactTimingStart,contactTimingEnd)}; return {battleLegacyTravelDuration,battleLegacyHitProfile,battleContactHoldDuration,battleTimelineOffsetForFrame,battleAnimationElapsedWithHolds};`)(
+const battleContactTiming = new Function("BATTLE_FLAG","BATTLE_PROC_TICK_MS",`${script.slice(contactTimingStart,contactTimingEnd)}; return {battleLegacyTravelDuration,battleLegacyHitProfile,battleContactHoldDuration,battleTimelineOffsetForFrame,battleAnimationElapsedWithHolds};`)(
   {death:1,critical:4,ultimate1:64,ultimate2:128,reflect:1024},
   nativeProcTickMs,
 );
@@ -2044,7 +2045,7 @@ if (battleTerminalHoldUntil({motionQueueAt:100,pendingDamageUntil:260,motions:[]
 const attackSequenceStart = script.indexOf("  function battleAttackSequenceSpec");
 const attackSequenceEnd = script.indexOf("  function battleQueueDeath", attackSequenceStart);
 if (attackSequenceStart < 0 || attackSequenceEnd <= attackSequenceStart) throw new Error("attack sequence helper boundary missing");
-const battleAttackSequenceSpec = new Function("battleSlotPoint","battleFacingDirection","battleActorAnimationTiming","battleSlotDirection","battleContactHoldDuration","battleTimelineOffsetForFrame","battleLegacyTravelDuration","LEGACY_PROC_TICK_MS",`${script.slice(attackSequenceStart,attackSequenceEnd)}; return battleAttackSequenceSpec;`)(
+const battleAttackSequenceSpec = new Function("battleSlotPoint","battleFacingDirection","battleActorAnimationTiming","battleSlotDirection","battleContactHoldDuration","battleTimelineOffsetForFrame","battleLegacyTravelDuration","BATTLE_PROC_TICK_MS",`${script.slice(attackSequenceStart,attackSequenceEnd)}; return battleAttackSequenceSpec;`)(
   id=>id===0?[0,0]:id===10?[320,160]:[360,200],
   ()=>6,
   ()=>({duration:120,contactOffset:30,nativeContact:true,contacts:[{offset:30},{offset:60}],soundEvents:[{sound:51,offset:0,kind:"sfx"}]}),
@@ -2076,7 +2077,7 @@ if (!/if\(!animation\)animation=spriteAnimationForAction\(actor,direction,3\)/.t
 const hitMotionStart = script.indexOf("  function battleHitMotionSpec");
 const hitMotionEnd = script.indexOf("  function battleQueueDeath", hitMotionStart);
 if (hitMotionStart < 0 || hitMotionEnd <= hitMotionStart) throw new Error("hit motion helper boundary missing");
-const battleHitMotionSpec = new Function("battleSlotDirection","battleActorAnimationTiming","battleLegacyHitProfile","battleLegacyTravelDuration","BATTLE_FLAG","LEGACY_PROC_TICK_MS","BATTLE_RADAR_DIRECTIONS",`${script.slice(hitMotionStart,hitMotionEnd)}; return battleHitMotionSpec;`)(
+const battleHitMotionSpec = new Function("battleSlotDirection","battleActorAnimationTiming","battleLegacyHitProfile","battleLegacyTravelDuration","BATTLE_FLAG","BATTLE_PROC_TICK_MS","BATTLE_RADAR_DIRECTIONS",`${script.slice(hitMotionStart,hitMotionEnd)}; return battleHitMotionSpec;`)(
   ()=>3,
   (_id,_direction,action)=>({duration:action===10?210:240}),
   battleContactTiming.battleLegacyHitProfile,
@@ -2094,8 +2095,22 @@ if (!/deathStartOffset=vct10Duration\+knockbackDuration\+decelDuration\+pauseDur
   throw new Error("native hit/knockback/return/dead chain is incomplete");
 }
 const directDamageSource = script.slice(script.indexOf("    const addDirectDamage="), script.indexOf("    const queueDodge=", script.indexOf("    const addDirectDamage=")));
-if (!/else if\(hp\|\|pet\|\|flags&BATTLE_FLAG\.guard\)/.test(directDamageSource) || /else if\([^\n]*BATTLE_FLAG\.normal/.test(directDamageSource)) {
+if (!/const damageAt=impactAt;/.test(directDamageSource) || !/else if\(hp\|\|pet\|\|flags&BATTLE_FLAG\.guard\)/.test(directDamageSource) || /else if\([^\n]*BATTLE_FLAG\.normal/.test(directDamageSource)) {
   throw new Error("zero-damage living targets must not manufacture a hurt motion; guard must use its native pose");
+}
+const receiveBattleStatusForFreshDeath = script.slice(script.indexOf("  function receiveBattleStatus"), script.indexOf("  function receiveBattlePacket"));
+if (!/const freshDead=Boolean\(\(item\.flags&BATTLE_BC_FRESH\)&&!old\)/.test(receiveBattleStatusForFreshDeath) ||
+    !/if\(freshDead\)[\s\S]{0,1300}state\.deathStartedAt\.set\(Number\(item\.battleId\),Date\.now\(\)-deadDuration-BATTLE_PROC_TICK_MS\)/.test(receiveBattleStatusForFreshDeath) ||
+    !/\}\s*else\{\s*battleQueueDeath\(/.test(receiveBattleStatusForFreshDeath)) {
+  throw new Error("BC fresh+dead must enter the held final corpse frame without replaying the death chain");
+}
+const battleDamageSource = script.slice(script.indexOf('      }else if(marker==="BD")'), script.indexOf('      }else if(marker==="B+")'));
+if (!/const scheduleBDMotion=/.test(script.slice(script.indexOf("    const now=Date.now();"), script.indexOf("    const queueMotion="))) ||
+    !/duration=60\*BATTLE_PROC_TICK_MS/.test(script) ||
+    !/scheduleBDMotion\(target,bdKind,sign,amount,petAmount,fatalHint\)/.test(battleDamageSource) ||
+    !/if\(fatal\)\{[\s\S]{0,260}battleQueueDirectDeath\(state,target,start\)/.test(script) ||
+    /const wasDead=Boolean\(battleFindParticipant\(target\)\?\.dead\),hitTiming=timedMotion\(\{kind:"hit"/.test(battleDamageSource)) {
+  throw new Error("BD must use native 60-tick grouped VCT78/79 timing and direct fatal death");
 }
 for (const expected of [
   /marker==="BP"[\s\S]{0,500}scheduleAttack\(segment,target,"attack",0,flags\)/,

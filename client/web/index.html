@@ -1252,23 +1252,22 @@
   const POINTER_MOVE_MODE_DELAY_MS=1000;
   /* sa_2903's map.cpp advances by four pixels per processing tick.  The
      original web field crossed a 64px cardinal tile in about 96ms (the
-     sa_2903 _SYSTEM_SLEEP_ cadence).  Keep the battle/sprite process clock
-     at the optimized client's 8ms below, but apply the original field speed
-     factor in moveStepDuration().  This keeps walking responsive without
-     changing battle contact/animation timing.  Diagonal movement normalizes
-     the (1,1) vector in map.cpp, so that tile takes sqrt(2) times as long. */
+     sa_2903 _SYSTEM_SLEEP_ cadence).  Keep this interpolation clock at 8ms;
+     it is intentionally independent from the original 2.5 battle process
+     clock below.  Diagonal movement normalizes the (1,1) vector in map.cpp,
+     so that tile takes sqrt(2) times as long. */
   const LEGACY_GRID_SIZE=64;
   const LEGACY_MOVE_SPEED=4;
   const LEGACY_PROC_TICK_MS=8;
   const MOVE_CARDINAL_DURATION=LEGACY_GRID_SIZE/LEGACY_MOVE_SPEED*LEGACY_PROC_TICK_MS;
-  /* GAMEMAIN.CPP drives charProc()/pattern() from the 60 Hz ProcTime
-     (16.666667 ms).  Keep that field-character clock separate from the
-     server/battle 8 ms tick above: using the battle tick for Action rows
-     compressed a hand-wave/attack into a fraction of the native duration,
-     so on a phone it was easy to see only the first/final bitmap and report
-     the action as static. */
+  /* The preserved 2.5 GAMEMAIN.CPP defines ProcTime as 16.666667ms.  Battle
+     VCT state, SPR frames and hit-stop all advance on that same process
+     clock.  The later 8.5 _OPTIMIZATIONFLIP_ build uses 8ms, but applying it
+     here makes a 2.5 attack and death movie run at roughly double speed. */
+  const BATTLE_PROC_TICK_MS=1000/60;
+  /* Field-character Action rows also advance from the 2.5 60 Hz ProcTime. */
   const LEGACY_FIELD_ANIMATION_TICK_MS=1000/60;
-  /* Keep the optimized process clock for sprites and battle movies. */
+  /* Keep the optimized process clock only for field movement interpolation. */
   /* The previously shipped web field used a 6ms-equivalent movement clock;
      0.75× the 8ms process interval restores its 96ms cardinal step. */
   const LEGACY_FIELD_SPEED_FACTOR=0.75;
@@ -3250,6 +3249,28 @@
       return Promise.resolve(false);
     }
     const now=Date.now();
+    let lastBDKey="",lastBDStart=0,lastBDEnd=0;
+    const bdProjectedHp=new Map();
+    const resetBDBatch=()=>{lastBDKey="";lastBDStart=0;lastBDEnd=0;bdProjectedHp.clear();};
+    const scheduleBDMotion=(target,kind,sign,amount,petAmount,fatalHint=null)=>{
+      const key=`${Number(kind)||0}:${Number(sign)||0}`,current=Date.now(),duration=60*BATTLE_PROC_TICK_MS;
+      /* Consecutive ATT_DAMAGE records with the same kind/sign are consumed
+         by one native VCT78/79 action and therefore start together.  A new
+         kind/sign is the next action batch and starts after the previous
+         60-tick window. */
+      const sameBatch=key===lastBDKey&&lastBDEnd>=lastBDStart&&lastBDStart>=current-4*BATTLE_PROC_TICK_MS;
+      const start=sameBatch?lastBDStart:Math.max(current,Number(state.motionQueueAt)||current,lastBDEnd),damaging=Number(kind)===0&&Number(sign)===0&&Number(amount)>0,item=battleFindParticipant(target),fatal=fatalHint===null?(damaging&&item&&Number(item.hp)<=Number(amount)):Boolean(fatalHint);
+      let timing;
+      if(fatal){
+        battleQueueDirectDeath(state,target,start);
+        timing={startAt:start,endAt:start+duration,duration,contactAt:start,direction:battleSlotDirection(target),nativeContact:false,fatal:true};
+      }else{
+        timing=timedMotion({kind:damaging?"bd-damage":"bd",target,bdKind:Number(kind)||0,bdSign:Number(sign)||0,amount:Number(amount)||0,petAmount:Number(petAmount)||0},start,duration);
+        timing.fatal=false;
+      }
+      lastBDKey=key;lastBDStart=start;lastBDEnd=start+duration;
+      return timing;
+    };
     if(now-(app.fieldBtnPushTime||0)<LEGACY_TURN_SEND_WAIT_MS){setWorldState("操作太快，请稍候。","error");return Promise.resolve(false);}
     app.fieldBtnPushTime=now;
     return send(functionName,values).then(()=>true);
@@ -3984,7 +4005,7 @@
   const MAP_DATA_CACHE_PREFIX="stoneage25.v1.map-data.";
   const MAP_TILE_CACHE_MAX_BYTES=768*1024;
   const MAP_DATA_CACHE_MAX_BYTES=2*1024*1024;
-  /* The server can rewrite this root to a versioned CDN.  ResourceTiming
+  /* The server can rewrite this root to a public CDN.  ResourceTiming
      entries expose a URL origin and pathname separately, so compare both
      against the resolved root instead of assuming every asset is same-origin
      at /assets/.  The CDN should send Timing-Allow-Origin for byte progress. */
@@ -4674,7 +4695,7 @@
   function spriteAnimationTiming(animation){
     const frames=Array.isArray(animation?.frames)?animation.frames:[];
     if(!frames.length)return null;
-    const frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_PROC_TICK_MS;
+    const frameDuration=Math.max(1,Number(animation.frame_ms)||7)*BATTLE_PROC_TICK_MS;
     const duration=Math.max(frameDuration,frames.length*frameDuration),soundEvents=[];
     for(let index=0;index<frames.length;index++){
       const sound=Number(frames[index]?.sound)||0;
@@ -8853,12 +8874,12 @@
   const BATTLE_CONTACT_HOLD_HEAVY_TICKS=32;
   /* GEMINI.CPP indexes DELTA_TBL in fixed point: ATR_SPD=32 advances a
      cardinal direction by 0x800/0x100 = 8 pixels per process tick.  The
-     shipped battle loop runs once every LEGACY_PROC_TICK_MS (8ms in the
-     stock client), so movement timings must be derived from speed/ticks
-     instead of a guessed wall-clock pixels ratio. */
+     preserved 2.5 battle loop runs once every BATTLE_PROC_TICK_MS, so
+     movement timings must be derived from speed/ticks instead of a guessed
+     wall-clock pixels ratio. */
   function battleLegacyTravelDuration(distance,speed=32,stopDistance=0){
     const value=Math.max(0,Number(distance)||0),stop=Math.max(0,Number(stopDistance)||0),pixelsPerTick=Math.max(.25,Math.abs(Number(speed)||32)/4);
-    return Math.ceil(Math.max(0,value-stop)/pixelsPerTick)*LEGACY_PROC_TICK_MS;
+    return Math.ceil(Math.max(0,value-stop)/pixelsPerTick)*BATTLE_PROC_TICK_MS;
   }
   function battleLegacyHitProfile(flags=0){
     const value=Number(flags)||0,heavy=Boolean(value&(BATTLE_FLAG.critical|BATTLE_FLAG.death|BATTLE_FLAG.ultimate1|BATTLE_FLAG.ultimate2|BATTLE_FLAG.reflect)),hitStopTicks=heavy?BATTLE_CONTACT_HOLD_HEAVY_TICKS:BATTLE_CONTACT_HOLD_NORMAL_TICKS;
@@ -8869,7 +8890,7 @@
     for(let speed=decelStart;speed>=1||(!heavy&&speed===0);speed-=2)speeds.push(speed);
     const speedToPixels=speed=>Math.max(0,Number(speed)||0)/4;
     const knockbackDistance=speedToPixels(16)*hitStopTicks,decelDistance=speeds.reduce((total,speed)=>total+speedToPixels(speed),0);
-    return {heavy,hitStopTicks,knockbackDuration:hitStopTicks*LEGACY_PROC_TICK_MS,decelSpeeds:speeds,decelDuration:speeds.length*LEGACY_PROC_TICK_MS,knockbackDistance,decelDistance,totalDistance:knockbackDistance+decelDistance,returnSpeed:10,returnStopDistance:2};
+    return {heavy,hitStopTicks,knockbackDuration:hitStopTicks*BATTLE_PROC_TICK_MS,decelSpeeds:speeds,decelDuration:speeds.length*BATTLE_PROC_TICK_MS,knockbackDistance,decelDistance,totalDistance:knockbackDistance+decelDistance,returnSpeed:10,returnStopDistance:2};
   }
   function battleContactHoldDuration(flags=0,amount=null,petAmount=null){
     const value=Number(flags)||0,hasDamageInfo=amount!==null&&amount!==undefined||petAmount!==null&&petAmount!==undefined;
@@ -8879,7 +8900,7 @@
        while allowing BH to model that zero-damage path exactly. */
     if(hasDamageInfo&&Math.max(0,Number(amount)||0)<=0&&Math.max(0,Number(petAmount)||0)<=0&&!(value&(BATTLE_FLAG.death|BATTLE_FLAG.ultimate1|BATTLE_FLAG.ultimate2)))return 0;
     const heavy=Boolean(value&(BATTLE_FLAG.critical|BATTLE_FLAG.death|BATTLE_FLAG.ultimate1|BATTLE_FLAG.ultimate2|BATTLE_FLAG.reflect));
-    return (heavy?BATTLE_CONTACT_HOLD_HEAVY_TICKS:BATTLE_CONTACT_HOLD_NORMAL_TICKS)*LEGACY_PROC_TICK_MS;
+    return (heavy?BATTLE_CONTACT_HOLD_HEAVY_TICKS:BATTLE_CONTACT_HOLD_NORMAL_TICKS)*BATTLE_PROC_TICK_MS;
   }
   function battleTimelineOffsetForFrame(frameOffset,holds=[]){
     const frame=Math.max(0,Number(frameOffset)||0);
@@ -8911,7 +8932,7 @@
     const attackDuration=nativeAttackDuration+contactHold;
     /* The native state keeps STIMER=20 after ANIM_ATTACK before it begins
        the return walk.  Twenty legacy process ticks are 120 ms. */
-    const postAttackHold=kind==="attack"&&hasTarget?20*LEGACY_PROC_TICK_MS:10*LEGACY_PROC_TICK_MS;
+    const postAttackHold=kind==="attack"&&hasTarget?20*BATTLE_PROC_TICK_MS:10*BATTLE_PROC_TICK_MS;
     /* VCT4 returns to the formation slot at the same speed but uses the
        tighter d1<=ATR_SPD>>2 (8px) arrival threshold. */
     const returnDuration=kind==="attack"&&hasTarget?battleLegacyTravelDuration(travelPixels,32,8):0,totalDuration=Math.max(120,approachDuration+attackDuration+postAttackHold+returnDuration);
@@ -8950,7 +8971,7 @@
       for(const hit of hits.slice(-tupleCount))hit.endOffset=attackStartOffset+attackDuration;
       for(const event of native?.soundEvents||[])soundEvents.push({...event,offset:attackStartOffset+battleTimelineOffsetForFrame(Number(event.offset)||0,animationHolds)});
       elapsed+=attackDuration;
-      const postAttackHold=20*LEGACY_PROC_TICK_MS;elapsed+=postAttackHold;
+      const postAttackHold=20*BATTLE_PROC_TICK_MS;elapsed+=postAttackHold;
       steps.push({target,direction,fromX:currentX,fromY:currentY,toX,toY,travelStartOffset,travelDuration,attackStartOffset,attackDuration,nativeAttackDuration,animationHolds,postAttackHold,endOffset:elapsed,attackAction});
       currentX=toX;currentY=toY;index+=tupleCount;
     }
@@ -8960,7 +8981,7 @@
   }
   function battleHitMotionSpec(target,direction,flags=0){
     const id=Number(target),incoming=Number.isFinite(Number(direction))?Number(direction):battleSlotDirection(id),hurtDirection=(incoming+4)&7;
-    const profile=battleLegacyHitProfile(flags),vct10Duration=LEGACY_PROC_TICK_MS,pauseDuration=16*LEGACY_PROC_TICK_MS;
+    const profile=battleLegacyHitProfile(flags),vct10Duration=BATTLE_PROC_TICK_MS,pauseDuration=16*BATTLE_PROC_TICK_MS;
     const returnDuration=battleLegacyTravelDuration(profile.totalDistance,profile.returnSpeed,profile.returnStopDistance),duration=vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration+returnDuration;
     const octant=BATTLE_RADAR_DIRECTIONS.indexOf(((incoming%8)+8)%8),angle=(octant<0?0:octant)*Math.PI/4,knockbackX=Math.cos(angle)*profile.knockbackDistance,knockbackY=Math.sin(angle)*profile.knockbackDistance,decelX=Math.cos(angle)*profile.decelDistance,decelY=Math.sin(angle)*profile.decelDistance;
     if(Number(flags)&BATTLE_FLAG.guard){
@@ -8970,7 +8991,7 @@
          callers while carrying the same explicit movement phases. */
       return {kind:"guard",actor:id,target:id,direction:incoming,hurtDirection,guard:true,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,Number(guardTiming?.duration)||0)};
     }
-    const hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),hurtAnimationDuration=Math.max(LEGACY_PROC_TICK_MS,Number(hurtTiming?.duration)||240);
+    const hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),hurtAnimationDuration=Math.max(BATTLE_PROC_TICK_MS,Number(hurtTiming?.duration)||240);
     return {kind:"hit",target:id,direction:incoming,hurtDirection,hurtAnimationDuration,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,hurtAnimationDuration)};
   }
   function battleQueueDeath(state,target,duration=1000,startsAt=Date.now(),directionHint=null){
@@ -8985,7 +9006,7 @@
        it.  Do not enqueue a second lethal movie from a late duplicate BC. */
     if(state.deathStartedAt instanceof Map&&state.deathStartedAt.has(id))return;
     const incoming=Number.isFinite(Number(directionHint))?Number(directionHint):list.slice().reverse().find(item=>item.kind==="hit"&&Number(item.target)===id&&Math.abs((Number(item.startedAt)||now)+(Number(item.delay)||0)-startAt)<360)?.direction;
-    const direction=Number.isFinite(Number(incoming))?Number(incoming):battleSlotDirection(id),hurtDirection=(direction+4)&7,profile=battleLegacyHitProfile(BATTLE_FLAG.death),hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),deadTiming=battleActorAnimationTiming(id,battleSlotDirection(id),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240),vct10Duration=LEGACY_PROC_TICK_MS,pauseDuration=16*LEGACY_PROC_TICK_MS,knockbackDuration=profile.knockbackDuration,decelDuration=profile.decelDuration,deathStartOffset=vct10Duration+knockbackDuration+decelDuration+pauseDuration;
+    const direction=Number.isFinite(Number(incoming))?Number(incoming):battleSlotDirection(id),hurtDirection=(direction+4)&7,profile=battleLegacyHitProfile(BATTLE_FLAG.death),hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),deadTiming=battleActorAnimationTiming(id,battleSlotDirection(id),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240),vct10Duration=BATTLE_PROC_TICK_MS,pauseDuration=16*BATTLE_PROC_TICK_MS,knockbackDuration=profile.knockbackDuration,decelDuration=profile.decelDuration,deathStartOffset=vct10Duration+knockbackDuration+decelDuration+pauseDuration;
     /* A lethal DAMAGE movie does not stop at the displaced VCT13 pose.  The
        native actor enters VCT_NO_DIE (250), walks back to its saved formation
        point at SPD=4, then advances to VCT_NO_DIE+1 (251) for the non-looping
@@ -9015,6 +9036,27 @@
     battlePushMotion(list,{kind:"death",target:id,direction,hurtDirection,startedAt:now,delay:startAt-now,duration:totalDuration,vct10Duration,knockbackDuration,decelDuration,pauseDuration,returnDuration,returnToOriginDuration:returnDuration,returnSpeed,returnStopDistance,deathStartOffset,deadStartOffset,deadDuration,knockbackDistance,decelDistance,knockbackX:Math.cos(angle)*knockbackDistance,knockbackY:Math.sin(angle)*knockbackDistance,decelX:Math.cos(angle)*decelDistance,decelY:Math.sin(angle)*decelDistance,displacedOffsetX:displacedOffset.dx,displacedOffsetY:displacedOffset.dy,finalOffsetX:finalOffset.dx,finalOffsetY:finalOffset.dy,blocking:false,presentationTail:true});
     if(state.result)queueBattleResult(state);else if(state.exitPending)queueBattleWorldExit(state);
   }
+  /* ATT_DAMAGE (BD) uses VCT78/79 rather than DAMAGE()'s VCT10..14 chain.
+     The native handler keeps that record alive for exactly 60 process ticks;
+     when HP reaches zero it advances straight to VCT_NO_DIE+1 (251).  Keep a
+     separate terminal motion so a lethal BD never grows a knockback/return
+     tail, while the 60-tick status phase still blocks the next movie batch. */
+  function battleQueueDirectDeath(state,target,startsAt=Date.now()){
+    if(!state||!Number.isFinite(Number(target))||Number(target)<0)return;
+    const id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now);
+    if(state.deathStartedAt instanceof Map&&state.deathStartedAt.has(id))return;
+    const item=battleFindParticipant(id);if(item){item.dead=true;item.hp=0;}
+    const deadTiming=battleActorAnimationTiming(id,battleSlotDirection(id),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240),bdDuration=60*BATTLE_PROC_TICK_MS;
+    if(!(state.deathStartedAt instanceof Map))state.deathStartedAt=new Map();
+    if(!(state.deathOffsets instanceof Map))state.deathOffsets=new Map();
+    state.deathStartedAt.set(id,startAt+bdDuration);
+    state.deathOffsets.set(id,{dx:0,dy:0});
+    battlePushMotion(state.motions|| (state.motions=[]),{kind:"death-direct",target:id,startedAt:now,delay:startAt-now,duration:bdDuration+deadDuration,bdDuration,deadStartOffset:bdDuration,deadDuration,blocking:false,presentationTail:true});
+    /* The corpse's DEAD presentation tail may overlap the next speed-sorted
+       actor, but its 60-tick ATT_DAMAGE phase is still the action barrier. */
+    state.motionQueueAt=Math.max(Number(state.motionQueueAt)||now,startAt+bdDuration);
+    if(state.result)queueBattleResult(state);else if(state.exitPending)queueBattleWorldExit(state);
+  }
   /* Native master_500() gives one ACTION a single VCT state at a time.  A
      browser movie can nevertheless retain several queued records for the
      same battle id (an attack followed by a counter/hit, or a lethal hit
@@ -9030,9 +9072,11 @@
     const actor=Number(motion.actor),target=Number(motion.target),value=Number(id);
     const kind=String(motion.kind||"");
     if(kind==="death"&&target===value)return 100;
+    if(kind==="death-direct"&&target===value)return 99;
     if((kind==="escape"||kind==="escape-fail")&&(actor===value||target===value))return 96;
     if(kind==="fade"&&target===value)return 95;
     if((kind==="hit"||kind==="guard"||kind==="dodge")&&target===value)return 90;
+    if(kind==="bd-damage"&&target===value)return 88;
     if(kind==="attack-sequence"&&actor===value)return 80;
     if(kind==="attack"&&actor===value)return 79;
     if(kind==="cast"&&actor===value)return 72;
@@ -9176,6 +9220,22 @@
            sprite appear to teleport from the edge (and was especially
            noticeable when BI followed a BF hide record). */
         value.action=4;value.animationLoop=true;value.animationStartedAt=performance.now()-Math.max(0,elapsed);
+      }else if(motion.kind==="bd-damage"&&target===Number(id)){
+        /* ATT_DAMAGE sign=0 paints the damage animation but does not move the
+           actor.  VCT78 owns exactly 60 process ticks; the HP/damage number
+           itself is applied by the contact callback at motion start. */
+        const duration=Math.max(BATTLE_PROC_TICK_MS,Number(motion.duration)||60*BATTLE_PROC_TICK_MS);
+        value.action=1;value.animationLoop=true;value.hit=false;value.animationStartedAt=performance.now()-Math.max(0,Math.min(elapsed,duration));
+      }else if(motion.kind==="death-direct"&&target===Number(id)){
+        /* VCT78 keeps the actor in its looping damage pose for 60 process
+           ticks.  Once that counter drains, native case 78 selects DEAD
+           (251) directly; there is no displaced hit or VCT250 return. */
+        const bdDuration=Math.max(BATTLE_PROC_TICK_MS,Number(motion.bdDuration)||60*BATTLE_PROC_TICK_MS),deadOffset=Math.max(bdDuration,Number(motion.deadStartOffset)||bdDuration);
+        if(elapsed<deadOffset){
+          value.action=1;value.animationLoop=true;value.hit=false;value.animationStartedAt=performance.now()-Math.max(0,elapsed);
+        }else{
+          value.action=2;value.animationLoop=false;value.hit=false;value.dx=0;value.dy=0;value.direction=battleSlotDirection(id);value.animationStartedAt=performance.now()-Math.max(0,elapsed-deadOffset);
+        }
       }else if(motion.kind==="death"&&target===Number(id)){
         /* Lethal DAMAGE follows VCT10/11/12/13, then VCT_NO_DIE (250)
            walks back to the saved slot at SPD=4.  Only after that return does
@@ -9339,10 +9399,13 @@
        and BP (the authoritative next-turn snapshot) explicitly resets the
        queue, so there is no need for a timeout-based reset here. */
     if(!Number.isFinite(Number(state.motionQueueAt)))state.motionQueueAt=now;
-    const queueMotion=(motion,duration=motion?.duration||420,gap=40)=>{
+    const queueMotion=(motion,duration=motion?.duration||420)=>{
       const queuedNow=Date.now(),start=Math.max(queuedNow,Number(state.motionQueueAt)||queuedNow),length=Math.max(120,Number(duration)||360);
       battlePushMotion(state.motions,{...motion,startedAt:queuedNow,delay:Math.max(0,start-queuedNow),duration:length});
-      state.motionQueueAt=start+length+Math.max(0,Number(gap)||0);
+      /* EntrySort() already serializes ordinary movie actions.  The native
+         next ACTION becomes runnable as soon as the current action_inf is
+         complete; there is no extra wall-clock spacer between records. */
+      state.motionQueueAt=start+length;
       const timing={startAt:start,endAt:start+length,duration:length,direction:motion?.direction,attackStartAt:start+Math.max(0,Number(motion?.attackStartOffset)||0),attackDuration:Math.max(0,Number(motion?.attackDuration)||0),contactAt:start+Math.max(0,Number(motion?.contactOffset)||0),contactOffsets:(motion?.contactOffsets||[]).map(offset=>start+Math.max(0,Number(offset)||0)),nativeContact:Boolean(motion?.nativeContact)};
       /* PATTERN.CPP plays SoundNo<10000 when that exact frame becomes
          current.  Schedule those events once with the movie rather than
@@ -9359,12 +9422,10 @@
       const queuedNow=Date.now(),start=Math.max(queuedNow,Number(startAt)||queuedNow),length=Math.max(120,Number(duration)||360),end=start+length;
       battlePushMotion(state.motions,{...motion,startedAt:queuedNow,delay:Math.max(0,start-queuedNow),duration:length});
       /* BD/BM/BL are standalone movie records and therefore also consume a
-         slot in the same native action timeline.  Without advancing this
-         cursor, two consecutive status/heal records received in one B
-         callback start on the same frame and the following attacker overlaps
-         the hit pose.  A hit embedded in BH/BY normally ends before the
-         already queued attack, so max() keeps that contact frame in-place. */
-      state.motionQueueAt=Math.max(Number(state.motionQueueAt)||queuedNow,end+40);
+         slot in the same native action timeline.  A hit embedded in BH/BY
+         normally ends before the already queued attack, so max() keeps that
+         contact frame in-place without inventing an inter-record delay. */
+      state.motionQueueAt=Math.max(Number(state.motionQueueAt)||queuedNow,end);
       return {startAt:start,endAt:end,duration:length};
     };
     /* BD belongs to one concrete movie event.  A B string can contain a
@@ -9375,16 +9436,16 @@
     const scheduleAttack=(segment,target,kind="attack",attackAction=0,flags=0)=>{
       const attacker=battleSegmentNumber(segment,"a",0,-1);if(attacker<0)return;
       const spec=battleAttackMotionSpec(attacker,target,target>=0?kind:"cast",attackAction,flags);
-      return queueMotion(spec,spec.duration,40);
+      return queueMotion(spec,spec.duration);
     };
     const scheduleAttackPair=(attacker,target,kind="attack",attackAction=0,flags=0)=>{
       if(Number(attacker)<0)return;
       const spec=battleAttackMotionSpec(Number(attacker),Number(target),Number(target)>=0?kind:"cast",attackAction,flags);
-      return queueMotion(spec,spec.duration,40);
+      return queueMotion(spec,spec.duration);
     };
     const scheduleAttackSequence=(attacker,targets,attackAction=0,flags=[],damageValues=[],petValues=[])=>{
       if(Number(attacker)<0)return null;
-      const spec=battleAttackSequenceSpec(Number(attacker),targets,attackAction,flags,damageValues,petValues),timing=queueMotion(spec,spec.duration,40);
+      const spec=battleAttackSequenceSpec(Number(attacker),targets,attackAction,flags,damageValues,petValues),timing=queueMotion(spec,spec.duration);
       return {...timing,hits:(spec.hits||[]).map(hit=>({startAt:timing.startAt+Number(hit.startOffset||0),endAt:timing.startAt+Number(hit.endOffset||0),duration:Math.max(1,Number(hit.endOffset||0)-Number(hit.startOffset||0)),attackStartAt:timing.startAt+Number(hit.attackStartOffset||0),contactAt:timing.startAt+Number(hit.contactOffset||0),direction:hit.direction,nativeContact:Boolean(hit.nativeContact),target:hit.target,tupleIndex:hit.tupleIndex}))};
     };
     /* BATTLE_BattleModel() does not animate the attacking pet itself.  The
@@ -9412,7 +9473,7 @@
       const direction=battleFacingDirection(actor,victim),modelTiming=battleGraphicAnimationTiming(graphic,direction,0),stopDistance=Math.min(64,distance),stopScale=distance>0?Math.max(0,(distance-stopDistance)/distance):0,stopPoint=[Number(fromPoint[0])+dx*stopScale,Number(fromPoint[1])+dy*stopScale],approach=Math.max(120,battleLegacyTravelDuration(distance,32,stopDistance)),attackFrames=Math.max(180,Math.min(520,Number(modelTiming?.duration)||260)),contactOffset=Math.max(0,Number(modelTiming?.contactOffset)||Math.floor(attackFrames/2)),contactAt=start+approach+contactOffset,endAt=contactAt+Math.max(220,Math.min(520,Math.max(1,attackFrames-contactOffset)+120));
       modelObjectCursors.set(cursorKey,stopPoint);
       battlePushProjectile(state,{kind:"model",graphic:Number(graphic)>0?Number(graphic):0,graphicKey:graphic===undefined||graphic===null?"":String(graphic),from:[Number(fromPoint[0]),Number(fromPoint[1])-34],to:[Number(stopPoint[0]),Number(stopPoint[1])-34],startAt:start,endAt,actor,target:victim,direction,flags,stopDistance,objectIndex:objectSlot,contactAt,modelContactOffset:contactOffset});
-      state.motionQueueAt=endAt+40;
+      state.motionQueueAt=endAt;
       return {startAt:start,endAt, duration:endAt-start, contactAt, direction, nativeContact:Boolean(modelTiming?.nativeContact)};
     };
     const timingContactAt=(timing,fallbackDelay=300)=>{
@@ -9428,15 +9489,11 @@
     const addDirectDamage=(target,amount,petAmount,flags,mpAmount=0,timing=null,options={})=>{
       const hp=Math.max(0,Number(amount)||0),pet=Math.max(0,Number(petAmount)||0),mp=Math.max(0,Number(mpAmount)||0);
       const impactAt=timingContactAt(timing);
-      /* In oft.cpp the attacker contact only enters the defender's VCT10.
-         VCT11 holds the hurt/guard frame for HIT_STOP_TIM (×4 on a heavy
-         hit), and ATR_LIFE/MP/PET_LIFE are changed when that hold drains;
-         damage_num() is painted at that same boundary.  Applying the delta
-         at the attacker's contact made the HP meter and KO appear before the
-         native impact frame.  Keep the presentation contact separate from
-         the authoritative damage clock while retaining the exact zero-
-         damage/status fast path. */
-      const damageDelay=battleContactHoldDuration(flags,hp,pet),damageAt=impactAt+Math.max(0,Number(damageDelay)||0);
+      /* monster() enters VCT10 on the contact frame.  VCT10 immediately
+         calls set_damage_num() and mutates ATR_LIFE/MP/PET_LIFE, then VCT11
+         owns the 8/32-tick hit-stop.  The hold freezes the following sprite
+         phases; it must not delay the HP meter or floating damage number. */
+      const damageAt=impactAt;
       let deathExpected=Boolean(flags&(BATTLE_FLAG.death|BATTLE_FLAG.ultimate1|BATTLE_FLAG.ultimate2));
       /* Apply special BCF visuals at the same native contact frame as HP/MP
          mutation.  This also covers zero-damage skill records where the
@@ -9499,6 +9556,7 @@
     };
     for(const segment of segments){
       const marker=segment.marker,fields=segment.fields,values=segment.values;
+      if(marker!=="BD"||String(segment.rawMarker||"")==="Bd")resetBDBatch();
       if(marker==="BH"){
         const attacker=battleSegmentNumber(segment,"a",0,-1);
         const targets=segmentValues(segment,"r").map(battleNumber),flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),counterValues=segmentValues(segment,"counter").map(battleNumber);
@@ -9629,7 +9687,7 @@
         const outcomeRaw=fields.f!==undefined?fields.f:(values.length>1?values[1]:"0"),success=battleNumber(outcomeRaw)===1;
         if(success){
           const side=battleSide(target),toX=side===1?-360:360,toY=side===1?-300:300;
-          const escapeTiming=queueMotion({kind:"escape",actor:target,target,toX,toY},820,40);
+          const escapeTiming=queueMotion({kind:"escape",actor:target,target,toX,toY},820);
           state.escapePending=state.escapePending instanceof Map?state.escapePending:new Map();
           /* Keep the success latch until BC removes the slot or BU closes
              the battle.  A fixed timeout would let a delayed BC redraw the
@@ -9684,7 +9742,7 @@
           if(battleIsLocalActor(target,state))state.escapeLocalSuccess=false;
           window.clearTimeout(state.escapeExitTimer);state.escapeExitTimer=0;
           state.motions=state.motions.filter(motion=>!(motion.kind==="escape"&&(Number(motion.actor)===Number(target)||Number(motion.target)===Number(target))));
-          queueMotion({kind:"escape-fail",actor:target,target},1150,40);
+          queueMotion({kind:"escape-fail",actor:target,target},1150);
           battlePushEffect(effects,target,"逃跑失败","escape-fail",{duration:1150,offsetY:-74});
           addChat("战斗","逃跑失败");
         }
@@ -9700,7 +9758,7 @@
              which made this skill look like a no-op and could leave the
              battle roster out of sync until the next BC. */
           const attacker=battleSegmentNumber(segment,"a",0,-1),targets=segmentValues(segment,"r").map(battleNumber),flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),guardianValues=segmentValues(segment,"g").map(battleNumber),fireMagicCount=Math.max(0,battleSegmentNumber(segment,"n",0,0)),fireMagicResults=Array.isArray(segment.fireMagicResults)?segment.fireMagicResults:[];
-          const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration,40):null;
+          const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null;
           for(let index=0;index<targets.length;index++){
             const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1;
             if(target<0)continue;
@@ -9755,7 +9813,7 @@
              formation slot so BF/EarthRound hide has the same path as the
              Windows back-buffer and does not vanish in place. */
           const point=battleSlotPoint(target),side=battleSide(target),exitX=side===1?-106:640+106,exitY=side===1?-18:480+16,distance=Math.hypot(exitX-Number(point[0]),exitY-Number(point[1])),duration=Math.max(420,Math.min(900,Math.round(distance*1.1)));
-          queueMotion({kind:"fade",target,toX:exitX-Number(point[0]),toY:exitY-Number(point[1]),earthRoundHide:true},duration,40);
+          queueMotion({kind:"fade",target,toX:exitX-Number(point[0]),toY:exitY-Number(point[1]),earthRoundHide:true},duration);
         }
       }else if(marker==="BI"||marker==="BB"){
         /* Lower-case Bb is BATTLE_BattleModel(): one attacker followed by
@@ -9808,10 +9866,10 @@
             const point=battleSlotPoint(attacker),side=battleSide(attacker),entryX=side===1?640+106:-106,entryY=side===1?480-8:8;
             const entryDistance=Math.hypot(entryX-Number(point[0]),entryY-Number(point[1]));
             const entryDuration=Math.max(360,Math.min(900,Math.round(entryDistance*1.1)));
-            queueMotion({kind:"appear",actor:attacker,fromX:entryX-Number(point[0]),fromY:entryY-Number(point[1]),earthRound:true,walk:true},entryDuration,40);
+            queueMotion({kind:"appear",actor:attacker,fromX:entryX-Number(point[0]),fromY:entryY-Number(point[1]),earthRound:true,walk:true},entryDuration);
           }
           if(!targets.length){
-            if(attacker>=0){const castSpec=battleAttackMotionSpec(attacker,-1,"cast",attackAction);queueMotion(castSpec,castSpec.duration,40);}
+            if(attacker>=0){const castSpec=battleAttackMotionSpec(attacker,-1,"cast",attackAction);queueMotion(castSpec,castSpec.duration);}
           }else{
             for(let index=0;index<targets.length;index++){
               const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1;
@@ -9831,7 +9889,7 @@
               const castSpec=attacker>=0&&marker==="BB"?battleAttackMotionSpec(attacker,target,"cast",attackAction):null;
               const timing=attacker>=0
                 ? (marker==="BB"
-                  ? queueMotion(castSpec,castSpec.duration,40)
+                  ? queueMotion(castSpec,castSpec.duration)
                   : scheduleAttack(segment,target,"attack",0,flags))
                 : null;
               const impactStart=timingContactAt(timing);
@@ -9871,7 +9929,7 @@
           const actor=battleSegmentNumber(segment,"a",0,battleSegmentNumber(segment,"",0,-1)),rounds=Math.max(1,battleSegmentNumber(segment,"n",0,battleSegmentNumber(segment,"c",0,1)));
           if(actor>=0){
             const duration=Math.min(1200,Math.max(360,360+Math.min(4,rounds-1)*120));
-            queueMotion({kind:"charge",actor,attackAction:0,charge:true,chargeRounds:rounds},duration,40);
+            queueMotion({kind:"charge",actor,attackAction:0,charge:true,chargeRounds:rounds},duration);
           }
         }else{
           /* Counter/chain attacks carry both attacker and defender. */
@@ -9884,7 +9942,7 @@
                  then walks/fades it off-screen before the next BC arrives. */
               const item=battleFindParticipant(target);if(item)item.flags=Number(item.flags||0)|BATTLE_BC_FADE_OUT;
               const side=battleSide(target),toX=side===1?-300:300,toY=side===1?-300:300;
-              queueMotion({kind:"fade",target,toX,toY},820,40);
+              queueMotion({kind:"fade",target,toX,toY},820);
               battlePushEffect(effects,target,"捕捉成功","capture",{duration:1200,offsetY:-74});
             }else{
               battlePushEffect(effects,target,"捕捉失败","status",{duration:1050,offsetY:-74});
@@ -9893,7 +9951,7 @@
         }
       }else if(marker==="BG"){
         const actor=battleSegmentNumber(segment,"",0,battleSegmentNumber(segment,"a",0,-1));
-        if(actor>=0)queueMotion({kind:"guard",actor,attackAction:10},520,40);
+        if(actor>=0)queueMotion({kind:"guard",actor,attackAction:10},520);
         if(actor>=0)battlePushEffect(effects,actor,"防御","guard",{duration:800});
       }else if(marker==="BJ"){
         /* BJ's keyed e values are animation ids (first for the caster,
@@ -9909,7 +9967,7 @@
            keyed form. */
         const attacker=battleSegmentNumber(segment,"a",0,-1),targets=segmentValues(segment,"r").map(battleNumber),effectValues=segmentValues(segment,"e").map(battleNumber),magicValues=values.map(battleNumber),magicResults=Array.isArray(segment.attackMagicResults)?segment.attackMagicResults:[],
           casterGraphic=effectValues[0]||magicValues[0]||0,targetGraphic=effectValues[1]||effectValues[0]||magicValues[1]||magicValues[0]||0,postGraphic=magicValues[2]||0;
-        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,targets.find(target=>target>=0)??-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration,40):null;
+        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,targets.find(target=>target>=0)??-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null;
         if(attacker===Number(state.myNo)&&fields.m!==undefined)state.myMp=battleNumber(fields.m);
         if(attacker>=0){
           if(casterGraphic)battlePushEffect(effects,attacker,"","skill",{graphic:casterGraphic,graphicKey:String(casterGraphic),duration:950,offsetY:-40});
@@ -9955,7 +10013,7 @@
              use the wrong cadence/simultaneity mode. */
           attackType=battleSegmentNumber(segment,"s",0,0),sliceTime=battleSegmentNumber(segment,"t",0,0);
         if(attacker===Number(state.myNo)&&fields.m!==undefined)state.myMp=battleNumber(fields.m);
-        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration,40):null;
+        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null;
         if(attacker>=0){
           if(preGraphic)battlePushEffect(effects,attacker,"","skill",{graphic:preGraphic,graphicKey:String(preGraphic),duration:850,offsetY:-40});
         }
@@ -9979,7 +10037,7 @@
         }
       }else if(marker==="BS"){
         const owner=battleSegmentNumber(segment,"s",0,-1),flag=battleSegmentNumber(segment,"f",0,0),petId=owner>=0?owner+5:-1;
-        if(petId>=0&&flag===0){const item=battleFindParticipant(petId);if(item)item.flags=Number(item.flags||0)|(1<<9);queueMotion({kind:"fade",target:petId},620,40);battlePushEffect(effects,petId,"收回","status",{duration:900});}
+        if(petId>=0&&flag===0){const item=battleFindParticipant(petId);if(item)item.flags=Number(item.flags||0)|(1<<9);queueMotion({kind:"fade",target:petId},620);battlePushEffect(effects,petId,"收回","status",{duration:900});}
         else if(petId>=0&&flag===1){
           /* BATTLE_PetOut() reuses the owner's bid+5 after BATTLE_PetIn()
              removes the outgoing pet.  A delayed BS pair can therefore find
@@ -9999,7 +10057,7 @@
              outgoing pet remains the source for the required W command. */
           const pending=state.petSwitchPending;
           if(pending&&Number(pending.index)>=-1){app.selectedPet=Number(pending.index);state.petSwitchPending=null;}
-          queueMotion({kind:"appear",actor:petId,fromX:battleSide(owner)===1?-300:300,fromY:battleSide(owner)===1?-300:300},620,40);battlePushEffect(effects,petId,"出战","status",{duration:900});
+          queueMotion({kind:"appear",actor:petId,fromX:battleSide(owner)===1?-300:300,fromY:battleSide(owner)===1?-300:300},620);battlePushEffect(effects,petId,"出战","status",{duration:900});
         }
       }else if(marker==="BV"){
         const actor=battleSegmentNumber(segment,"",0,-1),attribute=battleSegmentNumber(segment,"",1,-1);
@@ -10048,12 +10106,18 @@
            only an exact recent BH delta; a different amount/sign remains a
            real second event (for example a heal or a status tick). */
         if(battleConsumeDamage(state,target,bdKind,sign,amount,petAmount,mpAmount))continue;
-        const wasDead=Boolean(battleFindParticipant(target)?.dead),hitTiming=timedMotion({kind:"hit",target},Number(state.motionQueueAt)||Date.now(),260),hitAt=hitTiming?.startAt||Date.now();
+        const currentHp=Math.max(0,Number(battleFindParticipant(target)?.hp)||0),projectedHp=bdProjectedHp.has(Number(target))?Math.max(0,Number(bdProjectedHp.get(Number(target)))||0):currentHp;
+        if(bdKind===0){
+          if(sign===0)bdProjectedHp.set(Number(target),Math.max(0,projectedHp-amount));
+          else if(sign===1||sign===2)bdProjectedHp.set(Number(target),Math.min(Number(battleFindParticipant(target)?.maxHp)||projectedHp,projectedHp+amount));
+        }
+        const fatalHint=bdKind===0&&sign===0&&amount>0&&projectedHp<=amount;
+        const wasDead=Boolean(battleFindParticipant(target)?.dead),hitTiming=scheduleBDMotion(target,bdKind,sign,amount,petAmount,fatalHint),hitAt=hitTiming?.startAt||Date.now();
         battleRememberDamage(state,target,bdKind,sign,amount,petAmount,mpAmount,"status");
         battleScheduleDamage(state,hitAt,()=>{
           battleApplyDelta(target,bdKind,sign,amount,petAmount,mpAmount);
           const changed=battleFindParticipant(target);
-          if(changed&&changed.hp<=0&&bdKind===0&&sign===0){changed.dead=true;if(!wasDead){battleQueueDeath(state,target,1000,hitAt);
+          if(changed&&changed.hp<=0&&bdKind===0&&sign===0){changed.dead=true;if(!wasDead&&!hitTiming?.fatal){battleQueueDirectDeath(state,target,hitAt);
             /* This callback can fire after battleMovieEffects() has returned
                and its local `effects` array has been copied into state.effects.
                Append to the live list so delayed KO text is still painted. */
@@ -10149,7 +10213,7 @@
         }
       }else if(marker==="BQ"){
         /* BQ is the actual battle-command leave/roar-away record. */
-        const target=battleSegmentNumber(segment,"e",0,battleSegmentNumber(segment,"r",0,-1));if(target>=0){const item=battleFindParticipant(target);if(item)item.flags=Number(item.flags||0)|(1<<9);queueMotion({kind:"fade",target},850,40);battlePushEffect(effects,target,"退场","death",{duration:1000});}
+        const target=battleSegmentNumber(segment,"e",0,battleSegmentNumber(segment,"r",0,-1));if(target>=0){const item=battleFindParticipant(target);if(item)item.flags=Number(item.flags||0)|(1<<9);queueMotion({kind:"fade",target},850);battlePushEffect(effects,target,"退场","death",{duration:1000});}
       }else if(marker==="BO"){
         /* BATTLE_COM_BOOMERANG starts one BO record and appends one
            r/f/d/p/g tuple for every living slot in the boomerang sweep.  The
@@ -10164,7 +10228,7 @@
              not walk to a target.  Reserve the throw frame first, then let
              each missile contact run on the same speed-ordered timeline. */
           const firstTarget=targets.find(target=>Number(target)>=0);
-          const throwSpec=battleAttackMotionSpec(attacker,firstTarget??-1,"cast",0),throwTiming=queueMotion(throwSpec,throwSpec.duration,40);
+          const throwSpec=battleAttackMotionSpec(attacker,firstTarget??-1,"cast",0),throwTiming=queueMotion(throwSpec,throwSpec.duration);
           const throwerPoint=battleSlotPoint(attacker),boomerangTargets=targets.map((target,index)=>({target,visual:guardianValues[index]??target})).filter(item=>Number(item.target)>=0&&Number(item.visual)>=0);
           if(boomerangTargets.length){
             const origin=[Number(throwerPoint[0]),Number(throwerPoint[1])-34],waypoints=[origin,...boomerangTargets.map(item=>{const point=battleSlotPoint(item.visual);return [Number(point[0]),Number(point[1])-34];}),origin],waypointOffsets=[0,...boomerangTargets.map((_,index)=>360+index*300),360+Math.max(0,boomerangTargets.length-1)*300+240],startAt=Number(throwTiming.startAt||Date.now())+140;
@@ -10213,7 +10277,7 @@
         const fadeActor=(id,label)=>{
           if(Number(id)<0)return;
           const item=battleFindParticipant(id);if(item)item.flags=Number(item.flags||0)|BATTLE_BC_FADE_OUT;
-          queueMotion({kind:"fade",target:Number(id)},850,40);
+          queueMotion({kind:"fade",target:Number(id)},850);
           battlePushEffect(effects,Number(id),label,"death",{duration:1000,offsetY:-74});
         };
         if(marker==="B!"){
@@ -10239,13 +10303,13 @@
         if(String(segment.rawMarker||"")!=="bn"){
           const actor=battleSegmentNumber(segment,"a",0,-1),graphicKey=values[0]||"",graphic=graphicKey?battleNumber(graphicKey):0;
           if(actor>=0){
-            const castSpec=battleAttackMotionSpec(actor,-1,"cast",12);queueMotion(castSpec,castSpec.duration,40);
+            const castSpec=battleAttackMotionSpec(actor,-1,"cast",12);queueMotion(castSpec,castSpec.duration);
             if(graphic)battlePushEffect(effects,actor,"","skill",{graphic,graphicKey,duration:900,offsetY:-42});
           }
         }
       }else if(marker==="BX"){
         const actor=battleSegmentNumber(segment,"",0,battleSegmentNumber(segment,"a",0,-1));
-        if(actor>=0){queueMotion({kind:"guard",actor,attackAction:10},420,40);battlePushEffect(effects,actor,"宠物犹豫","status",{duration:900});}
+        if(actor>=0){queueMotion({kind:"guard",actor,attackAction:10},420);battlePushEffect(effects,actor,"宠物犹豫","status",{duration:900});}
       }else if(marker==="BR"){
         const target=battleSegmentNumber(segment,"",0,-1),on=battleSegmentNumber(segment,"",1,0);
         if(target>=0)battlePushEffect(effects,target,on?"属性反转":"反转解除","status",{duration:1000});
@@ -10442,8 +10506,24 @@
       }
       if(item.dead&&!old?.dead){
         item.hp=0;
-        battleQueueDeath(state,item.battleId,1000);
-        battlePushEffect(state.effects||[],item.battleId,"KO","death",{duration:1250});
+        const freshDead=Boolean((item.flags&BATTLE_BC_FRESH)&&!old);
+        if(freshDead){
+          /* set_bc() gives BC_DEAD precedence over BC_FRESH.  A character
+             that enters the roster already dead is placed directly in
+             VCT_NO_DIE+2: no off-screen appear, knockback or KO chain is
+             replayed because none of those actions existed in the native
+             back buffer.  Pin the timestamp beyond the non-looping DEAD
+             frames so actorFrame() selects the held final corpse bitmap on
+             its first paint. */
+          if(!(state.deathStartedAt instanceof Map))state.deathStartedAt=new Map();
+          if(!(state.deathOffsets instanceof Map))state.deathOffsets=new Map();
+          const deadTiming=battleActorAnimationTiming(item.battleId,battleSlotDirection(item.battleId),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240);
+          state.deathStartedAt.set(Number(item.battleId),Date.now()-deadDuration-BATTLE_PROC_TICK_MS);
+          state.deathOffsets.set(Number(item.battleId),{dx:0,dy:0});
+        }else{
+          battleQueueDeath(state,item.battleId,1000);
+          battlePushEffect(state.effects||[],item.battleId,"KO","death",{duration:1250});
+        }
       }
       participants.push(item);
     }
