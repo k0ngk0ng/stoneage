@@ -3209,17 +3209,20 @@
     else if(name==="actions"){
       /* The action list is a native field window, so make its current
          character's directional rows resident while the player is choosing.
-         If the split SPR manifest is still downloading, keep the hit boxes
-         disabled until both the table and the current-facing PNGs have been
-         decoded.  FIELD.CPP only opens a usable Action window after
-         LoadSprBin() has completed; allowing a click during this browser
-         gap fell through to the static REALBIN fallback and made every row
-         look frozen on a first visit (especially on mobile). */
+         The browser fetches the split SPR manifest lazily, but rows stay
+         clickable during that short network/decode gap.  A local action is
+         painted immediately (using the last decoded frame when necessary)
+         and the completion callback replays it from frame zero once the
+         native row is resident; disabling all thirteen rows here made a
+         first tap look like a dead Action button on mobile. */
       const actor=ensureOwnFieldActor();
       const rows=[...target.querySelectorAll("[data-action-no]")];
       const setBusy=busy=>{
         target.setAttribute("aria-busy",busy?"true":"false");
-        for(const row of rows){row.disabled=Boolean(busy);row.setAttribute("aria-disabled",busy?"true":"false");}
+        /* Loading is informational only.  FIELD.CPP has no disabled Action
+           state, and the local preview path is safe before SPR fetches
+           complete, so never block a valid row hit while resources warm. */
+        for(const row of rows){row.disabled=false;row.setAttribute("aria-disabled","false");}
       };
       setBusy(true);
       const table=ensureFieldActionSprites(actor);
