@@ -127,7 +127,7 @@ base_url = "https://cdn.example.com/stoneage"
 仍只访问 8088。当前资源模式是公开只读 OSS/CDN；AK/SK 只放在权限为 0600 的部署
 `.env`（或由 CI 注入），由一次性批量资源同步工具读取，Web 游戏进程和 admin HTTP
 进程不会读取或上传。admin 页面如果启用同步，只能请求 service-control 的固定整包任务；
-service-control 在任务启动时从 `/host-project/.env` 读取密钥并传给一次性子进程，任务结束
+service-control 在任务启动时从只读部署 secret 文件读取密钥并传给一次性子进程，任务结束
 后不保留密钥。OSS/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
 JSON、PNG、WAV 和二进制文件的 MIME 类型；建议允许 `Range`，暴露
 `Content-Length`、`Content-Range`、`Accept-Ranges`、`ETag`。生产环境必须使用
@@ -149,7 +149,8 @@ admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目
 `client/web/assets/original`、`map/`、`data/auto.dat`、`data/bgm/` 和 `data/se/`；不会把
 `savedata.dat`、聊天记录、PE 支持文件等 `data/` 私有内容上传。CI 也可以直接调用同一个
 `stoneage-assets-sync` 二进制或等价的 OSS 同步步骤。admin 的资源按钮（如启用）只会
-请求 service-control 的固定整包任务，不接受路径、bucket 或命令参数。
+请求 service-control 的固定整包任务，不接受路径、bucket 或命令参数；service-control
+只读挂载部署脚本选择的凭据文件，不会把它持久化进镜像或传给 admin。
 
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和

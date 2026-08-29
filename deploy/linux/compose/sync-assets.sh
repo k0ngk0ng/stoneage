@@ -4,7 +4,7 @@ set -Eeuo pipefail
 # This is the only fixed operator command that can use OSS credentials. The
 # web/admin HTTP processes never receive the credentials and cannot choose an
 # arbitrary source path or destination bucket.
-env_file="${STONEAGE_ASSET_SYNC_ENV_FILE:-/host-project/.env}"
+env_file="${STONEAGE_ASSET_SYNC_ENV_FILE:-/run/secrets/stoneage-assets.env}"
 
 # Read only the two credential assignments from the deployment env file. Do
 # not `source` it: .env is operator input and may contain values which are not

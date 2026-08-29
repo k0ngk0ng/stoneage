@@ -249,7 +249,7 @@ services:
       # The fixed sync script reads the two OSS credentials from this mounted
       # deployment env file only when an admin explicitly starts a job. They
       # are not injected into the long-running service-control environment.
-      STONEAGE_ASSET_SYNC_ENV_FILE: /host-project/.env
+      STONEAGE_ASSET_SYNC_ENV_FILE: /run/secrets/stoneage-assets.env
     volumes:
       - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
       - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
@@ -258,6 +258,9 @@ services:
       - auth-data:/data
       - operator-run:/run/stoneage
       - operator-state:/state
+      # Mount only the selected deployment env file for the fixed asset-sync
+      # helper. It is read-only and never exposed to web/admin HTTP handlers.
+      - ${STONEAGE_ASSET_SYNC_ENV_FILE:-./.env}:/run/secrets/stoneage-assets.env:ro
       # The host project is mounted separately so it does not hide the
       # operator binaries under /opt/stoneage. Release deployment additionally
       # requires STONEAGE_PROJECT_ROOT to be an absolute host path and all

@@ -112,6 +112,15 @@ if [[ "$env_file" != /* ]]; then
     env_file="$(cd "$(dirname "$env_file")" && pwd)/$(basename "$env_file")"
 fi
 
+# Compose cannot infer which --env-file path should be mounted inside the
+# long-running operator.  Pass the selected host path explicitly so an admin
+# triggered asset sync also works with an external secret file such as
+# /etc/stoneage/prod.env.  An explicitly exported value remains authoritative
+# for operators who keep the upload credentials in a separate file.
+if [[ -z "${STONEAGE_ASSET_SYNC_ENV_FILE:-}" ]]; then
+    export STONEAGE_ASSET_SYNC_ENV_FILE="$env_file"
+fi
+
 if ! command -v "$docker_bin" >/dev/null 2>&1; then
     echo "Docker CLI not found: $docker_bin" >&2
     exit 1
