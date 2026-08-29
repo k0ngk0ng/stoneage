@@ -1247,6 +1247,7 @@ const makeBattleToggleHarness=new Function("initialState",`
   function closeBattlePopup(){app.battlePopup=null;}
   function battleCommandAllowed(){return true;}
   function battleActionAllowed(){return true;}
+  function rejectFullBattleCapture(){return false;}
   function rejectUnavailableBattleMagic(){return false;}
   function battleExplainUnavailable(){unavailable++;}
   function renderBattleWorld(){worldRenders++;}
@@ -1298,6 +1299,62 @@ if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.state.pendingAc
 if(toggleHarness.counts().sends!==0||toggleHarness.state.choiceDeadline!==toggleDeadline||toggleHarness.counts().unavailable!==0){
   throw new Error("battle command toggles changed packet count, countdown, or availability");
 }
+/* CheckPetSuu() runs before BattleButtonCapture's bak/ButtonOff path. With
+   five occupied pet slots, Capture paints CG_BTL_BUTTON_CROSS and a click
+   emits only SE 220; it must not cancel a remembered Attack selector or let
+   2.5 consume a T command which PET_createPetFromCharaIndex later rejects. */
+const battleCaptureHelperStart=script.indexOf("  function battlePetCapacityFull()");
+const battleCaptureHelperEnd=script.indexOf("  function battleUsableMagic(entry)",battleCaptureHelperStart);
+if(battleCaptureHelperStart<0||battleCaptureHelperEnd<=battleCaptureHelperStart){
+  throw new Error("battle Capture capacity production function boundary missing");
+}
+const captureVisualSource=script.slice(script.indexOf("  function syncBattleButtonVisualStates"),script.indexOf("  function battlePendingShape"));
+if(!/#battle-capture-cross\{left:523px;top:27px;width:40px;height:40px/.test(html)||
+   !/<img id="battle-capture-cross" src="\/assets\/bitmaps\/bitmap_8701\.png"/.test(html)||
+   !/captureCross\.hidden=!app\.battle\|\|!battlePetCapacityFull\(\)/.test(captureVisualSource)||
+   !/async function sendBattleTarget[\s\S]{0,700}rejectFullBattleCapture\(action,app\.battleState\)/.test(script)||
+   !script.includes('if(/^(?:T|C)(?:\\||$)/i.test(text)&&rejectFullBattleCapture({kind:"capture"},state))return;')){
+  throw new Error("full-stable Capture cross or final/direct packet gate regressed");
+}
+const makeBattleCaptureHarness=new Function("petSlots",`
+  const state={pendingAction:{kind:"attack",defaulted:true},choiceDeadline:888888,commandLocked:false,petCommandLocked:false};
+  const app={battle:true,battleState:state,battlePopup:null,petSlots};
+  const panel={dataset:{},classList:{add(){},remove(){}}};
+  const $=()=>panel;
+  let sends=0,targets=0,worldRenders=0,battleRenders=0,syncs=0;
+  const tones=[];
+  function send(){sends++;return Promise.resolve();}
+  function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
+  function syncBattleButtonVisualStates(){syncs++;}
+  function battleActionAllowed(){return true;}
+  function battleExplainUnavailable(){}
+  function battleButtonCommandForAction(action){return action?.kind==="attack"?"H":action?.kind==="capture"?"C":"";}
+  function rejectUnavailableBattleMagic(){return false;}
+  function closeBattlePopup(){app.battlePopup=null;}
+  function renderBattleWorld(){worldRenders++;}
+  function renderBattle(){battleRenders++;}
+  function renderBattlePopup(){}
+  function battleTargetCandidates(){return [{battleId:10,name:"enemy"}];}
+  function battleUsesActorTarget(){return true;}
+  function renderBattleTargets(){targets++;}
+  function addChat(){}
+  ${script.slice(battleCaptureHelperStart,battleCaptureHelperEnd)}
+  ${script.slice(battleActionToggleStart,battleActionToggleEnd)}
+  return {state,beginBattleAction,counts:()=>({sends,targets,worldRenders,battleRenders,syncs,tones:[...tones]})};
+`);
+const fullPetSlots=Array.from({length:5},(_,index)=>({index,useFlag:1,name:`pet${index}`}));
+const fullCaptureHarness=makeBattleCaptureHarness(fullPetSlots),fullCaptureDeadline=fullCaptureHarness.state.choiceDeadline;
+if(fullCaptureHarness.beginBattleAction({kind:"capture"})!==false||fullCaptureHarness.state.pendingAction?.kind!=="attack"||
+   fullCaptureHarness.state.choiceDeadline!==fullCaptureDeadline||fullCaptureHarness.state.commandLocked||
+   fullCaptureHarness.counts().sends!==0||fullCaptureHarness.counts().targets!==0||fullCaptureHarness.counts().tones.length!==1||
+   fullCaptureHarness.counts().tones[0][0]!==220||fullCaptureHarness.counts().syncs!==1){
+  throw new Error(`full-stable Capture must preserve default Attack/deadline and send only SE 220: ${JSON.stringify(fullCaptureHarness.counts())}`);
+}
+const openCaptureHarness=makeBattleCaptureHarness(fullPetSlots.slice(0,4));
+if(!openCaptureHarness.beginBattleAction({kind:"capture"})||openCaptureHarness.state.pendingAction?.kind!=="capture"||
+   openCaptureHarness.counts().targets!==1||openCaptureHarness.counts().tones.length!==0){
+  throw new Error("Capture must retain native target selection while fewer than five pet slots are occupied");
+}
 /* BattleButtonJujutsu() does not hide or disable MP-starved/map-only
    spells. It keeps the row/window alive, paints the native red/gray state,
    and emits only SE 220. Exercise both the initial row click and the final
@@ -1328,6 +1385,7 @@ const makeBattleMagicHarness=new Function("magic","myMp","field",`
   const tones=[];
   function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
   function battleActionAllowed(){return true;}
+  function rejectFullBattleCapture(){return false;}
   function battleExplainUnavailable(){unavailable++;}
   function battleButtonCommandForAction(action){return action?.kind==="magic"?"J":"";}
   function closeBattlePopup(){app.battlePopup=null;}

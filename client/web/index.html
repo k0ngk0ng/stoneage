@@ -690,6 +690,11 @@
     #battle-ui .battle-hit:nth-of-type(6){left:464px;top:75px}
     #battle-ui .battle-hit:nth-of-type(7){left:517px;top:75px}
     #battle-ui .battle-hit:nth-of-type(8){left:570px;top:75px}
+    /* CheckPetSuu() paints CG_BTL_BUTTON_CROSS over Capture when all five
+       owned-pet slots are occupied.  It belongs to the sliding player-menu
+       surface and never intercepts the still-clickable native error hit. */
+    #battle-capture-cross{left:523px;top:27px;width:40px;height:40px;pointer-events:none}
+    #battle-capture-cross[hidden]{display:none !important}
     /* CG_PET_BTL_BUTTON_* is the active-pet command surface at buttonY=48.
        REALBIN's anchors put the base at (buttonX-110,8), the complete
        skill/cancel overlay at (buttonX-114,11).  StockDispBuffer hitFlag=2
@@ -977,6 +982,7 @@
           <button class="battle-hit" data-command="ITEM"><img src="/assets/bitmaps/bitmap_8694.png" alt="道具"></button>
           <button class="battle-hit" data-command="PET"><img src="/assets/bitmaps/bitmap_8696.png" alt="宠物"></button>
           <button class="battle-hit" data-command="E"><img src="/assets/bitmaps/bitmap_8698.png" alt="逃跑"></button>
+          <img id="battle-capture-cross" src="/assets/bitmaps/bitmap_8701.png" alt="" hidden aria-hidden="true">
         </div>
         <div id="battle-pet-command-menu" hidden>
           <img class="battle-pet-base" src="/assets/bitmaps/bitmap_8718.png" alt="">
@@ -6479,6 +6485,20 @@
   }
   function battleFieldAllowed(entry){ const field=Number(entry?.field); return !Number.isFinite(field)||field!==2; }
   function battleLevelAllowed(entry){ const required=Number(entry?.level),level=Number(app.pc?.level); return !Number.isFinite(required)||required<=0||!Number.isFinite(level)||level>=required; }
+  function battlePetCapacityFull(){
+    /* CheckPetSuu() counts the five pet[].useFlag entries, including the
+       currently deployed pet. K status records clear an absent slot to null;
+       retain the useFlag check for full legacy snapshots and test fixtures. */
+    let count=0;for(let index=0;index<5;index++){const pet=app.petSlots?.[index];if(pet&&Number(pet.useFlag??1)!==0)count++;}
+    return count>=5;
+  }
+  function rejectFullBattleCapture(action,state=app.battleState){
+    if(String(action?.kind||"").toLowerCase()!=="capture"||!battlePetCapacityFull())return false;
+    /* BattleButtonCapture() returns before BattleButtonOff(): preserve the
+       current/default selector, button flags, locks and absolute countdown.
+       The only click side effect is native SE 220. */
+    playSoundEffect(220,320,240);syncBattleButtonVisualStates(state);return true;
+  }
   /* BATTLEMENU.CPP lists all five useFlag spells. MP and field restrictions
      change their font palette, not their presence or click hit box. */
   function battleUsableMagic(entry){ return Boolean(entry)&&Number(entry.useFlag??1)!==0; }
@@ -6693,6 +6713,10 @@
       battleExplainUnavailable(action);
       app.battleState.pendingAction=null;$("battle-target-panel")?.classList.add("hidden");closeBattlePopup();renderBattle();renderBattleWorld();return;
     }
+    /* A late K slot update must not turn an already-painted Capture hit box
+       into a T write that the 2.5 server accepts and wastes as a full-stable
+       capture attempt. Keep the selector/deadline, matching the local error. */
+    if(rejectFullBattleCapture(action,app.battleState))return;
     /* BP is the authoritative current-MP snapshot. Recheck immediately
        before building/sending J so a late BP/status update cannot submit a
        spell the native client would reject at the row click. */
@@ -6853,6 +6877,10 @@
   }
   function beginBattleAction(action,options={}){
     const state=app.battleState,nextCommand=battleButtonCommandForAction(action),pendingCommand=battleButtonCommandForAction(state?.pendingAction);
+    /* CheckPetSuu() is evaluated before the native capture button's
+       bak/BattleButtonOff toggle. A full stable keeps even the remembered
+       default-Attack selector alive while Capture reports only SE 220. */
+    if(battleActionAllowed(action,state)&&rejectFullBattleCapture(action,state))return false;
     /* BattleButtonAttack() uses the same bak -> BattleButtonOff() toggle as
        the three submenu buttons.  Test this before the availability gate so
        a delayed timeout tick can still remove stale hit boxes locally.  The
@@ -7318,6 +7346,7 @@
     return false;
   }
   function syncBattleButtonVisualStates(state=app.battleState){
+    const captureCross=$("battle-capture-cross");if(captureCross)captureCross.hidden=!app.battle||!battlePetCapacityFull();
     document.querySelectorAll("#battle-ui .battle-hit[data-command]").forEach(node=>{
       const active=battleButtonPressed(node.dataset.command,state),image=node.querySelector("img");
       node.classList.toggle("battle-command-active",active);
@@ -14436,6 +14465,7 @@
     const text=String(command||"").trim();if(!text||!battleCommandAllowed(text))return;
     if(text==="PET"||text==="MAGIC"||text==="ITEM"){battleMenuCommand(text);return;}
     const state=app.battleState,kind=battleCommandKind(text);if(kind==="unknown")return;
+    if(/^(?:T|C)(?:\||$)/i.test(text)&&rejectFullBattleCapture({kind:"capture"},state))return;
     /* Guard/escape (and any direct replacement command) cancels the default
        attack target mode just like BattleButtonOff() in the native client.
        Otherwise the transparent actor hit boxes survive underneath the
