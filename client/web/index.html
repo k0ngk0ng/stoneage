@@ -6522,18 +6522,33 @@
     syncBattleButtonVisualStates(state);
   }
   function openBattlePopup(kind){
-    if(!app.battle)return;
+    if(!app.battle)return false;
     /* The PET button is part of the player's eight-button command menu: it
        selects a replacement pet with S|n, and only the following pet-skill
        phase is governed by BP_FLG_PET_MENU_OFF.  Gating this popup with the
        pet bit made a valid S command disappear whenever the current pet was
        dead/disabled, even though the player could still change pets. */
-    const popupKind=String(kind||"");
-    if(!battleCommandAllowed(popupKind==="pet"?"S|0":"ITEM"))return;
-    app.battleState.pendingAction=null;
+    const popupKind=String(kind||"").toLowerCase(),state=app.battleState,command=battleButtonCommandForPopup(popupKind);
+    if(!command)return false;
+    /* BattleButtonJujutsu/Item/Pet save the old battleButtonFlag, call
+       BattleButtonOff(), and reopen their window only when that old flag was
+       FALSE.  Therefore clicking the already-down bitmap is a local cancel,
+       including after a spell/item has advanced from its window to actor
+       targeting.  It must not send B or restart the shared BattleCntDown. */
+    const pendingCommand=battleButtonCommandForAction(state.pendingAction),openCommand=battleButtonCommandForPopup(app.battlePopup?.kind);
+    if(command===pendingCommand||command===openCommand){
+      state.pendingAction=null;
+      $("battle-target-panel")?.classList.add("hidden");
+      closeBattlePopup({skipDefault:true});
+      renderBattleWorld();renderBattle();
+      return false;
+    }
+    if(!battleCommandAllowed(command,state))return false;
+    state.pendingAction=null;
     $("battle-target-panel")?.classList.add("hidden");
-    app.battlePopup={kind:String(kind||"")};
-    renderBattlePopup();
+    app.battlePopup={kind:popupKind};
+    renderBattlePopup();renderBattleWorld();renderBattle();
+    return true;
   }
   function battlePopupRow(label,meta,handler,iconFile="",disabled=false){
     const row=document.createElement("button");row.type="button";row.className="battle-popup-row";if(disabled)row.classList.add("disabled");
@@ -6795,13 +6810,27 @@
     },40);
   }
   function beginBattleAction(action,options={}){
+    const state=app.battleState,nextCommand=battleButtonCommandForAction(action),pendingCommand=battleButtonCommandForAction(state?.pendingAction);
+    /* BattleButtonAttack() uses the same bak -> BattleButtonOff() toggle as
+       the three submenu buttons.  Test this before the availability gate so
+       a delayed timeout tick can still remove stale hit boxes locally.  The
+       absolute choiceDeadline belongs to BattleCntDown and is deliberately
+       untouched; a second click can arm Attack again with the remaining
+       time, including the next-turn default-attack state. */
+    if(nextCommand&&nextCommand===pendingCommand){
+      state.pendingAction=null;
+      $("battle-target-panel")?.classList.add("hidden");
+      if(app.battlePopup)closeBattlePopup({skipDefault:true});
+      renderBattleWorld();renderBattle();
+      return false;
+    }
     if(!battleActionAllowed(action)){battleExplainUnavailable(action);return false;}
     /* Selecting another command from the fixed eight-button bar closes any
        open native sub-window first.  Otherwise two menus can remain active
        and two bitmap buttons appear pressed at once. */
     if(app.battlePopup&&!options?.closePopup)closeBattlePopup({skipDefault:true});
     if(options?.closePopup){const closeOptions=options.closePopup===true?{}:options.closePopup;closeBattlePopup(closeOptions);}
-    const state=app.battleState;state.pendingAction={...action};const pending=state.pendingAction,candidates=battleTargetCandidates(pending),targetType=Number(pending.targetType);renderBattleWorld();
+    state.pendingAction={...action};const pending=state.pendingAction,candidates=battleTargetCandidates(pending),targetType=Number(pending.targetType);renderBattleWorld();
     if(battleUsesActorTarget(pending)){
       /* The native target selector is painted over the battle actors, not as a
          text list.  Keep the pending command alive until the user clicks an
@@ -7210,6 +7239,14 @@
       default:return "";
     }
   }
+  function battleButtonCommandForPopup(kind){
+    switch(String(kind||"").toLowerCase()){
+      case "magic":return "J|A";
+      case "item":return "ITEM";
+      case "pet":case "pet-skill":return "PET";
+      default:return "";
+    }
+  }
   function battleButtonPressed(command,state=app.battleState){
     if(!state||!app.battle)return false;
     const wanted=String(command||"").toUpperCase();
@@ -7222,8 +7259,7 @@
        rather than falling through to a stale in-flight player command and
        painting two native buttons down at once. */
     if(pendingCommand)return pendingCommand.toUpperCase()===wanted;
-    const popup=String(app.battlePopup?.kind||"").toLowerCase();
-    const popupCommand=popup==="magic"?"J|A":popup==="item"?"ITEM":(popup==="pet"||popup==="pet-skill")?"PET":"";
+    const popupCommand=battleButtonCommandForPopup(app.battlePopup?.kind);
     if(popupCommand)return popupCommand.toUpperCase()===wanted;
     const pendingPlayer=String(state.commandPending?.player||"").trim().toUpperCase();
     const pendingPet=String(state.commandPending?.pet||"").trim().toUpperCase();
@@ -7243,16 +7279,12 @@
       const active=battleButtonPressed(node.dataset.command,state),image=node.querySelector("img");
       node.classList.toggle("battle-command-active",active);
       const normal=node.dataset.normalSrc,down=node.dataset.pressedSrc;
-      /* A command can become active while the physical pointer is still over
-         its hit box (the usual click->target-selection path).  The previous
-         hover guard skipped this update, leaving the normal bitmap visible
-         even though aria-pressed/pendingAction had already switched on.  Let
-         the active state win over hover/focus; otherwise preserve the native
-         hover-down art for an inactive button. */
-      if(image&&normal&&down){
-        const hovered=node.matches(":hover")||node.matches(":focus")||node.matches(":focus-visible");
-        image.setAttribute("src",active||hovered?down:normal);
-      }
+      /* BattleMenuProc() stocks CG_BTL_BUTTON_*_UP + battleButtonFlag on
+         every frame.  HitDispNo only detects the click; hover/focus never
+         selects the DOWN bitmap.  This distinction matters when a pressed
+         button is clicked again: BattleButtonOff() must visibly release it
+         even though the physical pointer is still over the same pixels. */
+      if(image&&normal&&down)image.setAttribute("src",active?down:normal);
       if(active)node.setAttribute("aria-pressed","true");else node.removeAttribute("aria-pressed");
     });
   }
@@ -14868,17 +14900,11 @@
       const pair=pairs[node.dataset.command];if(!pair)return;const image=node.querySelector("img");if(!image)return;
       const normal=`/assets/bitmaps/bitmap_${pair[0]}.png`,down=`/assets/bitmaps/bitmap_${pair[1]}.png`;
       node.dataset.normalSrc=normal;node.dataset.pressedSrc=down;
-      const setHover=active=>{
-        const pressed=battleButtonPressed(node.dataset.command);
-        image.setAttribute("src",(active||pressed)?down:normal);
-      };
-      node.addEventListener("pointerenter",()=>setHover(true));
-      node.addEventListener("pointerleave",()=>setHover(false));
-      node.addEventListener("pointerdown",event=>{if(event.button===0)setHover(true);});
-      node.addEventListener("pointerup",()=>setHover(false));
-      node.addEventListener("pointercancel",()=>setHover(false));
-      node.addEventListener("focus",()=>setHover(true));
-      node.addEventListener("blur",()=>setHover(false));
+      const sync=()=>image.setAttribute("src",battleButtonPressed(node.dataset.command)?down:normal);
+      /* Unlike the field controls, BATTLEMENU.CPP has no hover bitmap path;
+         re-syncing on pointer/focus changes is only a guard against a stale
+         DOM image and must never manufacture a pressed flag. */
+      for(const eventName of ["pointerenter","pointerleave","pointerdown","pointerup","pointercancel","focus","blur"])node.addEventListener(eventName,sync);
     });
     syncBattleButtonVisualStates();
   }

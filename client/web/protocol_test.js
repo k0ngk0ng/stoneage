@@ -754,7 +754,7 @@ for (const expected of [
   /* A deadline-edge click must remain on the chooser and explain the native
      timeout.  Closing first silently discarded the skill and exposed no
      actor hit boxes while W|FF|FF was submitted in the background. */
-  /function beginBattleAction\(action,options=\{\}\)\{[\s\S]{0,240}battleExplainUnavailable\(action\);return false;[\s\S]{0,260}options\?\.closePopup/,
+  /function beginBattleAction\(action,options=\{\}\)\{[\s\S]{0,1500}battleExplainUnavailable\(action\);return false;[\s\S]{0,360}options\?\.closePopup/,
   /function battleExplainUnavailable\(actionOrCommand\)[\s\S]{0,420}本回合选择时间已结束/,
   /* A PET_MENU_NON bit requires an immediate forced W after the player's
      command; it is not a local already-submitted lock. */
@@ -1169,6 +1169,21 @@ if (pressedStart < 0 || pressedEnd <= pressedStart ||
     !/if\(pendingPet\.startsWith\("W\|"\)\)return wanted==="PET"/.test(pressedSource)) {
   throw new Error("battle pressed flags must have one native menu owner");
 }
+/* BattleMenuProc paints *_UP + battleButtonFlag; HitDispNo hover is never a
+   second source of DOWN artwork.  A cancelled button must visibly release
+   under the stationary pointer, not only clear aria-pressed/target boxes. */
+const syncPressedStart=script.indexOf("  function syncBattleButtonVisualStates(state=app.battleState)");
+const syncPressedEnd=script.indexOf("  function battlePendingShape",syncPressedStart);
+const bindPressedStart=script.indexOf("  function bindBattleButtonStates()");
+const bindPressedEnd=script.indexOf("  function activateBattlePetCommandButton",bindPressedStart);
+const syncPressedSource=script.slice(syncPressedStart,syncPressedEnd),bindPressedSource=script.slice(bindPressedStart,bindPressedEnd);
+if(syncPressedStart<0||syncPressedEnd<=syncPressedStart||bindPressedStart<0||bindPressedEnd<=bindPressedStart||
+   !/image\.setAttribute\("src",active\?down:normal\)/.test(syncPressedSource)||
+   /matches\(":hover"\)|matches\(":focus"\)|active\|\|hovered/.test(syncPressedSource)||
+   /setHover\(true\)|\(active\|\|pressed\)\?down:normal/.test(bindPressedSource)||
+   !/battleButtonPressed\(node\.dataset\.command\)\?down:normal/.test(bindPressedSource)){
+  throw new Error("battle UP/DOWN artwork must follow only the native battleButtonFlag");
+}
 /* BattleMenuProc uses one discrete buttonX/buttonA pair for both command
    surfaces.  Prove the exact 60 Hz integer trajectory rather than accepting
    a visually similar CSS easing, and keep the player -> pet hand-off wired
@@ -1208,6 +1223,79 @@ for(const expected of [
 const closeBattlePopupSource=script.slice(script.indexOf("  function closeBattlePopup(options={})"),script.indexOf("  function openBattlePopup",script.indexOf("  function closeBattlePopup(options={})")));
 if(/sendBattlePetDefault/.test(closeBattlePopupSource)||!/options\.clearChoiceTimer/.test(closeBattlePopupSource)){
   throw new Error("closing the native pet-skill window must keep the pet stage/countdown alive");
+}
+/* BattleButtonAttack/Jujutsu/Item/Pet all use bak + BattleButtonOff(): the
+   second press is a local cancel, not another selector/window activation.
+   Exercise the extracted production functions with an absolute countdown
+   and a send spy so this cannot regress into a CSS-only pressed-state fix. */
+const battlePopupToggleStart=script.indexOf("  function openBattlePopup(kind)");
+const battlePopupToggleEnd=script.indexOf("  function battlePopupRow",battlePopupToggleStart);
+const battleActionToggleStart=script.indexOf("  function beginBattleAction(action,options={})");
+const battleActionToggleEnd=script.indexOf("  function battleMenuCommand",battleActionToggleStart);
+const battleButtonCommandStart=script.indexOf("  function battleButtonCommandForAction(action)");
+const battleButtonCommandEnd=script.indexOf("  function battleButtonPressed",battleButtonCommandStart);
+if(battlePopupToggleStart<0||battlePopupToggleEnd<=battlePopupToggleStart||battleActionToggleStart<0||battleActionToggleEnd<=battleActionToggleStart||battleButtonCommandStart<0||battleButtonCommandEnd<=battleButtonCommandStart){
+  throw new Error("battle toggle production function boundary missing");
+}
+const makeBattleToggleHarness=new Function("initialState",`
+  const state=initialState;
+  const app={battle:true,battleState:state,battlePopup:null};
+  const panel={classList:{add(){}},dataset:{}};
+  const $=()=>panel;
+  let sends=0,worldRenders=0,battleRenders=0,targetRenders=0,popupRenders=0,unavailable=0;
+  function send(){sends++;return Promise.resolve();}
+  function closeBattlePopup(){app.battlePopup=null;}
+  function battleCommandAllowed(){return true;}
+  function battleActionAllowed(){return true;}
+  function battleExplainUnavailable(){unavailable++;}
+  function renderBattleWorld(){worldRenders++;}
+  function renderBattle(){battleRenders++;}
+  function renderBattlePopup(){popupRenders++;}
+  function battleTargetCandidates(){return [{battleId:10,name:"enemy"}];}
+  function battleUsesActorTarget(){return true;}
+  function renderBattleTargets(){targetRenders++;}
+  ${script.slice(battleButtonCommandStart,battleButtonCommandEnd)}
+  ${script.slice(battlePopupToggleStart,battlePopupToggleEnd)}
+  ${script.slice(battleActionToggleStart,battleActionToggleEnd)}
+  return {
+    state,
+    beginBattleAction,
+    openBattlePopup,
+    popup:()=>app.battlePopup,
+    counts:()=>({sends,worldRenders,battleRenders,targetRenders,popupRenders,unavailable})
+  };
+`);
+const toggleDeadline=9876543210;
+const toggleHarness=makeBattleToggleHarness({pendingAction:{kind:"attack",defaulted:true},choiceDeadline:toggleDeadline});
+if(toggleHarness.beginBattleAction({kind:"attack"})!==false||toggleHarness.state.pendingAction!==null){
+  throw new Error("second/default Attack press must cancel its actor selector");
+}
+if(toggleHarness.counts().sends!==0||toggleHarness.state.choiceDeadline!==toggleDeadline){
+  throw new Error("cancelling Attack must not send B or restart BattleCntDown");
+}
+if(toggleHarness.beginBattleAction({kind:"attack"})!==true||toggleHarness.state.pendingAction?.kind!=="attack"){
+  throw new Error("Attack must re-arm after its pressed state was cancelled");
+}
+if(!toggleHarness.openBattlePopup("magic")||toggleHarness.state.pendingAction!==null||toggleHarness.popup()?.kind!=="magic"){
+  throw new Error("Attack -> Jujutsu must leave only the Jujutsu window active");
+}
+if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.popup()!==null){
+  throw new Error("second Jujutsu press must close its native window");
+}
+for(const kind of ["item","pet"]){
+  if(!toggleHarness.openBattlePopup(kind)||toggleHarness.popup()?.kind!==kind||toggleHarness.openBattlePopup(kind)!==false||toggleHarness.popup()!==null){
+    throw new Error(`second ${kind} press must close its native window`);
+  }
+}
+toggleHarness.openBattlePopup("magic");
+if(!toggleHarness.beginBattleAction({kind:"magic",index:2,targetType:0},{closePopup:true})||toggleHarness.popup()!==null||toggleHarness.state.pendingAction?.kind!=="magic"){
+  throw new Error("choosing a Jujutsu row must advance from popup to actor targeting");
+}
+if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.state.pendingAction!==null){
+  throw new Error("pressed Jujutsu must also cancel its actor-target phase");
+}
+if(toggleHarness.counts().sends!==0||toggleHarness.state.choiceDeadline!==toggleDeadline||toggleHarness.counts().unavailable!==0){
+  throw new Error("battle command toggles changed packet count, countdown, or availability");
 }
 if(!/battlePetCommandHit\?\.addEventListener\("click",activateBattlePetCommandButton\)/.test(script)||
    !/activateBattlePetCommandButton[\s\S]{0,700}state\.pendingAction=null[\s\S]{0,420}openBattlePetSkillPopup\(\{surfaceReady:true\}\)/.test(script)){
