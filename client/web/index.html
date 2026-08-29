@@ -95,7 +95,7 @@
     .login-quit { left:323px; top:296px; width:124px; height:61px; }
     #login-form { position:absolute; left:316px; top:179px; width:116px; z-index:5; }
     #login-form label { display:none; }
-    #login-form input { display:block; width:116px; height:22px; margin:0 0 9px 0; padding:1px 4px; background:transparent; border:0; box-shadow:none; color:#16202a; font:16px/20px "Microsoft YaHei",sans-serif; -webkit-text-size-adjust:100%; text-transform:none; }
+    #login-form input { display:block; width:116px; height:22px; margin:0 0 9px 0; padding:1px 4px; background:transparent; border:0; box-shadow:none; color:#16202a; font:16px/20px "Microsoft YaHei",sans-serif; -webkit-text-size-adjust:100%; text-transform:none; transform:scale(var(--login-input-scale,1)); transform-origin:left center; }
     #login-form input:focus { outline:0; background:transparent; }
     /* Match the invisible hit target to the complete 124×68 OK bubble.  The
        old smaller rectangle made hover feedback look offset from the art. */
@@ -2588,6 +2588,15 @@
     const viewport=viewportForScene();
     const scale=Math.max(0.1,Math.min(viewport.width/640,viewport.height/480));
     document.documentElement.style.setProperty("--scene-scale",String(scale));
+    /* The title artwork remains a faithfully scaled 640×480 surface, but a
+       portrait phone would otherwise turn the 116×22 logical text fields into
+       roughly 70×13 physical pixels.  Enlarge only the two native input
+       controls after the scene transform.  Their hit boxes and 16px text then
+       remain comfortable on touch screens while the OK/QUIT bitmap buttons
+       and every painted coordinate stay unchanged.  Cap the compensation on
+       very narrow phones so the fields do not cover the whole title scene. */
+    const inputScale=scale<1?Math.min(1.8,Math.max(1,1/scale)):1;
+    document.documentElement.style.setProperty("--login-input-scale",String(inputScale));
     /* Keep the last pre-IME viewport separately.  On a few Android WebViews
        the visualViewport resize is delivered before focusin; without this
        snapshot the first keyboard frame would still recalculate the scene
