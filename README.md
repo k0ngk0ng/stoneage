@@ -93,16 +93,19 @@ stoneage/
 └── audio/    # 公开客户端数据（data/auto.dat、data/bgm/、data/se/、data/pal/）
 ```
 
-例如使用 `ossutil` 增量上传（bucket 和目录按实际环境替换）：
+不要分别手工上传这三个目录：这样容易让 CDN 在发布过程中看到半套
+客户端。使用仓库内的同步器一次发布完整客户端；它会先校验并计算三棵目录的
+SHA-256，只上传变化文件，最后才更新发布清单：
 
 ```bash
-ossutil sync client/web/assets/original oss://my-bucket/stoneage/assets
-ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/maps
-ossutil cp runtime/legacy-client/data/auto.dat oss://my-bucket/stoneage/audio/auto.dat
-ossutil sync runtime/legacy-client/data/bgm oss://my-bucket/stoneage/audio/bgm
-ossutil sync runtime/legacy-client/data/se oss://my-bucket/stoneage/audio/se
-ossutil sync runtime/legacy-client/data/pal oss://my-bucket/stoneage/audio/pal
+./scripts/sync-client-assets.sh --dry-run  # 检查来源和对象数量
+./scripts/sync-client-assets.sh             # 发布 assets、maps、audio
 ```
+
+该命令只读取客户端公开资源（精灵图、地图、`auto.dat`、BGM、SE 和调色板），
+不会上传存档、聊天记录、服务端数据或 Admin。若由 CI 发布，也可以直接运行
+`stoneage-assets-sync`；Admin 页面上的“开始同步”只是请求同一个固定任务，不能
+指定本地路径、bucket 或任意命令。
 
 Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
 `static.oss` 中填写阿里云 OSS 的 `endpoint`、`region`、`bucket` 和固定
