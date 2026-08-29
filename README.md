@@ -90,7 +90,7 @@ docker compose --env-file .env logs -f saac gmsv gateway web
 stoneage/
 ├── assets/   # client/web/assets/original 的内容
 ├── maps/     # 2.5 客户端 map/ 的内容
-└── audio/    # 公开音频数据（data/auto.dat、data/bgm/、data/se/）
+└── audio/    # 公开客户端数据（data/auto.dat、data/bgm/、data/se/、data/pal/）
 ```
 
 例如使用 `ossutil` 增量上传（bucket 和目录按实际环境替换）：
@@ -101,6 +101,7 @@ ossutil sync runtime/legacy-client/map oss://my-bucket/stoneage/maps
 ossutil cp runtime/legacy-client/data/auto.dat oss://my-bucket/stoneage/audio/auto.dat
 ossutil sync runtime/legacy-client/data/bgm oss://my-bucket/stoneage/audio/bgm
 ossutil sync runtime/legacy-client/data/se oss://my-bucket/stoneage/audio/se
+ossutil sync runtime/legacy-client/data/pal oss://my-bucket/stoneage/audio/pal
 ```
 
 Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
@@ -159,7 +160,7 @@ chmod 600 .secrets/oss-access-key-id .secrets/oss-access-key-secret
 脚本启动 Compose 的一次性 `assets-sync` profile；任务结束后容器即被删除，Web、网关和
 admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目标仍是固定的
 `stoneage/{assets,maps,audio}/` 根目录，不包含 release tag。同步器只上传公开的
-`client/web/assets/original`、`map/`、`data/auto.dat`、`data/bgm/` 和 `data/se/`；不会把
+`client/web/assets/original`、`map/`、`data/auto.dat`、`data/bgm/`、`data/se/` 和 `data/pal/`；不会把
 `savedata.dat`、聊天记录、PE 支持文件等 `data/` 私有内容上传。CI 也可以直接调用同一个
 `stoneage-assets-sync` 二进制或等价的 OSS 同步步骤。admin 的资源按钮（如启用）只会
 请求 service-control 的固定整包任务，不接受路径、bucket 或命令参数；service-control

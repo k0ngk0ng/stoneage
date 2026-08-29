@@ -3,7 +3,7 @@
 这里是 `runtime/legacy-client/sa_2903.exe` 的浏览器端移植，运行时只有两个产物：
 
 * `index.html`：自包含网页、完整 LSSPROTO_CLI 函数控制台、世界/战斗状态机、库存/宠物/通讯/服务器窗口状态机和旧客户端线协议；
-* `server.go`：标准库 HTTP→TCP 转发服务，并只读提供 `runtime/legacy-client/data/bgm`、`se` 下的原版 WAV；它不解析、不重排、不改写游戏包，只为浏览器持有原版 TCP socket。
+* `server.go`：标准库 HTTP→TCP 转发服务，并只读提供 `runtime/legacy-client/data/bgm`、`se` 下的原版 WAV 以及自动地图所需的 `auto.dat`/`pal` 数据；它不解析、不重排、不改写游戏包，只为浏览器持有原版 TCP socket。
 
 网页里的 `StoneAgeProtocol` 是根据 PE 机器码中 `LSSPROTO_CLI/LSSPROTO_UTIL` 的调用路径实现的：消息号/函数名头、空格转义、0–61 base-62 整数、JEncode、`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-` 64 表、9 位 Ringo 字典压缩和换行分帧都在网页中完成。`LSSPROTO_CLI.H` 中 50 个客户端发送入口和 36 个服务端回调均有字段 schema；页面提供对应的通用协议控制台，并对登录、角色、地图、移动、库存、宠物、通讯录/邮件、事件、服务器窗口、聊天和战斗提供专用状态与操作。
 
@@ -50,7 +50,7 @@ TCP 上游改为本机路径后运行 `go run . -config /path/to/web.toml`；也
 `scripts/sync-client-assets.sh` 会启动一次性的 Compose `assets-sync` 容器，统一同步
 `assets/`、`maps/`、`audio/` 三棵目录；任务结束后容器即删除，AK/SK 不会进入 Web、
 admin HTTP 进程或浏览器。同步器只取 `client/web/assets/original`、`map/`、
-`data/auto.dat`、`data/bgm/` 和 `data/se/`，不会把客户端存档、聊天记录或 PE 支持文件
+`data/auto.dat`、`data/bgm/`、`data/se/` 和 `data/pal/`，不会把客户端存档、聊天记录或 PE 支持文件
 放进公开 bucket。admin 的资源按钮（如启用）只是请求同一个受限整包任务，不会接收路径、
 bucket 或命令参数；service-control 仅在任务启动时从两个 Docker secret 文件读取密钥。
 若资源已经由 CI 发布，不配置同步凭据即可。
@@ -85,7 +85,7 @@ python3 tools/extract-legacy-web-assets.py --all-battles
 
 Linux Docker Compose 部署由根目录的 `docker-compose.yml` 管理。`web` 容器使用
 control-plane 镜像内的 `assets/original`，并以只读方式挂载
-`STONEAGE_CLIENT_DATA_ROOT` 提供 2.5 客户端的 `map/`、`data/bgm/` 和 `data/se/`；
+`STONEAGE_CLIENT_DATA_ROOT` 提供 2.5 客户端的 `map/`、`data/bgm/`、`data/se/` 和 `data/pal/`；
 它只通过 Compose 内网的 `gateway:9065` 转发协议，不会把 GMSV 或 SAAC 端口暴露给
 浏览器。首次部署可直接运行 `./scripts/deploy-mvp.sh --init`，详见根目录
 README 的 Linux Docker Compose 小节。

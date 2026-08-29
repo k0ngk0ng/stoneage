@@ -13,19 +13,20 @@ func TestWalkTreeKeepsPublicClientAssetAllowlist(t *testing.T) {
 	assets := filepath.Join(root, "assets")
 	mapDir := filepath.Join(root, "map")
 	data := filepath.Join(root, "data")
-	for _, directory := range []string{assets, mapDir, filepath.Join(data, "bgm"), filepath.Join(data, "se")} {
+	for _, directory := range []string{assets, mapDir, filepath.Join(data, "bgm"), filepath.Join(data, "se"), filepath.Join(data, "pal")} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for filename, content := range map[string]string{
-		filepath.Join(assets, "manifest.json"): "{}",
-		filepath.Join(mapDir, "100.MAP"):       "map",
-		filepath.Join(data, "auto.dat"):        "auto",
-		filepath.Join(data, "bgm", "0.wav"):    "bgm",
-		filepath.Join(data, "se", "1.wav"):     "se",
-		filepath.Join(data, "savedata.dat"):    "private",
-		filepath.Join(data, "chatreg.dat"):     "private",
+		filepath.Join(assets, "manifest.json"):    "{}",
+		filepath.Join(mapDir, "100.MAP"):          "map",
+		filepath.Join(data, "auto.dat"):           "auto",
+		filepath.Join(data, "bgm", "0.wav"):       "bgm",
+		filepath.Join(data, "se", "1.wav"):        "se",
+		filepath.Join(data, "pal", "Palet_1.sap"): "palette",
+		filepath.Join(data, "savedata.dat"):       "private",
+		filepath.Join(data, "chatreg.dat"):        "private",
 	} {
 		if err := os.WriteFile(filename, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
@@ -38,6 +39,7 @@ func TestWalkTreeKeepsPublicClientAssetAllowlist(t *testing.T) {
 			{Path: filepath.Join(data, "auto.dat")},
 			{Path: filepath.Join(data, "bgm"), Prefix: "bgm"},
 			{Path: filepath.Join(data, "se"), Prefix: "se"},
+			{Path: filepath.Join(data, "pal"), Prefix: "pal"},
 		}},
 	}
 	var got []string
@@ -50,7 +52,7 @@ func TestWalkTreeKeepsPublicClientAssetAllowlist(t *testing.T) {
 		}
 	}
 	sort.Strings(got)
-	want := []string{"assets/manifest.json", "audio/auto.dat", "audio/bgm/0.wav", "audio/se/1.wav", "maps/100.MAP"}
+	want := []string{"assets/manifest.json", "audio/auto.dat", "audio/bgm/0.wav", "audio/pal/Palet_1.sap", "audio/se/1.wav", "maps/100.MAP"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("public upload plan = %#v, want %#v", got, want)
 	}

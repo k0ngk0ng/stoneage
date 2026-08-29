@@ -153,6 +153,10 @@ func run(arguments []string) error {
 			{Path: filepath.Join(dataDirectory, "auto.dat")},
 			{Path: filepath.Join(dataDirectory, "bgm"), Prefix: "bgm"},
 			{Path: filepath.Join(dataDirectory, "se"), Prefix: "se"},
+			// Palet_*.sap is consumed by the browser's automatic-map colour
+			// decoder through /audio/pal/. Keep it in the same public tree;
+			// omitting it makes CDN-backed maps lose their palette.
+			{Path: filepath.Join(dataDirectory, "pal"), Prefix: "pal"},
 		}},
 	}
 	for _, tree := range trees {

@@ -275,8 +275,8 @@ if [[ -n "$client_data_root" ]]; then
         /*) ;;
         *) client_data_root="$project_root/$client_data_root" ;;
     esac
-    if [[ ! -d "$client_data_root/map" || ! -d "$client_data_root/data/bgm" || ! -d "$client_data_root/data/se" ]]; then
-        echo "WARNING: $client_data_root lacks client map/data/bgm/data/se; web map/audio will be unavailable." >&2
+    if [[ ! -d "$client_data_root/map" || ! -f "$client_data_root/data/auto.dat" || ! -d "$client_data_root/data/bgm" || ! -d "$client_data_root/data/se" || ! -d "$client_data_root/data/pal" ]]; then
+        echo "WARNING: $client_data_root lacks client map/data/auto.dat/data/bgm/data/se/data/pal; web map, palette or audio resources will be unavailable." >&2
     fi
 fi
 
