@@ -1757,7 +1757,15 @@
     .legacy-native-frame .native-br{right:0;bottom:0;background-image:url('/assets/bitmaps/bitmap_9144.png')}
     .legacy-native-frame .legacy-frame-title{position:absolute;left:calc(var(--legacy-w,448px) / 2 - 47px);top:11px;width:96px;height:23px;display:block;z-index:3;image-rendering:pixelated;pointer-events:none;background:center/96px 23px no-repeat}
     .legacy-frame{position:absolute;left:var(--legacy-x,4px);top:var(--legacy-y,4px);width:var(--legacy-w,192px);height:var(--legacy-h,288px);overflow:hidden;z-index:0;pointer-events:none}
-    .legacy-screen>.legacy-frame{z-index:0!important;pointer-events:none!important}
+    /* Both frame implementations are decorative DirectDraw records.  The
+       generic legacy-screen child rule below deliberately enables pointer
+       input for window contents, but must never re-enable the frame itself.
+       Without this native-frame exception the nine CG_WND_G_* tiles form a
+       full-window hit surface above nested WN controls: the healer's CANCEL
+       bitmap is visible yet document.elementFromPoint() returns the frame,
+       so the NPC window appears impossible to dismiss. */
+    .legacy-screen>.legacy-frame,
+    .legacy-screen>.legacy-native-frame{z-index:0!important;pointer-events:none!important}
     .wnd2-frame>i{position:absolute;display:block;margin:0;padding:0;background-repeat:repeat;image-rendering:pixelated;pointer-events:none}
     .wnd2-frame .wnd2-tl{left:0;top:0;width:64px;height:48px;background-image:url('/assets/bitmaps/bitmap_9152.png');background-repeat:no-repeat}
     .wnd2-frame .wnd2-t{left:64px;top:0;right:64px;height:48px;background-image:url('/assets/bitmaps/bitmap_9153.png');background-repeat:repeat-x}

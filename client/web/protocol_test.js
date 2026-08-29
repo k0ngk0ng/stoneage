@@ -1159,6 +1159,13 @@ for (const expected of [
   if (!expected.test(html)) throw new Error(`field HUD regression: ${expected}`);
 }
 if (/id="field-right-help"/.test(html)) throw new Error("2.5 field HUD must not expose the 8.5 help button");
+/* MakeWindowDisp's nine bitmap tiles are visual DirectDraw records, never a
+   browser hit target.  `.legacy-screen>*` enables input for the real window
+   controls later in the cascade, so the native frame needs an explicit
+   child override or it covers WN CANCEL/OK buttons despite looking correct. */
+if (!/\.legacy-screen>\.legacy-frame,\s*\.legacy-screen>\.legacy-native-frame\{z-index:0!important;pointer-events:none!important\}/.test(html)) {
+  throw new Error("native window frame must not cover NPC/WN response buttons");
+}
 /* BATTLEMENU.CPP::BattleTargetSelect() is used by ordinary H as well as
    capture and actor-targeted magic.  Its MakeWindowDisp(210,356,3,2) pixels
    begin at pActInfoWnd->x/y after the REALBIN (-32,-24) anchor is applied;
