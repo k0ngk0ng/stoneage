@@ -979,7 +979,7 @@ for (const expected of [
   /const BATTLE_ATTRIBUTE_GRAPHICS=Object\.freeze\(\{[\s\S]*?70:101403[\s\S]*?77:101410/,
   /function battleApplyFlagEffects\(effects,target,flags,startsAt=Date\.now\(\),options=\{\}\)/,
   /item\.rideFlag=0;item\.petHp=0;item\.petMaxHp=0;item\.rideFallen=true;/,
-  /item\.flags=Number\(item\.flags\|\|0\)&~BATTLE_BC_DEATH[\s\S]{0,260}state\.motions=state\.motions\.filter\(motion=>motion\.kind!=="death"/,
+  /function battleCommitRevive\(state,target,hp\)[\s\S]{0,700}item\.flags=Number\(item\.flags\|\|0\)&~BATTLE_BC_DEATH[\s\S]{0,700}motion\?\.kind==="death-direct"/,
   /function battleScheduleDamage\(state,at,callback\)/,
   /BATTLE_Abduct\(\) always removes the attacker[\s\S]{0,850}if\(marker==="B!"\)/,
   /BATTLE_ToCallDragonEffect\(\) carries a positional magic table[\s\S]{0,700}currentGraphic/,
@@ -2210,7 +2210,12 @@ if (!/const freshDead=Boolean\(\(item\.flags&BATTLE_BC_FRESH\)&&!old\)/.test(rec
   throw new Error("BC fresh+dead must enter the held final corpse frame without replaying the death chain");
 }
 const battleDamageSource = script.slice(script.indexOf('      }else if(marker==="BD")'), script.indexOf('      }else if(marker==="B+")'));
-if (!/const scheduleBDMotion=/.test(script.slice(script.indexOf("    const now=Date.now();"), script.indexOf("    const queueMotion="))) ||
+const battleMovieScopeSource = script.slice(script.indexOf("  function battleMovieEffects(command){"), script.indexOf("  function receiveBattlePacket", script.indexOf("  function battleMovieEffects(command){")));
+const fieldSendScopeSource = script.slice(script.indexOf("  function fieldSend(functionName,values){"), script.indexOf("  function toggleFieldSetting", script.indexOf("  function fieldSend(functionName,values){")));
+if (!/const timedMotion=[\s\S]{0,1600}const scheduleBDMotion=/.test(battleMovieScopeSource) ||
+    !/const resetBDBatch=/.test(battleMovieScopeSource) ||
+    !/const bdProjectedHp=new Map\(\)/.test(battleMovieScopeSource) ||
+    /resetBDBatch|scheduleBDMotion|bdProjectedHp/.test(fieldSendScopeSource) ||
     !/duration=60\*BATTLE_PROC_TICK_MS/.test(script) ||
     !/scheduleBDMotion\(target,bdKind,sign,amount,petAmount,fatalHint\)/.test(battleDamageSource) ||
     !/if\(fatal\)\{[\s\S]{0,260}battleQueueDirectDeath\(state,target,start\)/.test(script) ||
@@ -2403,6 +2408,44 @@ if (statusDeltaSegments.length !== 2 || statusDeltaSegments[0].values.join(",") 
 const battleStatusMovieSource = script.slice(script.indexOf('      }else if(marker==="BM")'), script.indexOf('      }else if(marker==="BL")'));
 if (!/battleSegmentNumber\(segment,"",0,-1\)/.test(battleStatusMovieSource) || !/battleSegmentNumber\(segment,"",1,0\)/.test(battleStatusMovieSource)) {
   throw new Error("BM positional status movie fallback is missing");
+}
+/* ATT_LIFE is executed when EntrySort reaches BL, not while the complete B
+   string is being parsed.  A queued death earlier in the same movie must
+   remain a corpse until that exact process tick, and the stock client then
+   switches directly to ANIM_STAND without a hit pose or +HP label. */
+const battleReviveMovieSource = script.slice(script.indexOf('      }else if(marker==="BL")'), script.indexOf('      }else if(marker==="BY")'));
+const battleReviveHelperStart = script.indexOf("  function battleCommitRevive");
+const battleReviveHelperEnd = script.indexOf("  function battleQueueDeath", battleReviveHelperStart);
+if (battleReviveHelperStart < 0 || battleReviveHelperEnd <= battleReviveHelperStart) throw new Error("battle revive helper boundary missing");
+const battleReviveHelperSource = script.slice(battleReviveHelperStart, battleReviveHelperEnd);
+if (!/battleQueueRevive\(state,target,hp,Number\(state\.motionQueueAt\)\|\|Date\.now\(\)\)/.test(battleReviveMovieSource) ||
+    /item\.hp\s*=|kind:"hit"|battlePushEffect/.test(battleReviveMovieSource) ||
+    !/battlePushMotion\(list,\{kind:"revive"[\s\S]{0,180}nativeTick:true\}\)/.test(battleReviveHelperSource) ||
+    !/battleScheduleDamage\(state,startAt,\(\)=>battleCommitRevive\(state,id,hp\)\)/.test(battleReviveHelperSource) ||
+    !/motion\?\.kind==="death"\|\|motion\?\.kind==="death-direct"/.test(battleReviveHelperSource) ||
+    !/state\.deathOffsets\.delete\(id\)/.test(battleReviveHelperSource)) {
+  throw new Error("BL must defer the native stand/revive transition and clear both terminal death paths");
+}
+const battleDeathFlagMatch = script.match(/const BATTLE_BC_DEATH=1<<(\d+)/);
+if (!battleDeathFlagMatch) throw new Error("BATTLE_BC_DEATH definition missing for revive regression");
+const battleDeathFlag = 1 << Number(battleDeathFlagMatch[1]);
+const battleCommitRevive = new Function("BATTLE_BC_DEATH", `${script.slice(battleReviveHelperStart, script.indexOf("  function battleQueueRevive", battleReviveHelperStart))}; return battleCommitRevive;`)(battleDeathFlag);
+const revivedParticipant = {battleId:3,hp:0,maxHp:80,dead:true,flags:battleDeathFlag|8};
+const unrelatedCorpse = {kind:"death",target:4};
+const reviveState = {
+  participants:[revivedParticipant],
+  deathStartedAt:new Map([[3,100],[4,200]]),
+  deathOffsets:new Map([[3,{dx:1,dy:2}],[4,{dx:3,dy:4}]]),
+  motions:[{kind:"death",target:3},{kind:"death-direct",target:3},unrelatedCorpse,{kind:"revive",target:3}],
+};
+battleCommitRevive(reviveState,3,120);
+if (revivedParticipant.hp !== 80 || revivedParticipant.dead || revivedParticipant.flags !== 8 || reviveState.deathStartedAt.has(3) || reviveState.deathOffsets.has(3) || !reviveState.deathStartedAt.has(4) || !reviveState.deathOffsets.has(4) || reviveState.motions.length !== 2 || !reviveState.motions.includes(unrelatedCorpse) || !reviveState.motions.some(motion=>motion.kind === "revive" && motion.target === 3)) {
+  throw new Error(`ATT_LIFE revive state cleanup failed: ${JSON.stringify({participant:revivedParticipant,motions:reviveState.motions})}`);
+}
+const battleMotionPrioritySource = script.slice(script.indexOf("  function battleMotionRenderPriority"), script.indexOf("  function battleMotionValue"));
+const battleMotionValueSource = script.slice(script.indexOf("  function battleMotionValue"), script.indexOf("  function battleNamesVisible"));
+if (!/kind==="revive"&&target===value\)return 101/.test(battleMotionPrioritySource) || !/motion\.kind==="revive"&&target===Number\(id\)[\s\S]{0,260}value\.action=3[\s\S]{0,180}value\.animationLoop=true/.test(battleMotionValueSource)) {
+  throw new Error("revive must own the terminal corpse on its scheduled tick and restore looping ANIM_STAND");
 }
 /* BATTLE_CommandWait() can prepend `t` in the escape field (`et<bid>`).
    The one-letter movie tokenizer stores that spelling as fields.e =

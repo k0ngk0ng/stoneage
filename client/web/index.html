@@ -3252,28 +3252,6 @@
       return Promise.resolve(false);
     }
     const now=Date.now();
-    let lastBDKey="",lastBDStart=0,lastBDEnd=0;
-    const bdProjectedHp=new Map();
-    const resetBDBatch=()=>{lastBDKey="";lastBDStart=0;lastBDEnd=0;bdProjectedHp.clear();};
-    const scheduleBDMotion=(target,kind,sign,amount,petAmount,fatalHint=null)=>{
-      const key=`${Number(kind)||0}:${Number(sign)||0}`,current=Date.now(),duration=60*BATTLE_PROC_TICK_MS;
-      /* Consecutive ATT_DAMAGE records with the same kind/sign are consumed
-         by one native VCT78/79 action and therefore start together.  A new
-         kind/sign is the next action batch and starts after the previous
-         60-tick window. */
-      const sameBatch=key===lastBDKey&&lastBDEnd>=lastBDStart&&lastBDStart>=current-4*BATTLE_PROC_TICK_MS;
-      const start=sameBatch?lastBDStart:Math.max(current,Number(state.motionQueueAt)||current,lastBDEnd),damaging=Number(kind)===0&&Number(sign)===0&&Number(amount)>0,item=battleFindParticipant(target),fatal=fatalHint===null?(damaging&&item&&Number(item.hp)<=Number(amount)):Boolean(fatalHint);
-      let timing;
-      if(fatal){
-        battleQueueDirectDeath(state,target,start);
-        timing={startAt:start,endAt:start+duration,duration,contactAt:start,direction:battleSlotDirection(target),nativeContact:false,fatal:true};
-      }else{
-        timing=timedMotion({kind:damaging?"bd-damage":"bd",target,bdKind:Number(kind)||0,bdSign:Number(sign)||0,amount:Number(amount)||0,petAmount:Number(petAmount)||0},start,duration);
-        timing.fatal=false;
-      }
-      lastBDKey=key;lastBDStart=start;lastBDEnd=start+duration;
-      return timing;
-    };
     if(now-(app.fieldBtnPushTime||0)<LEGACY_TURN_SEND_WAIT_MS){setWorldState("操作太快，请稍候。","error");return Promise.resolve(false);}
     app.fieldBtnPushTime=now;
     return send(functionName,values).then(()=>true);
@@ -8812,7 +8790,12 @@
      server remains authoritative for HP, MP and roster membership. */
   function battlePushMotion(motions,motion){
     if(!motion||!Number.isFinite(Number(motion.actor??motion.target)))return;
-    const now=Date.now(),duration=Math.max(120,Number(motion.duration)||360),delay=Math.max(0,Number(motion.delay)||0),startedAt=Number(motion.startedAt)||now;
+    /* Most browser presentation records need at least 120 ms so one decoded
+       sprite frame remains visible.  ATT_LIFE is different: the native
+       master action commits the revive and returns to command state in one
+       BattleProc tick.  Let that one explicitly marked record retain its
+       exact tick duration instead of stretching it into a fake animation. */
+    const now=Date.now(),minimumDuration=motion.nativeTick?BATTLE_PROC_TICK_MS:120,duration=Math.max(minimumDuration,Number(motion.duration)||360),delay=Math.max(0,Number(motion.delay)||0),startedAt=Number(motion.startedAt)||now;
     const entry={...motion,startedAt,delay,until:Number(motion.until)||startedAt+delay+duration,duration};
     motions.push(entry);
     /* A single 2.5 B movie can contain five formation rows, multi-hit BH,
@@ -9005,6 +8988,35 @@
     const hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),hurtAnimationDuration=Math.max(BATTLE_PROC_TICK_MS,Number(hurtTiming?.duration)||240);
     return {kind:"hit",target:id,direction:incoming,hurtDirection,hurtAnimationDuration,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,hurtAnimationDuration)};
   }
+  function battleCommitRevive(state,target,hp){
+    if(!state||!Number.isFinite(Number(target))||Number(target)<0)return;
+    const id=Number(target),life=Math.max(0,Number(hp)||0),item=(Array.isArray(state.participants)?state.participants:[]).find(entry=>Number(entry?.battleId)===id);
+    if(item){
+      const maximum=Math.max(0,Number(item.maxHp)||0);
+      /* oft.cpp::ATT_LIFE writes ATR_DAMAGE into ATR_LIFE, clamps it to
+         ATR_MAX_LIFE, clears the actor VCT and selects ANIM_STAND. */
+      item.hp=maximum?Math.min(maximum,life):life;
+      item.dead=false;
+      item.flags=Number(item.flags||0)&~BATTLE_BC_DEATH;
+    }
+    if(state.deathStartedAt instanceof Map)state.deathStartedAt.delete(id);
+    if(state.deathOffsets instanceof Map)state.deathOffsets.delete(id);
+    /* A lethal normal hit owns `death`; ATT_DAMAGE's direct zero-HP path
+       owns `death-direct`.  BL cancels either native terminal VCT, but must
+       leave unrelated actors and the one-tick revive record untouched. */
+    if(Array.isArray(state.motions))state.motions=state.motions.filter(motion=>!((motion?.kind==="death"||motion?.kind==="death-direct")&&Number(motion.target)===id));
+  }
+  function battleQueueRevive(state,target,hp,startsAt=Date.now()){
+    if(!state||!Number.isFinite(Number(target))||Number(target)<0)return null;
+    const id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now),duration=BATTLE_PROC_TICK_MS,list=Array.isArray(state.motions)?state.motions:(state.motions=[]);
+    /* BL is an EntrySort action, not an eager roster patch.  Keep the corpse
+       authoritative until this action reaches the head of the movie, then
+       perform the exact ATT_LIFE state change on that process tick. */
+    battlePushMotion(list,{kind:"revive",target:id,startedAt:now,delay:startAt-now,duration,nativeTick:true});
+    state.motionQueueAt=Math.max(Number(state.motionQueueAt)||now,startAt+duration);
+    battleScheduleDamage(state,startAt,()=>battleCommitRevive(state,id,hp));
+    return {startAt,endAt:startAt+duration,duration};
+  }
   function battleQueueDeath(state,target,duration=1000,startsAt=Date.now(),directionHint=null){
     if(!state||!Number.isFinite(Number(target))||Number(target)<0)return;
     const list=Array.isArray(state.motions)?state.motions:(state.motions=[]),id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now);
@@ -9082,6 +9094,7 @@
     if(!motion)return -1;
     const actor=Number(motion.actor),target=Number(motion.target),value=Number(id);
     const kind=String(motion.kind||"");
+    if(kind==="revive"&&target===value)return 101;
     if(kind==="death"&&target===value)return 100;
     if(kind==="death-direct"&&target===value)return 99;
     if((kind==="escape"||kind==="escape-fail")&&(actor===value||target===value))return 96;
@@ -9110,7 +9123,11 @@
       const motion=selected.motion,actor=Number(motion.actor),target=Number(motion.target),motionStart=selected.motionStart;
       const elapsed=Math.max(0,now-motionStart),progress=Math.max(0,Math.min(1,elapsed/Math.max(1,Number(motion.duration)||1)));
       const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
-      if(motion.kind==="attack-sequence"&&actor===Number(id)){
+      if(motion.kind==="revive"&&target===Number(id)){
+        /* ATT_LIFE has no hit/heal animation of its own.  It restores the
+           participant directly to the looping standing action. */
+        value.action=3;value.animationLoop=true;value.hit=false;value.direction=battleSlotDirection(id);value.animationStartedAt=performance.now()-Math.max(0,elapsed);
+      }else if(motion.kind==="attack-sequence"&&actor===Number(id)){
         const steps=Array.isArray(motion.steps)?motion.steps:[],step=steps.find(entry=>elapsed<Number(entry.endOffset));
         if(step){
           const travelStart=Math.max(0,Number(step.travelStartOffset)||0),travelDuration=Math.max(0,Number(step.travelDuration)||0),attackStart=Math.max(travelStart+travelDuration,Number(step.attackStartOffset)||0);
@@ -9438,6 +9455,33 @@
          contact frame in-place without inventing an inter-record delay. */
       state.motionQueueAt=Math.max(Number(state.motionQueueAt)||queuedNow,end);
       return {startAt:start,endAt:end,duration:length};
+    };
+    /* ATT_DAMAGE (BD) batches belong to this concrete B movie.  Keeping
+       these helpers beside the movie's queue/timedMotion closures is also a
+       correctness boundary: fieldSend() has no battle `state`, and placing
+       them there made the first BH/BD segment throw ReferenceError before
+       any native action could run. */
+    let lastBDKey="",lastBDStart=0,lastBDEnd=0;
+    const bdProjectedHp=new Map();
+    const resetBDBatch=()=>{lastBDKey="";lastBDStart=0;lastBDEnd=0;bdProjectedHp.clear();};
+    const scheduleBDMotion=(target,kind,sign,amount,petAmount,fatalHint=null)=>{
+      const key=`${Number(kind)||0}:${Number(sign)||0}`,current=Date.now(),duration=60*BATTLE_PROC_TICK_MS;
+      /* Consecutive ATT_DAMAGE records with the same kind/sign are consumed
+         by one native VCT78/79 action and therefore start together.  A new
+         kind/sign is the next action batch and starts after the previous
+         60-tick window. */
+      const sameBatch=key===lastBDKey&&lastBDEnd>=lastBDStart&&lastBDStart>=current-4*BATTLE_PROC_TICK_MS;
+      const start=sameBatch?lastBDStart:Math.max(current,Number(state.motionQueueAt)||current,lastBDEnd),damaging=Number(kind)===0&&Number(sign)===0&&Number(amount)>0,item=battleFindParticipant(target),fatal=fatalHint===null?(damaging&&item&&Number(item.hp)<=Number(amount)):Boolean(fatalHint);
+      let timing;
+      if(fatal){
+        battleQueueDirectDeath(state,target,start);
+        timing={startAt:start,endAt:start+duration,duration,contactAt:start,direction:battleSlotDirection(target),nativeContact:false,fatal:true};
+      }else{
+        timing=timedMotion({kind:damaging?"bd-damage":"bd",target,bdKind:Number(kind)||0,bdSign:Number(sign)||0,amount:Number(amount)||0,petAmount:Number(petAmount)||0},start,duration);
+        timing.fatal=false;
+      }
+      lastBDKey=key;lastBDStart=start;lastBDEnd=start+duration;
+      return timing;
     };
     /* BD belongs to one concrete movie event.  A B string can contain a
        poison/status BD for the same target before or after a BH, and a
@@ -10180,19 +10224,8 @@
           if(status>0)battlePushEffect(effects,target,BATTLE_STATUS_NAMES[status]||`状态 ${status}`,"status",{duration:1100});
         }
       }else if(marker==="BL"){
-        const target=battleSegmentNumber(segment,"r",0,-1),hp=battleSegmentNumber(segment,"h",0,0),item=battleFindParticipant(target);
-        if(item){
-          item.hp=hp;
-          item.dead=false;
-          /* BL is the authoritative resurrection record.  Clear every
-             death bit/terminal pose left by the preceding BC or BH/BD; only
-             changing hp/dead left revived characters rendered as corpses
-             until the next turn snapshot. */
-          item.flags=Number(item.flags||0)&~BATTLE_BC_DEATH;
-          if(state.deathStartedAt instanceof Map)state.deathStartedAt.delete(Number(target));
-          state.motions=state.motions.filter(motion=>motion.kind!=="death"||Number(motion.target)!==Number(target));
-        }
-        if(target>=0){timedMotion({kind:"hit",target},Number(state.motionQueueAt)||Date.now(),200);battlePushEffect(effects,target,`+${hp}`,"heal",{duration:1150});}
+        const target=battleSegmentNumber(segment,"r",0,-1),hp=battleSegmentNumber(segment,"h",0,0);
+        if(target>=0)battleQueueRevive(state,target,hp,Number(state.motionQueueAt)||Date.now());
       }else if(marker==="BY"){
         /* BATTLE_COM_COMBO starts with BY|r<def>| and then appends one
            a/f/d/p(/g) tuple per attacker.  It is not a leave/vanish record:
