@@ -1998,7 +1998,7 @@ for (const expected of [
   /add\("聊天设定",[\s\S]{0,120}systemPage="chat"/,
   /add\("背景音乐",[\s\S]{0,120}systemPage="bgm"/,
   /add\("音效设定",[\s\S]{0,120}systemPage="se"/,
-  /add\("关闭",\(\)=>show\(worldScreen\),5\)/,
+  /const close=systemChoice\("关闭",\(\)=>show\(worldScreen\),212\);list\.append\(close\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
 }

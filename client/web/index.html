@@ -6072,13 +6072,18 @@
          _NEW_SYSTEM_MENU/SaMenu extensions (commerce, tasks, rankings,
          encounter toggles, etc.) have no 2.5 server implementation and are
          intentionally absent. */
+      /* MENU.CPP advances the five stock rows by 40/40/40/52 pixels: the
+         close row is deliberately separated from the last setting row.
+         The web-only in-place logout is inserted as one extra 40px row, but
+         must not collapse that native 52px gap or the close label hugs the
+         lower frame edge. */
       const add=(label,handler,row)=>list.append(systemChoice(label,handler,row*40));
       add("回记录点",()=>openLogoutConfirm("record"),0);
       add("原地登出",()=>openLogoutConfirm("in-place"),1);
       add("聊天设定",()=>{app.systemPage="chat";renderSystem();},2);
       add("背景音乐",()=>{app.systemPage="bgm";renderSystem();},3);
       add("音效设定",()=>{app.systemPage="se";renderSystem();},4);
-      add("关闭",()=>show(worldScreen),5);
+      const close=systemChoice("关闭",()=>show(worldScreen),212);list.append(close);
       return;
     }
     if(page==="logout-record"||page==="logout-place"){
