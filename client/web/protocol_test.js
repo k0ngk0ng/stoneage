@@ -1152,6 +1152,7 @@ for (const expected of [
   /id="auto-map"/,
   /AUTO_MAP_WIDTH=54/,
   /AUTO_MAP_SEE_FLAG=0x4000/,
+  /AUTO_MAP_COLOR_HEADER_SIZE=10,AUTO_MAP_COLOR_VERSION=4,AUTO_MAP_COLOR_TABLE_LIMIT=1000000/,
   /function drawAutoMap\(/,
   /function requestAutoMapData\(/,
   /fetch\(`?\/maps\//,
@@ -1237,6 +1238,38 @@ for (const expected of [
   /await send\("TK",\[x,y,`P\|\$\{text\}`,0,3\]\);input\.value="";/,
 ]) {
   if (!expected.test(html)) throw new Error(`field HUD regression: ${expected}`);
+}
+/* writeAutoMapColor() stores sizeof(autoMapColorTbl), whose MAX_GRAPHICS is
+   selected by the executable build.  The preserved runtime carries 250000
+   bytes, so the browser must consume the whole payload rather than an old
+   fixed-size prefix. */
+const autoMapParseStart=script.indexOf("  function parseAutoMapColorTable(");
+const autoMapParseEnd=script.indexOf("  function parseAutoMapPalette(",autoMapParseStart);
+if(autoMapParseStart<0||autoMapParseEnd<=autoMapParseStart)throw new Error("auto-map colour table parser boundary missing");
+const parseAutoMapColorTable=new Function("AUTO_MAP_COLOR_HEADER_SIZE","AUTO_MAP_COLOR_VERSION","AUTO_MAP_COLOR_TABLE_LIMIT",`${script.slice(autoMapParseStart,autoMapParseEnd)};return parseAutoMapColorTable;`)(10,4,1000000);
+const nativeAutoMapBuffer=new ArrayBuffer(250010),nativeAutoMapView=new DataView(nativeAutoMapBuffer);nativeAutoMapView.setUint16(0,4,true);new Uint8Array(nativeAutoMapBuffer)[250009]=207;
+const nativeAutoMapTable=parseAutoMapColorTable(nativeAutoMapBuffer);
+if(nativeAutoMapTable?.length!==250000||nativeAutoMapTable[249999]!==207)throw new Error("auto-map parser truncated the build-sized colour table");
+nativeAutoMapView.setUint16(0,3,true);
+if(parseAutoMapColorTable(nativeAutoMapBuffer)!==null)throw new Error("auto-map parser accepted a non-v4 table");
+/* DrawAutoMapping paints every tile byte, including palette index zero.
+   createAutoMap skips zero only for the optional parts overlay. */
+const autoMapColorStart=script.indexOf("  function autoMapTableColor(");
+const autoMapColorEnd=script.indexOf("  function autoMapBitmapColor(",autoMapColorStart);
+if(autoMapColorStart<0||autoMapColorEnd<=autoMapColorStart)throw new Error("auto-map palette helper boundary missing");
+const autoMapTableColor=new Function(`${script.slice(autoMapColorStart,autoMapColorEnd)};return autoMapTableColor;`)();
+const autoMapTable=Uint8Array.from([0,0,17]),autoMapPalette=Array.from({length:256},()=>[0,0,0]);autoMapPalette[17]=[11,22,33];
+if(autoMapTableColor(autoMapTable,autoMapPalette,1,false)!=="rgb(0,0,0)"||
+   autoMapTableColor(autoMapTable,autoMapPalette,1,true)!==null||
+   autoMapTableColor(autoMapTable,autoMapPalette,2,false)!=="rgb(11,22,33)"||
+   autoMapTableColor(autoMapTable,autoMapPalette,999,false)!=="rgb(0,0,0)"||
+   autoMapTableColor(autoMapTable,autoMapPalette,999,true)!==null){
+  throw new Error("auto-map tile/parts palette-zero semantics drifted from MAP.CPP");
+}
+if(/autoMapFallbackColor|hsl\(\$\{hue\}/.test(script))throw new Error("auto-map still invents non-native HSL colours");
+if(!/Math\.floor\(Date\.now\(\)\/1000\)&1/.test(script)||
+   !/setInterval\(\(\)=>\{ const mapWindow=\$\("map-screen"\);[^}]+\},1000\)/.test(script)){
+  throw new Error("auto-map player marker must toggle on the native one-second clock");
 }
 if (/id="field-right-help"/.test(html)) throw new Error("2.5 field HUD must not expose the 8.5 help button");
 /* MakeWindowDisp's nine bitmap tiles are visual DirectDraw records, never a

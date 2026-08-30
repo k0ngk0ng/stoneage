@@ -4269,9 +4269,9 @@
      field back-buffer or make a walking frame wait for a second map decode. */
   const AUTO_MAP_WIDTH=54,AUTO_MAP_HEIGHT=54,AUTO_MAP_SEE_FLAG=0x4000;
   const AUTO_MAP_ORIGIN_X=406,AUTO_MAP_ORIGIN_Y=122;
-  const autoMapDataCache=new Map(),autoMapDataRequests=new Map(),autoMapColorCache=new Map(),autoMapColorPending=new Set();
-  let autoMapColorCanvas=null,autoMapColorContext=null,autoMapColorTable=null,autoMapPalette=null,autoMapColorReady=null;
-  const AUTO_MAP_COLOR_TABLE_SIZE=50000;
+  const autoMapDataCache=new Map(),autoMapDataRequests=new Map(),autoMapColorCache=new Map();
+  let autoMapColorTable=null,autoMapPalette=null,autoMapColorReady=null;
+  const AUTO_MAP_COLOR_HEADER_SIZE=10,AUTO_MAP_COLOR_VERSION=4,AUTO_MAP_COLOR_TABLE_LIMIT=1000000;
   /* Palet_1.sap contains only the 224 BGR entries used by the game.  The
      Windows reserved slots are the same defaults used by the asset cooker;
      keeping them here lets the browser turn auto.dat's palette indices into
@@ -5807,9 +5807,14 @@
   function parseAutoMapColorTable(buffer){
     /* auto.dat is written by writeAutoMapColor(): uint16 version, int32
        adrn number, uint32 creation time, then autoMapColorTbl[MAX_GRAPHICS].
-       The 2.5 adrn_15 build ships MAX_GRAPHICS=50000 bytes. */
-    if(!(buffer instanceof ArrayBuffer)||buffer.byteLength<10+AUTO_MAP_COLOR_TABLE_SIZE)return null;
-    const table=new Uint8Array(AUTO_MAP_COLOR_TABLE_SIZE);table.set(new Uint8Array(buffer,10,AUTO_MAP_COLOR_TABLE_SIZE));return table;
+       MAX_GRAPHICS is a build setting, not a file-format constant: the
+       preserved adrn_15 runtime ships 250000 entries.  Read the complete
+       payload exactly as readAutoMapColor() does for that executable instead
+       of truncating it to the older 50000-entry guess. */
+    if(!(buffer instanceof ArrayBuffer)||buffer.byteLength<=AUTO_MAP_COLOR_HEADER_SIZE)return null;
+    const view=new DataView(buffer);if(view.getUint16(0,true)!==AUTO_MAP_COLOR_VERSION)return null;
+    const length=buffer.byteLength-AUTO_MAP_COLOR_HEADER_SIZE;if(length<1||length>AUTO_MAP_COLOR_TABLE_LIMIT)return null;
+    const table=new Uint8Array(length);table.set(new Uint8Array(buffer,AUTO_MAP_COLOR_HEADER_SIZE,length));return table;
   }
   function parseAutoMapPalette(buffer){
     if(!(buffer instanceof ArrayBuffer)||buffer.byteLength<224*3)return null;
@@ -5822,9 +5827,9 @@
   function loadAutoMapColors(){
     if(autoMapColorReady)return autoMapColorReady;
     /* auto.dat/Palet_1.sap live in the read-only legacy data directory that
-       the web bridge already exposes under /audio/.  Deployments without
-       those files simply keep the visual fallback; they must not make the
-       map window or field loading curtain hang. */
+       the web bridge already exposes under /audio/.  Until both exact files
+       are ready the native map area stays at palette index zero; inventing
+       per-bitmap colours makes the room footprint visibly wrong. */
     autoMapColorReady=Promise.all([
       fetch("/audio/auto.dat",{cache:"force-cache"}).then(response=>{if(!response.ok)throw new Error(`auto.dat HTTP ${response.status}`);return response.arrayBuffer();}),
       fetch("/audio/pal/Palet_1.sap",{cache:"force-cache"}).then(response=>{if(!response.ok)throw new Error(`Palet_1.sap HTTP ${response.status}`);return response.arrayBuffer();})
@@ -5837,35 +5842,21 @@
     }).catch(error=>{addEvent(`自动地图颜色表不可用：${error?.message||error}`);return false;});
     return autoMapColorReady;
   }
-  function autoMapFallbackColor(value,part=false){const number=Math.max(0,Number(value)||0),hue=(number*37+(part?180:0))%360;return part?`hsl(${hue} 16% 58%)`:`hsl(${hue} 22% 42%)`;}
+  function autoMapTableColor(table,palette,value,part=false){
+    if(!table||!palette)return null;
+    const numeric=Math.max(0,Math.trunc(Number(value)||0));
+    const paletteIndex=numeric<table.length?Number(table[numeric])||0:0;
+    /* createAutoMap() always writes the tile byte, including zero, and
+       DrawAutoMapping() paints palette entry 0 as black.  Parts are the one
+       exception: MAP.CPP explicitly skips an overlay whose table byte is 0. */
+    if(part&&paletteIndex===0)return null;
+    const rgb=palette[paletteIndex]||palette[0];return rgb?`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`:null;
+  }
   function autoMapBitmapColor(value,part=false){
-    const numeric=Math.trunc(Number(value)||0);if(numeric<=0)return null;
-    const exactTable=autoMapColorTable,exactPalette=autoMapPalette;
-    if(exactTable&&exactPalette){
-      const paletteIndex=numeric<exactTable.length?Number(exactTable[numeric])||0:0;
-      if(!paletteIndex)return null;
-      const rgb=exactPalette[paletteIndex];if(!rgb)return null;
-      const key=`palette:${numeric}`;let cached=autoMapColorCache.get(key);if(cached)return cached;
-      cached=`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;autoMapColorCache.set(key,cached);return cached;
-    }
-    if(numeric<=99)return null;
-    const info=resolveBitmapInfo(numeric),key=String(info?.file||numeric),cached=autoMapColorCache.get(key);if(cached)return cached;
-    if(!info?.file)return autoMapFallbackColor(numeric,part);
-    const image=loadAsset(info.file);if(!image?.complete||!image.naturalWidth){
-      if(!autoMapColorPending.has(key)){
-        autoMapColorPending.add(key);
-        const settle=()=>{autoMapColorPending.delete(key);autoMapColorCache.delete(key);if(!$('map-screen')?.classList.contains('hidden'))renderMapDetails();};
-        image?.addEventListener?.('load',settle,{once:true});image?.addEventListener?.('error',settle,{once:true});
-      }
-      return autoMapFallbackColor(numeric,part);
-    }
-    try{
-      if(!autoMapColorCanvas){autoMapColorCanvas=document.createElement('canvas');autoMapColorCanvas.width=64;autoMapColorCanvas.height=48;autoMapColorContext=getCanvas2DContext(autoMapColorCanvas,{willReadFrequently:true});}
-      const ctx=autoMapColorContext;if(!ctx)return autoMapFallbackColor(numeric,part);ctx.clearRect(0,0,64,48);ctx.drawImage(image,0,0,64,48);
-      const pixels=ctx.getImageData(0,0,64,48).data;let red=0,green=0,blue=0,count=0;
-      for(let index=0;index<pixels.length;index+=4){if(pixels[index+3]<16)continue;red+=pixels[index];green+=pixels[index+1];blue+=pixels[index+2];count++;}
-      const color=count?`rgb(${Math.round(red/count)},${Math.round(green/count)},${Math.round(blue/count)})`:autoMapFallbackColor(numeric,part);autoMapColorCache.set(key,color);return color;
-    }catch(_){return autoMapFallbackColor(numeric,part);}
+    if(!autoMapColorTable||!autoMapPalette)return null;
+    const numeric=Math.max(0,Math.trunc(Number(value)||0)),key=`palette:${part?1:0}:${numeric}`;
+    if(autoMapColorCache.has(key))return autoMapColorCache.get(key);
+    const color=autoMapTableColor(autoMapColorTable,autoMapPalette,numeric,part);autoMapColorCache.set(key,color);return color;
   }
   function drawAutoMap(data,canvas=$("auto-map")){
     if(!canvas)return;const ctx=getCanvas2DContext(canvas,{alpha:true,desynchronized:true,willReadFrequently:false});if(!ctx)return;
@@ -5874,7 +5865,7 @@
     const sourceIndex=(x,y)=>x>=0&&y>=0&&x<data.width&&y<data.height?y*data.width+x:-1;
     for(let row=0;row<AUTO_MAP_HEIGHT;row++)for(let column=0;column<AUTO_MAP_WIDTH;column++){
       const index=sourceIndex(startX+column,startY+row);if(index<0||!(Number(data.event[index])&AUTO_MAP_SEE_FLAG))continue;
-      colors[row*AUTO_MAP_WIDTH+column]=autoMapBitmapColor(data.tile[index],false)||autoMapFallbackColor(data.tile[index],false);
+      const color=autoMapBitmapColor(data.tile[index],false);if(color!==null)colors[row*AUTO_MAP_WIDTH+column]=color;
     }
     /* Same hit-area expansion as createAutoMap(): transparent parts paint
        their hit rectangle upward/forward on the mini-map. */
@@ -5885,7 +5876,7 @@
     }
     ctx.imageSmoothingEnabled=false;
     for(let row=0;row<AUTO_MAP_HEIGHT;row++)for(let column=0;column<AUTO_MAP_WIDTH;column++){const color=colors[row*AUTO_MAP_WIDTH+column];if(!color)continue;const x=AUTO_MAP_ORIGIN_X+2*(row+column),y=AUTO_MAP_ORIGIN_Y+row-column;ctx.fillStyle=color;ctx.fillRect(x-1,y,3,1);ctx.fillRect(x,y-1,1,1);}
-    const markerX=AUTO_MAP_ORIGIN_X+2*(27+27),markerY=AUTO_MAP_ORIGIN_Y;ctx.fillStyle=(Math.floor(Date.now()/500)&1)?"#fff":"#000";ctx.fillRect(markerX-1,markerY,3,1);ctx.fillRect(markerX,markerY-1,1,1);
+    const markerX=AUTO_MAP_ORIGIN_X+2*(27+27),markerY=AUTO_MAP_ORIGIN_Y;ctx.fillStyle=(Math.floor(Date.now()/1000)&1)?"#fff":"#000";ctx.fillRect(markerX-1,markerY,3,1);ctx.fillRect(markerX,markerY-1,1,1);
   }
   function renderNativeMapCoordinate(node,direction,value){
     const wide=document.createElement("span");wide.className="map-coordinate-wide";wide.textContent=direction;
@@ -15892,10 +15883,10 @@
   },20000);
   /* Keep the FIELD.CPP day/night strip moving even when the map is idle. */
   setInterval(()=>{ if(app.phase==="world"&&!app.battle)updateFieldTimeAnimation(); },64);
-  /* The native auto-map marker flashes at roughly 2 Hz.  Repaint only while
+  /* DrawAutoMapping toggles the marker once every 1000 ms.  Repaint only while
      its window is visible; rebuilding the diamond on every field frame would
      compete with walking/compositor work for no visual benefit. */
-  setInterval(()=>{ const mapWindow=$("map-screen"); if(app.phase==="world"&&!app.battle&&mapWindow&&!mapWindow.classList.contains("hidden"))renderMapDetails(); },500);
+  setInterval(()=>{ const mapWindow=$("map-screen"); if(app.phase==="world"&&!app.battle&&mapWindow&&!mapWindow.classList.contains("hidden"))renderMapDetails(); },1000);
   // Network packets explicitly request redraws.  Field movement is already
   // driven by its RAF; battle movie records need a short presentation tick
   // so the attacker can advance/return and the hit shake can finish without
