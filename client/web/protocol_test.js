@@ -2713,6 +2713,44 @@ if (!recordLogoutSource.includes('send("CharLogout",[])')) {
 if (!script.includes("const preserveSameFloor=Boolean(app.map&&sameFloor)")) {
   throw new Error("same-floor S:c refresh must preserve the incremental NPC scene");
 }
+const systemStateStart = script.indexOf("  function receiveSystemState(data)");
+const systemMapBranchStart = script.indexOf('      case "C": {', systemStateStart);
+const systemMapBranchEnd = script.indexOf('      case "D": {', systemMapBranchStart);
+const systemMapBranchSource = script.slice(systemMapBranchStart, systemMapBranchEnd);
+if (systemStateStart < 0 || systemMapBranchStart < 0 || systemMapBranchEnd < 0 || systemMapBranchSource.includes('send("M"')) {
+  throw new Error("S:C must rebuild native map state and leave the sole M decision to MC");
+}
+const mapRequestStart = script.indexOf("  const MAP_WINDOW_REQUEST_TIMEOUT_MS");
+const mapRequestEnd = script.indexOf("  function receiveMapChecksum(values)", mapRequestStart);
+if (mapRequestStart < 0 || mapRequestEnd <= mapRequestStart) throw new Error("map-window request lifecycle missing");
+const sentMapWindows = [], mapTimers = new Map();let nextMapTimer = 1;
+const mapRequestApp = {
+  transport:{},phase:"world",floor:1006,connectionToken:7,pendingMapWindowRequest:null,
+  mapWindowRequestTimer:0,mapWindowRevisionByKey:new Map()
+};
+const mapRequestHarness = new Function("app", "window", "send", "reportError", `${script.slice(mapRequestStart, mapRequestEnd)};return {requestMapWindow,completeMapWindowRequest,clearMapWindowRequest};`)(
+  mapRequestApp,
+  {
+    setTimeout(callback, delay){const id=nextMapTimer++;mapTimers.set(id,{callback,delay});return id;},
+    clearTimeout(id){mapTimers.delete(id);}
+  },
+  (name, values)=>{sentMapWindows.push([name,...values]);return Promise.resolve();},
+  error=>{throw error;}
+);
+const initialMapRevision="1006|10|20|37|47|1|2|3";
+if (!mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:initialMapRevision}) ||
+    mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:initialMapRevision}) ||
+    sentMapWindows.length !== 1) {
+  throw new Error(`identical pending M windows must coalesce: ${JSON.stringify(sentMapWindows)}`);
+}
+if (!mapRequestHarness.completeMapWindowRequest(1006,0,0,32,33) || mapRequestApp.pendingMapWindowRequest ||
+    mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:initialMapRevision}) || sentMapWindows.length !== 1) {
+  throw new Error("a clipped M reply must complete and memoize its MC revision");
+}
+if (!mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:`${initialMapRevision}|changed`}) || sentMapWindows.length !== 2) {
+  throw new Error("a changed MC checksum must be allowed to refresh the same M rectangle");
+}
+mapRequestHarness.clearMapWindowRequest();
 if (!script.includes("if(cached&&(!sameFloor||!hasWindow))")) {
   throw new Error("same-floor MC checksum must keep the live map back-buffer");
 }
