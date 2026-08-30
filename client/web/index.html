@@ -1384,6 +1384,7 @@
      DAT window is missing or stale.  Keep that request lifecycle explicit so
      S:C, MC and recovery callbacks cannot enqueue the same M rectangle twice. */
   app.pendingMapWindowRequest=null;app.mapWindowRequestTimer=0;app.mapWindowRevisionByKey=new Map();
+  app.pendingInitialMapChecksum=null;app.initialMapChecksumTimer=0;
   /* Only an S:C status reply is a solicited, authoritative position sample.
      Ordinary C/CA records may be stale visibility deltas, so keep a separate
      receipt marker for workflows (notably in-place logout) that must prove
@@ -6266,7 +6267,7 @@
         if(!prediction||!sameFloor||!onRoute)cancelPendingMove("服务器已校正位置。",point);
         else maybeReleaseMovePrediction(point);
         app.floor=floor;
-        if(!sameFloor){clearMapWindowRequest();app.mapWindowRevisionByKey.clear();app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.npcMetadataByKey.clear();}
+        if(!sameFloor){clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear();app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.npcMetadataByKey.clear();}
         /* Fixed NPC metadata is a read-only companion to the live C stream.
            Request it as soon as the server announces a floor so the first
            map frame can show stationary town/event NPCs even when their C
@@ -11678,7 +11679,7 @@
     /* A stale poll may finish after a reconnect.  It may close its own old
        socket, but it must never clear or close the replacement transport. */
     if(expected&&app.transport!==expected){return transport?.close?.(options)??Promise.resolve(true);}
-    if(app.transport===transport){clearMapWindowRequest();app.transport=null;app.polling=false;app.pollingTransport=null;app.connectionToken++;}
+    if(app.transport===transport){clearInitialMapChecksum();clearMapWindowRequest();app.transport=null;app.polling=false;app.pollingTransport=null;app.connectionToken++;}
     return transport?.close?.(options)??Promise.resolve(true);
   }
   function focusLoginAccount(){
@@ -12186,7 +12187,7 @@
     characterStatus(`正在登入 ${name}…`);
     try { await send("CharLogin",[name]); } catch(error) { characterStatus(error.message,"error"); }
   }
-  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; clearMapWindowRequest();app.mapWindowRevisionByKey.clear(); resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
+  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear(); resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
   /* enterWorld() replaces the battle state for a fresh field session.  Keep
      the watchdogs from a just-closed battle from firing against that new
      state, including logout/reconnect paths that do not pass through BU. */
@@ -12212,11 +12213,11 @@
   function legacyMapLayerCRC(data,layer,x1,y1,x2,y2,eventLayer=false){
     const width=Math.trunc(Number(x2)-Number(x1)),height=Math.trunc(Number(y2)-Number(y1)),count=width*height;
     const mapWidth=Math.trunc(Number(data?.width)),mapHeight=Math.trunc(Number(data?.height));
-    if(!layer||width<=0||height<=0||count>LEGACY_MAP_CHECKSUM_CELLS||x1<0||y1<0||x2>mapWidth||y2>mapHeight)return null;
+    if(!layer||width<=0||height<=0||count>LEGACY_MAP_CHECKSUM_CELLS||mapWidth<=0||mapHeight<=0)return null;
     let crc=0;
     for(let index=0;index<LEGACY_MAP_CHECKSUM_CELLS;index++){
       let value=0;
-      if(index<count){const x=Number(x1)+index%width,y=Number(y1)+Math.floor(index/width);value=Number(layer[y*mapWidth+x]||0);if(eventLayer)value&=0x0fff;}
+      if(index<count){const x=Number(x1)+index%width,y=Number(y1)+Math.floor(index/width);if(x>=0&&y>=0&&x<mapWidth&&y<mapHeight)value=Number(layer[y*mapWidth+x]||0);if(eventLayer)value&=0x0fff;}
       const low=value&0xff,high=(value>>8)&0xff;
       crc=(LEGACY_MAP_CRC_TABLE[(crc>>8)&0xff]^((crc<<8)&0xffff)^LEGACY_MAP_REVERSE_BYTES[low])&0xffff;
       crc=(LEGACY_MAP_CRC_TABLE[(crc>>8)&0xff]^((crc<<8)&0xffff)^LEGACY_MAP_REVERSE_BYTES[high])&0xffff;
@@ -12231,9 +12232,28 @@
     const expected=values.slice(5,8).map(value=>Math.trunc(Number(value)||0));
     return {sums,expected,matches:sums.every((value,index)=>value===expected[index])};
   }
+  function makeLocalMapWindowValues(data,floor,centerX,centerY,header=""){
+    const mapWidth=Math.trunc(Number(data?.width)),mapHeight=Math.trunc(Number(data?.height));
+    if(!data||Number(data.floor)!==Number(floor)||mapWidth<=0||mapHeight<=0)return null;
+    /* MAP.CPP keeps a 37×37 read buffer around the player.  readMap() first
+       zeroes that complete buffer and then copies only the intersection with
+       the floor DAT, so an edge window retains its requested origin instead
+       of being clipped to the map bounds. */
+    const x1=Math.trunc(Number(centerX)||0)-20,y1=Math.trunc(Number(centerY)||0)-16,x2=x1+37,y2=y1+37;
+    const encodeLayer=layer=>{
+      const encoded=[];
+      for(let y=y1;y<y2;y++)for(let x=x1;x<x2;x++){
+        const index=x>=0&&y>=0&&x<mapWidth&&y<mapHeight?y*mapWidth+x:-1;
+        encoded.push(Protocol.encodeInt(index>=0?Number(layer?.[index])||0:0));
+      }
+      return encoded.join(",");
+    };
+    return [Number(floor),x1,y1,x2,y2,`${String(header||"")}|${encodeLayer(data.tile)}|${encodeLayer(data.parts)}|${encodeLayer(data.event)}`];
+  }
   const MAP_WINDOW_REQUEST_TIMEOUT_MS=2500;
   const MAP_WINDOW_REQUEST_MAX_ATTEMPTS=2;
   const MAP_WINDOW_REVISION_LIMIT=256;
+  const INITIAL_MAP_CHECKSUM_WAIT_MS=350;
   function mapWindowRequestKey(floor,x1,y1,x2,y2){return [floor,x1,y1,x2,y2].map(value=>Math.trunc(Number(value)||0)).join("|");}
   function rememberMapWindowRevision(key,revision){
     if(!revision)return;app.mapWindowRevisionByKey.delete(key);app.mapWindowRevisionByKey.set(key,revision);
@@ -12274,6 +12294,41 @@
     if(response[0]!==requestedFloor||response[1]<left||response[2]<top||response[3]>right||response[4]>bottom)return false;
     clearMapWindowRequest(request);rememberMapWindowRevision(request.key,request.revision);return true;
   }
+  function clearInitialMapChecksum(expected=null){
+    if(expected&&app.pendingInitialMapChecksum!==expected)return false;
+    window.clearTimeout(app.initialMapChecksumTimer);app.initialMapChecksumTimer=0;app.pendingInitialMapChecksum=null;return true;
+  }
+  function currentInitialMapChecksum(request){
+    return Boolean(request&&app.pendingInitialMapChecksum===request&&app.transport&&app.connectionToken===request.connectionToken&&app.phase==="world"&&Number(app.floor)===request.floor);
+  }
+  function fallbackInitialMapChecksum(request){
+    if(!currentInitialMapChecksum(request))return false;
+    clearInitialMapChecksum(request);
+    const [x,y]=request.position;
+    return requestMapWindow(request.floor,x-20,y-16,x+17,y+21,{revision:request.revision});
+  }
+  function finishInitialMapChecksum(request,data){
+    if(!currentInitialMapChecksum(request))return false;
+    const checksum=localMapChecksum(request.values,data);
+    if(!checksum?.matches)return fallbackInitialMapChecksum(request);
+    const [x,y]=request.position,windowValues=makeLocalMapWindowValues(data,request.floor,x,y,request.header);
+    if(!windowValues)return fallbackInitialMapChecksum(request);
+    clearInitialMapChecksum(request);
+    rememberMapWindowRevision(mapWindowRequestKey(request.floor,x-20,y-16,x+17,y+21),request.revision);
+    receiveMap(windowValues);return true;
+  }
+  function awaitInitialMapChecksum(values,floor,x,y,revision){
+    const key=`${revision}|${x}|${y}`,current=app.pendingInitialMapChecksum;
+    if(current?.key===key)return true;
+    clearInitialMapChecksum();
+    const request={key,floor:Number(floor),position:[Number(x),Number(y)],values:values.slice(),header:values[8]||"",revision,connectionToken:app.connectionToken};
+    app.pendingInitialMapChecksum=request;
+    app.initialMapChecksumTimer=window.setTimeout(()=>fallbackInitialMapChecksum(request),INITIAL_MAP_CHECKSUM_WAIT_MS);
+    let loading;
+    try{loading=requestAutoMapData(floor);}catch(_){fallbackInitialMapChecksum(request);return true;}
+    Promise.resolve(loading).then(data=>finishInitialMapChecksum(request,data)).catch(()=>fallbackInitialMapChecksum(request));
+    return true;
+  }
   function receiveMapChecksum(values) {
     const floor=Number(values[0])||0,previous=app.map,sameFloor=Boolean(previous&&Number(previous.floor)===floor),hasWindow=Boolean(previous&&Array.isArray(previous.tiles)&&previous.tiles.length);
     /* MC is also sent as a periodic checksum while walking.  A same-floor
@@ -12307,11 +12362,18 @@
        playable window exists, the CDN DAT is the browser's installed map:
        matching edge checksums during walking must keep the completed canvas
        untouched instead of replacing it with another full 37x37 response. */
-    const localChecksum=hasWindow?localMapChecksum(values):null;
+    const localChecksum=localMapChecksum(values);
     if(localChecksum?.matches){
       rememberMapWindowRevision(mapWindowRequestKey(app.floor,x-20,y-16,x+17,y+21),revision);
-      updateHUD();return;
+      if(hasWindow){updateHUD();return;}
+      const windowValues=makeLocalMapWindowValues(app.autoMapData,app.floor,x,y,values[8]||"");
+      if(windowValues){clearInitialMapChecksum();receiveMap(windowValues);return;}
     }
+    /* On first entry S:C and MC commonly arrive before the CDN DAT promise
+       settles.  Give that installed-map request one short head start, just
+       like the native disk read, then fall back to the server M rectangle.
+       Once a live window exists, never delay an actual checksum mismatch. */
+    if(!hasWindow&&!app.autoMapData){awaitInitialMapChecksum(values,app.floor,x,y,revision);updateHUD();return;}
     updateHUD();
     requestMapWindow(app.floor,x-20,y-16,x+17,y+21,{revision});
   }
@@ -12386,6 +12448,7 @@
   function receiveMap(values) {
     if(values.length<6)return;
     const floor=Number(values[0])||0,x1=Number(values[1])||0,y1=Number(values[2])||0,x2=Number(values[3])||0,y2=Number(values[4])||0;
+    if(Number(app.pendingInitialMapChecksum?.floor)===floor)clearInitialMapChecksum();
     const rawWidth=Math.max(1,x2-x1),rawHeight=Math.max(1,y2-y1);
     /* 2.5's field.cpp requests a 37×37 M window.  A truncated/misaligned
        packet must never be allowed to allocate an unbounded canvas or walk

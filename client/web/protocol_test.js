@@ -2731,26 +2731,54 @@ const checksumMap = {
   parts:Uint16Array.from([0,5000,0,2,12804,0]),
   event:Uint16Array.from([0xc003,0x4000,2,0,0xffff,1])
 };
-const mapChecksumHarness = new Function("app", `${script.slice(mapChecksumStart, mapRequestStart)};return {legacyMapLayerCRC,localMapChecksum};`)({autoMapData:checksumMap});
+const mapChecksumHarness = new Function("app", "Protocol", `${script.slice(mapChecksumStart, mapRequestStart)};return {legacyMapLayerCRC,localMapChecksum,makeLocalMapWindowValues};`)({autoMapData:checksumMap}, P);
 const checksumVector=[1006,0,0,3,2,55263,32800,49963];
 const checksumResult=mapChecksumHarness.localMapChecksum(checksumVector);
 if (!checksumResult?.matches || checksumResult.sums.join(",") !== "55263,32800,49963" ||
     mapChecksumHarness.localMapChecksum([...checksumVector.slice(0,5),55263,32800,49962])?.matches) {
   throw new Error(`2.5 DAT CRC vector mismatch: ${JSON.stringify(checksumResult)}`);
 }
+/* readMap() zero-pads an MC rectangle outside the DAT bounds before hashing.
+   A synthetic in-bounds layer with the same four logical cells must therefore
+   produce the identical CRC instead of forcing an unnecessary M fallback. */
+const edgeCRCMap={width:1,height:1},paddedCRCMap={width:2,height:2};
+const edgeCRC=mapChecksumHarness.legacyMapLayerCRC(edgeCRCMap,Uint16Array.from([9]),-1,-1,1,1);
+const paddedCRC=mapChecksumHarness.legacyMapLayerCRC(paddedCRCMap,Uint16Array.from([0,0,0,9]),0,0,2,2);
+if (edgeCRC===null || edgeCRC!==paddedCRC) throw new Error(`native edge zero-padding CRC mismatch: ${edgeCRC} != ${paddedCRC}`);
+const localWindowMap={
+  floor:77,width:2,height:2,
+  tile:Uint16Array.from([1,2,3,4]),parts:Uint16Array.from([5,6,7,8]),event:Uint16Array.from([9,10,11,12])
+};
+const localWindow=mapChecksumHarness.makeLocalMapWindowValues(localWindowMap,77,0,0,"edge\\z0");
+const localSections=String(localWindow?.[5]||"").split("|");
+const localTiles=String(localSections[1]||"").split(",").map(P.decodeInt);
+const localParts=String(localSections[2]||"").split(",").map(P.decodeInt);
+const localEvents=String(localSections[3]||"").split(",").map(P.decodeInt);
+const localIndex=(x,y)=>(y+16)*37+(x+20);
+if (!localWindow || localWindow.slice(0,5).join(",")!=="77,-20,-16,17,21" || localSections[0]!=="edge\\z0" ||
+    localTiles.length!==37*37 || localParts.length!==37*37 || localEvents.length!==37*37 ||
+    localTiles[0]!==0 || localTiles[localIndex(0,0)]!==1 || localTiles[localIndex(1,1)]!==4 ||
+    localParts[localIndex(1,0)]!==6 || localEvents[localIndex(0,1)]!==11) {
+  throw new Error("local DAT bootstrap must reproduce the native zero-padded 37x37 readMap window");
+}
 const sentMapWindows = [], mapTimers = new Map();let nextMapTimer = 1;
 const mapRequestApp = {
   transport:{},phase:"world",floor:1006,connectionToken:7,pendingMapWindowRequest:null,
-  mapWindowRequestTimer:0,mapWindowRevisionByKey:new Map()
+  mapWindowRequestTimer:0,mapWindowRevisionByKey:new Map(),pendingInitialMapChecksum:null,initialMapChecksumTimer:0
 };
-const mapRequestHarness = new Function("app", "window", "send", "reportError", `${script.slice(mapRequestStart, mapRequestEnd)};return {requestMapWindow,completeMapWindowRequest,clearMapWindowRequest};`)(
+const installedLocalWindows=[];
+const mapRequestHarness = new Function("app", "window", "send", "reportError", "localMapChecksum", "makeLocalMapWindowValues", "receiveMap", "requestAutoMapData", `${script.slice(mapRequestStart, mapRequestEnd)};return {requestMapWindow,completeMapWindowRequest,clearMapWindowRequest,clearInitialMapChecksum,fallbackInitialMapChecksum,finishInitialMapChecksum};`)(
   mapRequestApp,
   {
     setTimeout(callback, delay){const id=nextMapTimer++;mapTimers.set(id,{callback,delay});return id;},
     clearTimeout(id){mapTimers.delete(id);}
   },
   (name, values)=>{sentMapWindows.push([name,...values]);return Promise.resolve();},
-  error=>{throw error;}
+  error=>{throw error;},
+  (values,data)=>mapChecksumHarness.localMapChecksum(values,data),
+  (...args)=>mapChecksumHarness.makeLocalMapWindowValues(...args),
+  values=>{installedLocalWindows.push(values);},
+  ()=>Promise.resolve(null)
 );
 const initialMapRevision="1006|10|20|37|47|1|2|3";
 if (!mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:initialMapRevision}) ||
@@ -2766,10 +2794,44 @@ if (!mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:`${initialMap
   throw new Error("a changed MC checksum must be allowed to refresh the same M rectangle");
 }
 mapRequestHarness.clearMapWindowRequest();
+const localInstallRequest={
+  key:"local",floor:1006,position:[20,16],values:checksumVector.slice(),header:"local\\z0",
+  revision:"local-match",connectionToken:mapRequestApp.connectionToken
+};
+mapRequestApp.pendingInitialMapChecksum=localInstallRequest;
+mapRequestApp.initialMapChecksumTimer=nextMapTimer++;
+if (!mapRequestHarness.finishInitialMapChecksum(localInstallRequest,checksumMap) || installedLocalWindows.length!==1 ||
+    sentMapWindows.length!==2 || mapRequestApp.pendingInitialMapChecksum ||
+    installedLocalWindows[0].slice(0,5).join(",")!=="1006,0,0,37,37") {
+  throw new Error("a matching first MC must install a local 37x37 DAT window without sending M");
+}
+const mismatchRequest={...localInstallRequest,key:"mismatch",values:[...checksumVector.slice(0,7),checksumVector[7]^1],revision:"local-mismatch"};
+mapRequestApp.pendingInitialMapChecksum=mismatchRequest;
+mapRequestApp.initialMapChecksumTimer=nextMapTimer++;
+if (!mapRequestHarness.finishInitialMapChecksum(mismatchRequest,checksumMap) || sentMapWindows.length!==3 ||
+    mapRequestHarness.finishInitialMapChecksum(mismatchRequest,checksumMap) || sentMapWindows.length!==3) {
+  throw new Error("a mismatching first MC must fall back to exactly one M request");
+}
+mapRequestHarness.clearMapWindowRequest();
+const supersededRequest={...localInstallRequest,key:"old-promise",revision:"old-promise"};
+const authoritativeRequest={...localInstallRequest,key:"new-promise",revision:"new-promise"};
+mapRequestApp.pendingInitialMapChecksum=authoritativeRequest;
+mapRequestApp.initialMapChecksumTimer=nextMapTimer++;
+if (mapRequestHarness.finishInitialMapChecksum(supersededRequest,checksumMap) || installedLocalWindows.length!==1 ||
+    sentMapWindows.length!==3 || mapRequestApp.pendingInitialMapChecksum!==authoritativeRequest) {
+  throw new Error("a superseded DAT promise must not install or request an old map window");
+}
+mapRequestHarness.clearInitialMapChecksum(authoritativeRequest);
 const receiveMapChecksumSource=script.slice(mapRequestEnd,script.indexOf("  function parseLayer",mapRequestEnd));
-if (!receiveMapChecksumSource.includes("const localChecksum=hasWindow?localMapChecksum(values):null") ||
-    !receiveMapChecksumSource.includes("if(localChecksum?.matches)")) {
-  throw new Error("walking MC must use the installed DAT checksum before requesting M");
+if (!receiveMapChecksumSource.includes("const localChecksum=localMapChecksum(values)") ||
+    !receiveMapChecksumSource.includes("if(localChecksum?.matches)") ||
+    !receiveMapChecksumSource.includes("awaitInitialMapChecksum(values,app.floor,x,y,revision)")) {
+  throw new Error("initial and walking MC must use the installed DAT checksum before requesting M");
+}
+if (!script.includes("const INITIAL_MAP_CHECKSUM_WAIT_MS=350") ||
+    !script.includes("if(Number(app.pendingInitialMapChecksum?.floor)===floor)clearInitialMapChecksum()") ||
+    !script.includes("clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear()")) {
+  throw new Error("initial DAT bootstrap must have a bounded wait and reject stale world/map lifecycles");
 }
 if (!script.includes("if(cached&&(!sameFloor||!hasWindow))")) {
   throw new Error("same-floor MC checksum must keep the live map back-buffer");
