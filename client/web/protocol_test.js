@@ -563,11 +563,55 @@ for (const expected of [
   /#trade-window-art\s*\{[^}]*left:10px; top:0; width:620px; height:456px/,
   /#trade-confirm\s*\{[^}]*left:369px; background-image:url\('\/assets\/bitmaps\/bitmap_9211\.png'\)/,
   /#trade-cancel\s*\{[^}]*left:501px; background-image:url\('\/assets\/bitmaps\/bitmap_9170\.png'\)/,
+  /#trade-pet-picker \.trade-pet-stat\s*\{[^}]*left:167px; width:24px;[^}]*white-space:pre/,
+  /#trade-pet-picker \.trade-pet-max-hp\s*\{[^}]*top:178px/,
+  /renderTradePetPanel\(\$\("trade-pet-picker"\),tradeCurrentPet\(\)\?\.pet\|\|null,true\)/,
+  /trade\.petCursor=candidates\[position\]\.slot;trade\.petDirection=1;renderTrade\(\)/,
   /const column=\(index-5\)%5,row=Math\.floor\(\(index-5\)\/5\)/,
   /slot\.style\.left=`\$\{332\+column\*51\}px`;slot\.style\.top=`\$\{248\+row\*48\}px`/,
   /case "TD": handleTradeMessage\(values\[0\]\|\|""\);break;/,
 ]) {
   if (!expected.test(html)) throw new Error(`classic 2.5 trade layout/dispatch regression: ${expected}`);
+}
+const nativeTradeMenu = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/menu.cpp", "latin1");
+if (!/pActPet3 = MakeAnimDisp\(480, 230, pet\[tradePetIndex\]\.graNo, ANIM_DISP_PET\)/.test(nativeTradeMenu) ||
+    !/pAct->anim_ang = 1;[\s\S]{0,500}pAct->x = x;[\s\S]{0,80}pAct->y = y;/.test(nativeTradeMenu) ||
+    !/case ANIM_DISP_PET:[\s\S]{0,300}pAct->anim_ang\+\+;[\s\S]{0,180}pattern\(pAct, ANM_NOMAL_SPD, ANM_LOOP\);/.test(nativeTradeMenu)) {
+  throw new Error("compiled 2.5 trade pet ACTION contract drifted from menu.cpp");
+}
+const tradePetSpriteStart = script.indexOf("  function tradePetSprite");
+const tradePetSpriteEnd = script.indexOf("  function renderTradePetPanel", tradePetSpriteStart);
+if (tradePetSpriteStart < 0 || tradePetSpriteEnd <= tradePetSpriteStart) throw new Error("trade pet preview helper missing");
+const tradePreviewEvents = {}, tradePreviewObserved = {}, tradePreviewRafs = [];
+const tradePreviewAnimation = {direction:1,action:3,frame_ms:10,frames:[
+  {file:"bitmaps/trade-a.png",x:2,y:3,xoffset:-20,yoffset:-40},
+  {file:"bitmaps/trade-b.png",x:4,y:5,xoffset:-18,yoffset:-38},
+]};
+const tradePreviewContext = {
+  app:{trade:{active:true,petDirection:1}}, assetState:{spritesReady:true}, LEGACY_FIELD_ANIMATION_TICK_MS:1000/60,
+  spriteEntryForActor(actor){ tradePreviewObserved.actor={...actor}; return {sprite:{actions:[tradePreviewAnimation]}}; },
+  spriteAnimationForAction(actor,direction,action){ tradePreviewObserved.request=[direction,action]; return direction===1&&action===3?tradePreviewAnimation:null; },
+  loadSpriteManifest(){ throw new Error("full SPR table should already be ready"); },
+  document:{createElement(){ return {className:"",alt:"",tabIndex:-1,dataset:{},style:{},attributes:{},isConnected:true,setAttribute(name,value){this.attributes[name]=value;},addEventListener(name,handler){tradePreviewEvents[name]=handler;}}; }},
+  window:{requestAnimationFrame(callback){tradePreviewRafs.push(callback);}}, performance:{now(){return 1000;}},
+  $(id){ return id==="trade-screen"?{classList:{contains(){return false;}}}:null; },
+  playSoundEffect(number){ tradePreviewObserved.sound=number; }, renderTrade(){ tradePreviewObserved.rendered=(tradePreviewObserved.rendered||0)+1; },
+};
+vm.createContext(tradePreviewContext);
+vm.runInContext(script.slice(tradePetSpriteStart, tradePetSpriteEnd) + `\nthis.preview=tradePetSprite({graphic:100251},true);`, tradePreviewContext);
+const tradePreview = tradePreviewContext.preview;
+if (tradePreviewObserved.actor?.direction !== 1 || tradePreviewObserved.actor?.action !== 3 || tradePreview?.dataset?.nativeDirection !== "1" ||
+    tradePreview?.src !== "/assets/bitmaps/trade-a.png" || tradePreview?.style?.left !== "134px" || tradePreview?.style?.top !== "158px" ||
+    tradePreview?.attributes?.role !== "button" || tradePreviewRafs.length !== 1) {
+  throw new Error(`trade pActPet3 must begin on native direction 1 at (480,230): ${JSON.stringify({actor:tradePreviewObserved.actor,direction:tradePreview?.dataset?.nativeDirection,src:tradePreview?.src,left:tradePreview?.style?.left,top:tradePreview?.style?.top,raf:tradePreviewRafs.length})}`);
+}
+tradePreviewRafs.shift()(1200);
+if (tradePreview.src !== "/assets/bitmaps/trade-b.png" || tradePreview.style.left !== "138px" || tradePreview.style.top !== "162px") {
+  throw new Error("trade pActPet3 must loop every extracted STAND frame with native offsets");
+}
+tradePreviewEvents.click();
+if (tradePreviewContext.app.trade.petDirection !== 2 || tradePreviewObserved.sound !== 217 || tradePreviewObserved.rendered !== 1) {
+  throw new Error("clicking the native trade pet ACTION must rotate to the next direction");
 }
 const tradePairStart = script.indexOf("  function tradeConfirmationPair");
 const tradePairEnd = script.indexOf("  function confirmTrade", tradePairStart);

@@ -388,12 +388,21 @@
     .trade-pet-panel { position:absolute; overflow:hidden; pointer-events:none; }
     #trade-mine-pet { left:18px; top:35px; width:202px; height:186px; }
     #trade-peer-pet { left:18px; top:253px; width:202px; height:193px; }
-    #trade-pet-picker { left:328px; top:35px; width:202px; height:185px; }
+    #trade-pet-picker { left:328px; top:35px; width:202px; height:185px; overflow:visible; }
     .trade-pet-panel .trade-pet-name { position:absolute; left:12px; top:10px; width:176px; height:16px; overflow:hidden; color:#ffe45c; white-space:nowrap; }
     .trade-pet-panel .trade-pet-stat { position:absolute; left:145px; width:50px; height:15px; overflow:hidden; color:#fff; text-align:right; white-space:nowrap; }
     .trade-pet-panel .trade-pet-level { top:92px; } .trade-pet-panel .trade-pet-atk { top:120px; } .trade-pet-panel .trade-pet-def { top:148px; } .trade-pet-panel .trade-pet-quick { top:176px; }
-    #trade-pet-picker .trade-pet-level { top:91px; } #trade-pet-picker .trade-pet-atk { top:119px; } #trade-pet-picker .trade-pet-def { top:147px; } #trade-pet-picker .trade-pet-quick { top:175px; }
+    /* menu.cpp's compiled 2.5 branch stocks these five %3d fields at
+       window+(485,105/129/153/177/201).  The picker starts at (328,35), so
+       preserve those fixed-width coordinates instead of right-aligning a
+       browser field with different metrics. */
+    #trade-pet-picker .trade-pet-stat { left:167px; width:24px; text-align:left; white-space:pre; }
+    #trade-pet-picker .trade-pet-level { top:82px; } #trade-pet-picker .trade-pet-atk { top:106px; } #trade-pet-picker .trade-pet-def { top:130px; } #trade-pet-picker .trade-pet-quick { top:154px; } #trade-pet-picker .trade-pet-max-hp { top:178px; }
     .trade-pet-panel .trade-pet-sprite { position:absolute; left:54px; top:38px; max-width:92px; max-height:86px; transform:translate(-50%,-50%); image-rendering:pixelated; }
+    /* pActPet3 is a normal MakeAnimDisp ACTION, not a fitted thumbnail.
+       Its per-frame REALBIN offsets are applied from the native (480,230)
+       anchor by tradePetSprite(). */
+    #trade-pet-picker .trade-pet-sprite { max-width:none; max-height:none; transform:none; pointer-events:auto; outline:0; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important; }
     .trade-pet-panel .trade-pet-empty { position:absolute; left:12px; top:80px; width:176px; color:#b9b19e; text-align:center; }
     .trade-offer { width:82px; height:82px; overflow:hidden; }
     .trade-offer.mine { left:232px; } .trade-offer.peer { left:232px; pointer-events:none!important; }
@@ -5225,7 +5234,9 @@
   }
   function newTradeState(peerFd,peerName){
     const candidates=tradePetCandidates();
-    return {active:true,peerFd:decimal(peerFd,-1),peerName:unescapeCharacterOption(peerName||""),mineSlots:[null,null],peerSlots:[null,null],minePet:null,peerPet:null,selectedOffer:0,petCursor:candidates[0]?.slot??-1,mineLocked:false,peerLocked:false,mineFinal:false,peerFinal:false,sending:false,openedAt:Date.now()};
+    /* MakeAnimDisp() initializes pActPet3 with anim_ang=1.  This value lives
+       on the ACTION until a pet arrow destroys/recreates it. */
+    return {active:true,peerFd:decimal(peerFd,-1),peerName:unescapeCharacterOption(peerName||""),mineSlots:[null,null],peerSlots:[null,null],minePet:null,peerPet:null,selectedOffer:0,petCursor:candidates[0]?.slot??-1,petDirection:1,mineLocked:false,peerLocked:false,mineFinal:false,peerFinal:false,sending:false,openedAt:Date.now()};
   }
   function tradePetCandidates(){
     const riding=decimal(app.pc?.ridePet,-1),result=[];
@@ -5242,19 +5253,38 @@
     if(!trade?.active)return false;
     return decimal(tokens?.[1],-2)===decimal(trade.peerFd,-1)&&unescapeCharacterOption(tokens?.[2]||"")===trade.peerName;
   }
-  function tradePetSprite(pet){
-    const actor={graphic:pet?.graphic??pet?.graNo,direction:0,action:3},entry=spriteEntryForActor(actor);
-    const animation=entry?.sprite?.actions?.find(item=>Number(item.direction)===0&&Number(item.action)===3)||entry?.sprite?.actions?.find(item=>Number(item.action)===3)||entry?.sprite?.actions?.[0];
-    const frame=animation?.frames?.[0];
-    if(!frame?.file){if(!assetState.spritesReady)loadSpriteManifest().then(value=>{if(value&&app.trade?.active)renderTrade();});return null;}
-    const image=document.createElement("img");image.className="trade-pet-sprite";image.alt="";image.src=`/assets/${frame.file}`;return image;
+  function tradePetSprite(pet,nativePicker=false){
+    const direction=nativePicker?((Number(app.trade?.petDirection??1)%8)+8)%8:0,actor={graphic:pet?.graphic??pet?.graNo,direction,action:3},entry=spriteEntryForActor(actor);
+    const nativeAnimation=spriteAnimationForAction(actor,direction,3),animation=nativeAnimation||entry?.sprite?.actions?.[0],frames=Array.isArray(animation?.frames)?animation.frames:[];
+    /* The boot SPR table intentionally contains only direction 0.  Promote
+       it to the complete table before treating MakeAnimDisp's direction 1
+       as absent. */
+    if(nativePicker&&!nativeAnimation&&!assetState.spritesReady)loadSpriteManifest().then(value=>{if(value&&app.trade?.active)renderTrade();});
+    const first=frames[0];
+    if(!first?.file){if(!assetState.spritesReady)loadSpriteManifest().then(value=>{if(value&&app.trade?.active)renderTrade();});return null;}
+    const image=document.createElement("img");image.className="trade-pet-sprite";image.alt="";
+    if(!nativePicker){image.src=`/assets/${first.file}`;return image;}
+    image.tabIndex=0;image.setAttribute("role","button");image.setAttribute("aria-label","旋转交易宠物预览");image.dataset.nativeDirection=String(direction);
+    /* pActPet3 is anchored at screen (480,230); #trade-pet-picker begins at
+       (328,35), leaving a local base of (152,195). */
+    const paint=frame=>{if(!frame?.file)return;image.src=`/assets/${frame.file}`;image.style.left=`${152+(Number(frame.x)||0)+(Number(frame.xoffset)||0)}px`;image.style.top=`${195+(Number(frame.y)||0)+(Number(frame.yoffset)||0)}px`;};
+    paint(first);
+    if(frames.length>1&&typeof window.requestAnimationFrame==="function"){
+      const started=performance.now(),frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_FIELD_ANIMATION_TICK_MS;
+      const animate=now=>{const screen=$("trade-screen");if(!image.isConnected||!screen||screen.classList.contains("hidden")||!app.trade?.active)return;paint(frames[Math.floor(Math.max(0,now-started)/frameDuration)%frames.length]);window.requestAnimationFrame(animate);};
+      window.requestAnimationFrame(animate);
+    }
+    const rotate=()=>{if(!app.trade?.active)return;app.trade.petDirection=(direction+1)%8;playSoundEffect(217);renderTrade();};
+    image.addEventListener("click",rotate);image.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();rotate();});
+    return image;
   }
-  function renderTradePetPanel(node,pet){
+  function renderTradePetPanel(node,pet,nativePicker=false){
     if(!node)return;node.replaceChildren();
     if(!pet){const empty=document.createElement("span");empty.className="trade-pet-empty";empty.textContent="没有放置宠物";node.append(empty);return;}
     const name=document.createElement("span");name.className="trade-pet-name";name.textContent=petDisplayName(pet)||"宠物";node.append(name);
-    const sprite=tradePetSprite(pet);if(sprite)node.append(sprite);
-    for(const [key,value] of [["level",pet.level],["atk",pet.atk],["def",pet.def],["quick",pet.quick]]){const stat=document.createElement("span");stat.className=`trade-pet-stat trade-pet-${key}`;stat.textContent=textOr(value,"-");node.append(stat);}
+    const sprite=tradePetSprite(pet,nativePicker);if(sprite)node.append(sprite);
+    const fields=[["level",pet.level],["atk",pet.atk],["def",pet.def],["quick",pet.quick]];if(nativePicker)fields.push(["max-hp",pet.maxHp]);
+    for(const [key,value] of fields){const stat=document.createElement("span");stat.className=`trade-pet-stat trade-pet-${key}`;stat.textContent=nativePicker?String(textOr(value,"-")).padStart(3," "):textOr(value,"-");node.append(stat);}
   }
   function tradeOfferIcon(slot){
     if(!slot)return null;
@@ -5373,7 +5403,7 @@
       renderTradeOffer(mine,trade.mineSlots[index],index===decimal(trade.selectedOffer,0),trade.mineLocked);renderTradeOffer(peer,trade.peerSlots[index],false,trade.peerLocked);
       if(mine)mine.disabled=Boolean(trade.mineLocked||trade.sending);
     }
-    renderTradePetPanel($("trade-mine-pet"),trade.minePet);renderTradePetPanel($("trade-peer-pet"),trade.peerPet);renderTradePetPanel($("trade-pet-picker"),tradeCurrentPet()?.pet||null);renderTradeInventory(trade);
+    renderTradePetPanel($("trade-mine-pet"),trade.minePet);renderTradePetPanel($("trade-peer-pet"),trade.peerPet);renderTradePetPanel($("trade-pet-picker"),tradeCurrentPet()?.pet||null,true);renderTradeInventory(trade);
     const maximum=Math.max(0,decimal(app.pc?.gold,0)),gold=$("trade-gold-amount");$("trade-gold-owned").textContent=String(maximum);
     if(gold){gold.max=String(maximum);gold.disabled=Boolean(trade.mineLocked||trade.sending);if(document.activeElement!==gold){const value=Math.max(0,Math.min(maximum,decimal(gold.value,0)));gold.value=String(value);}}
     const petAvailable=Boolean(tradeCurrentPet());for(const id of ["trade-pet-prev","trade-pet-next","trade-pet-place"])if($(id))$(id).disabled=Boolean(trade.mineLocked||trade.sending||!petAvailable);
@@ -5407,7 +5437,7 @@
     send("TD",[`T|${trade.peerFd}|${trade.peerName}|G|${slotIndex+1}|${amount}`]).catch(error=>{if(app.trade===trade){trade.mineSlots[slotIndex]=previous;reportError(error);}}).finally(()=>{if(app.trade===trade){trade.sending=false;renderTrade();}});
   }
   function tradeCyclePet(delta){
-    const trade=app.trade,candidates=tradePetCandidates();if(!trade?.active||trade.mineLocked||!candidates.length)return;let position=candidates.findIndex(entry=>entry.slot===decimal(trade.petCursor,-1));if(position<0)position=0;position=(position+(delta<0?-1:1)+candidates.length)%candidates.length;trade.petCursor=candidates[position].slot;renderTrade();playSoundEffect(217);
+    const trade=app.trade,candidates=tradePetCandidates();if(!trade?.active||trade.mineLocked||!candidates.length)return;let position=candidates.findIndex(entry=>entry.slot===decimal(trade.petCursor,-1));if(position<0)position=0;position=(position+(delta<0?-1:1)+candidates.length)%candidates.length;trade.petCursor=candidates[position].slot;trade.petDirection=1;renderTrade();playSoundEffect(217);
   }
   function tradeOfferPet(){
     const trade=app.trade,current=tradeCurrentPet();if(!trade?.active||trade.mineLocked||trade.sending||!current)return;const previous=trade.minePet;trade.minePet={...current.pet,slot:current.slot,index:current.slot};trade.sending=true;renderTrade();playSoundEffect(212);
