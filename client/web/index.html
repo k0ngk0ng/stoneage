@@ -4214,23 +4214,19 @@
     [245,195,150],[225,160,95],[195,125,70],[155,85,30],[70,65,55],[40,35,30],[255,251,240],[160,160,164],
     [128,128,128],[255,0,0],[0,255,0],[255,255,0],[0,0,255],[255,0,255],[0,255,255],[255,255,255]
   ]);
-  /* Bump this whenever the extracted sa_2903 asset pack changes.  The
-     manifest itself is intentionally force-cached for fast map entry, so a
-     stable revision query is what makes a local browser pick up newly
-     extracted SPR direction tables instead of retaining an older MVP pack. */
-  /* The browser keeps the manifest and decoded PNGs in the HTTP cache.  The
-     battle countdown was added to the extracted pack after web-port3, so use
-     a new revision whenever those logical CG records change; otherwise an
-     old installed tab can keep serving a manifest without 25900..25909 and
-     the timer appears as an empty space even though the code is present. */
-  const ASSET_MANIFEST_URL="/assets/manifest.json?v=20260825-core-sprites";
-  const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json?v=20260828-character-create";
+  /* Manifest/index URLs stay stable.  The server and Service Worker
+     revalidate JSON on every load; the small _client-version.json marker
+     selects the immutable Cache Storage namespace.  Keeping revisions out of
+     CDN URLs means one permanent object path can be served by OSS/R2/CDN
+     without accumulating date/tag variants. */
+  const ASSET_MANIFEST_URL="/assets/manifest.json";
+  const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json";
   /* The complete SPR table is ~42 MB.  FIELD.CPP has the player's 13 rows
      resident before it enables the Action window, so keep the common stock
      player graphics in a compact first-response pack as well.  The complete
      table is still fetched in the background for NPCs and battles. */
-  const FIELD_SPRITE_MANIFEST_URL="/assets/field-sprites.json?v=20260829-field-actions-2";
-  const SPRITE_MANIFEST_URL="/assets/sprites.json?v=20260825-core-sprites";
+  const FIELD_SPRITE_MANIFEST_URL="/assets/field-sprites.json";
+  const SPRITE_MANIFEST_URL="/assets/sprites.json";
   function mapCacheKey(file){return `${MAP_TILE_CACHE_PREFIX}${String(file||"")}`;}
   function mapDataCacheKey(map){return `${MAP_DATA_CACHE_PREFIX}${Number(map?.floor)||0}.${Number(map?.x1)||0}.${Number(map?.y1)||0}.${Number(map?.width)||0}.${Number(map?.height)||0}`;}
   function rememberMapData(map){
