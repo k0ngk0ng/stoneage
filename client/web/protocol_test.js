@@ -721,6 +721,17 @@ if (!fieldActionHandlerSource.includes("setLocalActorAction(actor,actionNo)") ||
     !fieldActionHandlerSource.includes("scheduleWorldAnimation()")) {
   throw new Error("field Action click must preview and send the selected native action number");
 }
+/* The executable has no transparent D-pad over the field.  Keyboard arrows
+   use the document listener and pointer/touch walking begins on the map
+   surface; a late dynamic-style override must not make the four semantic
+   fallback buttons steal central ground presses. */
+const advancedStyleStart=script.indexOf('  const advancedStyle=document.createElement("style")');
+const advancedStyleEnd=script.indexOf("  document.head.appendChild(advancedStyle)",advancedStyleStart);
+const advancedStyleSource=script.slice(advancedStyleStart,advancedStyleEnd);
+if(!/#world-actions \[data-dir\]\{pointer-events:none\}/.test(advancedStyleSource)||
+   /#world-actions \[data-dir\]\{[^}]*pointer-events:auto/.test(advancedStyleSource)){
+  throw new Error("invisible field D-pad must remain outside pointer hit testing");
+}
 /* FIELD.CPP::actionShortCutKeyProc() exposes the same 13 actions through
    Ctrl+keys.  Keep the exact mapping in the web keyboard boundary and route
    it through the DOM row so the local animation/AC path stays authoritative. */
@@ -2065,12 +2076,15 @@ for (const expected of [
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
 }
 for (const expected of [
-  /const specs=\{menu:\{x:4,y:4,w:192,h:336,title:9145\}/,
+  /const specs=\{menu:\{x:4,y:4,w:192,h:384,title:9145\}/,
   /chat:\{x:4,y:4,w:256,h:384,title:9148\}/,
   /bgm:\{x:4,y:4,w:256,h:384,title:9149\}/,
   /se:\{x:4,y:4,w:256,h:288,title:9150\}/,
 ]) {
   if (!expected.test(script)) throw new Error(`2.5 system window geometry regression: ${expected}`);
+}
+if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:384px/.test(html)){
+  throw new Error("extended 2.5 system menu must keep the inserted in-place row above the lower frame edge");
 }
 if (systemMenuSource.includes("sendLegacySystemMenu") || systemMenuSource.includes("systemPage=\"auto\"")) {
   throw new Error("system menu still contains an unsupported server-extension path");

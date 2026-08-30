@@ -1782,12 +1782,12 @@
     #world-tools button:nth-child(7):hover,#world-tools button:nth-child(7):focus-visible,#world-tools button:nth-child(7):active,#world-tools button:nth-child(7).is-active{background-image:url('/assets/bitmaps/bitmap_9262.png')}
     #world-tools button:hover,#world-tools button:focus{filter:none;outline:0}
     #world-tools button:nth-child(n+8){display:none}
-    /* The four directional controls are an invisible accessibility/touch hit
-       layer over the native field back-buffer.  The base rule intentionally
-       disables the parent hit surface so map clicks keep working, but the
-       buttons themselves must opt back in; otherwise Chromium's hit test
-       lands on #world and every mobile/keyboard direction appears broken. */
-    #world-actions [data-dir]{pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
+    /* The original field has no invisible D-pad over its central map tiles.
+       Keyboard movement is handled by the document listener and touch/mouse
+       routing belongs to the field surface, so these semantic fallbacks must
+       remain outside pointer hit testing.  Re-enabling them here used to
+       steal an ordinary ground press before beginHeldWorldPointer(). */
+    #world-actions [data-dir]{pointer-events:none}
     #battle-world{position:absolute;inset:0}
     @media(min-width:700px) and (min-height:800px){#field-ui,#world-actions,#world-tools,#chat-log,#world-actors-layer,#battle-actors-layer,#battle-target-overlay,#battle-field-ui{transform:scale(1.5);transform-origin:0 0}.advanced-screen{transform:translate(-50%,-50%) scale(1.5);transform-origin:center}}
 
@@ -1924,7 +1924,7 @@
     #social-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:440px;--content-x:12px;--content-y:42px;--content-w:248px;--content-h:380px;--toolbar-x:16px;--toolbar-y:418px}
     #album-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:448px;--content-x:14px;--content-y:38px;--content-w:244px;--content-h:390px;--toolbar-x:80px;--toolbar-y:438px}
     #titles-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:332px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:260px;--toolbar-x:96px;--toolbar-y:310px}
-    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:260px;--toolbar-x:56px;--toolbar-y:348px}
+    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:384px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:308px;--toolbar-x:56px;--toolbar-y:396px}
     #actions-screen,#events-screen,#journal-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:112px;--content-y:144px;--content-w:416px;--content-h:150px;--toolbar-x:184px;--toolbar-y:338px}
     #server-window-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:140px;--content-y:136px;--content-w:360px;--content-h:160px;--toolbar-x:212px;--toolbar-y:248px}
     #system-screen .toolbar-row{display:none}
@@ -2320,7 +2320,7 @@
        7x8 geometry belonged to the optional 8.5 _NEW_SYSTEM_MENU branch and
        made the browser system panel visibly oversized and detached from the
        field UI.  Keep each page at the exact native origin/size. */
-    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--system-list-x:32px;--system-list-y:60px}
+    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:384px;--system-list-x:32px;--system-list-y:60px}
     #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:144px;--system-list-x:24px;--system-list-y:60px}
     #system-screen.system-page-chat{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:60px}
     #system-screen.system-page-bgm{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:68px}
@@ -5970,7 +5970,7 @@
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
     ["system-page-menu","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:336,title:9145},"logout-record":{x:4,y:4,w:192,h:144,title:9146},"logout-place":{x:4,y:4,w:192,h:144,title:9146},chat:{x:4,y:4,w:256,h:384,title:9148},bgm:{x:4,y:4,w:256,h:384,title:9149},se:{x:4,y:4,w:256,h:288,title:9150},registry:{x:4,y:4,w:272,h:430,title:0}};
+    const specs={menu:{x:4,y:4,w:192,h:384,title:9145},"logout-record":{x:4,y:4,w:192,h:144,title:9146},"logout-place":{x:4,y:4,w:192,h:144,title:9146},chat:{x:4,y:4,w:256,h:384,title:9148},bgm:{x:4,y:4,w:256,h:384,title:9149},se:{x:4,y:4,w:256,h:288,title:9150},registry:{x:4,y:4,w:272,h:430,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
