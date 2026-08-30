@@ -1356,7 +1356,16 @@ for (const expected of [
    eight pixels wide; the status %4d fields likewise end after 32px. */
 if (!/for\(const \[field,value\] of \[\["level",pet\.level\],\["hp",pet\.hp\],\["max-hp",pet\.maxHp\]\]\)/.test(renderPetsSource) ||
     !/#status-screen \.status-readout \.hp\{left:72px;top:137px;width:32px;text-align:right/.test(html) ||
-    !/#status-screen \.status-readout \.max-hp\{left:122px;top:137px;width:32px;text-align:right/.test(html)) {
+    !/#status-screen \.status-readout \.max-hp\{left:122px;top:137px;width:32px;text-align:right/.test(html) ||
+    !/#status-screen \.status-readout \.level\{left:74px;top:74px;width:24px;text-align:right/.test(html) ||
+    !/#status-screen \.status-readout \.exp\{left:81px;top:95px;width:56px;text-align:right/.test(html) ||
+    !/#status-screen \.status-readout \.mp\{left:74px;top:158px;width:24px;text-align:right/.test(html) ||
+    !/#status-screen \.status-readout \.base-vital\{left:85px;top:292px;width:24px;text-align:right/.test(html) ||
+    !/#pets-screen \.pet-detail-level\{left:74px;top:86px;width:24px;text-align:right/.test(html) ||
+    !/#pets-screen \.pet-detail-exp\{left:81px;top:110px;width:56px;text-align:right/.test(html) ||
+    !/#pets-screen \.pet-detail-hp\{left:70px;top:158px;width:32px;text-align:right/.test(html) ||
+    !/#pets-screen \.pet-detail-max-hp\{left:117px;top:158px;width:32px;text-align:right/.test(html) ||
+    !/#pets-screen \.pet-detail-atk\{left:74px;top:182px;width:24px;text-align:right/.test(html)) {
   throw new Error("pet/status current and maximum HP fields must keep native fixed columns");
 }
 /* MENU.CPP::statusWndNo==0 submits four independent SKUP hit sprites only

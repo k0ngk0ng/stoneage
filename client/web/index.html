@@ -2035,26 +2035,29 @@
     #status-screen .status-readout .name{left:18px;top:32px;width:125px}
     #status-screen .status-readout .dp{left:194px;top:32px;width:64px}
     #status-screen .status-readout .free-name{left:26px;top:53px;width:150px}
-    #status-screen .status-readout .level{left:74px;top:74px}
-    #status-screen .status-readout .exp{left:81px;top:95px}
-    #status-screen .status-readout .next{left:81px;top:116px}
+    /* StockFontBuffer receives the start of the complete printf field, not
+       the first visible digit.  Preserve the native %3d/%7d cell widths so
+       short values keep their leading blank cells instead of drifting left. */
+    #status-screen .status-readout .level{left:74px;top:74px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .exp{left:81px;top:95px;width:56px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .next{left:81px;top:116px;width:56px;text-align:right;font-variant-numeric:tabular-nums}
     /* pc.hp/maxHp are two independent "%4d" StockFontBuffer fields at
        x=72 and x=122, so each field is exactly four 8px cells wide. */
     #status-screen .status-readout .hp{left:72px;top:137px;width:32px;text-align:right;font-variant-numeric:tabular-nums}
     #status-screen .status-readout .max-hp{left:122px;top:137px;width:32px;text-align:right;font-variant-numeric:tabular-nums}
-    #status-screen .status-readout .mp{left:74px;top:158px}
-    #status-screen .status-readout .atk{left:74px;top:179px}
-    #status-screen .status-readout .def{left:74px;top:200px}
-    #status-screen .status-readout .quick{left:74px;top:221px}
-    #status-screen .status-readout .charm{left:74px;top:242px}
+    #status-screen .status-readout .mp{left:74px;top:158px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .atk{left:74px;top:179px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .def{left:74px;top:200px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .quick{left:74px;top:221px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .charm{left:74px;top:242px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
     #status-screen .status-readout .earth{left:191px;top:137px}
     #status-screen .status-readout .water{left:191px;top:158px}
     #status-screen .status-readout .fire{left:191px;top:179px}
     #status-screen .status-readout .wind{left:191px;top:200px}
-    #status-screen .status-readout .base-vital{left:85px;top:292px}
-    #status-screen .status-readout .base-str{left:205px;top:292px}
-    #status-screen .status-readout .base-tgh{left:85px;top:312px}
-    #status-screen .status-readout .base-dex{left:205px;top:312px}
+    #status-screen .status-readout .base-vital{left:85px;top:292px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .base-str{left:205px;top:292px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .base-tgh{left:85px;top:312px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
+    #status-screen .status-readout .base-dex{left:205px;top:312px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
     #party-screen #party-request{width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9199.png') center/100% 100% no-repeat;box-shadow:none}
     #inventory-screen #inventory-pickup{width:52px;height:17px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9181.png') center/100% 100% no-repeat;box-shadow:none}
     #inventory-screen #inventory-pickup:hover,#inventory-screen #inventory-pickup:focus{background-image:url('/assets/bitmaps/bitmap_9182.png')}
@@ -2252,9 +2255,11 @@
     #pets-screen .pet-detail{position:absolute;inset:0;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
     #pets-screen .pet-detail span{position:absolute;white-space:pre;pointer-events:none}
     #pets-screen .pet-detail-name{left:17px;top:39px;width:128px;text-align:center;overflow:hidden}
-    #pets-screen .pet-detail-level{left:74px;top:86px}#pets-screen .pet-detail-exp{left:81px;top:110px}#pets-screen .pet-detail-next{left:81px;top:134px}
-    #pets-screen .pet-detail-hp{left:70px;top:158px}#pets-screen .pet-detail-max-hp{left:117px;top:158px}
-    #pets-screen .pet-detail-atk{left:74px;top:182px}#pets-screen .pet-detail-def{left:74px;top:206px}#pets-screen .pet-detail-quick{left:74px;top:230px}#pets-screen .pet-detail-ai{left:74px;top:254px}
+    /* Pet detail uses the same fixed 8px printf cells as the player status
+       window: level/stats are %3d, HP is %4d, and EXP/NEXT are %7d. */
+    #pets-screen .pet-detail-level{left:74px;top:86px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-exp{left:81px;top:110px;width:56px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-next{left:81px;top:134px;width:56px;text-align:right;font-variant-numeric:tabular-nums}
+    #pets-screen .pet-detail-hp{left:70px;top:158px;width:32px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-max-hp{left:117px;top:158px;width:32px;text-align:right;font-variant-numeric:tabular-nums}
+    #pets-screen .pet-detail-atk{left:74px;top:182px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-def{left:74px;top:206px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-quick{left:74px;top:230px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-ai{left:74px;top:254px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
     #pets-screen .pet-detail-attr{position:absolute;left:183px;height:10px;max-width:80px;box-shadow:1px 1px #ddd8,2px 2px #2228;pointer-events:none}
     #pets-screen .pet-detail-attr.earth{top:187px;background:#3caa58}#pets-screen .pet-detail-attr.water{top:211px;background:#41a8ae}#pets-screen .pet-detail-attr.fire{top:235px;background:#c74736}#pets-screen .pet-detail-attr.wind{top:259px;background:#c2a72f}
     #pets-screen .pet-detail-sprite{position:absolute;image-rendering:pixelated;pointer-events:none}
