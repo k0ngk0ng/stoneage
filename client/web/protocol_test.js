@@ -121,6 +121,17 @@ for (const expected of [
     throw new Error(`asset manifest must revalidate across deployments: ${expected}`);
   }
 }
+/* Published indexes use one stable object key.  Cache invalidation comes from
+   _client-version.json and the worker namespace; putting dated/tagged query
+   strings on each CDN URL creates an unbounded set of cache entries. */
+for (const expected of [
+  'const ASSET_MANIFEST_URL="/assets/manifest.json"',
+  'const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json"',
+  'const FIELD_SPRITE_MANIFEST_URL="/assets/field-sprites.json"',
+  'const SPRITE_MANIFEST_URL="/assets/sprites.json"',
+]) {
+  if (!script.includes(expected)) throw new Error(`asset index URL drifted from stable path: ${expected}`);
+}
 /* Most UI styles live inside the script's legacyStyle template literal.
    A stray backtick in a CSS comment can therefore leave a perfectly
    rendered static login page while preventing the complete client IIFE from
