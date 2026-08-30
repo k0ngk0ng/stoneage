@@ -112,6 +112,44 @@ for (let battle = 0; battle < 220; battle++) {
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
 const serviceWorker = fs.readFileSync(__dirname + "/sw.js", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+/* The 8.5 source tree is also the switch-compatible reference for the
+   deployed 2.5 mode.  Its regional map cases 47..53 are unconditional;
+   only the later 54/55 recordings are protected by _NEWMUSICFILE6_0. */
+const nativeMusicSource = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/t_music.cpp", "latin1");
+const nativeMapMusicStart = nativeMusicSource.indexOf("int play_map_bgm(int tone)");
+const nativeMapMusicEnd = nativeMusicSource.indexOf("int play_environment(", nativeMapMusicStart);
+const nativeMapMusicSource = nativeMusicSource.slice(nativeMapMusicStart, nativeMapMusicEnd);
+const nativeMapBgmPairs = [[40,4],[41,3],[42,7],[43,8],[44,9],[45,10],[46,11],[47,15],[48,16],[49,21],[50,17],[51,18],[52,19],[53,20]];
+if (nativeMapMusicStart < 0 || nativeMapMusicEnd <= nativeMapMusicStart) {
+  throw new Error("switch-compatible play_map_bgm source boundary missing");
+}
+for (const [tone, bgm] of nativeMapBgmPairs) {
+  if (!new RegExp(`case\\s+${tone}\\s*:[\\s\\S]{0,100}map_bgm_no\\s*=\\s*${bgm}\\s*;`).test(nativeMapMusicSource)) {
+    throw new Error(`native map BGM mapping drifted: ${tone} -> ${bgm}`);
+  }
+}
+const guardedRegionalMusic = nativeMapMusicSource.lastIndexOf("#ifdef _NEWMUSICFILE6_0");
+if (guardedRegionalMusic < 0 || nativeMapMusicSource.indexOf("case 53:") >= guardedRegionalMusic ||
+    !/#ifdef\s+_NEWMUSICFILE6_0[\s\S]{0,220}case\s+54:[\s\S]{0,160}case\s+55:/.test(nativeMapMusicSource.slice(guardedRegionalMusic))) {
+  throw new Error("map BGM 54/55 must remain behind the 6.0 music switch");
+}
+function nativeMapContainsTone(filename, tone) {
+  const data = fs.readFileSync(path.join(__dirname, "../../runtime/legacy-client/map", filename));
+  if (data.length < 8) return false;
+  const width = data.readInt32LE(0), height = data.readInt32LE(4), cells = width * height;
+  if (width <= 0 || height <= 0 || cells <= 0 || 8 + cells * 4 > data.length) return false;
+  for (let layer = 0; layer < 2; layer++) {
+    for (let cell = 0, offset = 8 + layer * cells * 2; cell < cells; cell++, offset += 2) {
+      if (data.readUInt16LE(offset) === tone) return true;
+    }
+  }
+  return false;
+}
+for (const [filename, tone] of [["700.DAT",47],["7000.DAT",48],["7002.DAT",49],["7100.DAT",50],["7200.DAT",51],["7300.DAT",52],["7400.DAT",53]]) {
+  if (!nativeMapContainsTone(filename, tone)) {
+    throw new Error(`deployed 2.5 map fixture lost regional BGM marker ${tone}: ${filename}`);
+  }
+}
 if (!/<link rel="icon" href="data:,">/.test(html)) {
   throw new Error("page must suppress Chromium's synthetic /favicon.ico 404");
 }
@@ -985,9 +1023,9 @@ for (const expected of [
   /#world-tools button\s*\{[^}]*pointer-events:auto/,
   /document\.addEventListener\("pointerdown",handleWorldPointerDown,true\)/,
   /document\.addEventListener\("pointercancel",event=>\{if\(app\.phase==="world"\)endHeldWorldPointer\(event,false\);\},true\)/,
-  /* The preserved 2.5 T_MUSIC.CPP switch maps only 40..46; 47..59 are
-     candidates while drawing but play_map_bgm() leaves the current track. */
-  /const MAP_BGM_NO=Object\.freeze\(\{40:4,41:3,42:7,43:8,44:9,45:10,46:11\}\);/,
+  /* play_map_bgm() keeps regional markers 47..53 outside the 6.0 music
+     switch.  The deployed 2.5 map set uses them, while 54/55 remain gated. */
+  /const MAP_BGM_NO=Object\.freeze\(\{\s*40:4,41:3,42:7,43:8,44:9,45:10,46:11,\s*47:15,48:16,49:21,50:17,51:18,52:19,53:20\s*\}\);/,
   /* webdriver sessions stay quiet unless a deliberate BGM audit opts in;
      this is required to test the real HTMLAudio lifecycle in agent-browser. */
   /if\(explicit==="0"\)return false;[\s\S]{0,180}Boolean\(navigator\.webdriver\)\|\|explicit==="1"/,

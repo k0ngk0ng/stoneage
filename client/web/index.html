@@ -1554,12 +1554,12 @@
   /* ----------------------------------------------------------------------
      Original 2.5 music table
 
-     t_music.cpp maps map marker tones 40..46 to these BGM slots.  The
+     t_music.cpp maps map marker tones 40..53 to these BGM slots.  The
      preserved sa_2903 data contains only the original 11 WAV files.  Slots
-     whose source table points at an optional file therefore reuse the nearest
-     shipped 2.5 recording; no 6.0/8.5 map marker is accepted here.  Audio is
-     unlocked by the first user gesture, then follows the same transitions as
-     the Windows client (title → map → battle → map).
+     whose source table points at a later regional recording therefore reuse
+     the nearest shipped 2.5 recording.  Audio is unlocked by the first user
+     gesture, then follows the same transitions as the Windows client (title
+     → map → battle → map).
   ---------------------------------------------------------------------- */
   const BGM_FILES=Object.freeze({
     0:"sabgm_s0.wav",1:"sabgm_s1.wav",2:"sabgm_s1.wav",3:"sabgm_t1.wav",4:"sabgm_t0.wav",
@@ -1573,13 +1573,15 @@
     15:"sabgm_f1.wav",16:"sabgm_t1.wav",17:"sabgm_t0.wav",18:"sabgm_t1.wav",19:"sabgm_t0.wav",
     20:"sabgm_t1.wav",21:"sabgm_t0.wav"
   });
-  /* The preserved 2.5 T_MUSIC.CPP switch handles only 40..46.  It still
-     marks 47..59 as a map-BGM candidate while drawing, but play_map_bgm()
-     deliberately leaves map_bgm_no unchanged for those later markers.  Do
-     not import the 8.5 region-track table here: doing so changed indoor
-     rooms to unrelated tracks and was one source of the repeated victory
-     music reported during map changes. */
-  const MAP_BGM_NO=Object.freeze({40:4,41:3,42:7,43:8,44:9,45:10,46:11});
+  /* The switch-compatible client used by this deployment keeps 47..53 in
+     play_map_bgm() outside _NEWMUSICFILE6_0.  The stock 2.5 server map set
+     also contains those markers, so ignoring them resets whole regions to
+     the default track after a floor change.  Only 54/55 are guarded by the
+     6.0 music switch and remain intentionally unsupported here. */
+  const MAP_BGM_NO=Object.freeze({
+    40:4,41:3,42:7,43:8,44:9,45:10,46:11,
+    47:15,48:16,49:21,50:17,51:18,52:19,53:20
+  });
   const soundState={unlocked:false,bgm:null,bgmNo:-1,pendingBgm:null,pendingSE:[],activeSE:new Set(),context:null,seLast:new Map()};
   function audioURL(kind,file){return `/audio/${kind}/${encodeURIComponent(String(file||""))}`;}
   function clampAudio(value){return Math.max(0,Math.min(1,Number(value)||0));}
@@ -1734,7 +1736,7 @@
     if(!map)return;
     /* MAP.CPP resets draw_map_bgm_flg for each M window, walks cells in
        the same diagonal render order, checks the tile and then the part at
-       that cell, and leaves map_bgm_no at the last recognized 40..46 marker.
+       that cell, and leaves map_bgm_no at the last recognized 40..53 marker.
        A viewport often contains no marker while the player walks; the native
        client leaves the previous map track playing in that case instead of
        restarting the default song on every M refresh. */
