@@ -15553,7 +15553,7 @@
     state.motions=[];state.projectiles=[];state.effects=[];app.ignoreBattlePacketsUntil=0;
     restoreMapMusic();show(worldScreen);setWorldState("战斗结束","good");
   });
-  ["inventory-close","pets-close","status-close","party-close","map-close","social-close","titles-close","album-close","system-close","protocol-close","events-close","journal-close","help-exit"].forEach(id=>$(id)?.addEventListener("click",()=>show(worldScreen)));
+  ["inventory-close","pets-close","status-close","party-close","map-close","social-close","titles-close","album-close","protocol-close","events-close","journal-close","help-exit"].forEach(id=>$(id)?.addEventListener("click",()=>show(worldScreen)));
   $("help-prev")?.addEventListener("click",()=>{if(Number(app.helpPage)>0){app.helpPage--;renderHelp();}});
   $("help-next")?.addEventListener("click",()=>{const max=Math.max(0,Math.ceil((app.taskLog?.length||0)/10)-1);if(Number(app.helpPage)<max){app.helpPage++;renderHelp();}});
   $("request-inventory").addEventListener("click",()=>send("C",[0]).catch(reportError));
