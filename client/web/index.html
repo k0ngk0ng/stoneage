@@ -421,19 +421,22 @@
     #trade-item-detail { position:absolute; left:330px; top:409px; width:278px; height:39px; overflow:hidden; color:#f8efd2; white-space:pre-wrap; pointer-events:none; }
     #trade-gold-owned,#trade-gold-amount { position:absolute; left:540px; width:76px; height:22px; padding:1px 4px; border:0; outline:0; background:transparent; color:#ffe45c; text-align:right; font:12px/20px MingLiU,"Microsoft JhengHei",sans-serif; text-shadow:1px 1px #080706; box-sizing:border-box; }
     #trade-gold-owned { top:59px; pointer-events:none; } #trade-gold-amount { top:113px; }
-    #trade-pet-prev,#trade-pet-next { left:468px; width:32px; height:16px; }
-    #trade-pet-prev { top:63px; background-image:url('/assets/bitmaps/bitmap_9270.png'); }
+    /* pActMenuWnd4 starts at (10,12).  Apply each CG's ADRN offset to the
+       exact StockDispBuffer anchor: the pet arrows are a horizontal pair at
+       (466,75)/(500,75), not a browser-style vertical stepper. */
+    #trade-pet-prev,#trade-pet-next { top:75px; width:32px; height:16px; }
+    #trade-pet-prev { left:466px; background-image:url('/assets/bitmaps/bitmap_9270.png'); }
     #trade-pet-prev:active { background-image:url('/assets/bitmaps/bitmap_9271.png'); }
-    #trade-pet-next { top:88px; background-image:url('/assets/bitmaps/bitmap_9272.png'); }
+    #trade-pet-next { left:500px; background-image:url('/assets/bitmaps/bitmap_9272.png'); }
     #trade-pet-next:active { background-image:url('/assets/bitmaps/bitmap_9273.png'); }
-    #trade-gold-up,#trade-gold-down { top:93px; width:16px; height:14px; }
+    #trade-gold-up,#trade-gold-down { top:105px; width:16px; height:14px; }
     #trade-gold-up { left:564px; background-image:url('/assets/bitmaps/bitmap_9183.png'); }
     #trade-gold-up:active { background-image:url('/assets/bitmaps/bitmap_9184.png'); }
     #trade-gold-down { left:589px; background-image:url('/assets/bitmaps/bitmap_9185.png'); }
     #trade-gold-down:active { background-image:url('/assets/bitmaps/bitmap_9186.png'); }
     #trade-gold-place,#trade-pet-place { width:52px; height:17px; background-image:url('/assets/bitmaps/bitmap_9181.png'); }
     #trade-gold-place:active,#trade-pet-place:active { background-image:url('/assets/bitmaps/bitmap_9182.png'); }
-    #trade-gold-place { left:573px; top:156px; } #trade-pet-place { left:376px; top:198px; }
+    #trade-gold-place { left:573px; top:168px; } #trade-pet-place { left:376px; top:210px; }
     #trade-confirm,#trade-cancel { top:422px; width:80px; height:16px; }
     #trade-confirm { left:369px; background-image:url('/assets/bitmaps/bitmap_9211.png'); }
     #trade-cancel { left:501px; background-image:url('/assets/bitmaps/bitmap_9170.png'); }

@@ -547,6 +547,18 @@ if (tradeWindow?.file !== "bitmaps/bitmap_126231.png" || tradeWindow?.width !== 
     tradeWindow?.xoffset !== -310 || tradeWindow?.yoffset !== -228 || tradeWindow?.bmp_number !== 40000) {
   throw new Error("classic 2.5 trade window resource drifted from sa_2903");
 }
+for (const [logical,file,width,height,xoffset,yoffset] of [
+  ["26180","bitmap_9270.png",32,16,-16,-8],["26181","bitmap_9271.png",32,16,-16,-8],
+  ["26182","bitmap_9272.png",32,16,-16,-8],["26183","bitmap_9273.png",32,16,-16,-8],
+  ["26064","bitmap_9183.png",16,14,94,-106],["26065","bitmap_9184.png",16,14,94,-106],
+  ["26066","bitmap_9185.png",16,14,113,-106],["26067","bitmap_9186.png",16,14,113,-106],
+  ["26062","bitmap_9181.png",52,17,38,-108],["26063","bitmap_9182.png",52,17,38,-108],
+]) {
+  const info=battleManifest.bitmaps?.[logical];
+  if(info?.file!==`bitmaps/${file}`||info?.width!==width||info?.height!==height||info?.xoffset!==xoffset||info?.yoffset!==yoffset){
+    throw new Error(`native trade control ${logical} ADRN metadata drifted: ${JSON.stringify(info)}`);
+  }
+}
 const tradeWindowPng = fs.readFileSync(path.join(__dirname, "assets", "original", tradeWindow.file));
 if (tradeWindowPng.readUInt32BE(16) !== 620 || tradeWindowPng.readUInt32BE(20) !== 456 ||
     !battleExtractorSource.includes('"trade_window_25": 40000') || !battleExtractorSource.includes('parser.add_argument("--ui-only"')) {
@@ -567,6 +579,11 @@ for (const expected of [
   /#trade-pet-picker \.trade-pet-max-hp\s*\{[^}]*top:178px/,
   /renderTradePetPanel\(\$\("trade-pet-picker"\),tradeCurrentPet\(\)\?\.pet\|\|null,true\)/,
   /trade\.petCursor=candidates\[position\]\.slot;trade\.petDirection=1;renderTrade\(\)/,
+  /#trade-pet-prev,#trade-pet-next\s*\{ top:75px; width:32px; height:16px; \}/,
+  /#trade-pet-prev\s*\{ left:466px; background-image:url\('\/assets\/bitmaps\/bitmap_9270\.png'\); \}/,
+  /#trade-pet-next\s*\{ left:500px; background-image:url\('\/assets\/bitmaps\/bitmap_9272\.png'\); \}/,
+  /#trade-gold-up,#trade-gold-down\s*\{ top:105px; width:16px; height:14px; \}/,
+  /#trade-gold-place\s*\{ left:573px; top:168px; \} #trade-pet-place \{ left:376px; top:210px; \}/,
   /const column=\(index-5\)%5,row=Math\.floor\(\(index-5\)\/5\)/,
   /slot\.style\.left=`\$\{332\+column\*51\}px`;slot\.style\.top=`\$\{248\+row\*48\}px`/,
   /case "TD": handleTradeMessage\(values\[0\]\|\|""\);break;/,
@@ -576,7 +593,11 @@ for (const expected of [
 const nativeTradeMenu = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/menu.cpp", "latin1");
 if (!/pActPet3 = MakeAnimDisp\(480, 230, pet\[tradePetIndex\]\.graNo, ANIM_DISP_PET\)/.test(nativeTradeMenu) ||
     !/pAct->anim_ang = 1;[\s\S]{0,500}pAct->x = x;[\s\S]{0,80}pAct->y = y;/.test(nativeTradeMenu) ||
-    !/case ANIM_DISP_PET:[\s\S]{0,300}pAct->anim_ang\+\+;[\s\S]{0,180}pattern\(pAct, ANM_NOMAL_SPD, ANM_LOOP\);/.test(nativeTradeMenu)) {
+    !/case ANIM_DISP_PET:[\s\S]{0,300}pAct->anim_ang\+\+;[\s\S]{0,180}pattern\(pAct, ANM_NOMAL_SPD, ANM_LOOP\);/.test(nativeTradeMenu) ||
+    !/tradeWndFontNo\[2\] = StockDispBuffer\(x \+ 452 \+ 20, y \+ 63 \+ 8,[^\n]+CG_TRADE_LEFT_BTN_UP/.test(nativeTradeMenu) ||
+    !/tradeWndFontNo\[3\] = StockDispBuffer\(x \+ 486 \+ 20, y \+ 63 \+ 8,[^\n]+CG_TRADE_RIGHT_BTN_UP/.test(nativeTradeMenu) ||
+    !/tradeWndFontNo\[4\] = StockDispBuffer\(x \+ 554 - 94, y \+ 93 \+ 106,[^\n]+CG_TRADE_UP_BTN_UP/.test(nativeTradeMenu) ||
+    !/tradeWndFontNo\[7\] = StockDispBuffer\(x \+ 365 - 62 \+ 25, y \+ 190 \+ 108 \+ 8,[^\n]+CG_TRADE_PUT_BTN_UP/.test(nativeTradeMenu)) {
   throw new Error("compiled 2.5 trade pet ACTION contract drifted from menu.cpp");
 }
 const tradePetSpriteStart = script.indexOf("  function tradePetSprite");
