@@ -2268,37 +2268,29 @@
     /* MENU.CPP passes padded strings to StockFontBuffer (for example
        "    回记录点    ").  The web labels contain only the visible text.
        Four native spaces are about 28px at the executable's bitmap font; the
-       extra 12px keeps the browser glyphs at the same optical origin while
-       the transparent hit boxes remain full-width. */
-    /* The native SaMenu text starts 28 logical pixels into the window.  The
-       web choices already omit the four source-string spaces, so retaining
-       the old 40px inset made every system-menu label visibly drift right. */
-    #system-screen.system-page-menu #system-list .system-choice{padding-left:28px}
+       transparent hit boxes remain full-width while labels use the exact
+       StockFontBuffer origin below. */
+    #system-screen.system-page-menu #system-list .system-choice{padding-left:0}
     #system-screen.system-page-logout-record #system-list .system-choice,
-    #system-screen.system-page-logout-place #system-list .system-choice{padding-left:35px}
+    #system-screen.system-page-logout-place #system-list .system-choice{padding-left:0}
     #system-screen.system-page-chat #system-list .system-subpage button,
     #system-screen.system-page-bgm #system-list .system-subpage button,
-    #system-screen.system-page-se #system-list .system-subpage button,
-    #system-screen.system-page-mouse #system-list .system-subpage button,
-    #system-screen.system-page-auto #system-list .system-subpage button{padding-left:0!important}
-    /* These are the pActMenuWnd coordinates from MENU.CPP.  The list itself
-       is moved to the first StockFontBuffer origin; all child rows then use
-       the native 34/40/32 pixel cadence without a browser card offset. */
-    /* VER25_RELEASE defines _SA_VERSION_25 and version.h unconditionally
-       enables _NEW_SYSTEM_MENU: MakeWindowDisp() is therefore the centred
-       7x8 window at (96,48), with the first text origin at (124,102). */
-    #system-screen.system-page-menu{--legacy-x:96px;--legacy-y:48px;--legacy-w:448px;--legacy-h:384px;--system-list-x:124px;--system-list-y:102px}
-    #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:224px;--legacy-y:168px;--legacy-w:192px;--legacy-h:144px;--system-list-x:262px;--system-list-y:224px}
-    #system-screen.system-page-mouse{--legacy-x:224px;--legacy-y:144px;--legacy-w:192px;--legacy-h:192px;--system-list-x:262px;--system-list-y:200px}
-    #system-screen.system-page-auto{--legacy-x:224px;--legacy-y:144px;--legacy-w:192px;--legacy-h:192px;--system-list-x:262px;--system-list-y:200px}
-    #system-screen.system-page-chat{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:104px}
-    #system-screen.system-page-bgm{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:112px}
-    #system-screen.system-page-se{--legacy-x:192px;--legacy-y:96px;--legacy-w:256px;--legacy-h:288px;--system-list-x:248px;--system-list-y:160px}
+    #system-screen.system-page-se #system-list .system-subpage button{padding-left:0!important}
+    /* These are the pActMenuWnd coordinates from the stock 2.5 MENU.CPP. The
+       list is moved to the first StockFontBuffer origin; child rows then use
+       the native 40/32/44/52 pixel cadence without a browser card offset. */
+    /* Stock 2.5 MENU.CPP uses 64x48 logical window tiles.  The previous
+       7x8 geometry belonged to the optional 8.5 _NEW_SYSTEM_MENU branch and
+       made the browser system panel visibly oversized and detached from the
+       field UI.  Keep each page at the exact native origin/size. */
+    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:288px;--system-list-x:32px;--system-list-y:60px}
+    #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:144px;--system-list-x:24px;--system-list-y:60px}
+    #system-screen.system-page-chat{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:60px}
+    #system-screen.system-page-bgm{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:68px}
+    #system-screen.system-page-se{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:288px;--system-list-x:47px;--system-list-y:68px}
     #system-screen.system-page-chat .system-subpage,
     #system-screen.system-page-bgm .system-subpage,
-    #system-screen.system-page-se .system-subpage,
-    #system-screen.system-page-mouse .system-subpage,
-    #system-screen.system-page-auto .system-subpage{left:0;top:0;width:220px}
+    #system-screen.system-page-se .system-subpage{left:0;top:0;width:220px}
     #system-screen.system-page-registry{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:430px}
     #system-screen.system-page-registry .system-registry{position:absolute;left:var(--legacy-x,184px);top:var(--legacy-y,25px);width:272px;height:430px;padding:54px 14px 8px;z-index:2}
     #system-screen .system-registry input{display:block;width:244px;height:22px;margin:0 0 21px;padding:1px 5px;color:#1d1710;background:#b8b8b8cc;border:1px solid #6f634d;box-shadow:inset 1px 1px #fff,inset -1px -1px #4b4337;font:11px/18px Tahoma,"Microsoft YaHei",sans-serif}
@@ -2803,11 +2795,10 @@
       titles:{bitmap:9140,x:4,y:4,w:272,h:332,generic:true},
       /* System pages use the native MakeWindowDisp nine-tile surface.  The
          centre bitmap (9140) is not a complete window and must not be
-         stretched over the menu. */
-      /* VER25_RELEASE defines _SA_VERSION_25 and version.h enables
-         _NEW_SYSTEM_MENU.  MENU.CPP consequently centers a 7x8 native
-         window at (96,48); w/h below are the rendered 64x48 tile dimensions. */
-      system:{x:96,y:48,w:448,h:384,native:true,title:9145},
+         stretched over the menu.  Stock 2.5 MENU.CPP opens the root at
+         (4,4) with a 3x6 (192x288) tile window; the subpage geometry is set
+         by configureSystemWindow() when selected. */
+      system:{x:4,y:4,w:192,h:288,native:true,title:9145},
       /* The protocol/event panes are local wrappers around native message
          windows.  Keep their diagnostics in the same 7x5 CG_WND_G frame as
          LOGIN.CPP instead of presenting a generic web card. */
@@ -5911,43 +5902,10 @@
   function systemSubpage(caption="",left=-8){const page=document.createElement("div");page.className="system-subpage";if(String(caption)){const title=document.createElement("span");title.className="system-caption";title.textContent=caption;systemPlace(title,0,left);page.append(title);}return page;}
   function systemReturn(page,top,left=0){const back=imageButton("返回",9135,()=>{app.systemPage="menu";renderSystem();},80,16);back.className="system-return system-action";systemPlace(back,top,left);page.append(back);}
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
-  function sendLegacySystemMenu(index,label){
-    /* MENU.CPP sends lssproto_SaMenu_send(index) for the 11..27 server
-       entries.  That entry is an optional _NEW_SYSTEM_MENU extension and
-       is not present in the stock 2.5 numeric GMSV used by this web build.
-       Sending an unknown function is worse than a rejected menu item: the
-       old server closes the socket while parsing it, which made clicking
-       “原地遇敌” look like a random disconnect.  Keep the one useful
-       operation on the wire-compatible EN path, and make the remaining
-       optional entries a normal in-game notice instead of corrupting the
-       session.
-    */
-    const name=String(label||"系统功能");
-    app.systemPage="menu";show(worldScreen);
-    if(!app.transport){systemNotice(`${name}：等待服务器连接。`);return;}
-    if(Number(index)===11){
-      const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
-      systemNotice(`${name}：正在检查…`);
-      send("EN",[x,y]).catch(error=>{systemNotice(`${name}：服务器未接受遇敌请求。`);reportError(error);});
-      return;
-    }
-    if(Number(index)===12){
-      systemNotice(`${name}：当前服务器使用行走遇敌规则。`);
-      return;
-    }
-    systemNotice(`${name}：正在请求…`);
-    systemNotice(`${name}：当前服务器未启用此功能。`);
-  }
-  function toggleSystemBattle(){
-    const settings=app.systemSettings;settings.autoBattle=!settings.autoBattle;app.battleState.autoTurn=-1;
-    if(!settings.autoBattle)app.battleState.pendingAction=null;
-    systemNotice(settings.autoBattle?"开启战斗！":"关闭战斗！");
-    renderSystem();renderBattle();
-  }
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
-    ["system-page-menu","system-page-logout-record","system-page-logout-place","system-page-mouse","system-page-auto","system-page-chat","system-page-bgm","system-page-se","system-page-registry"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:96,y:48,w:448,h:384,title:9145},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},mouse:{x:224,y:144,w:192,h:192,title:9145},auto:{x:224,y:144,w:192,h:192,title:9145},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0}};
+    ["system-page-menu","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry"].forEach(name=>screen.classList.remove(name));
+    const specs={menu:{x:4,y:4,w:192,h:288,title:9145},"logout-record":{x:4,y:4,w:192,h:144,title:9146},"logout-place":{x:4,y:4,w:192,h:144,title:9146},chat:{x:4,y:4,w:256,h:384,title:9148},bgm:{x:4,y:4,w:256,h:384,title:9149},se:{x:4,y:4,w:256,h:288,title:9150},registry:{x:4,y:4,w:272,h:430,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -6069,52 +6027,19 @@
     const page=app.systemPage||"menu";const settings=app.systemSettings;configureSystemWindow(page);
     $("system-summary").textContent="StoneAge 2.5 系统菜单";
     if(page==="menu"){
-      /* MENU.CPP's _NEW_SYSTEM_MENU branch has 28 hit records in three
-         columns.  Keep the source indices (they are also the SaMenu values)
-         separate from their visual order: the native code deliberately
-         stores the left column as 0/6/1/4/3/5/7/8, then the middle and right
-         columns as 17/18/11..16 and 19..24. */
-      const add=(label,index,handler,row,column)=>list.append(systemChoice(label,handler||(()=>sendLegacySystemMenu(index,label)),row*34,column*140));
-      add("回记录点",0,()=>openLogoutConfirm("record"),0,0);
-      add("原地登出",6,()=>openLogoutConfirm("in-place"),1,0);
-      add("聊天设定",1,()=>{app.systemPage="chat";renderSystem();},2,0);
-      add("背景音乐",4,()=>{app.systemPage="bgm";renderSystem();},3,0);
-      add("音效设定",3,()=>{app.systemPage="se";renderSystem();},4,0);
-      add("滑鼠设定",5,()=>{app.systemPage="mouse";renderSystem();},5,0);
-      add("战斗设定",7,()=>{app.systemPage="auto";renderSystem();},6,0);
-      add(settings.soundMuted?"开启声音":"关闭声音",8,()=>{
-        const wasMuted=settings.soundMuted;setMasterMute(!wasMuted);
-        systemNotice(DEBUG_AUDIO_MUTED?"调试静音：声音保持关闭。":(settings.soundMuted?"关闭声音！":"开启声音！"));
-        renderSystem();
-      },7,0);
-      add("官方主页",17,null,0,1);
-      add("我的邮箱",18,null,1,1);
-      add("原地遇敌",11,null,2,1);
-      add("取消原地",12,null,3,1);
-      add("支票制作",13,null,4,1);
-      add("任务查询",14,null,5,1);
-      add(settings.rightAttack?"关闭右键攻击":"右键攻击",15,()=>{
-        settings.rightAttack=!settings.rightAttack;systemNotice(settings.rightAttack?"开启右键攻击！":"关闭右键攻击！");renderSystem();
-      },6,1);
-      add("个人信息",16,null,7,1);
-      add("在线充值",19,null,0,2);
-      add("卡密使用",20,null,1,2);
-      add("快捷传送",21,null,2,2);
-      add("掉线重连",9,null,3,2);
-      add(settings.traditional?"切换简体":"切换繁体",10,()=>{
-        settings.traditional=!settings.traditional;systemNotice(settings.traditional?"切换繁体！":"切换简体！");renderSystem();
-      },4,2);
-      add(settings.peopleVisible?"人物屏蔽":"人物显示",22,()=>{
-        settings.peopleVisible=!settings.peopleVisible;systemNotice(settings.peopleVisible?"显示周边人物！":"屏蔽周边人物！");renderSystem();renderWorld(true);
-      },5,2);
-      add(settings.experienceVisible?"经验关闭":"经验显示",23,()=>{
-        settings.experienceVisible=!settings.experienceVisible;systemNotice(settings.experienceVisible?"开启经验显示！":"关闭经验显示！");renderSystem();
-      },6,2);
-      add(settings.autoBattle?"关闭战斗":"自动战斗",24,()=>toggleSystemBattle(),7,2);
-      add("战力详情",25,null,8,0);
-      add("捕鱼达人",26,null,8,1);
-      add("成就排行",27,null,8,2);
-      add("关闭",2,()=>show(worldScreen),9,1);
+      /* This is the stock 2.5 menu from vendor/upstream/code_sa_client.
+         The 8.5 _NEW_SYSTEM_MENU branch adds SaMenu-backed web/commerce,
+         task, encounter and ranking entries; the 2.5 bridge deliberately has
+         no SaMenu function, so those labels must not be rendered at all.
+         “原地登出” is the local EOF-save path implemented by this 2.5
+         server, while the other four entries are native client settings. */
+      const add=(label,handler,row)=>list.append(systemChoice(label,handler,row*40));
+      add("回记录点",()=>openLogoutConfirm("record"),0);
+      add("原地登出",()=>openLogoutConfirm("in-place"),1);
+      add("聊天设定",()=>{app.systemPage="chat";renderSystem();},2);
+      add("背景音乐",()=>{app.systemPage="bgm";renderSystem();},3);
+      add("音效设定",()=>{app.systemPage="se";renderSystem();},4);
+      add("关闭",()=>show(worldScreen),5);
       return;
     }
     if(page==="logout-record"||page==="logout-place"){
@@ -6155,21 +6080,6 @@
       sub.append(systemAction("减少音量",()=>{settings.seVolumeLevel=Math.max(0,audioSettingLevel(settings.seVolumeLevel)-1);renderSystem();},80));
       sub.append(systemAction(`立体声：${settings.seStereo?"开启":"关闭"}`,()=>{settings.seStereo=!settings.seStereo;renderSystem();},120));
       systemReturn(sub,172);list.append(sub);return;
-    }
-    if(page==="mouse"){
-      const sub=systemSubpage("");
-      /* The fish-bone is a painted cursor, not a pointer lock.  It follows
-         real mouse movement during field play, including while a floor fold
-         is playing; compositor-only events never move it by themselves. */
-      sub.append(systemValue("鱼骨游标：跟随鼠标（切换场景不自动位移）",0,-8));
-      systemReturn(sub,96);list.append(sub);return;
-    }
-    if(page==="auto"){
-      const sub=systemSubpage("");
-      sub.append(systemValue(`自动战斗：${settings.autoBattle?"开启":"关闭"}`,0,-8));
-      sub.append(systemAction(settings.autoBattle?"关闭自动战斗":"开启自动战斗",()=>{settings.autoBattle=!settings.autoBattle;app.battleState.autoTurn=-1;if(!settings.autoBattle)app.battleState.pendingAction=null;addChat("战斗",settings.autoBattle?"已开启自动战斗。":"已关闭自动战斗。");renderSystem();renderBattle();},40));
-      sub.append(systemValue("自动模式只发送 2.5 B 战斗指令",80,-8));
-      systemReturn(sub,128);list.append(sub);return;
     }
     if(page==="registry"){
       const registry=document.createElement("div");registry.className="system-registry";registry.style.background="url('/assets/bitmaps/bitmap_9288.png') center/272px 430px no-repeat";

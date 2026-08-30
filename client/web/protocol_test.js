@@ -1929,6 +1929,37 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
    the list after the next successful login. */
 const failureSource = script.slice(script.indexOf("function showConnectionFailure"), script.indexOf("function returnToAccountLogin"));
 if (/addEvent\(/.test(failureSource)) throw new Error("connection failure leaked into the event list");
+/* The stock 2.5 MENU.CPP has no _NEW_SYSTEM_MENU/SaMenu branch. Keep the
+   browser menu honest: only the implemented logout paths and local chat/audio
+   settings are visible, and no placeholder is allowed to fall back to a
+   server notice after a click. */
+const systemMenuStart = script.indexOf("function renderSystem()");
+if (systemMenuStart < 0) throw new Error("system menu renderer missing");
+const systemMenuSource = script.slice(systemMenuStart);
+for (const label of ["官方主页","我的邮箱","原地遇敌","取消原地","支票制作","任务查询","个人信息","在线充值","卡密使用","快捷传送","掉线重连","战力详情","捕鱼达人","成就排行","滑鼠设定"]) {
+  if (systemMenuSource.includes(`"${label}"`)) throw new Error(`8.5-only system menu entry leaked: ${label}`);
+}
+for (const expected of [
+  /add\("回记录点",\(\)=>openLogoutConfirm\("record"\),0\)/,
+  /add\("原地登出",\(\)=>openLogoutConfirm\("in-place"\),1\)/,
+  /add\("聊天设定",[\s\S]{0,120}systemPage="chat"/,
+  /add\("背景音乐",[\s\S]{0,120}systemPage="bgm"/,
+  /add\("音效设定",[\s\S]{0,120}systemPage="se"/,
+  /add\("关闭",\(\)=>show\(worldScreen\),5\)/,
+]) {
+  if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
+}
+for (const expected of [
+  /const specs=\{menu:\{x:4,y:4,w:192,h:288,title:9145\}/,
+  /chat:\{x:4,y:4,w:256,h:384,title:9148\}/,
+  /bgm:\{x:4,y:4,w:256,h:384,title:9149\}/,
+  /se:\{x:4,y:4,w:256,h:288,title:9150\}/,
+]) {
+  if (!expected.test(script)) throw new Error(`2.5 system window geometry regression: ${expected}`);
+}
+if (systemMenuSource.includes("sendLegacySystemMenu") || systemMenuSource.includes("systemPage=\"auto\"")) {
+  throw new Error("system menu still contains an unsupported server-extension path");
+}
 /* CHAR_FS_* is sparse in the 2.5 server.  FIELD.CPP exposes five settings
    rows; the fifth enables incoming trade requests with CHAR_FS_TRADE (bit
    5).  The wheel is the separate TD action that starts a trade. */

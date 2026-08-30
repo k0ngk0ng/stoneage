@@ -67,3 +67,7 @@ client/mobile/assets/fonts/
 client/mobile/android/.build_version
 client/mobile/builds/
 online-*.png
+
+# Local browser dogfood captures and reports. These can contain account names,
+# screenshots and protocol traces; never include them in a release commit.
+dogfood-output/
