@@ -46,6 +46,11 @@ TCP 上游改为本机路径后运行 `go run . -config /path/to/web.toml`；也
 
 `static.cdn.base_url` 是公开静态资源根地址；`STONEAGE_WEB_CDN_BASE_URL` 仅保留为应急环境变量覆盖。设置后，返回给浏览器的页面会把 `/assets/`、`/maps/` 和 `/audio/` 改写为这个根地址下的同名目录；`/api/sessions`、`/api/npcs` 等动态接口不会改写。`static.oss` 保存对象存储的 provider、endpoint、region、bucket、固定 prefix；provider 支持 `aliyun-oss` 和 `cloudflare-r2`。AK/SK 不写在 TOML，而是仅作为 Docker secret 文件注入批量资源同步工具，Web 游戏进程不会读取或上传。如果配置了阿里云 OSS 而未配置 CDN，Web 后端会自动使用 `https://<bucket>.<endpoint>/<prefix>` 作为公开资源根地址；R2 的 S3 endpoint 默认需要签名，必须配 Cloudflare CDN 自定义域名。CDN 基址只接受不含账号、查询串和片段的绝对 HTTP(S) URL，末尾斜线会自动去除；对象存储 endpoint/bucket 必须同时设置。生产部署应使用 HTTPS 和固定资源根目录，CDN 路径和存储 prefix 都不带 tag，发布时增量同步；JSON 清单使用短缓存或 `no-cache`，PNG、地图和音频可长期缓存，同名二进制确实发生变化时刷新对应 CDN URL。CDN/对象存储源站还需为网页域名配置 CORS 和 `Timing-Allow-Origin`（下载进度需要）。存储和 CDN 都未设置时仍由当前 Web 进程提供本地文件，便于开发和故障排查。
 
+页面启动时会注册同源 `/sw.js`。Service Worker 只接管 `assets/`、`maps/`、`audio/` 的 GET：二进制采用
+cache-first，`_client-version.json` 和索引采用 network-first，API、TCP 轮询和 HTML 不缓存。版本 marker 的
+revision 是 Cache Storage 命名空间；网页先拿到新 revision 才切换缓存，断网时仍可回退已有资源。CDN 根地址
+会发送给 worker，因此跨域 OSS/R2 资源也能缓存（源站必须允许网页域名的 CORS GET/HEAD）。
+
 客户端资源应作为整体由部署脚本或 CI 发布；Admin 是独立运维应用，不属于客户端资源
 包，也不会接触 OSS AK/SK。仓库根目录的
 `scripts/sync-client-assets.sh` 会启动一次性的 Compose `assets-sync` 容器，统一同步
@@ -59,6 +64,11 @@ service-control 仅在任务启动时从两个 Docker secret 文件读取密钥�
 上传顺序固定为“图片/地图/音频 → `*.json` 与 `audio/auto.dat` → 发布清单”，这样
 浏览器不会在索引先更新时读到尚未完成的资源。
 若资源已经由 CI 发布，不配置同步凭据即可。
+
+同步器随后还会写入同目录的 `_client-version.json`，内容只有 `revision`、对象数和总字节数，不会把 release tag
+放进 URL。网页首次只加载登录/UI/当前地图；进入世界后在空闲时预热少量常用音乐和音效，其余地图与精灵按需
+下载并显示字节进度。当前 1.2GB 资源不强制合并成单个 `.pack`，也不要求 OPFS；未来资源达到数 GB 时可增加
+按地图/音频/精灵分片 pack，OPFS 作为可选加速层而不是运行时硬依赖。
 
 音乐通过只读 `/audio/bgm/` 和 `/audio/se/` 路径提供。网页按 `_SA_VERSION_25` 客户端的时机切换标题、地图、战斗/首领 BGM，并按服务器 `SE` 包播放对应音效；浏览器第一次用户操作后才会解锁音频，这是浏览器自动播放策略的限制。WAV 使用长期缓存，地图音乐标记只接受随附 `sa_2903` 2.5 客户端源码的 40–46 范围；47–53 属于后续 8.5 表，不会在本网页端启用。
 

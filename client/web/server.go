@@ -42,6 +42,14 @@ import (
 //go:embed index.html
 var page []byte
 
+// Keep the worker beside the self-contained page so `go run ./client/web`
+// and the production binary expose the exact same cache/update behavior.
+// The worker is intentionally not bundled into index.html: browsers need a
+// stable same-origin /sw.js URL in order to install it.
+//
+//go:embed sw.js
+var serviceWorker []byte
+
 // Installed mobile shortcuts must not force a particular orientation. The
 // page keeps the executable's 640x480 surface and scales it to the limiting
 // viewport axis, so both portrait and landscape remain playable.
@@ -1038,6 +1046,20 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			return
 		}
 		_, _ = response.Write(handler.page)
+		return
+	}
+	if request.URL.Path == "/sw.js" {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		response.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		response.Header().Set("Service-Worker-Allowed", "/")
+		if request.Method == http.MethodHead {
+			return
+		}
+		_, _ = response.Write(serviceWorker)
 		return
 	}
 	if request.URL.Path == "/manifest.webmanifest" {

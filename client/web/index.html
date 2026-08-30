@@ -4050,7 +4050,53 @@
      against the resolved root instead of assuming every asset is same-origin
      at /assets/.  The CDN should send Timing-Allow-Origin for byte progress. */
   const ASSET_RESOURCE_ROOT=new URL("/assets/",window.location.href);
-  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  const STATIC_RESOURCE_BASE=new URL(".",ASSET_RESOURCE_ROOT);
+  const STATIC_RESOURCE_ROOTS=Object.freeze([
+    ASSET_RESOURCE_ROOT,
+    new URL("maps/",STATIC_RESOURCE_BASE),
+    new URL("audio/",STATIC_RESOURCE_BASE)
+  ]);
+  /* The uploader publishes this tiny marker beside assets/, maps/ and audio/.
+     It is intentionally separate from the multi-megabyte object manifest so
+     a normal page load can select a cache namespace with one small request. */
+  const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE);
+  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  function assetWorkerTarget(){
+    try{return navigator.serviceWorker?.controller||assetState.assetWorker?.active||assetState.assetWorker?.waiting||assetState.assetWorker?.installing||null;}catch(_){return null;}
+  }
+  function postAssetWorker(message){
+    const target=assetWorkerTarget();if(!target)return false;
+    try{target.postMessage(message);return true;}catch(_){return false;}
+  }
+  function sendAssetWorkerConfig(){
+    if(!assetState.assetWorkerReady)return;
+    postAssetWorker({type:"set-asset-roots",roots:STATIC_RESOURCE_ROOTS.map(root=>root.href)});
+    const revision=String(assetState.clientVersion?.revision||"");
+    if(revision)postAssetWorker({type:"set-asset-version",revision});
+  }
+  function registerAssetWorker(){
+    if(!navigator.serviceWorker?.register)return;
+    navigator.serviceWorker.register("/sw.js",{scope:"/"}).then(registration=>{
+      assetState.assetWorker=registration;assetState.assetWorkerReady=true;sendAssetWorkerConfig();
+      navigator.serviceWorker.ready.then(ready=>{assetState.assetWorker=ready;assetState.assetWorkerReady=true;sendAssetWorkerConfig();}).catch(()=>{});
+    }).catch(()=>{/* unsupported/file:///embedded WebViews simply use HTTP cache */});
+    navigator.serviceWorker.addEventListener?.("controllerchange",()=>{assetState.assetWorkerReady=true;sendAssetWorkerConfig();});
+  }
+  function loadClientVersion(){
+    if(assetState.clientVersionReady)return Promise.resolve(assetState.clientVersion);
+    return fetch(ASSET_VERSION_URL.href,{cache:"no-cache",mode:"cors"}).then(response=>{
+      if(!response.ok)throw new Error(`资源版本 HTTP ${response.status}`);
+      return response.json();
+    }).then(version=>{
+      if(!version||typeof version!=="object"||!String(version.revision||"").trim())throw new Error("资源版本清单为空");
+      assetState.clientVersion=version;assetState.clientVersionReady=true;sendAssetWorkerConfig();return version;
+    }).catch(()=>null);
+  }
+  registerAssetWorker();
+  /* Version lookup is deliberately best-effort: local development trees do
+     not contain the uploader's marker yet, while the worker still provides a
+     useful bootstrap cache. */
+  loadClientVersion();
   function rememberAssetResourceSize(file,entryOrSize){
     const key=String(file||"").replace(/^\//,"");if(!key)return 0;
     const size=typeof entryOrSize==="number"
@@ -4238,6 +4284,28 @@
       ?(fn=>window.requestIdleCallback(fn,{timeout:10000}))
       :(fn=>window.setTimeout(fn,10000));
     first(pump);
+  }
+  let backgroundAssetWarmupTimer=0;
+  function scheduleBackgroundAssetWarmup(){
+    window.clearTimeout(backgroundAssetWarmupTimer);
+    /* Keep this deliberately small.  The first map remains the only blocking
+       payload; these are the common title/field/battle tracks and one sound
+       from each native SE family.  Additional maps and effects are fetched on
+       demand and then retained by the same worker cache. */
+    backgroundAssetWarmupTimer=window.setTimeout(()=>{
+      const urls=[];
+      const audioRoot=STATIC_RESOURCE_ROOTS[2];
+      ["sabgm_s0.wav","sabgm_s1.wav","sabgm_t0.wav","sabgm_t1.wav","sabgm_b0.wav","sabgm_d0.wav","sabgm_f0.wav"].forEach(file=>urls.push(new URL(`bgm/${file}`,audioRoot).href));
+      ["sam_01.wav","sap_01.wav","saam_01.wav"].forEach(file=>urls.push(new URL(`se/${file}`,audioRoot).href));
+      const mapImage=assetState.manifest?.map?.image;
+      if(mapImage)urls.push(new URL(String(mapImage).replace(/^maps\//,""),STATIC_RESOURCE_ROOTS[1]).href);
+      if(!urls.length)return;
+      if(postAssetWorker({type:"prefetch-assets",urls}))return;
+      /* A worker is not allowed to control its first page load until the next
+         navigation.  Keep a low-priority HTTP-cache warmup for that one case;
+         browsers that are already controlled take the worker path above. */
+      urls.forEach(url=>{try{fetch(url,{cache:"force-cache",mode:"cors"}).catch(()=>{});}catch(_){}});
+    },7000);
   }
   function mapAssetSource(file){
     const cached=readMapAssetCache(file);
@@ -12141,7 +12209,7 @@
     characterStatus(`正在登入 ${name}…`);
     try { await send("CharLogin",[name]); } catch(error) { characterStatus(error.message,"error"); }
   }
-  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
+  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
   /* enterWorld() replaces the battle state for a fresh field session.  Keep
      the watchdogs from a just-closed battle from firing against that new
      state, including logout/reconnect paths that do not pass through BU. */

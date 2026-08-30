@@ -264,3 +264,74 @@ func TestClientManifestRoundTrips(t *testing.T) {
 		t.Fatalf("manifest round trip = %#v, want %#v", decoded, manifest)
 	}
 }
+
+type memoryObjectStore struct {
+	objects  map[string][]byte
+	metadata map[string]objectMetadata
+}
+
+func (store *memoryObjectStore) GetObject(key string) (io.ReadCloser, error) {
+	payload, ok := store.objects[key]
+	if !ok {
+		return nil, errObjectNotFound
+	}
+	return io.NopCloser(bytes.NewReader(payload)), nil
+}
+
+func (store *memoryObjectStore) PutFile(key, filename string, metadata objectMetadata) error {
+	payload, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	return store.Put(key, payload, metadata)
+}
+
+func (store *memoryObjectStore) Put(key string, payload []byte, metadata objectMetadata) error {
+	if store.objects == nil {
+		store.objects = make(map[string][]byte)
+	}
+	if store.metadata == nil {
+		store.metadata = make(map[string]objectMetadata)
+	}
+	store.objects[key] = append([]byte(nil), payload...)
+	store.metadata[key] = metadata
+	return nil
+}
+
+func TestPublicationRevisionIsStableAndIncludesDeletes(t *testing.T) {
+	objects := []plannedObject{
+		{Key: "stoneage/assets/b.png", Size: 2, SHA256: "bbb"},
+		{Key: "stoneage/assets/a.png", Size: 3, SHA256: "aaa"},
+	}
+	revision, total := publicationRevision(objects)
+	if total != 5 {
+		t.Fatalf("total bytes=%d, want 5", total)
+	}
+	// Ordering the input differently must not change the publication namespace.
+	reordered, reorderedTotal := publicationRevision([]plannedObject{objects[1], objects[0]})
+	if revision == "" || revision != reordered || reorderedTotal != total {
+		t.Fatalf("revision changed with ordering: %q/%q totals %d/%d", revision, reordered, total, reorderedTotal)
+	}
+	changed, _ := publicationRevision(append(objects, plannedObject{Key: "stoneage/maps/1.DAT", Size: 0, SHA256: ""}))
+	if revision == changed {
+		t.Fatalf("adding an object did not invalidate revision %q", revision)
+	}
+}
+
+func TestWriteClientVersionPublishesNoCacheJSON(t *testing.T) {
+	store := &memoryObjectStore{}
+	want := clientVersion{Format: 1, Generated: "2026-08-30T00:00:00Z", Revision: "0123456789abcdef", ObjectCount: 12, TotalBytes: 3456}
+	if err := writeClientVersion(store, "stoneage/_client-version.json", want); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.metadata["stoneage/_client-version.json"]; got.ContentType != "application/json" || got.CacheControl != "no-cache" {
+		t.Fatalf("version metadata=%#v", got)
+	}
+	var decoded clientVersion
+	if err := json.Unmarshal(store.objects["stoneage/_client-version.json"], &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decoded, want) {
+		t.Fatalf("version=%#v, want %#v", decoded, want)
+	}
+}

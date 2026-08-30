@@ -107,6 +107,17 @@ SHA-256，只上传变化文件，最后才更新发布清单：
 `stoneage-assets-sync`；Admin 页面上的“开始同步”只是请求同一个固定任务，不能
 指定本地路径、bucket 或任意命令。
 
+网页端已注册同源 `/sw.js`：`assets/`、`maps/`、`audio/` 的 GET 请求使用
+Service Worker + Cache Storage 的 cache-first 策略，网络不可用时仍可读取已缓存文件；
+API、会话轮询和 HTML 不会进入缓存。发布器在全部对象上传完成后最后写入轻量
+`stoneage/_client-version.json`（revision、对象数、总字节数），网页只读取这个小文件
+来切换缓存命名空间，再按需下载登录/UI/当前地图资源。进入世界后会在空闲时预热少量常用
+BGM/SE，后续地图和大精灵表仍然按需加载并显示下载进度。
+
+目前没有把 1.2GB 资源强制打成单个 `.pack` 或写入 OPFS：这会让 2.5 客户端兼容、
+CDN 增量发布和首次边玩边下变差。待资源包确实达到数 GB 时，再按地图/音频/精灵分片
+生成带索引的 pack，并以 OPFS 作为可选加速层；Cache Storage 始终保留为回退路径。
+
 Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
 `static.oss` 中填写对象存储的 `provider`、`endpoint`、`region`、`bucket` 和固定
 `prefix`，在 `static.cdn.base_url` 中填写 CDN 公开根地址。阿里云 OSS 例如：
@@ -154,8 +165,9 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 ./scripts/sync-client-assets.sh              # 一次发布 assets、maps、audio
 ```
 
-同步器会在固定根目录写入 `stoneage/_client-manifest.json`。清单记录每个公开对象的
-大小和 SHA-256；后续发布只上传变化的文件，全部成功后才更新清单，失败重试不会把
+同步器会在固定根目录写入 `stoneage/_client-manifest.json` 和轻量的
+`stoneage/_client-version.json`。完整清单记录每个公开对象的大小和 SHA-256；版本文件只记录
+revision、对象数和总字节数。后续发布只上传变化的文件，全部成功后才更新清单，失败重试不会把
 客户端清单提前切到半套资源；上传器还会在写入清单前确认源文件没有在上传过程中被替换。资源 URL 仍然是不带 tag 的固定
 `stoneage/{assets,maps,audio}/`，因此不会按版本复制整套客户端。每次发布先上传图片、
 地图和音频，再上传浏览器索引（`*.json` 与 `audio/auto.dat`），最后才写发布清单，

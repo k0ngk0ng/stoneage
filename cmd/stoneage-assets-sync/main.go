@@ -86,11 +86,19 @@ type sourceRoot struct {
 }
 
 // clientManifestName deliberately lives beside (rather than inside) the three
-// public trees.  It is a publication marker for the uploader and is never
-// requested by the browser.  A manifest is written only after every changed
-// object has uploaded successfully, so a retry can safely reuse the last
-// complete publication and skip unchanged files.
+// public trees.  It is a publication marker for the uploader and contains the
+// per-object hash/size data used for audits and incremental syncs.  A manifest
+// is written only after every changed object has uploaded successfully, so a
+// retry can safely reuse the last complete publication and skip unchanged
+// files.
 const clientManifestName = "_client-manifest.json"
+
+// clientVersionName is the small browser-facing companion to the full
+// publication manifest.  Loading the complete object map (which can contain
+// hundreds of thousands of entries) just to decide whether a Service Worker
+// cache is stale would defeat the purpose of the local cache.  The version
+// file is published last and contains only the aggregate revision and totals.
+const clientVersionName = "_client-version.json"
 
 type plannedObject struct {
 	Filename string
@@ -108,6 +116,14 @@ type clientManifest struct {
 	Format    int                       `json:"format"`
 	Generated string                    `json:"generated_at"`
 	Objects   map[string]manifestObject `json:"objects"`
+}
+
+type clientVersion struct {
+	Format      int    `json:"format"`
+	Generated   string `json:"generated_at"`
+	Revision    string `json:"revision"`
+	ObjectCount int    `json:"object_count"`
+	TotalBytes  int64  `json:"total_bytes"`
 }
 
 // objectMetadata is the small provider-neutral subset needed by the browser
@@ -394,7 +410,22 @@ func run(arguments []string) error {
 	if err := writeManifest(store, path.Join(prefix, clientManifestName), manifest); err != nil {
 		return err
 	}
-	fmt.Printf("uploaded %d objects, skipped %d unchanged objects (total %d) to %s://%s/%s; manifest=%s\n", uploaded, skipped, len(objects), storageURI(provider), bucketName, prefix, path.Join(prefix, clientManifestName))
+	revision, totalBytes := publicationRevision(objects)
+	version := clientVersion{
+		Format:      1,
+		Generated:   manifest.Generated,
+		Revision:    revision,
+		ObjectCount: len(objects),
+		TotalBytes:  totalBytes,
+	}
+	/* The tiny version marker is the final publication write.  A browser that
+	   observes a new revision can therefore fetch a complete _client-manifest
+	   and all payload objects; it can never switch its Service Worker cache to
+	   a partially uploaded tree. */
+	if err := writeClientVersion(store, path.Join(prefix, clientVersionName), version); err != nil {
+		return err
+	}
+	fmt.Printf("uploaded %d objects, skipped %d unchanged objects (total %d) to %s://%s/%s; manifest=%s revision=%s\n", uploaded, skipped, len(objects), storageURI(provider), bucketName, prefix, path.Join(prefix, clientManifestName), revision)
 	return nil
 }
 
@@ -717,6 +748,38 @@ func writeManifest(store objectStore, key string, manifest clientManifest) error
 		return fmt.Errorf("upload client manifest %s: %w", key, err)
 	}
 	return nil
+}
+
+func writeClientVersion(store objectStore, key string, version clientVersion) error {
+	payload, err := json.Marshal(version)
+	if err != nil {
+		return fmt.Errorf("encode client version: %w", err)
+	}
+	payload = append(payload, '\n')
+	if err := store.Put(key, payload, objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
+		return fmt.Errorf("upload client version %s: %w", key, err)
+	}
+	return nil
+}
+
+// publicationRevision derives a stable cache namespace from the complete
+// sorted publication plan.  It deliberately includes the object key, size and
+// digest so a rename, deletion or metadata-only replacement invalidates the
+// same browser cache as a changed payload.  The object list is already sorted
+// by buildPlan, but sorting a copy keeps this helper deterministic for tests
+// and for callers that construct a plan directly.
+func publicationRevision(objects []plannedObject) (string, int64) {
+	ordered := append([]plannedObject(nil), objects...)
+	sort.Slice(ordered, func(left, right int) bool { return ordered[left].Key < ordered[right].Key })
+	hash := sha256.New()
+	var total int64
+	for _, object := range ordered {
+		_, _ = fmt.Fprintf(hash, "%s\x00%d\x00%s\x00", object.Key, object.Size, object.SHA256)
+		if object.Size > 0 {
+			total += object.Size
+		}
+	}
+	return hex.EncodeToString(hash.Sum(nil)), total
 }
 
 func loadConfig(filename string) (configFile, error) {

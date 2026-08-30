@@ -226,6 +226,22 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 	if handler.config.CDNBaseURL != base {
 		t.Fatalf("normalized CDN base=%q want %q", handler.config.CDNBaseURL, base)
 	}
+	// Relative URL construction must remain valid after the server's static
+	// prefix rewrite.  A literal "../maps/" would be rewritten into an invalid
+	// "..https://cdn..." string.
+	for _, fragment := range []string{
+		`const ASSET_RESOURCE_ROOT=new URL("https://cdn.example.com/stoneage/assets/",window.location.href)`,
+		`new URL("maps/",STATIC_RESOURCE_BASE)`,
+		`new URL("audio/",STATIC_RESOURCE_BASE)`,
+		`const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE)`,
+	} {
+		if !strings.Contains(string(handler.page), fragment) {
+			t.Errorf("CDN page lost valid relative resource fragment %q", fragment)
+		}
+	}
+	if strings.Contains(string(handler.page), "..https://cdn.example.com") {
+		t.Fatal("CDN page contains malformed relative URL")
+	}
 }
 
 func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
@@ -410,6 +426,10 @@ func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 		`autocapitalize="none"`,
 		`maxlength="15"`,
 		`font-size:16px !important`,
+		`navigator.serviceWorker.register("/sw.js",{scope:"/"})`,
+		`const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE)`,
+		`type:"set-asset-version"`,
+		`type:"prefetch-assets"`,
 		`id="world-loading-progress"`,
 		`loadingActive=Boolean(app.mapLoading)&&app.phase==="world"`,
 		`previous window is complete`,
@@ -458,6 +478,35 @@ func TestHandlerServesConfiguredAssets(t *testing.T) {
 	}
 	if got := response.Header.Get("Cache-Control"); got != "no-cache" {
 		t.Fatalf("asset manifest cache header=%q", got)
+	}
+}
+
+func TestHandlerServesServiceWorkerWithRootScope(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	cfg := testConfig(fake.address())
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	response, err := http.Get(server.URL + "/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(response.Header.Get("Content-Type"), "javascript") {
+		t.Fatalf("worker status=%d content-type=%q", response.StatusCode, response.Header.Get("Content-Type"))
+	}
+	if response.Header.Get("Cache-Control") != "no-cache" || response.Header.Get("Service-Worker-Allowed") != "/" {
+		t.Fatalf("worker headers cache=%q allowed=%q", response.Header.Get("Cache-Control"), response.Header.Get("Service-Worker-Allowed"))
+	}
+	for _, fragment := range []string{"CACHE_PREFIX", "set-asset-version", "prefetch-assets", "event.respondWith"} {
+		if !strings.Contains(string(body), fragment) {
+			t.Errorf("worker body missing %q", fragment)
+		}
 	}
 }
 
