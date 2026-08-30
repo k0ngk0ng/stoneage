@@ -1965,6 +1965,9 @@ if (systemMenuSource.includes("sendLegacySystemMenu") || systemMenuSource.includ
 if (/id="system-(?:server|logout|close)"/.test(html) || /\$\("system-(?:server|logout|close)"\)/.test(script)) {
   throw new Error("system menu retains a hidden non-native control");
 }
+if (html.includes("system-close") || script.includes('"system-close"')) {
+  throw new Error("system menu retains a stale close handler");
+}
 if (!/fetch\(`\/audio\/pal\/Palet_\$\{id\}\.sap`/.test(script)) {
   throw new Error("map palette loader must use the published audio/pal tree");
 }
