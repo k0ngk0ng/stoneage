@@ -2015,12 +2015,9 @@
     /* Small actions that are not painted into a panel background still use
        the executable's 80×16 CG labels instead of browser bevel buttons. */
     #inventory-screen #request-inventory,
-    #system-screen #system-server,#system-screen #system-logout,
     #actions-screen #protocol-form .toolbar-row button[type="submit"],
     #events-screen .toolbar-row button{width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9211.png') center/100% 100% no-repeat;box-shadow:none}
     #inventory-screen #request-inventory:hover,#inventory-screen #request-inventory:focus,
-    #system-screen #system-server:hover,#system-screen #system-server:focus,
-    #system-screen #system-logout:hover,#system-screen #system-logout:focus,
     #actions-screen #protocol-form .toolbar-row button[type="submit"]:hover,
     #actions-screen #protocol-form .toolbar-row button[type="submit"]:focus,
     #events-screen .toolbar-row button:hover,#events-screen .toolbar-row button:focus{background-image:url('/assets/bitmaps/bitmap_9212.png')}
@@ -2756,7 +2753,7 @@
       <section id="map-screen" class="advanced-screen hidden"><h2>地图</h2><canvas id="auto-map" width="640" height="480" aria-label="自动地图"></canvas><p id="map-summary" class="status">尚未收到地图。</p><div id="map-coordinates" aria-label="当前位置"><span id="map-x"></span><span id="map-y"></span></div><button id="map-close" type="button">返回世界</button></section>
       <section id="titles-screen" class="advanced-screen hidden"><h2>称号</h2><p id="titles-status" class="status">服务器尚未提供称号列表。</p><div id="titles-list" class="card-grid"></div></section>
       <section id="album-screen" class="advanced-screen hidden"><h2>宠物图鉴</h2><p id="album-status" class="status">本地图鉴数据。</p><div id="album-list" class="card-grid"></div></section>
-      <section id="system-screen" class="advanced-screen hidden"><h2>系统</h2><p id="system-summary" class="status">原版系统菜单对应的网页操作。</p><div id="system-list" class="card-grid"></div><div class="toolbar-row"><button id="system-server">服务器信息</button><button id="system-logout">人物登出</button><button id="system-close">返回世界</button></div></section>
+      <section id="system-screen" class="advanced-screen hidden"><h2>系统</h2><p id="system-summary" class="status">原版系统菜单对应的网页操作。</p><div id="system-list" class="card-grid"></div></section>
       <section id="social-screen" class="advanced-screen hidden"><h2>通讯录 / 邮件</h2><div id="contact-list" class="card-grid"></div><form id="mail-form" class="row"><input id="mail-target" type="number" min="0" placeholder="联系人编号"><input id="mail-text" maxlength="180" placeholder="邮件内容"><button class="primary" type="submit">发送邮件</button></form><div id="mail-list" class="event-list"></div><div id="mail-compose-window" class="hidden" aria-label="寄送邮件"><div id="mail-compose-recipients"></div><textarea id="mail-compose-text" maxlength="140" aria-label="邮件内容"></textarea><button id="mail-compose-clear-recipients" type="button" aria-label="清除收件人"></button><button id="mail-compose-prev" type="button" aria-label="上一页"></button><span id="mail-compose-page">1</span><button id="mail-compose-next" type="button" aria-label="下一页"></button><button id="mail-compose-clear" type="button" aria-label="清除内容"></button><button id="mail-compose-send" type="button" aria-label="发送邮件"></button><button id="mail-compose-return" type="button" aria-label="返回通讯录"></button></div><div class="toolbar-row"><button id="request-address">刷新通讯录</button><button id="social-close">返回世界</button></div></section>
       <section id="actions-screen" class="advanced-screen hidden"><h2>完整协议控制台 · 2.5</h2><p class="status">仅列出 sa_2903 / StoneAge 2.5 的 LSSPROTO_CLI 入口；每个字段按原版机器码签名编码。</p><form id="protocol-form"><label for="protocol-function">函数</label><select id="protocol-function" aria-hidden="true" tabindex="-1"></select><div id="protocol-function-list" aria-label="协议函数"></div><div id="protocol-fields"></div><div class="toolbar-row"><button class="primary" type="submit">发送协议包</button><button id="protocol-close" type="button">返回世界</button></div></form></section>
       <section id="events-screen" class="advanced-screen hidden"><h2>事件 / 传送 / 系统</h2><div class="toolbar-row"><button data-event-fn="EN">遇敌检查</button><button data-event-fn="DU">决斗请求</button><button data-event-fn="EO">结束战斗</button><button data-event-fn="BU">战斗准备</button><button data-event-fn="JB">加入队伍</button><button data-event-fn="LB">离开队伍</button><button data-event-fn="MA">思考图标</button><button data-event-fn="AB">请求通讯录</button><button data-event-fn="ProcGet">请求版本</button><button data-event-fn="PlayerNumGet">在线人数</button><button data-event-fn="Echo">心跳</button></div><p id="event-status" class="status"></p><button id="events-close">返回世界</button></section>
@@ -2854,7 +2851,6 @@
     /* The executable uses RETURN for nested/group/mail pages and CLOSE for
        the top-level windows.  Keep those two extracted labels distinct. */
     ["party-close","social-close"].forEach(id=>$(id)?.classList.replace("legacy-close","legacy-return"));
-    document.querySelectorAll('.legacy-screen button[id="system-logout"]').forEach(button=>button.classList.add("danger"));
     const serverTitle=$("server-window-title");if(serverTitle)serverTitle.setAttribute("aria-live","polite");
   }
   prepareLegacyPanels();
@@ -4173,7 +4169,7 @@
     if(mapPaletteState.records.has(paletteNo)){app.mapPaletteLoading=false;app.mapPaletteFailed=false;return Promise.resolve(true);}
     const existing=mapPaletteState.loading.get(paletteNo);if(existing){app.mapPaletteLoading=true;return existing;}
     app.mapPaletteLoading=true;app.mapPaletteFailed=false;
-    const load=(id)=>fetch(`/assets/pal/Palet_${id}.sap`,{cache:"force-cache"}).then(response=>{if(!response.ok)throw new Error(`地图调色板 HTTP ${response.status}`);return response.arrayBuffer();}).then(decodeMapPalette);
+    const load=(id)=>fetch(`/audio/pal/Palet_${id}.sap`,{cache:"force-cache"}).then(response=>{if(!response.ok)throw new Error(`地图调色板 HTTP ${response.status}`);return response.arrayBuffer();}).then(decodeMapPalette);
     const promise=Promise.all([mapPaletteState.base?Promise.resolve(mapPaletteState.base):load(1),load(fileId)]).then(([base,target])=>{
       mapPaletteState.base=base;mapPaletteState.records.set(paletteNo,target);app.mapPaletteLoading=false;app.mapPaletteFailed=false;app.mapLayerCache=null;renderWorld(true);return true;
     }).catch(error=>{app.mapPaletteLoading=false;app.mapPaletteFailed=true;addEvent(`地图调色板加载失败：${error?.message||error}`);renderWorld(true);return false;}).finally(()=>mapPaletteState.loading.delete(paletteNo));
@@ -15581,8 +15577,6 @@
   $("party-leave").addEventListener("click",()=>send("PR",[app.position[0],app.position[1],0]).catch(reportError));
   /* The original map window has no refresh/center controls; M/center remains
      available through normal field redraws and the server's C/M packets. */
-  $("system-server").addEventListener("click",()=>{send("ProcGet",[]).catch(reportError);send("PlayerNumGet",[]).catch(reportError);renderSystem();});
-  $("system-logout").addEventListener("click",requestNormalLogout);
   $("request-address").addEventListener("click",()=>send("AB",[]).catch(reportError));
   $("mail-form").addEventListener("submit",event=>{event.preventDefault();const target=decimal($("mail-target").value,-1),text=$("mail-text").value.trim();if(target<0||!text)return;send("MSG",[target,text,0]).then(()=>{$("mail-text").value="";addChat("我",`给联系人 ${target} 发送邮件`);}).catch(reportError);});
   $("protocol-function").addEventListener("change",renderProtocolFields);

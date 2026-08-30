@@ -1962,6 +1962,12 @@ for (const expected of [
 if (systemMenuSource.includes("sendLegacySystemMenu") || systemMenuSource.includes("systemPage=\"auto\"")) {
   throw new Error("system menu still contains an unsupported server-extension path");
 }
+if (/id="system-(?:server|logout|close)"/.test(html) || /\$\("system-(?:server|logout|close)"\)/.test(script)) {
+  throw new Error("system menu retains a hidden non-native control");
+}
+if (!/fetch\(`\/audio\/pal\/Palet_\$\{id\}\.sap`/.test(script)) {
+  throw new Error("map palette loader must use the published audio/pal tree");
+}
 /* CHAR_FS_* is sparse in the 2.5 server.  FIELD.CPP exposes five settings
    rows; the fifth enables incoming trade requests with CHAR_FS_TRADE (bit
    5).  The wheel is the separate TD action that starts a trade. */
@@ -2661,7 +2667,7 @@ if (!script.includes("function parseMapWindowHeader(value)") ||
     !script.includes("app.mapDrawTimeAnime=header.drawTimeAnime!==false")) {
   throw new Error("M/MC palette must stay independent from the day/night field strip");
 }
-if (!script.includes("fetch(`/assets/pal/Palet_${id}.sap`") ||
+if (!script.includes("fetch(`/audio/pal/Palet_${id}.sap`") ||
     !script.includes("function mapPaletteImage(file,image)") ||
     !script.includes("正在应用地图调色板")) {
   throw new Error("fixed map palettes must be applied to live map bitmaps");
