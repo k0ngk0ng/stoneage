@@ -3928,7 +3928,8 @@
     const total=required.length;
     const done=Math.min(total,loaded+failed);
     const manifestBytes=Math.max(0,Number(assetState.manifestBytes)||0),manifestTotalBytes=Math.max(0,Number(assetState.manifestTotalBytes)||0);
-    return {total,done,loaded,failed,pending:Math.max(0,total-done),bytes,knownBytes,manifestBytes,manifestTotalBytes};
+    const fieldBootstrapBytes=Math.max(0,Number(assetState.fieldBootstrapBytes)||0),fieldBootstrapTotalBytes=Math.max(0,Number(assetState.fieldBootstrapTotalBytes)||0);
+    return {total,done,loaded,failed,pending:Math.max(0,total-done),bytes,knownBytes,manifestBytes,manifestTotalBytes,fieldBootstrapBytes,fieldBootstrapTotalBytes};
   }
   let mapLoadingProgressTimer=0;
   function scheduleMapLoadingProgress(){
@@ -3945,7 +3946,9 @@
     const progress=$("world-loading-progress"),bar=$("world-loading-progress-bar"),detail=$("world-loading-detail"),retry=$("world-loading-retry");
     if(!progress||!bar||!detail)return;
     const stats=mapLoadingProgress(),manifestPending=!assetState.manifestReady&&!assetState.manifestFailed;
-    const hasTotal=stats.total>0,manifestHasTotal=stats.manifestTotalBytes>0;
+    const bootstrapReady=assetState.fieldBootstrapSpritesReady||assetState.spritesReady||Boolean(assetState.manifest?.sprites);
+    const bootstrapPending=app.phase==="world"&&!bootstrapReady;
+    const hasTotal=stats.total>0,manifestHasTotal=stats.manifestTotalBytes>0,bootstrapHasTotal=stats.fieldBootstrapTotalBytes>0;
     /* The manifest is intentionally read as a stream.  It is a large native
        resource index, so report its real byte progress instead of leaving a
        phone on an animated strip for the entire download.  Once it is ready,
@@ -3960,10 +3963,11 @@
     const manifestPercent=manifestHasTotal
       ?Math.max(0,Math.min(100,stats.manifestBytes*100/stats.manifestTotalBytes))
       :0;
+    const bootstrapPercent=bootstrapReady?100:(bootstrapHasTotal?Math.max(0,Math.min(100,stats.fieldBootstrapBytes*100/stats.fieldBootstrapTotalBytes)):0);
     const percent=manifestPending&&manifestHasTotal
       ?manifestPercent*0.25
-      :(assetState.manifestReady&&hasTotal?25+tilePercent*0.75:tilePercent);
-    const indeterminate=(!hasTotal&&!manifestHasTotal)|| (manifestPending&&!manifestHasTotal);
+      :(assetState.manifestReady&&hasTotal?25+tilePercent*0.55+bootstrapPercent*0.20:tilePercent);
+    const indeterminate=(!hasTotal&&!manifestHasTotal&&!bootstrapHasTotal)||(manifestPending&&!manifestHasTotal)||(bootstrapPending&&!bootstrapHasTotal&&!hasTotal);
     progress.classList.toggle("is-indeterminate",indeterminate);
     progress.setAttribute("aria-valuenow",String(Math.round(percent)));
     /* The indeterminate CSS animation supplies its own 34% travelling bar.
@@ -3982,7 +3986,12 @@
            in that case instead of falling back to an unexplained spinner. */
         :`资源清单已接收 ${formatLoadingBytes(stats.manifestBytes)}（总量未知）`)
       :(hasTotal?`贴片 ${stats.done}/${stats.total}`:"正在统计地图贴片");
-    const cumulativeBytes=Math.max(0,stats.manifestBytes)+Math.max(0,stats.bytes);
+    const bootstrapText=bootstrapPending
+      ?(bootstrapHasTotal?` · 首屏人物 ${formatLoadingBytes(stats.fieldBootstrapBytes)} / ${formatLoadingBytes(stats.fieldBootstrapTotalBytes)}`:" · 正在读取首屏人物")
+      :"";
+    const actorStats=app.mapLoadingActorStats;
+    const actorText=actorStats?.pending>0?` · 人物帧 ${Math.max(0,actorStats.total-actorStats.pending)}/${actorStats.total}`:"";
+    const cumulativeBytes=Math.max(0,stats.manifestBytes)+Math.max(0,stats.bytes)+Math.max(0,stats.fieldBootstrapBytes);
     const byteText=manifestPending
       ?""
       :(cumulativeBytes>0
@@ -3990,14 +3999,14 @@
         :" · 已接收数据统计中");
     const startedAt=app.mapLoading?Number(app.mapLoadingStartedAt)||Date.now():0;
     const now=Date.now(),elapsed=startedAt?Math.max(0,Math.floor((now-startedAt)/1000)):0;
-    const progressKey=`${assetState.manifestReady?1:0}:${stats.done}/${stats.total}:${stats.manifestBytes}:${stats.bytes}`;
+    const progressKey=`${assetState.manifestReady?1:0}:${stats.done}/${stats.total}:${stats.manifestBytes}:${stats.bytes}:${bootstrapReady?1:0}:${stats.fieldBootstrapBytes}`;
     const previous=app.mapLoadingStats||{};
     const lastProgressAt=progressKey!==previous.lastProgressKey?now:Number(previous.lastProgressAt)||now;
-    const stalled=Boolean(startedAt&&now-lastProgressAt>=15000&&(!hasTotal||stats.pending>0||manifestPending));
+    const stalled=Boolean(startedAt&&now-lastProgressAt>=15000&&(!hasTotal||stats.pending>0||manifestPending||bootstrapPending));
     const retryVisible=Boolean(stalled&&app.mapLoading&&app.phase==="world");
-    detail.textContent=`${suffix}${byteText}${elapsed>0?` · ${elapsed}s`:""}${stalled?" · 资源响应较慢":""}`;
+    detail.textContent=`${suffix}${bootstrapText}${actorText}${byteText}${elapsed>0?` · ${elapsed}s`:""}${stalled?" · 资源响应较慢":""}`;
     if(retry){retry.hidden=!retryVisible;retry.setAttribute("aria-hidden",retryVisible?"false":"true");}
-    app.mapLoadingStats={requested:stats.total,loaded:stats.loaded,failed:stats.failed,bytes:stats.bytes,knownBytes:stats.knownBytes,manifestBytes:stats.manifestBytes,manifestTotalBytes:stats.manifestTotalBytes,progress:Math.round(percent),phase,startedAt,lastProgressAt,lastProgressKey:progressKey,stalled,retryVisible};
+    app.mapLoadingStats={requested:stats.total,loaded:stats.loaded,failed:stats.failed,bytes:stats.bytes,knownBytes:stats.knownBytes,manifestBytes:stats.manifestBytes,manifestTotalBytes:stats.manifestTotalBytes,fieldBootstrapBytes:stats.fieldBootstrapBytes,fieldBootstrapTotalBytes:stats.fieldBootstrapTotalBytes,progress:Math.round(percent),phase,startedAt,lastProgressAt,lastProgressKey:progressKey,stalled,retryVisible};
   }
   function syncMapLoadingVisibility(){
     const node=$("world-loading"),main=document.querySelector("main");
@@ -4024,8 +4033,13 @@
   }
   function setMapLoading(loading,text="正在加载地图…"){
     app.mapLoading=Boolean(loading);
+    /* Native FIELD.CPP never publishes a character's packed REALBIN backing
+       record while its SPR row is unresolved.  Start the compact all-actor
+       STAND/WALK table as soon as a world load begins, in parallel with map
+       tiles, so it adds no post-map blank interval. */
+    if(loading&&app.phase==="world"&&!assetState.fieldBootstrapSpritesReady&&!assetState.fieldBootstrapSpriteLoading&&!assetState.spritesReady)loadFieldBootstrapSpriteManifest();
     if(loading&&!app.mapLoadingStartedAt){app.mapLoadingStartedAt=Date.now();app.mapLoadingStats.startedAt=app.mapLoadingStartedAt;}
-    if(!loading)app.mapLoadingStats.startedAt=0;
+    if(!loading){app.mapLoadingStats.startedAt=0;app.mapLoadingActorStats=null;}
     app.mapLoadingStats.phase=String(text||"正在加载地图…");
     renderMapLoadingProgress(text);
     syncMapLoadingVisibility();
@@ -4052,7 +4066,34 @@
     if(assetState.manifestFailed){
       assetState.loading=null;assetState.manifestFailed=false;assetState.manifestReady=false;assetState.manifestError="";loadAssetManifest();
     }
+    if(assetState.fieldBootstrapSpritesFailed){
+      assetState.fieldBootstrapSpritesFailed=false;assetState.fieldBootstrapSpriteLoading=null;loadFieldBootstrapSpriteManifest();
+    }
     renderWorld(true);
+  }
+  function fieldBootstrapFrameReadiness(){
+    const peopleVisible=app.systemSettings?.peopleVisible!==false;
+    const actors=[...app.actors.values()].filter(actor=>{
+      if(!Number.isFinite(Number(actor?.x))||!Number.isFinite(Number(actor?.y)))return false;
+      if(actor.staticNPC&&!fieldActorInAnimationRange(actor))return false;
+      return peopleVisible||actor.kind!=="character"||Number(actor.charType)!==1||actorIsOwn(actor);
+    });
+    if(!actors.some(actor=>actorIsOwn(actor)))actors.push({name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3,x:app.position[0],y:app.position[1]});
+    let pending=0;
+    for(const actor of actors){
+      ensureFieldActorAnimation(actor);
+      const expectsSprite=Boolean(spriteEntryForActor(actor));
+      const frame=actorFrame(actor);
+      const decoded=Boolean(frame?.image?.complete&&frame.image.naturalWidth);
+      /* actorFrame() deliberately keeps a previous decoded bitmap during an
+         action-frame swap.  At first reveal that previous value may be the
+         unsafe direct REALBIN fallback; reject it whenever the bootstrap
+         table proves this graphic is animated. */
+      if(!decoded||(expectsSprite&&frame?.direct))pending++;
+    }
+    const result={total:actors.length,pending,ready:pending===0};
+    app.mapLoadingActorStats=result;
+    return result;
   }
   function maybeFinishMapLoading(){
     if(!app.mapLoading)return;
@@ -4068,6 +4109,18 @@
     const manifestReady=!dynamicReady||assetState.manifestReady;
     if(dynamicReady&&!manifestReady){
       setMapLoading(true,assetState.manifestFailed?"地图资源清单加载失败，正在重试…":"正在读取地图资源清单…");
+      return;
+    }
+    const bootstrapReady=assetState.fieldBootstrapSpritesReady||assetState.spritesReady||Boolean(assetState.manifest?.sprites);
+    if(dynamicReady&&!bootstrapReady){
+      if(!assetState.fieldBootstrapSpriteLoading&&!assetState.fieldBootstrapSpritesFailed)loadFieldBootstrapSpriteManifest();
+      if(assetState.fieldBootstrapSpritesFailed&&!assetState.spriteLoading&&!assetState.spritesReady)loadSpriteManifest();
+      setMapLoading(true,assetState.fieldBootstrapSpritesFailed?"正在读取兼容人物资源…":"正在准备首屏人物…");
+      return;
+    }
+    const actorFrames=dynamicReady?fieldBootstrapFrameReadiness():{ready:true,total:0,pending:0};
+    if(dynamicReady&&!actorFrames.ready){
+      setMapLoading(true,`正在解码首屏人物（${actorFrames.total-actorFrames.pending}/${actorFrames.total}）…`);
       return;
     }
     /* Once an M window exists it is authoritative, even for floors that also
@@ -4148,7 +4201,7 @@
      It is intentionally separate from the multi-megabyte object manifest so
      a normal page load can select a cache namespace with one small request. */
   const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE);
-  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldBootstrapSprites:null,fieldBootstrapSpritesReady:false,fieldBootstrapSpritesFailed:false,fieldBootstrapSpriteLoading:null,fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
   function assetWorkerTarget(){
     try{return navigator.serviceWorker?.controller||assetState.assetWorker?.active||assetState.assetWorker?.waiting||assetState.assetWorker?.installing||null;}catch(_){return null;}
   }
@@ -4325,6 +4378,12 @@
      without accumulating date/tag variants. */
   const ASSET_MANIFEST_URL="/assets/manifest.json";
   const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json";
+  /* Complete native STAND/WALK rows for every animated graphic. PATTERN.CPP
+     can enter either row at any frame selected by the running field clock;
+     retaining only frame zero still exposes packed REALBIN backing records.
+     This ~14 MB gate prevents those records from reaching the visible
+     back-buffer while the complete 42 MB action/battle table is warming. */
+  const FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL="/assets/field-bootstrap-sprites.json";
   /* The complete SPR table is ~42 MB.  FIELD.CPP has the player's 13 rows
      resident before it enables the Action window, so keep the common stock
      player graphics in a compact first-response manifest as well.  The complete
@@ -4503,7 +4562,8 @@
   async function readAssetResponseBytes(response,onProgress,progressState=assetState){
     const advertised=Number(response?.headers?.get?.("Content-Length"))||0;
     const isSpriteProgress=progressState?._spriteProgress===true;
-    const bytesKey=isSpriteProgress?"spriteBytes":"manifestBytes",totalKey=isSpriteProgress?"spriteTotalBytes":"manifestTotalBytes";
+    const bytesKey=String(progressState?._bytesKey||(isSpriteProgress?"spriteBytes":"manifestBytes"));
+    const totalKey=String(progressState?._totalKey||(isSpriteProgress?"spriteTotalBytes":"manifestTotalBytes"));
     if(advertised>0)progressState[totalKey]=advertised;
     const body=response?.body;
     /* ReadableStream is available in current mobile Chrome/Safari.  Keep the
@@ -4603,6 +4663,40 @@
       return null;
     });
     return assetState.creationSpriteLoading;
+  }
+  function loadFieldBootstrapSpriteManifest(){
+    if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
+    if(assetState.fieldBootstrapSpritesReady)return Promise.resolve(assetState.fieldBootstrapSprites);
+    if(assetState.fieldBootstrapSpriteLoading)return assetState.fieldBootstrapSpriteLoading;
+    assetState.fieldBootstrapSpritesFailed=false;assetState.fieldBootstrapBytes=0;assetState.fieldBootstrapTotalBytes=0;
+    const progress={_bytesKey:"fieldBootstrapBytes",_totalKey:"fieldBootstrapTotalBytes",fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0};
+    assetState.fieldBootstrapSpriteLoading=fetch(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
+      if(!response.ok)throw new Error(`首屏人物资源 HTTP ${response.status}`);
+      const buffer=await readAssetResponseBytes(response,()=>{
+        assetState.fieldBootstrapBytes=Number(progress.fieldBootstrapBytes)||0;
+        assetState.fieldBootstrapTotalBytes=Number(progress.fieldBootstrapTotalBytes)||0;
+        if(app.mapLoading)renderMapLoadingProgress("正在准备首屏人物…");
+      },progress);
+      assetState.fieldBootstrapBytes=Number(progress.fieldBootstrapBytes)||buffer.byteLength;
+      assetState.fieldBootstrapTotalBytes=Number(progress.fieldBootstrapTotalBytes)||buffer.byteLength;
+      return JSON.parse(new TextDecoder().decode(buffer));
+    }).then(payload=>{
+      const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
+      if(!sprites||typeof sprites!=="object")throw new Error("首屏人物资源清单为空");
+      assetState.fieldBootstrapSprites=sprites;assetState.fieldBootstrapSpritesReady=true;assetState.fieldBootstrapSpritesFailed=false;
+      assetState.fieldBootstrapSpriteLoading=null;
+      renderWorld(true);
+      return sprites;
+    }).catch(error=>{
+      assetState.fieldBootstrapSprites=null;assetState.fieldBootstrapSpritesReady=false;assetState.fieldBootstrapSpritesFailed=true;assetState.fieldBootstrapSpriteLoading=null;
+      addEvent(`首屏人物资源加载失败：${error?.message||error}`);
+      /* A legacy pack may predate the compact gate.  The complete table is a
+         compatible (larger) fallback, but the field remains covered until it
+         arrives so corrupted packed bitmaps are never exposed. */
+      loadSpriteManifest();renderWorld(true);
+      return null;
+    });
+    return assetState.fieldBootstrapSpriteLoading;
   }
   function loadFieldSpriteManifest(){
     if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
@@ -4828,7 +4922,22 @@
      compatible while the split mobile pack can populate the same lookup
      lazily. */
   function spriteManifest(){
-    return assetState.sprites||assetState.fieldSprites||assetState.creationSprites||assetState.manifest?.sprites||null;
+    return assetState.sprites||assetState.fieldSprites||assetState.fieldBootstrapSprites||assetState.creationSprites||assetState.manifest?.sprites||null;
+  }
+  function spriteEntryForKeys(keys){
+    const candidates=Array.isArray(keys)?keys:[];
+    /* Tables are deliberately layered instead of copied into one large
+       object.  Full action rows replace the STAND/WALK bootstrap as they arrive,
+       while a stock-player Action row can replace only its matching graphic
+       without making every NPC wait for the complete 42 MB resource. */
+    const tables=[assetState.sprites,assetState.fieldSprites,assetState.fieldBootstrapSprites,assetState.creationSprites,assetState.manifest?.sprites];
+    for(const table of tables){
+      if(!table)continue;
+      const key=candidates.find(candidate=>table?.[candidate]);
+      const sprite=key?table[key]:null;
+      if(sprite&&Array.isArray(sprite.actions)&&sprite.actions.length)return {key,sprite};
+    }
+    return null;
   }
   function actorGraphicValue(actor){
     const key=actor?.graphicKey;
@@ -4839,10 +4948,7 @@
     return key!==undefined&&key!==null&&String(key).trim()!==""?key:actor?.graphic;
   }
   function spriteEntryForActor(actor){
-    const sprites=spriteManifest();if(!sprites)return null;
-    const keys=assetManifestKeys(actorGraphicValue(actor)),key=keys.find(candidate=>sprites?.[candidate]);
-    const sprite=key?sprites?.[key]:null;
-    return sprite&&Array.isArray(sprite.actions)&&sprite.actions.length?{key,sprite}:null;
+    return spriteEntryForKeys(assetManifestKeys(actorGraphicValue(actor)));
   }
   function spriteAnimationForAction(actor,direction,action,{allowDirectionFallback=false}={}){
     const entry=spriteEntryForActor(actor);if(!entry)return null;
@@ -4960,12 +5066,12 @@
        is the intermittent “人物消失” seen on slower mobile decoders. */
     const previousFrame=actor&&typeof actor==="object"?actor._lastFrame:null;
     const manifest=assetState.manifest;if(!manifest)return previousFrame||null;
-    const sprites=spriteManifest(),keys=assetManifestKeys(actorGraphicValue(actor)),key=keys.find(candidate=>sprites?.[candidate])||keys.find(candidate=>manifest.bitmaps?.[candidate])||keys[0];
+    const keys=assetManifestKeys(actorGraphicValue(actor)),spriteEntry=spriteEntryForKeys(keys),key=spriteEntry?.key||keys.find(candidate=>manifest.bitmaps?.[candidate])||keys[0];
     /* C/CA can briefly carry an empty/unknown graphic while the replacement
        record is being decoded.  Keep the completed frame that was painted
        for this actor instead of clearing it for one compositor tick. */
     if(!key||key==="0")return previousFrame||null;
-    const sprite=sprites?.[key];
+    const sprite=spriteEntry?.sprite;
     if(sprite&&Array.isArray(sprite.actions)&&sprite.actions.length){
       const direction=((Number(actor.direction)||0)%8+8)%8;
       /* The 2.5 server sends CHAR_ACTWALK (1) in CA.  Extracted sprite

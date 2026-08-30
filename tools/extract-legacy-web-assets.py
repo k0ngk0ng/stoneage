@@ -24,6 +24,7 @@ import asset_cooker as legacy  # noqa: E402  (the decoder is shared, output is n
 
 CREATION_SPRITES = tuple(100000 + index * 20 for index in range(12))
 CREATION_SPRITE_ACTIONS = frozenset((3, 4))  # ANIM_STAND / ANIM_WALK
+FIELD_BOOTSTRAP_ACTIONS = frozenset((3, 4))  # complete visible STAND/WALK rows
 # 100025 is sa_2903's default new-character image (the web create form uses
 # it as its initial value). Keep it in the compact field-action pack even
 # though it is not among the twelve character-select portraits.
@@ -675,6 +676,32 @@ def sprite_pack(
         sprites[str(sprite_no)] = {"actions": out}
 
 
+def field_bootstrap_sprite_manifest(sprite_manifest):
+    """Keep the complete field-idle rows for every animated actor.
+
+    A raw REALBIN actor entry is not necessarily a standalone transparent
+    sprite; for animated graphics it can be a packed/native backing record.
+    The browser therefore needs complete STAND/WALK rows before revealing the
+    first map.  PATTERN.CPP can enter either row at any frame selected by its
+    running process clock, so keeping only frames[0] exposes packed backing
+    records until the complete SPR manifest arrives.  Attack/death/skill rows
+    remain in the background-only table.
+    """
+    sprites = {}
+    for sprite_no, sprite in sprite_manifest.get("sprites", {}).items():
+        actions = []
+        for animation in sprite.get("actions", []):
+            if int(animation.get("action", -1)) not in FIELD_BOOTSTRAP_ACTIONS:
+                continue
+            frames = animation.get("frames", [])
+            if not frames:
+                continue
+            actions.append({**animation, "frames": frames})
+        if actions:
+            sprites[str(sprite_no)] = {"actions": actions}
+    return {"format": sprite_manifest.get("format", 2), "sprites": sprites}
+
+
 def face_pack(records, by_number, real_path, palette, output, manifest):
     """Emit the original 64×72 character-select portraits.
 
@@ -803,6 +830,11 @@ def main() -> int:
         action="store_true",
         help="refresh the small pre-world character-selection SPR pack",
     )
+    parser.add_argument(
+        "--field-bootstrap-sprites-only",
+        action="store_true",
+        help="refresh the field STAND/WALK bootstrap pack from an existing sprites.json",
+    )
     parser.add_argument("--sprite", type=int, action="append", default=[100000, 100025, 100250])
     args = parser.parse_args()
 
@@ -877,6 +909,23 @@ def main() -> int:
         print(
             json.dumps(
                 {"output": str(args.output), "creation_sprites": sorted(creation_manifest["sprites"])},
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    if args.field_bootstrap_sprites_only:
+        sprite_manifest_path = args.output / "sprites.json"
+        if not sprite_manifest_path.is_file():
+            parser.error("--field-bootstrap-sprites-only requires an existing sprites.json")
+        sprite_manifest = json.loads(sprite_manifest_path.read_text(encoding="utf-8"))
+        bootstrap_manifest = field_bootstrap_sprite_manifest(sprite_manifest)
+        (args.output / "field-bootstrap-sprites.json").write_text(
+            json.dumps(bootstrap_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            json.dumps(
+                {"output": str(args.output), "field_bootstrap_sprites": len(bootstrap_manifest["sprites"])},
                 ensure_ascii=False,
             )
         )
@@ -975,12 +1024,17 @@ def main() -> int:
             if str(sprite_no) in sprite_manifest["sprites"]
         },
     }
+    field_bootstrap_manifest = field_bootstrap_sprite_manifest(sprite_manifest)
     (args.output / "sprites.json").write_text(
         json.dumps(sprite_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
     (args.output / "field-sprites.json").write_text(
         json.dumps(field_sprite_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    (args.output / "field-bootstrap-sprites.json").write_text(
+        json.dumps(field_bootstrap_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
     (args.output / "creation-sprites.json").write_text(

@@ -156,6 +156,7 @@ if (!/<link rel="icon" href="data:,">/.test(html)) {
 for (const expected of [
   'fetch(ASSET_MANIFEST_URL,{cache:"no-cache"',
   'fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"',
+  'fetch(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"',
   'fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"',
   'fetch(`${SPRITE_MANIFEST_URL}`,{cache:"no-cache"',
 ]) {
@@ -169,6 +170,7 @@ for (const expected of [
 for (const expected of [
   'const ASSET_MANIFEST_URL="/assets/manifest.json"',
   'const CREATION_SPRITE_MANIFEST_URL="/assets/creation-sprites.json"',
+  'const FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL="/assets/field-bootstrap-sprites.json"',
   'const FIELD_SPRITE_MANIFEST_URL="/assets/field-sprites.json"',
   'const SPRITE_MANIFEST_URL="/assets/sprites.json"',
 ]) {
@@ -248,6 +250,29 @@ for (const graphic of expectedFieldSprites) {
     }
   }
 }
+/* The first visible field frame must never use an animated graphic's packed
+   REALBIN fallback.  PATTERN.CPP can select any frame in the running
+   STAND/WALK rows, so the bootstrap must retain both rows in full; the
+   complete 42 MB action table remains a background resource. */
+const fieldBootstrapFilename = path.join(__dirname, "assets", "original", "field-bootstrap-sprites.json");
+const fieldBootstrapBytes = fs.statSync(fieldBootstrapFilename).size;
+const fieldBootstrapPayload = JSON.parse(fs.readFileSync(fieldBootstrapFilename, "utf8"));
+const fieldBootstrapEntries = Object.entries(fieldBootstrapPayload.sprites || {});
+let fieldBootstrapFrames = 0;
+if (fieldBootstrapEntries.length !== 770 || fieldBootstrapBytes > 16 * 1024 * 1024) {
+  throw new Error(`field bootstrap SPR pack shape/size regression: ${fieldBootstrapEntries.length}/${fieldBootstrapBytes}`);
+}
+for (const [graphic, sprite] of fieldBootstrapEntries) {
+  const rows = sprite.actions || [];
+  if (rows.length !== 16 || rows.some(row => ![3,4].includes(Number(row.action)) ||
+      Number(row.direction) < 0 || Number(row.direction) > 7 || !Array.isArray(row.frames) || row.frames.length < 4)) {
+    throw new Error(`field bootstrap SPR rows drifted for ${graphic}`);
+  }
+  fieldBootstrapFrames += rows.reduce((total, row) => total + row.frames.length, 0);
+}
+if (fieldBootstrapFrames !== 159075) {
+  throw new Error(`field bootstrap SPR frame coverage regression: ${fieldBootstrapFrames}`);
+}
 const creationLoaderStart = script.indexOf("  function loadCreationSpriteManifest");
 const creationLoaderEnd = script.indexOf("  function loadSpriteManifest", creationLoaderStart);
 const creationPaintStart = script.indexOf("  function paintCreationCanvas");
@@ -262,7 +287,7 @@ if (creationLoaderStart < 0 || creationLoaderEnd <= creationLoaderStart ||
 if (creationPaintStart < 0 || creationPaintEnd <= creationPaintStart ||
     !script.slice(creationPaintStart, creationPaintEnd).includes("creationGraphics.every") ||
     !script.slice(creationPaintStart, creationPaintEnd).includes("walking?4:3") ||
-    !script.includes("return assetState.sprites||assetState.fieldSprites||assetState.creationSprites||assetState.manifest?.sprites||null") ||
+    !script.includes("return assetState.sprites||assetState.fieldSprites||assetState.fieldBootstrapSprites||assetState.creationSprites||assetState.manifest?.sprites||null") ||
     !script.slice(openCreationStart, openCreationEnd).includes("loadCreationSpriteManifest()")) {
   throw new Error("character selection must wait for native SPR rows and animate hover with ANIM_WALK");
 }
@@ -3255,6 +3280,19 @@ settleMapAssetHarness("ground.png",true);settleMapAssetHarness("ground.png",true
 if(failedCache.ready||!failedCache.dirty||!failedCache.failed.has("ground.png")||failedCache.unavailable.has("ground.png")||
    failedCache.retryCount.get("ground.png")!==2||failedAssetEvents.forgot!==3||failedAssetEvents.loading!==1||failedAssetEvents.refresh!==1){
   throw new Error(`failed map tile must retain the complete fallback instead of publishing black cells: ${JSON.stringify({ready:failedCache.ready,dirty:failedCache.dirty,failed:[...failedCache.failed],unavailable:[...failedCache.unavailable],retry:failedCache.retryCount.get("ground.png"),events:failedAssetEvents})}`);
+}
+/* A completed terrain cache is still not publishable until animated actors
+   resolve to decoded SPR frames.  This is the incomplete-SPR/direct-REALBIN
+   race that produced tall black blocks immediately after NOW LOADING. */
+const finishMapLoadingStart=script.indexOf("  function fieldBootstrapFrameReadiness()");
+const finishMapLoadingEnd=script.indexOf("  function send(functionName,values)",finishMapLoadingStart);
+const finishMapLoadingSource=script.slice(finishMapLoadingStart,finishMapLoadingEnd);
+if(finishMapLoadingStart<0||finishMapLoadingEnd<=finishMapLoadingStart||
+   !/expectsSprite&&frame\?\.direct/.test(finishMapLoadingSource)||
+   !/const bootstrapReady=assetState\.fieldBootstrapSpritesReady\|\|assetState\.spritesReady/.test(finishMapLoadingSource)||
+   !/if\(dynamicReady&&!actorFrames\.ready\)[\s\S]{0,260}setMapLoading\(true,`正在解码首屏人物/.test(finishMapLoadingSource)||
+   finishMapLoadingSource.indexOf("if(dynamicReady&&!actorFrames.ready)")>finishMapLoadingSource.indexOf("setMapLoading(false)")) {
+  throw new Error("map loading must retain its opaque curtain until first actor SPR frames decode");
 }
 if (!script.includes("function bindMapFloorTransitionTarget(floor)") ||
     !script.includes("if(!bindMapFloorTransitionTarget(floor)&&!sameFloor&&app.floor>=0&&app.map)startMapFloorTransition(floor)")) {
