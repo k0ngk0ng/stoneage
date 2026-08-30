@@ -117,9 +117,9 @@ BGM/SE，后续地图和大精灵表仍然按需加载并显示下载进度。
 目前没有把 1.2GB 资源强制打成单个 `.pack` 或写入 OPFS：这会让 2.5 客户端兼容、
 CDN 增量发布和首次边玩边下变差。待资源包确实达到数 GB 时，再按地图/音频/精灵分片
 生成带索引的 pack，并以 OPFS 作为可选加速层；Cache Storage 始终保留为回退路径。
-当前 revision 切换会建立新的 Service Worker Cache Storage 命名空间，尚未根据完整
-`_client-manifest.json` 做未变化对象的 SHA-256 跨命名空间复制；稳定 URL 下浏览器 HTTP
-缓存通常会复用未变化文件，但这不是显式的 hash 级本地缓存复用。
+revision 切换会建立新的 Service Worker Cache Storage 命名空间；发布器根据完整
+`_client-manifest.json` 生成变更/删除路径，并附带 delta 的基准 revision。Worker 只有在
+浏览器当前缓存正好是这个基准版本时，才会安全复用上一个命名空间中未变化的对象；跳过版本、变化或删除对象都会走网络，避免误用旧内容。旧版 marker 没有 delta 信息时按全量更新处理。
 
 Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
 `static.oss` 中填写对象存储的 `provider`、`endpoint`、`region`、`bucket` 和固定

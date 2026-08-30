@@ -70,9 +70,10 @@ service-control 仅在任务启动时从两个 Docker secret 文件读取密钥�
 下载并显示字节进度。当前 1.2GB 资源不强制合并成单个 `.pack`，也不要求 OPFS；未来资源达到数 GB 时可增加
 按地图/音频/精灵分片 pack，OPFS 作为可选加速层而不是运行时硬依赖。
 
-当前 Service Worker 在 revision 变化时会切换到新的 Cache Storage 命名空间，但还没有根据完整
-`_client-manifest.json` 将未变化对象按 SHA-256 显式复制到新命名空间；稳定 URL 配合浏览器 HTTP 缓存通常
-可以复用未变化文件，但这不等同于跨 revision 的 hash 级 Cache Storage 复用。
+Service Worker 在 revision 变化时会切换到新的 Cache Storage 命名空间，并接收发布器根据
+`_client-manifest.json` 计算的变更/删除路径及其基准 revision；只有浏览器当前缓存正好是这个基准版本时，
+未变化对象才会从上一个命名空间安全迁移命中。跳过版本、变化或删除对象不会复用旧内容；旧版没有 delta 信息的 marker
+也会按全量更新处理。
 
 音乐通过只读 `/audio/bgm/` 和 `/audio/se/` 路径提供。网页按 `_SA_VERSION_25` 客户端的时机切换标题、地图、战斗/首领 BGM，并按服务器 `SE` 包播放对应音效；浏览器第一次用户操作后才会解锁音频，这是浏览器自动播放策略的限制。WAV 使用长期缓存，地图音乐标记只接受随附 `sa_2903` 2.5 客户端源码的 40–46 范围；47–53 属于后续 8.5 表，不会在本网页端启用。
 

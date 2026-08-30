@@ -13,10 +13,17 @@
 const CACHE_PREFIX = "stoneage-static-v1-";
 const META_CACHE = "stoneage-static-meta-v1";
 const REVISION_KEY = "/__stoneage_asset_revision__";
+const PREVIOUS_STATE_KEY = "/__stoneage_asset_previous__";
 const ROOTS_KEY = "/__stoneage_asset_roots__";
 const BOOTSTRAP_REVISION = "bootstrap";
 let activeRevision = BOOTSTRAP_REVISION;
 let assetRoots = [];
+let previousRevision = "";
+let previousDeltaKnown = false;
+let previousChangedAll = true;
+let previousDeltaFrom = "";
+let previousChanged = new Set();
+let previousRemoved = new Set();
 
 function validRevision(value) {
   const revision = String(value || "").trim();
@@ -60,6 +67,37 @@ function isAllowedExternalRoot(url) {
   });
 }
 
+function normalizedObjectKey(value) {
+  return String(value || "").replace(/^\/+/, "").replace(/\\/g, "/");
+}
+
+/* Convert an absolute same-origin/CDN URL to the stable publication key used
+   by _client-version.json (assets/foo.png, maps/100.MAP, audio/bgm/0.wav).
+   Query strings are intentionally ignored: published object paths remain
+   stable and cache invalidation is driven by the SHA-256 delta. */
+function assetObjectKey(url) {
+  for (const root of assetRoots) {
+    try {
+      const parsed = new URL(root);
+      if (parsed.origin !== url.origin || !url.pathname.startsWith(parsed.pathname)) continue;
+      const relative = decodeURIComponent(url.pathname.slice(parsed.pathname.length));
+      const rootPath = parsed.pathname.replace(/\/+$/, "");
+      const tree = rootPath.endsWith("/maps") ? "maps" : rootPath.endsWith("/audio") ? "audio" : "assets";
+      return normalizedObjectKey(`${tree}/${relative}`);
+    } catch (_) {
+      /* An invalid root is ignored; normal network fallback remains intact. */
+    }
+  }
+  const local = new URL(url.href);
+  if (local.origin === self.location.origin) {
+    for (const tree of ["assets", "maps", "audio"]) {
+      const prefix = `/${tree}/`;
+      if (local.pathname.startsWith(prefix)) return normalizedObjectKey(`${tree}/${local.pathname.slice(prefix.length)}`);
+    }
+  }
+  return "";
+}
+
 function isStaticRequest(request) {
   if (request.method !== "GET") return false;
   const url = new URL(request.url);
@@ -95,8 +133,10 @@ async function writeMeta(key, value) {
 
 async function removeOldCaches() {
   const names = await caches.keys();
+  const keep = new Set([cacheName()]);
+  if (validRevision(previousRevision)) keep.add(cacheName(previousRevision));
   await Promise.all(names
-    .filter(name => name.startsWith(CACHE_PREFIX) && name !== cacheName())
+    .filter(name => name.startsWith(CACHE_PREFIX) && !keep.has(name))
     .map(name => caches.delete(name)));
 }
 
@@ -121,6 +161,25 @@ async function cacheFirst(request) {
   const cache = await caches.open(cacheName());
   const hit = await cache.match(request, {ignoreVary: true});
   if (hit) return hit;
+  /* When a publication revision changes, unchanged objects are safe to reuse
+     from the previous namespace because the uploader compared their SHA-256.
+     Changed/removed objects are excluded and must be fetched from the new
+     publication.  If the marker predates delta metadata, do not guess. */
+  if (previousRevision && previousDeltaKnown && !previousChangedAll && previousDeltaFrom === previousRevision) {
+    const key = assetObjectKey(new URL(request.url));
+    if (key && !previousChanged.has(key) && !previousRemoved.has(key)) {
+      try {
+        const previousCache = await caches.open(cacheName(previousRevision));
+        const previousHit = await previousCache.match(request, {ignoreVary: true});
+        if (previousHit) {
+          try { await cache.put(request, previousHit.clone()); } catch (_) { /* quota is optional */ }
+          return previousHit;
+        }
+      } catch (_) {
+        /* Storage failures fall through to the normal network path. */
+      }
+    }
+  }
   try {
     const response = await fetch(request);
     if (response && (response.ok || response.type === "opaque")) {
@@ -137,6 +196,25 @@ async function cacheFirst(request) {
 async function loadStoredState() {
   const revision = validRevision(await readMeta(REVISION_KEY));
   if (revision) activeRevision = revision;
+  try {
+    const raw = await readMeta(PREVIOUS_STATE_KEY);
+    const parsed = JSON.parse(raw || "null");
+    if (parsed && validRevision(parsed.revision)) {
+      previousRevision = parsed.revision;
+      previousDeltaKnown = parsed.deltaKnown === true;
+      previousChangedAll = parsed.changedAll !== false;
+      previousDeltaFrom = validRevision(parsed.deltaFrom);
+      previousChanged = new Set(Array.isArray(parsed.changed) ? parsed.changed.map(normalizedObjectKey) : []);
+      previousRemoved = new Set(Array.isArray(parsed.removed) ? parsed.removed.map(normalizedObjectKey) : []);
+    }
+  } catch (_) {
+    previousRevision = "";
+    previousDeltaKnown = false;
+    previousChangedAll = true;
+    previousDeltaFrom = "";
+    previousChanged = new Set();
+    previousRemoved = new Set();
+  }
   try {
     const raw = await readMeta(ROOTS_KEY);
     const parsed = JSON.parse(raw || "[]");
@@ -163,8 +241,27 @@ self.addEventListener("message", event => {
   if (data.type === "set-asset-version") {
     const revision = validRevision(data.revision);
     if (!revision) return;
-    activeRevision = revision;
     event.waitUntil((async () => {
+      if (revision !== activeRevision) {
+        previousRevision = activeRevision;
+        previousDeltaKnown = data.deltaKnown === true;
+        previousDeltaFrom = validRevision(data.deltaFrom);
+        /* Reuse is valid only when the publisher compared this revision
+           against the exact namespace currently in the browser.  A missing
+           or mismatched base deliberately falls back to network loading. */
+        previousChangedAll = data.changedAll === true || !previousDeltaKnown || !previousDeltaFrom || previousDeltaFrom !== previousRevision;
+        previousChanged = new Set(Array.isArray(data.changed) ? data.changed.map(normalizedObjectKey) : []);
+        previousRemoved = new Set(Array.isArray(data.removed) ? data.removed.map(normalizedObjectKey) : []);
+        await writeMeta(PREVIOUS_STATE_KEY, JSON.stringify({
+          revision: previousRevision,
+          deltaFrom: previousDeltaFrom,
+          deltaKnown: previousDeltaKnown,
+          changedAll: previousChangedAll,
+          changed: [...previousChanged],
+          removed: [...previousRemoved],
+        }));
+        activeRevision = revision;
+      }
       await writeMeta(REVISION_KEY, revision);
       await caches.open(cacheName());
       await removeOldCaches();

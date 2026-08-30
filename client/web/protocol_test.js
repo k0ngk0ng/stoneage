@@ -110,6 +110,7 @@ for (let battle = 0; battle < 220; battle++) {
 }
 
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const serviceWorker = fs.readFileSync(__dirname + "/sw.js", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 for (const expected of [
   'fetch(ASSET_MANIFEST_URL,{cache:"no-cache"',
@@ -131,6 +132,24 @@ for (const expected of [
   'const SPRITE_MANIFEST_URL="/assets/sprites.json"',
 ]) {
   if (!script.includes(expected)) throw new Error(`asset index URL drifted from stable path: ${expected}`);
+}
+for (const expected of [
+  'deltaFrom:String(version.delta_from||"")',
+]) {
+  if (!script.includes(expected)) throw new Error(`asset version delta wiring missing: ${expected}`);
+}
+for (const expected of [
+  "const PREVIOUS_STATE_KEY",
+  "function assetObjectKey(url)",
+  "previousDeltaKnown",
+  "previousChangedAll",
+  "previousDeltaFrom",
+  "previousHit",
+  "data.deltaKnown",
+  "data.deltaFrom",
+  "data.changedAll",
+]) {
+  if (!serviceWorker.includes(expected)) throw new Error(`Service Worker hash-delta reuse path missing: ${expected}`);
 }
 /* Most UI styles live inside the script's legacyStyle template literal.
    A stray backtick in a CSS comment can therefore leave a perfectly

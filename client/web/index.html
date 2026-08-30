@@ -4064,7 +4064,15 @@
     if(!assetState.assetWorkerReady)return;
     postAssetWorker({type:"set-asset-roots",roots:STATIC_RESOURCE_ROOTS.map(root=>root.href)});
     const revision=String(assetState.clientVersion?.revision||"");
-    if(revision)postAssetWorker({type:"set-asset-version",revision});
+    if(revision){
+      const version=assetState.clientVersion||{};
+      postAssetWorker({type:"set-asset-version",revision,
+        deltaFrom:String(version.delta_from||""),
+        deltaKnown:version.delta_known===true,
+        changedAll:version.changed_all===true,
+        changed:Array.isArray(version.changed_objects)?version.changed_objects:[],
+        removed:Array.isArray(version.removed_objects)?version.removed_objects:[]});
+    }
   }
   function registerAssetWorker(){
     if(!navigator.serviceWorker?.register)return;
@@ -6028,12 +6036,13 @@
     const page=app.systemPage||"menu";const settings=app.systemSettings;configureSystemWindow(page);
     $("system-summary").textContent="StoneAge 2.5 系统菜单";
     if(page==="menu"){
-      /* This is the stock 2.5 menu from vendor/upstream/code_sa_client.
-         The 8.5 _NEW_SYSTEM_MENU branch adds SaMenu-backed web/commerce,
-         task, encounter and ranking entries; the 2.5 bridge deliberately has
-         no SaMenu function, so those labels must not be rendered at all.
-         “原地登出” is the local EOF-save path implemented by this 2.5
-         server, while the other four entries are native client settings. */
+      /* Keep the stock 2.5 choices (logout, chat, BGM, SE, close) and expose
+         the two logout outcomes explicitly: CharLogout is the native
+         record-point path, while this repository's durable-EOF patch provides
+         the current-position path without adding an 8.5 wire field.  The 8.5
+         _NEW_SYSTEM_MENU/SaMenu extensions (commerce, tasks, rankings,
+         encounter toggles, etc.) have no 2.5 server implementation and are
+         intentionally absent. */
       const add=(label,handler,row)=>list.append(systemChoice(label,handler,row*40));
       add("回记录点",()=>openLogoutConfirm("record"),0);
       add("原地登出",()=>openLogoutConfirm("in-place"),1);

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -318,9 +319,58 @@ func TestPublicationRevisionIsStableAndIncludesDeletes(t *testing.T) {
 	}
 }
 
+func TestPublicationDeltaUsesPublicKeysAndHashChanges(t *testing.T) {
+	previous := map[string]manifestObject{
+		"stoneage/assets/unchanged.png": {Size: 2, SHA256: "same"},
+		"stoneage/assets/changed.png":   {Size: 2, SHA256: "old"},
+		"stoneage/audio/removed.wav":    {Size: 4, SHA256: "gone"},
+	}
+	objects := []plannedObject{
+		{Key: "stoneage/assets/unchanged.png", Size: 2, SHA256: "same"},
+		{Key: "stoneage/assets/changed.png", Size: 2, SHA256: "new"},
+		{Key: "stoneage/maps/new.map", Size: 3, SHA256: "new-map"},
+	}
+	changed, removed, all := publicationDelta(objects, previous, "stoneage")
+	if all || !reflect.DeepEqual(changed, []string{"assets/changed.png", "maps/new.map"}) || !reflect.DeepEqual(removed, []string{"audio/removed.wav"}) {
+		t.Fatalf("publication delta = changed=%#v removed=%#v all=%t", changed, removed, all)
+	}
+}
+
+func TestManifestRevisionMatchesPublicationRevision(t *testing.T) {
+	objects := []plannedObject{
+		{Key: "stoneage/assets/a.png", Size: 3, SHA256: "aaa"},
+		{Key: "stoneage/maps/1.map", Size: 4, SHA256: "bbb"},
+	}
+	want, _ := publicationRevision(objects)
+	manifest := clientManifest{Format: 1, Objects: map[string]manifestObject{
+		objects[1].Key: {Size: objects[1].Size, SHA256: objects[1].SHA256},
+		objects[0].Key: {Size: objects[0].Size, SHA256: objects[0].SHA256},
+	}}
+	if got := manifestRevision(manifest); got != want {
+		t.Fatalf("manifest revision=%q, want %q", got, want)
+	}
+	if got := manifestRevision(clientManifest{Format: 1, Objects: map[string]manifestObject{}}); got != "" {
+		t.Fatalf("empty manifest revision=%q, want empty", got)
+	}
+}
+
+func TestPublicationDeltaMarksLargeChangesAsUnknown(t *testing.T) {
+	previous := make(map[string]manifestObject, clientVersionDeltaMax)
+	objects := make([]plannedObject, clientVersionDeltaMax+1)
+	for index := range objects {
+		key := "stoneage/assets/file-" + strconv.Itoa(index) + ".png"
+		objects[index] = plannedObject{Key: key, Size: 1, SHA256: "new"}
+		previous[key] = manifestObject{Size: 1, SHA256: "old"}
+	}
+	changed, removed, all := publicationDelta(objects, previous, "stoneage")
+	if !all || changed != nil || removed != nil {
+		t.Fatalf("large publication delta = changed=%#v removed=%#v all=%t", changed, removed, all)
+	}
+}
+
 func TestWriteClientVersionPublishesNoCacheJSON(t *testing.T) {
 	store := &memoryObjectStore{}
-	want := clientVersion{Format: 1, Generated: "2026-08-30T00:00:00Z", Revision: "0123456789abcdef", ObjectCount: 12, TotalBytes: 3456}
+	want := clientVersion{Format: 1, Generated: "2026-08-30T00:00:00Z", Revision: "0123456789abcdef", ObjectCount: 12, TotalBytes: 3456, DeltaFrom: "fedcba9876543210", DeltaKnown: true, ChangedObjects: []string{"assets/new.png"}, RemovedObjects: []string{"maps/old.map"}}
 	if err := writeClientVersion(store, "stoneage/_client-version.json", want); err != nil {
 		t.Fatal(err)
 	}

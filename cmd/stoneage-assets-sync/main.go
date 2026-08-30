@@ -124,7 +124,21 @@ type clientVersion struct {
 	Revision    string `json:"revision"`
 	ObjectCount int    `json:"object_count"`
 	TotalBytes  int64  `json:"total_bytes"`
+	/* DeltaFrom identifies the exact publication manifest against which the
+	   changed/removed lists were calculated.  A browser may have skipped one
+	   or more releases; without this anchor it could reuse an entry from an
+	   older cache that changed in an intermediate release and later reverted. */
+	DeltaFrom string `json:"delta_from,omitempty"`
+	/* DeltaKnown tells the Service Worker that changed_objects and
+	   removed_objects describe this exact revision transition.  Older marker
+	   files omit it, so a worker must not reuse an unknown old cache. */
+	DeltaKnown     bool     `json:"delta_known,omitempty"`
+	ChangedObjects []string `json:"changed_objects,omitempty"`
+	RemovedObjects []string `json:"removed_objects,omitempty"`
+	ChangedAll     bool     `json:"changed_all,omitempty"`
 }
+
+const clientVersionDeltaMax = 8192
 
 // objectMetadata is the small provider-neutral subset needed by the browser
 // client.  Both Aliyun OSS and Cloudflare R2 preserve these HTTP headers and
@@ -411,12 +425,19 @@ func run(arguments []string) error {
 		return err
 	}
 	revision, totalBytes := publicationRevision(objects)
+	previousRevision := manifestRevision(previous)
+	changedObjects, removedObjects, changedAll := publicationDelta(objects, previous.Objects, prefix)
 	version := clientVersion{
-		Format:      1,
-		Generated:   manifest.Generated,
-		Revision:    revision,
-		ObjectCount: len(objects),
-		TotalBytes:  totalBytes,
+		Format:         1,
+		Generated:      manifest.Generated,
+		Revision:       revision,
+		ObjectCount:    len(objects),
+		TotalBytes:     totalBytes,
+		DeltaFrom:      previousRevision,
+		DeltaKnown:     true,
+		ChangedObjects: changedObjects,
+		RemovedObjects: removedObjects,
+		ChangedAll:     changedAll,
 	}
 	/* The tiny version marker is the final publication write.  A browser that
 	   observes a new revision can therefore fetch a complete _client-manifest
@@ -780,6 +801,57 @@ func publicationRevision(objects []plannedObject) (string, int64) {
 		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), total
+}
+
+// manifestRevision computes the same namespace digest for the previous
+// complete publication manifest.  An empty manifest means there is no safe
+// delta base (the first publication must be treated as a full update).
+func manifestRevision(manifest clientManifest) string {
+	if len(manifest.Objects) == 0 {
+		return ""
+	}
+	objects := make([]plannedObject, 0, len(manifest.Objects))
+	for key, object := range manifest.Objects {
+		objects = append(objects, plannedObject{Key: key, Size: object.Size, SHA256: object.SHA256})
+	}
+	revision, _ := publicationRevision(objects)
+	return revision
+}
+
+// publicationDelta returns public object paths whose bytes changed between
+// two complete publication plans.  The Service Worker uses this allow-list to
+// reuse only safe entries from the previous Cache Storage namespace; an
+// unknown/large delta deliberately falls back to normal network loading.
+func publicationDelta(objects []plannedObject, previous map[string]manifestObject, prefix string) (changed, removed []string, changedAll bool) {
+	current := make(map[string]manifestObject, len(objects))
+	for _, object := range objects {
+		current[object.Key] = manifestObject{Size: object.Size, SHA256: object.SHA256}
+		old, exists := previous[object.Key]
+		if !exists || old.Size != object.Size || old.SHA256 != object.SHA256 {
+			changed = append(changed, publicObjectKey(object.Key, prefix))
+		}
+	}
+	for key := range previous {
+		if _, exists := current[key]; !exists {
+			removed = append(removed, publicObjectKey(key, prefix))
+		}
+	}
+	sort.Strings(changed)
+	sort.Strings(removed)
+	if len(changed)+len(removed) > clientVersionDeltaMax {
+		return nil, nil, true
+	}
+	return changed, removed, false
+}
+
+func publicObjectKey(key, prefix string) string {
+	clean := strings.TrimPrefix(path.Clean(key), "/")
+	root := strings.Trim(strings.TrimSpace(prefix), "/")
+	if root != "" {
+		root += "/"
+		clean = strings.TrimPrefix(clean, root)
+	}
+	return strings.TrimPrefix(path.Clean(clean), "/")
 }
 
 func loadConfig(filename string) (configFile, error) {
