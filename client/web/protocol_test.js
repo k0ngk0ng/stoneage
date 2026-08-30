@@ -1978,6 +1978,108 @@ if(mapMagicHarness.beginBattleAction({kind:"magic",index:0,targetType:1,field:2,
    mapMagicHarness.app.battlePopup?.kind!=="magic"||mapMagicHarness.counts().sends!==0||mapMagicHarness.counts().tones[0]?.[0]!==220){
   throw new Error("map-only Jujutsu must stay visible/clickable but reject locally with SE 220");
 }
+/* InitItem2()/BattleButtonItem() are deliberately slot based: only
+   pc.item[5..19] exists in the battle window, holes remain holes, the live
+   REALBIN offset owns icon placement, and MOUSE_LEFT_DBL_CRICK is the sole
+   confirmation gesture. Keep a DOM-level harness here because filtering or
+   binding the ordinary click event both look plausible while breaking the
+   native item/command contract. */
+const nativeBattleMenuSource=fs.readFileSync(__dirname+"/../../vendor/upstream/code_sa_client/SYSTEM/BATTLEMENU.CPP","latin1");
+const nativeBattleItemStart=nativeBattleMenuSource.indexOf("void InitItem2");
+const nativeBattleItemEnd=nativeBattleMenuSource.indexOf("void HpMeterDisp",nativeBattleItemStart);
+const nativeBattleItemButtonStart=nativeBattleMenuSource.indexOf("void BattleButtonItem");
+const nativeBattleItemButtonEnd=nativeBattleMenuSource.indexOf("void BattleButtonPet",nativeBattleItemButtonStart);
+const nativeBattleItemSource=nativeBattleMenuSource.slice(nativeBattleItemStart,nativeBattleItemEnd)+nativeBattleMenuSource.slice(nativeBattleItemButtonStart,nativeBattleItemButtonEnd);
+if(nativeBattleItemStart<0||nativeBattleItemEnd<=nativeBattleItemStart||nativeBattleItemButtonStart<0||nativeBattleItemButtonEnd<=nativeBattleItemButtonStart||
+   !/for\(\s*i\s*=\s*5\s*;\s*i\s*<\s*MAX_ITEM\s*;\s*i\+\+\s*\)/.test(nativeBattleItemSource)||
+   !/MOUSE_LEFT_DBL_CRICK/.test(nativeBattleItemSource)||!/ITEM_FIELD_MAP/.test(nativeBattleItemSource)||
+   !/StockDispBuffer\(\s*ItemBuffer\[\s*i\s*\]\.defX\s*,\s*ItemBuffer\[\s*i\s*\]\.defY/.test(nativeBattleItemSource)){
+  throw new Error("native 2.5 battle-item slot/double-click contract drifted");
+}
+const battleItemFieldStart=script.indexOf("  function battleFieldAllowed(entry)");
+const battleItemFieldEnd=script.indexOf("  function battlePetCapacityFull()",battleItemFieldStart);
+const battleItemHelperStart=script.indexOf("  function battleUsableItem(entry)");
+const battleItemHelperEnd=script.indexOf("  function battleUsablePetSkill(entry)",battleItemHelperStart);
+const battleItemPopupStart=script.indexOf("  function setBattleItemInspection(entry)");
+const battleItemPopupEnd=script.indexOf("  function battleTargetPromptPlacement",battleItemPopupStart);
+if(battleItemFieldStart<0||battleItemFieldEnd<=battleItemFieldStart||battleItemHelperStart<0||battleItemHelperEnd<=battleItemHelperStart||battleItemPopupStart<0||battleItemPopupEnd<=battleItemPopupStart){
+  throw new Error("battle item production function boundary missing");
+}
+const makeBattleItemPopupHarness=new Function("inventory","level",`
+  class FakeClassList{
+    constructor(owner){this.owner=owner;this.values=new Set();}
+    add(...values){for(const value of values)this.values.add(value);this.sync();}
+    remove(...values){for(const value of values)this.values.delete(value);this.sync();}
+    toggle(value,force){const next=force===undefined?!this.values.has(value):Boolean(force);if(next)this.values.add(value);else this.values.delete(value);this.sync();return next;}
+    contains(value){return this.values.has(value);}
+    sync(){this.owner._className=[...this.values].join(" ");}
+  }
+  class FakeNode{
+    constructor(tag,id=""){this.tagName=String(tag).toUpperCase();this.id=id;this.children=[];this.dataset={};this.style={};this.attributes={};this.listeners={};this.classList=new FakeClassList(this);this._className="";this.textContent="";this.disabled=false;}
+    set className(value){this._className=String(value||"");this.classList.values=new Set(this._className.split(/\\s+/).filter(Boolean));}
+    get className(){return this._className;}
+    append(...nodes){this.children.push(...nodes);}
+    replaceChildren(...nodes){this.children=[...nodes];}
+    addEventListener(type,handler){(this.listeners[type]||(this.listeners[type]=[])).push(handler);}
+    dispatch(type){const event={type,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}};for(const handler of this.listeners[type]||[])handler(event);return event;}
+    setAttribute(name,value){this.attributes[name]=String(value);}
+    removeAttribute(name){delete this.attributes[name];}
+  }
+  const nodes={
+    "battle-popup":new FakeNode("div","battle-popup"),"battle-popup-bg":new FakeNode("img","battle-popup-bg"),
+    "battle-popup-title":new FakeNode("img","battle-popup-title"),"battle-popup-list":new FakeNode("div","battle-popup-list"),
+    "battle-popup-return":new FakeNode("button","battle-popup-return"),"battle-item-name":new FakeNode("strong","battle-item-name"),
+    "battle-item-memo":new FakeNode("p","battle-item-memo")
+  };
+  const document={createElement(tag){return new FakeNode(tag);}},$=id=>nodes[id]||null;
+  const app={battle:true,battlePopup:{kind:"item"},battleState:{},inventory,pc:{level},selectedPet:-1,magic:[],petSlots:[],petSkills:[]};
+  const actions=[],tones=[];
+  function inventoryItem(index){return app.inventory.find(item=>Number(item?.index)===Number(index))||null;}
+  function inventoryTextLines(value){return [String(value||"")];}
+  function resolveBitmapInfo(value){return Number(value)===101?{file:"bitmaps/item.png",width:30,height:20,xoffset:-11,yoffset:-17}:null;}
+  function beginBattleAction(action,options){actions.push({action:{...action},options:{...options}});return true;}
+  function playSoundEffect(...values){tones.push(values);}
+  function syncBattleButtonVisualStates(){}
+  function closeBattlePopup(){throw new Error("valid item render must not close the popup");}
+  ${script.slice(battleItemFieldStart,battleItemFieldEnd)}
+  ${script.slice(battleItemHelperStart,battleItemHelperEnd)}
+  ${script.slice(battleItemPopupStart,battleItemPopupEnd)}
+  renderBattlePopup();
+  return {app,nodes,actions,tones,rows:nodes["battle-popup-list"].children};
+`);
+const battleItems=[
+  {index:3,name:"装备区物品",graphic:101,field:0,target:1,level:1,memo:"不能出现在战斗栏"},
+  {index:5,name:"可用肉",graphic:101,field:1,target:1,level:1,deadTarget:false,memo:"恢复体力"},
+  {index:7,name:"地图专用",graphic:101,field:2,target:1,level:1,deadTarget:false,memo:"只能在地图使用"},
+  {index:19,name:"等级不足",graphic:101,field:0,target:1,level:99,deadTarget:true,memo:"需要更高等级"},
+];
+const battleItemHarness=makeBattleItemPopupHarness(battleItems,10),battleItemRows=battleItemHarness.rows;
+if(battleItemRows.length!==15||battleItemRows.map(row=>Number(row.dataset.slot)).join(",")!==Array.from({length:15},(_,index)=>index+5).join(",")||
+   battleItemRows[1].disabled!==true||battleItemRows[2].disabled||battleItemRows[14].disabled){
+  throw new Error(`battle item window must preserve all absolute slots 5..19: ${battleItemRows.map(row=>[row.dataset.slot,row.disabled])}`);
+}
+const battleItemIcon=battleItemRows[0].children[0];
+if(!battleItemIcon||battleItemIcon.style.left!=="14px"||battleItemIcon.style.top!=="7px"||"width" in battleItemIcon.style||"height" in battleItemIcon.style){
+  throw new Error(`battle item icon lost intrinsic REALBIN placement: ${JSON.stringify(battleItemIcon?.style)}`);
+}
+const singleClick=battleItemRows[0].dispatch("click");
+if(!singleClick.defaultPrevented||battleItemHarness.actions.length||battleItemHarness.tones.length||
+   battleItemHarness.nodes["battle-item-name"].textContent!=="可用肉"||battleItemHarness.nodes["battle-item-memo"].textContent!=="恢复体力"){
+  throw new Error("single-click battle item inspection must never commit a command");
+}
+battleItemRows[2].dispatch("dblclick");battleItemRows[14].dispatch("dblclick");
+if(battleItemHarness.actions.length||battleItemHarness.tones.length!==2||battleItemHarness.tones.some(tone=>tone.join(",")!=="220,320,240")||
+   battleItemRows[2].disabled||battleItemRows[14].disabled||!battleItemHarness.nodes["battle-item-name"].classList.contains("level-locked")){
+  throw new Error(`map-only/level-locked battle items must remain visible and reject only with SE 220: ${JSON.stringify(battleItemHarness.tones)}`);
+}
+battleItemRows[0].dispatch("dblclick");
+if(battleItemHarness.actions.length!==1||battleItemHarness.actions[0].action.kind!=="item"||battleItemHarness.actions[0].action.index!==5||
+   battleItemHarness.actions[0].options.closePopup!==true||battleItemHarness.tones.length!==2){
+  throw new Error(`legal battle item double-click must preserve its absolute I slot: ${JSON.stringify(battleItemHarness.actions)}`);
+}
+if(/#battle-popup\[data-kind="item"\][^{]*\.battle-popup-icon\s*\{[^}]*width\s*:\s*48px/.test(html)){
+  throw new Error("battle item icons must not be stretched to their hit-box size");
+}
 if(!/battlePetCommandHit\?\.addEventListener\("click",activateBattlePetCommandButton\)/.test(script)||
    !/activateBattlePetCommandButton[\s\S]{0,700}state\.pendingAction=null[\s\S]{0,420}openBattlePetSkillPopup\(\{surfaceReady:true\}\)/.test(script)){
   throw new Error("pet command skill/cancel bitmap lost its native click lifecycle");
@@ -2993,7 +3095,7 @@ const checksumMap = {
   parts:Uint16Array.from([0,5000,0,2,12804,0]),
   event:Uint16Array.from([0xc003,0x4000,2,0,0xffff,1])
 };
-const mapChecksumHarness = new Function("app", "Protocol", `${script.slice(mapChecksumStart, mapRequestStart)};return {legacyMapLayerCRC,localMapChecksum,makeLocalMapWindowValues};`)({autoMapData:checksumMap}, P);
+const mapChecksumHarness = new Function("app", "Protocol", `${script.slice(mapChecksumStart, mapRequestStart)};return {legacyMapLayerCRC,localMapChecksum,makeLocalMapWindowValues,mapWindowNeedsLocalRefresh};`)({autoMapData:checksumMap}, P);
 const checksumVector=[1006,0,0,3,2,55263,32800,49963];
 const checksumResult=mapChecksumHarness.localMapChecksum(checksumVector);
 if (!checksumResult?.matches || checksumResult.sums.join(",") !== "55263,32800,49963" ||
@@ -3022,6 +3124,28 @@ if (!localWindow || localWindow.slice(0,5).join(",")!=="77,-20,-16,17,21" || loc
     localTiles[0]!==0 || localTiles[localIndex(0,0)]!==1 || localTiles[localIndex(1,1)]!==4 ||
     localParts[localIndex(1,0)]!==6 || localEvents[localIndex(0,1)]!==11) {
   throw new Error("local DAT bootstrap must reproduce the native zero-padded 37x37 readMap window");
+}
+/* MAP.CPP starts filling the next strip at SEARCH_AREA=11. A centred native
+   window has 20/16/16/20 cells around the owner; reaching an 11-cell edge
+   must slide the validated DAT window before its diamond becomes visible. */
+const centredMapWindow={floor:77,x1:-20,y1:-16,width:37,height:37,tiles:Array(37*37).fill(100)};
+if(mapChecksumHarness.mapWindowNeedsLocalRefresh(centredMapWindow,0,0)||
+   !mapChecksumHarness.mapWindowNeedsLocalRefresh(centredMapWindow,5,0)||
+   !mapChecksumHarness.mapWindowNeedsLocalRefresh(centredMapWindow,0,-5)){
+  throw new Error("validated local M window must slide at the native 11-cell search edge");
+}
+const localSlideStart=script.indexOf("  const MAP_LOCAL_WINDOW_SEARCH_AREA=11");
+const localSlideEnd=script.indexOf("  const MAP_WINDOW_REQUEST_TIMEOUT_MS",localSlideStart);
+if(localSlideStart<0||localSlideEnd<=localSlideStart)throw new Error("validated local map-window slide helper missing");
+const installedSlidingWindows=[];
+const localSlideApp={floor:77,localMapValidatedFloor:77,autoMapData:localWindowMap,map:centredMapWindow,mapWindowHeaderWire:"edge\\z0"};
+const localSlideHarness=new Function("app","makeLocalMapWindowValues","receiveMap",`${script.slice(localSlideStart,localSlideEnd)};return {mapWindowNeedsLocalRefresh,installValidatedLocalMapWindow};`)(
+  localSlideApp,(...args)=>mapChecksumHarness.makeLocalMapWindowValues(...args),values=>installedSlidingWindows.push(values)
+);
+if(localSlideHarness.installValidatedLocalMapWindow(0,0)||!localSlideHarness.installValidatedLocalMapWindow(5,0)||
+   installedSlidingWindows.length!==1||installedSlidingWindows[0].slice(0,5).join(",")!=="77,-15,-16,22,21"||
+   String(installedSlidingWindows[0][5]).split("|")[0]!=="edge\\z0"){
+  throw new Error(`validated DAT must install one centred window without losing its palette header: ${JSON.stringify(installedSlidingWindows)}`);
 }
 const sentMapWindows = [], mapTimers = new Map();let nextMapTimer = 1;
 const mapRequestApp = {
@@ -3064,14 +3188,14 @@ mapRequestApp.pendingInitialMapChecksum=localInstallRequest;
 mapRequestApp.initialMapChecksumTimer=nextMapTimer++;
 if (!mapRequestHarness.finishInitialMapChecksum(localInstallRequest,checksumMap) || installedLocalWindows.length!==1 ||
     sentMapWindows.length!==2 || mapRequestApp.pendingInitialMapChecksum ||
-    installedLocalWindows[0].slice(0,5).join(",")!=="1006,0,0,37,37") {
+    installedLocalWindows[0].slice(0,5).join(",")!=="1006,0,0,37,37"||mapRequestApp.localMapValidatedFloor!==1006) {
   throw new Error("a matching first MC must install a local 37x37 DAT window without sending M");
 }
 const mismatchRequest={...localInstallRequest,key:"mismatch",values:[...checksumVector.slice(0,7),checksumVector[7]^1],revision:"local-mismatch"};
 mapRequestApp.pendingInitialMapChecksum=mismatchRequest;
 mapRequestApp.initialMapChecksumTimer=nextMapTimer++;
 if (!mapRequestHarness.finishInitialMapChecksum(mismatchRequest,checksumMap) || sentMapWindows.length!==3 ||
-    mapRequestHarness.finishInitialMapChecksum(mismatchRequest,checksumMap) || sentMapWindows.length!==3) {
+    mapRequestHarness.finishInitialMapChecksum(mismatchRequest,checksumMap) || sentMapWindows.length!==3||mapRequestApp.localMapValidatedFloor!==-1) {
   throw new Error("a mismatching first MC must fall back to exactly one M request");
 }
 mapRequestHarness.clearMapWindowRequest();
@@ -3087,6 +3211,7 @@ mapRequestHarness.clearInitialMapChecksum(authoritativeRequest);
 const receiveMapChecksumSource=script.slice(mapRequestEnd,script.indexOf("  function parseLayer",mapRequestEnd));
 if (!receiveMapChecksumSource.includes("const localChecksum=localMapChecksum(values)") ||
     !receiveMapChecksumSource.includes("if(localChecksum?.matches)") ||
+    !receiveMapChecksumSource.includes("installValidatedLocalMapWindow(x,y)") ||
     !receiveMapChecksumSource.includes("awaitInitialMapChecksum(values,app.floor,x,y,revision)")) {
   throw new Error("initial and walking MC must use the installed DAT checksum before requesting M");
 }
@@ -3097,6 +3222,29 @@ if (!script.includes("const INITIAL_MAP_CHECKSUM_WAIT_MS=350") ||
 }
 if (!script.includes("if(cached&&(!sameFloor||!hasWindow))")) {
   throw new Error("same-floor MC checksum must keep the live map back-buffer");
+}
+const finalizeMoveStart=script.indexOf("  function finalizePendingMove()");
+const finalizeMoveEnd=script.indexOf("  function confirmOwnMove",finalizeMoveStart);
+if(finalizeMoveStart<0||finalizeMoveEnd<=finalizeMoveStart||
+   !/app\.walkAnimation=null;[\s\S]{0,420}installValidatedLocalMapWindow\(point\[0\],point\[1\]\)/.test(script.slice(finalizeMoveStart,finalizeMoveEnd))){
+  throw new Error("each completed local step must slide a checksum-validated DAT window before exposing its edge");
+}
+/* A failed common tile must never turn a partially painted cache into a
+   playable surface. It may retry twice, then it keeps the old completed
+   fallback/loading curtain and evicts a stale localStorage data URL. */
+const settleMapAssetStart=script.indexOf("  function settleMapAsset(file,failed=false)");
+const settleMapAssetEnd=script.indexOf("  const MAP_RENDER_OVERRIDES",settleMapAssetStart);
+if(settleMapAssetStart<0||settleMapAssetEnd<=settleMapAssetStart)throw new Error("map-asset settlement helper missing");
+const failedCache={pending:new Set(["ground.png"]),failed:new Set(),unavailable:new Set(),retryCount:new Map(),dirty:false,ready:false};
+const failedAssetApp={mapLayerCache:failedCache},failedAssetState={images:new Map([["ground.png",{}]])},failedAssetTimers=[],failedAssetEvents={forgot:0,loading:0,refresh:0};
+const settleMapAssetHarness=new Function("app","assetState","window","forgetMapAssetCache","loadAsset","renderWorld","renderMapLoadingProgress","scheduleAssetRefresh","setMapLoading",`${script.slice(settleMapAssetStart,settleMapAssetEnd)};return settleMapAsset;`)(
+  failedAssetApp,failedAssetState,{setTimeout(callback,delay){failedAssetTimers.push({callback,delay});return failedAssetTimers.length;}},
+  ()=>{failedAssetEvents.forgot++;},()=>{},()=>{},()=>{},()=>{failedAssetEvents.refresh++;},()=>{failedAssetEvents.loading++;}
+);
+settleMapAssetHarness("ground.png",true);settleMapAssetHarness("ground.png",true);settleMapAssetHarness("ground.png",true);
+if(failedCache.ready||!failedCache.dirty||!failedCache.failed.has("ground.png")||failedCache.unavailable.has("ground.png")||
+   failedCache.retryCount.get("ground.png")!==2||failedAssetEvents.forgot!==3||failedAssetEvents.loading!==1||failedAssetEvents.refresh!==1){
+  throw new Error(`failed map tile must retain the complete fallback instead of publishing black cells: ${JSON.stringify({ready:failedCache.ready,dirty:failedCache.dirty,failed:[...failedCache.failed],unavailable:[...failedCache.unavailable],retry:failedCache.retryCount.get("ground.png"),events:failedAssetEvents})}`);
 }
 if (!script.includes("function bindMapFloorTransitionTarget(floor)") ||
     !script.includes("if(!bindMapFloorTransitionTarget(floor)&&!sameFloor&&app.floor>=0&&app.map)startMapFloorTransition(floor)")) {

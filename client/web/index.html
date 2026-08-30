@@ -792,8 +792,8 @@
     #battle-popup-list .battle-popup-icon{flex:0 0 32px;width:32px;height:32px;margin:0 7px 0 0;object-fit:contain;image-rendering:pixelated}
     #battle-popup-list .battle-popup-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     #battle-popup-list .battle-popup-meta{margin-left:auto;padding-left:4px;color:#d6c894;font-size:10px;white-space:nowrap}
-    #battle-popup-close{position:absolute;left:456px;top:414px;width:80px;height:16px;padding:0;border:0;color:transparent;background:url('/assets/bitmaps/bitmap_9134.png') center/80px 16px no-repeat;box-shadow:none;pointer-events:auto;image-rendering:pixelated}
-    #battle-popup-return{display:none;position:absolute;left:398px;top:423px;width:96px;height:16px;padding:0;border:0;color:transparent;background:url('/assets/bitmaps/bitmap_9133.png') center/96px 16px no-repeat;box-shadow:none;pointer-events:auto;image-rendering:pixelated}
+    #battle-popup-close{position:absolute;left:456px;top:414px;width:80px;height:16px;z-index:3;padding:0;border:0;color:transparent;background:url('/assets/bitmaps/bitmap_9134.png') center/80px 16px no-repeat;box-shadow:none;pointer-events:auto;image-rendering:pixelated}
+    #battle-popup-return{display:none;position:absolute;left:398px;top:423px;width:96px;height:16px;z-index:3;padding:0;border:0;color:transparent;background:url('/assets/bitmaps/bitmap_9133.png') center/96px 16px no-repeat;box-shadow:none;pointer-events:auto;image-rendering:pixelated}
     /* MakeWindowDisp(361,144,271,281); CG_JUJUTU_WND is stocked at
        (mx,my+10) with offset (-136,-152), so its visible origin is 360,142. */
     #battle-popup[data-kind="magic"] #battle-popup-bg{left:360px;top:142px;width:272px;height:292px}
@@ -812,13 +812,25 @@
     #battle-popup[data-kind="item"] #battle-popup-title{left:360px;top:138px;width:272px;height:34px}
     #battle-popup[data-kind="item"] #battle-popup-list{left:368px;top:176px;width:255px;height:145px;display:grid;grid-template-columns:repeat(5,51px);grid-auto-rows:48px;overflow:hidden}
     #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-row{width:50px;height:48px;min-height:48px;padding:0;justify-content:center;line-height:12px;text-align:center;white-space:normal}
-    #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-icon{width:48px;height:48px;margin:0}
+    /* InitItem2() draws the 15 absolute pc.item slots around their native
+       StockDispBuffer centres. REALBIN already supplies the bitmap offset;
+       keep the PNG at its intrinsic size instead of stretching every item
+       to the 48px hit box. */
+    #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-icon{position:absolute;display:block;flex:none;width:auto;height:auto;max-width:none;max-height:none;margin:0;object-fit:none;pointer-events:none}
+    #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-row:hover,
+    #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-row:focus{color:#f5ecd4;background:transparent;outline:0}
+    #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-row.empty{cursor:default}
     /* ITEM_WND renders an icon grid; the name/memo appears in its lower
        inspection strip only after the original hit test.  Keep the live
        label accessible through title/DOM instead of printing a second web
        caption on top of the bitmap. */
     #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-name{display:none}
     #battle-popup[data-kind="item"] #battle-popup-list .battle-popup-meta{display:none}
+    #battle-item-inspection{display:none;position:absolute;left:377px;top:332px;width:238px;height:76px;z-index:2;pointer-events:none;color:#f5ecd4;font:11px/24px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
+    #battle-popup[data-kind="item"] #battle-item-inspection{display:block}
+    #battle-item-name{position:absolute;left:0;top:0;width:238px;height:24px;font:inherit;color:#f5ecd4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #battle-item-name.level-locked{color:#ff6060}
+    #battle-item-memo{position:absolute;left:0;top:26px;width:238px;height:72px;margin:0;font:inherit;line-height:24px;color:#f5ecd4;white-space:pre-wrap;overflow:hidden}
     #battle-popup[data-kind="item"] #battle-popup-close{left:456px;top:414px}
     /* MakeWindowDisp(376,132,256,320) and the centered -128/-160 bitmap
        offset make the pet-change window's visible origin exactly 376,132. */
@@ -1446,6 +1458,11 @@
   app.battleState.commandPending={player:null,pet:null};
   app.battleState.choiceTimer=0;app.battleState.choiceDeadline=0;app.battleState.choiceOwner="";
   app.mapLayerFallback=null;
+  /* Once MC proves the downloaded DAT matches GMSV, slide the 37x37 local
+     readMap window exactly like MAP.CPP instead of waiting for another full
+     M payload. Keep the original encoded header so a synthetic local window
+     preserves its floor name and fixed palette. */
+  app.localMapValidatedFloor=-1;app.mapWindowHeaderWire="";
   /* While PRODUCE_CENTER_PRESSIN is closing, keep only the visible map
      back-buffer on the last old-map frame.  This flag is about map pixels
      only; it must never lock, recenter, or otherwise move the painted
@@ -2831,7 +2848,7 @@
       <section id="local-dialog-screen" class="advanced-screen hidden"><h2 id="local-dialog-title">提示</h2><div id="local-dialog-body"></div><input id="local-dialog-input" class="hidden" maxlength="180"><div id="local-dialog-options"></div></section>
     `);
     const battleActions=$("battle-actions");
-    battleActions.insertAdjacentHTML("beforebegin",`<img id="battle-map-image" alt="原版战斗地图"><canvas id="battle-map-canvas" width="640" height="480" aria-hidden="true"></canvas><div id="battle-actors-layer" aria-hidden="true"></div><div id="battle-field-ui" aria-hidden="true"><img class="left-bg" src="/assets/bitmaps/bitmap_9218.png" alt=""><img class="left-menu" src="/assets/bitmaps/bitmap_9219.png" alt=""><img class="left-card" src="/assets/bitmaps/bitmap_9221.png" alt=""><img class="left-group" src="/assets/bitmaps/bitmap_9223.png" alt=""><img class="right-bg" src="/assets/bitmaps/bitmap_9226.png" alt=""><img class="right-join" src="/assets/bitmaps/bitmap_9227.png" alt=""><img class="right-duel" src="/assets/bitmaps/bitmap_9229.png" alt=""><img class="right-action" src="/assets/bitmaps/bitmap_9231.png" alt=""><img class="right-back" src="/assets/bitmaps/bitmap_9237.png" alt=""></div><p id="battle-menu-state" class="status">等待服务器 BP/BC 状态。</p><div id="battle-menu" class="card-grid"></div><div id="battle-participants" class="card-grid"></div><div id="battle-target-panel" class="hidden" aria-label="选择战斗目标"><div class="wnd2-frame battle-wnd2-frame" aria-hidden="true"><i class="wnd2-tl"></i><i class="wnd2-t"></i><i class="wnd2-tr"></i><i class="wnd2-l"></i><i class="wnd2-c"></i><i class="wnd2-r"></i><i class="wnd2-bl"></i><i class="wnd2-b"></i><i class="wnd2-br"></i><i class="wnd2-title"></i></div><strong>请选择</strong><div id="battle-target-list"></div><button id="battle-target-cancel" type="button" aria-label="返回"></button></div><div id="battle-popup" class="hidden" aria-label="战斗选择窗口"><img id="battle-popup-bg" alt=""><img id="battle-popup-title" alt=""><div id="battle-popup-list"></div><button id="battle-popup-return" type="button" aria-label="收回宠物"></button><button id="battle-popup-close" type="button" aria-label="关闭"></button></div>`);
+    battleActions.insertAdjacentHTML("beforebegin",`<img id="battle-map-image" alt="原版战斗地图"><canvas id="battle-map-canvas" width="640" height="480" aria-hidden="true"></canvas><div id="battle-actors-layer" aria-hidden="true"></div><div id="battle-field-ui" aria-hidden="true"><img class="left-bg" src="/assets/bitmaps/bitmap_9218.png" alt=""><img class="left-menu" src="/assets/bitmaps/bitmap_9219.png" alt=""><img class="left-card" src="/assets/bitmaps/bitmap_9221.png" alt=""><img class="left-group" src="/assets/bitmaps/bitmap_9223.png" alt=""><img class="right-bg" src="/assets/bitmaps/bitmap_9226.png" alt=""><img class="right-join" src="/assets/bitmaps/bitmap_9227.png" alt=""><img class="right-duel" src="/assets/bitmaps/bitmap_9229.png" alt=""><img class="right-action" src="/assets/bitmaps/bitmap_9231.png" alt=""><img class="right-back" src="/assets/bitmaps/bitmap_9237.png" alt=""></div><p id="battle-menu-state" class="status">等待服务器 BP/BC 状态。</p><div id="battle-menu" class="card-grid"></div><div id="battle-participants" class="card-grid"></div><div id="battle-target-panel" class="hidden" aria-label="选择战斗目标"><div class="wnd2-frame battle-wnd2-frame" aria-hidden="true"><i class="wnd2-tl"></i><i class="wnd2-t"></i><i class="wnd2-tr"></i><i class="wnd2-l"></i><i class="wnd2-c"></i><i class="wnd2-r"></i><i class="wnd2-bl"></i><i class="wnd2-b"></i><i class="wnd2-br"></i><i class="wnd2-title"></i></div><strong>请选择</strong><div id="battle-target-list"></div><button id="battle-target-cancel" type="button" aria-label="返回"></button></div><div id="battle-popup" class="hidden" aria-label="战斗选择窗口"><img id="battle-popup-bg" alt=""><img id="battle-popup-title" alt=""><div id="battle-popup-list"></div><div id="battle-item-inspection" aria-live="polite"><strong id="battle-item-name"></strong><p id="battle-item-memo"></p></div><button id="battle-popup-return" type="button" aria-label="收回宠物"></button><button id="battle-popup-close" type="button" aria-label="关闭"></button></div>`);
     /* Target hit boxes live in their own logical overlay.  Keeping them out
        of the depth-sorted actor wrappers prevents a nearer sprite/projectile
        from swallowing the pointer or covering the native selection frame. */
@@ -4333,6 +4350,10 @@
     if(!file||typeof localStorage==="undefined")return null;
     try{const value=localStorage.getItem(mapCacheKey(file));return value&&value.startsWith("data:image/")?value:null;}catch(_){return null;}
   }
+  function forgetMapAssetCache(file){
+    if(!file||typeof localStorage==="undefined")return;
+    try{localStorage.removeItem(mapCacheKey(file));}catch(_){/* optional cache */}
+  }
   function rememberMapAsset(file,blob){
     if(!file||!blob||blob.size>MAP_TILE_CACHE_MAX_BYTES||typeof FileReader==="undefined"||typeof localStorage==="undefined")return;
     const reader=new FileReader();reader.onload=()=>{try{localStorage.setItem(mapCacheKey(file),String(reader.result||""));}catch(_){/* quota is optional; HTTP cache remains the fallback */}};reader.readAsDataURL(blob);
@@ -4421,17 +4442,22 @@
     const cache=app.mapLayerCache;if(!cache?.pending?.has(file))return false;
     cache.pending.delete(file);
     if(failed){
-      /* A transient 404/network failure should not make the new map wait
-         forever.  Retry the original bitmap a couple of times while the
-         loading curtain remains up; after the final retry, omit only that
-         unavailable cell and let the map finish without a green placeholder. */
+      /* A stale/corrupt localStorage data URL must not be selected again on
+         every retry. Remove it before falling back to the normal asset URL. */
+      forgetMapAssetCache(file);
+      /* A transient network failure is retried, but an incomplete terrain
+         canvas is never marked ready. One common ground bitmap can own
+         hundreds of cells; publishing without it creates the large black
+         diagonal/blocks seen while walking. Keep the previous completed
+         cache (or the loading curtain on first entry) until Retry succeeds. */
       const attempts=Number(cache.retryCount?.get(file)||0);
       if(attempts<2){
         cache.retryCount.set(file,attempts+1);cache.failed.delete(file);cache.pending.add(file);cache.dirty=true;assetState.images.delete(file);
         const delay=180*(attempts+1);
         window.setTimeout(()=>{if(app.mapLayerCache!==cache)return;loadAsset(file,{map:true});renderWorld(true);},delay);
       }else{
-        cache.failed.delete(file);cache.unavailable.add(file);cache.dirty=false;cache.ready=true;
+        cache.failed.add(file);cache.dirty=true;cache.ready=false;
+        setMapLoading(true,"地图贴片加载失败，等待重试…");
       }
     }else{cache.failed.delete(file);cache.dirty=true;}
     renderMapLoadingProgress(failed?"正在重试地图贴片…":"正在解码地图贴片…");
@@ -6349,7 +6375,7 @@
         if(!prediction||!sameFloor||!onRoute)cancelPendingMove("服务器已校正位置。",point);
         else maybeReleaseMovePrediction(point);
         app.floor=floor;
-        if(!sameFloor){clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear();app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.npcMetadataByKey.clear();}
+        if(!sameFloor){clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear();app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.localMapValidatedFloor=-1;app.mapWindowHeaderWire="";app.npcMetadataByKey.clear();}
         /* Fixed NPC metadata is a read-only companion to the live C stream.
            Request it as soon as the server announces a floor so the first
            map frame can show stationary town/event NPCs even when their C
@@ -6780,7 +6806,15 @@
   /* BATTLEMENU.CPP lists all five useFlag spells. MP and field restrictions
      change their font palette, not their presence or click hit box. */
   function battleUsableMagic(entry){ return Boolean(entry)&&Number(entry.useFlag??1)!==0; }
-  function battleUsableItem(entry){ return Boolean(entry?.name)&&battleFieldAllowed(entry)&&battleLevelAllowed(entry); }
+  /* BattleButtonItem() always lays out pc.item[5..19]. Restrictions affect
+     only the double-click result; they never remove or compact a slot. */
+  function battleUsableItem(entry){ return Boolean(entry?.name); }
+  function battleItemUnavailableReason(entry){
+    if(!battleUsableItem(entry))return "missing";
+    if(!battleFieldAllowed(entry))return "map";
+    if(!battleLevelAllowed(entry))return "level";
+    return "";
+  }
   function battleUsablePetSkill(entry){ return Boolean(entry?.name||entry?.skillId!==undefined)&&battleFieldAllowed(entry)&&battleLevelAllowed(entry); }
   function battleMagicEntry(action){
     const index=Number(action?.index);if(!Number.isInteger(index)||index<0)return null;
@@ -6918,6 +6952,34 @@
     if(!disabled&&handler)row.addEventListener("click",handler);else row.disabled=true;
     return row;
   }
+  function setBattleItemInspection(entry){
+    const name=$("battle-item-name"),memo=$("battle-item-memo");
+    if(name){name.textContent=entry?.name||"";name.classList.toggle("level-locked",Boolean(entry)&&!battleLevelAllowed(entry));}
+    if(memo)memo.textContent=entry?inventoryTextLines(entry.memo,28,3).join("\n"):"";
+  }
+  function battleItemPopupRow(slot,entry){
+    const row=document.createElement("button");row.type="button";row.className="battle-popup-row battle-item-slot";row.dataset.slot=String(slot);
+    if(!battleUsableItem(entry)){
+      row.classList.add("empty");row.disabled=true;row.setAttribute("aria-label",`空道具栏 ${slot}`);return row;
+    }
+    row.title=String(entry.name||"");row.setAttribute("aria-label",String(entry.name||`道具 ${slot}`));
+    const info=resolveBitmapInfo(entry.graphic);
+    if(info?.file){
+      const icon=document.createElement("img"),width=Math.max(0,Number(info.width)||0),height=Math.max(0,Number(info.height)||0);
+      const offsetX=Number.isFinite(Number(info.xoffset))?Number(info.xoffset):-width/2,offsetY=Number.isFinite(Number(info.yoffset))?Number(info.yoffset):-height/2;
+      icon.className="battle-popup-icon";icon.src=`/assets/${info.file}`;icon.alt="";icon.draggable=false;
+      icon.style.left=`${25+offsetX}px`;icon.style.top=`${24+offsetY}px`;row.append(icon);
+    }
+    const inspect=()=>setBattleItemInspection(inventoryItem(slot));
+    row.addEventListener("pointerenter",inspect);row.addEventListener("focus",inspect);
+    row.addEventListener("click",event=>{event.preventDefault();inspect();});
+    row.addEventListener("dblclick",event=>{
+      event.preventDefault();const item=inventoryItem(slot);setBattleItemInspection(item);const reason=battleItemUnavailableReason(item);
+      if(reason){if(reason!=="missing")playSoundEffect(220,320,240);return;}
+      beginBattleAction({kind:"item",index:slot,targetType:item.target,field:item.field,allowDead:item.deadTarget},{closePopup:true});
+    });
+    return row;
+  }
   function renderBattlePopup(){
     const popup=$("battle-popup"),bg=$("battle-popup-bg"),title=$("battle-popup-title"),list=$("battle-popup-list"),petReturn=$("battle-popup-return");
     if(!popup||!bg||!title||!list)return;
@@ -6940,12 +7002,11 @@
       }
       if(!entries.length)empty();
     }else if(kind==="item"){
-      const entries=app.inventory.filter(battleUsableItem).slice(0,20);
-      for(const item of entries){
-        const info=resolveBitmapInfo(item.graphic);
-        list.append(battlePopupRow(item.name||`道具 ${item.index}`,"",()=>beginBattleAction({kind:"item",index:item.index,targetType:item.target,field:item.field,allowDead:item.deadTarget},{closePopup:true}),info?.file||"",false));
-      }
-      if(!entries.length)empty();
+      /* InitItem2() iterates the absolute inventory range 5..19. Keep all
+         fifteen hit boxes so an empty or forbidden slot never shifts the
+         following item's wire index. */
+      setBattleItemInspection(null);
+      for(let slot=5;slot<20;slot++)list.append(battleItemPopupRow(slot,inventoryItem(slot)));
     }else if(kind==="pet-skill"){
       const slot=battleActivePetSlot(),entries=(slot>=0?app.petSkills[slot]||[]:[]).filter(battleUsablePetSkill).slice(0,8);
       for(const skill of entries){
@@ -12083,11 +12144,12 @@
     const paletteText=separator<0?"":decoded.slice(separator+1).split("|")[0].trim();
     const parsed=/^-?\d+$/.test(paletteText)?Number(paletteText):NaN;
     const fixed=Number.isFinite(parsed)&&parsed>=0;
-    return {name,paletteNo:fixed?parsed:-1,drawTimeAnime:true,raw:decoded};
+    return {name,paletteNo:fixed?parsed:-1,drawTimeAnime:true,raw:decoded,wire:String(value||"")};
   }
   function applyMapWindowHeader(floor,header){
     if(!header||Number(app.floor)>=0&&Number(app.floor)!==Number(floor))return;
     app.mapPaletteNo=Number(header.paletteNo);app.mapDrawTimeAnime=header.drawTimeAnime!==false;app.mapPaletteName=header.name;
+    app.mapWindowHeaderWire=String(header.wire??app.mapWindowHeaderWire??"");
     ensureMapPalette(app.mapPaletteNo);
     updateFieldTimeAnimation();
   }
@@ -12306,7 +12368,7 @@
   app.movePredictionSyncRequested=false;
   /* A fresh field session must never inherit a pending warp curtain. */
   cancelMapFloorTransition();
-  enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.talkConversation=null;app.trade=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
+  enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.localMapValidatedFloor=-1;app.mapWindowHeaderWire="";app.talkConversation=null;app.trade=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
   /* Re-entry can happen after logout/reconnect without rebuilding the page;
      make the map transition lifecycle independent of the battle/field reset
      wrapper above. */
@@ -12360,6 +12422,28 @@
       return encoded.join(",");
     };
     return [Number(floor),x1,y1,x2,y2,`${String(header||"")}|${encodeLayer(data.tile)}|${encodeLayer(data.parts)}|${encodeLayer(data.event)}`];
+  }
+  /* MAP.CPP::checkEmptyMapData() scans SEARCH_AREA=11 cells around the
+     player. The old web port kept the first 37x37 M object forever after a
+     matching MC, so its isometric edge eventually crossed the camera and
+     appeared as a large black diagonal. Once the CDN DAT has passed MC,
+     rebuild a centred local window before the visible ten-cell radius can
+     reach that edge. */
+  const MAP_LOCAL_WINDOW_SEARCH_AREA=11;
+  function mapWindowNeedsLocalRefresh(map,x,y,margin=MAP_LOCAL_WINDOW_SEARCH_AREA){
+    if(!map||!Array.isArray(map.tiles)||!map.tiles.length)return false;
+    const left=Math.trunc(Number(map.x1)),top=Math.trunc(Number(map.y1)),width=Math.trunc(Number(map.width)),height=Math.trunc(Number(map.height));
+    const px=Math.trunc(Number(x)),py=Math.trunc(Number(y)),safe=Math.max(0,Math.trunc(Number(margin)||0));
+    if(!Number.isFinite(left)||!Number.isFinite(top)||width<=0||height<=0||!Number.isFinite(px)||!Number.isFinite(py))return false;
+    return px-left<=safe||left+width-1-px<=safe||py-top<=safe||top+height-1-py<=safe;
+  }
+  function installValidatedLocalMapWindow(x,y,options={}){
+    const floor=Number(app.floor),data=app.autoMapData,map=app.map;
+    if(Number(app.localMapValidatedFloor)!==floor||!data||Number(data.floor)!==floor)return false;
+    if(!options.force&&!mapWindowNeedsLocalRefresh(map,x,y))return false;
+    const values=makeLocalMapWindowValues(data,floor,x,y,app.mapWindowHeaderWire||"");
+    if(!values)return false;
+    receiveMap(values);return true;
   }
   const MAP_WINDOW_REQUEST_TIMEOUT_MS=2500;
   const MAP_WINDOW_REQUEST_MAX_ATTEMPTS=2;
@@ -12421,9 +12505,10 @@
   function finishInitialMapChecksum(request,data){
     if(!currentInitialMapChecksum(request))return false;
     const checksum=localMapChecksum(request.values,data);
-    if(!checksum?.matches)return fallbackInitialMapChecksum(request);
+    if(!checksum?.matches){if(Number(app.localMapValidatedFloor)===Number(request.floor))app.localMapValidatedFloor=-1;return fallbackInitialMapChecksum(request);}
     const [x,y]=request.position,windowValues=makeLocalMapWindowValues(data,request.floor,x,y,request.header);
     if(!windowValues)return fallbackInitialMapChecksum(request);
+    app.localMapValidatedFloor=Number(request.floor);
     clearInitialMapChecksum(request);
     rememberMapWindowRevision(mapWindowRequestKey(request.floor,x-20,y-16,x+17,y+21),request.revision);
     receiveMap(windowValues);return true;
@@ -12475,11 +12560,13 @@
        untouched instead of replacing it with another full 37x37 response. */
     const localChecksum=localMapChecksum(values);
     if(localChecksum?.matches){
+      app.localMapValidatedFloor=Number(app.floor);
       rememberMapWindowRevision(mapWindowRequestKey(app.floor,x-20,y-16,x+17,y+21),revision);
-      if(hasWindow){updateHUD();return;}
+      if(hasWindow){installValidatedLocalMapWindow(x,y);updateHUD();return;}
       const windowValues=makeLocalMapWindowValues(app.autoMapData,app.floor,x,y,values[8]||"");
       if(windowValues){clearInitialMapChecksum();receiveMap(windowValues);return;}
     }
+    if(localChecksum&&!localChecksum.matches&&Number(app.localMapValidatedFloor)===Number(app.floor))app.localMapValidatedFloor=-1;
     /* On first entry S:C and MC commonly arrive before the CDN DAT promise
        settles.  Give that installed-map request one short head start, just
        like the native disk read, then fall back to the server M rectangle.
@@ -12989,6 +13076,11 @@
     const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):null;
     if(actor){actor.x=point[0];actor.y=point[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);actor.walking=false;setLocalActorAction(actor,3);}
     app.pendingMove=false;app.pendingMoveAt=0;app.pendingMoveFrom=null;app.pendingMoveTarget=null;app.walkAnimation=null;
+    /* A validated DAT is the browser equivalent of the installed native map.
+       Slide its readMap window before the old cache's diamond reaches the
+       camera; receiveMap() keeps the completed cache as the fallback until
+       this replacement is fully rasterised. */
+    installValidatedLocalMapWindow(point[0],point[1]);
     if(app.moveSentSteps>0)app.moveSentSteps--;
     /* MAP.CPP::_etcEventCheck() tests each actual route landing cell and
        _sendWarpEvent() sends that cell's event id together with nowGx/nowGy.
