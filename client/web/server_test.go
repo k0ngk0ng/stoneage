@@ -648,8 +648,34 @@ func TestHTTPSessionForwardsGreetingPacketsAndClose(t *testing.T) {
 	for _, event := range events.Events {
 		closedEvent = closedEvent || event.Closed
 	}
+	/* The reply and the peer FIN are ordered on TCP, but readLoop necessarily
+	   discovers EOF with the read after the newline-delimited reply.  A poll
+	   may therefore return the queued reply just before finish() publishes the
+	   close event.  That is the real browser contract: consume the reply, then
+	   immediately poll again.  Requiring both in one HTTP response made this
+	   test depend on goroutine scheduling instead of proving close delivery. */
 	if !closedEvent && !events.Closed {
-		t.Fatalf("upstream close was not forwarded: %+v", events)
+		response, err = http.Get(server.URL + "/api/sessions/" + created.ID + "/events?timeout=1000")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var followup struct {
+			Events []eventResponse `json:"events"`
+			Closed bool            `json:"closed"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&followup); err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("follow-up events status=%d response=%+v", response.StatusCode, followup)
+		}
+		for _, event := range followup.Events {
+			closedEvent = closedEvent || event.Closed
+		}
+		if !closedEvent && !followup.Closed {
+			t.Fatalf("upstream close was not forwarded: first=%+v followup=%+v", events, followup)
+		}
 	}
 	request, _ = http.NewRequest(http.MethodDelete, server.URL+"/api/sessions/"+created.ID, nil)
 	response, err = http.DefaultClient.Do(request)

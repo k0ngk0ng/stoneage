@@ -112,6 +112,9 @@ for (let battle = 0; battle < 220; battle++) {
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
 const serviceWorker = fs.readFileSync(__dirname + "/sw.js", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+if (!/<link rel="icon" href="data:,">/.test(html)) {
+  throw new Error("page must suppress Chromium's synthetic /favicon.ico 404");
+}
 for (const expected of [
   'fetch(ASSET_MANIFEST_URL,{cache:"no-cache"',
   'fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"',
@@ -1942,13 +1945,37 @@ if (worldPointerStart < 0 || worldPointerEnd <= worldPointerStart) throw new Err
 if (/worldTransitionActive\(\)\)return/.test(script.slice(worldPointerStart, worldPointerEnd))) {
   throw new Error("scene transitions must not freeze the painted fish");
 }
-/* Escape must release the WN owner before hiding any advanced screen.  If
-   show(worldScreen) runs first, the brown NPC dialog disappears visually but
-   app.activeWindow keeps the old sequence/object and the next interaction is
-   routed to a stale server window. */
+/* serverWindowType1 is the one native WN handler whose ESC path emits a
+   response: CANCEL (2) with data "0".  Other WN types only close locally.
+   Both the keyboard and bitmap close paths must share that distinction. */
+const dismissStart = script.indexOf("  function dismissServerWindow(){");
+const dismissEnd = script.indexOf("  function actorIsOwn", dismissStart);
+if (dismissStart < 0 || dismissEnd <= dismissStart) throw new Error("native WN dismiss helper boundary missing");
+const dismissFactory = new Function("app", "send", "closeServerWindow", `${script.slice(dismissStart, dismissEnd)};return dismissServerWindow;`);
+{
+  const calls=[];
+  let closes=0;
+  const app={position:[17,25],activeWindow:{windowType:2,seqno:41,objindex:243}};
+  const dismiss=dismissFactory(app,(name,fields)=>{calls.push({name,fields});return Promise.resolve();},()=>{closes++;app.activeWindow=null;});
+  dismiss();
+  if(closes!==1||calls.length!==1||calls[0].name!=="WN"||JSON.stringify(calls[0].fields)!==JSON.stringify([17,25,41,243,2,"0"])){
+    throw new Error(`SELECT dismiss must send native CANCEL before closing: ${JSON.stringify({closes,calls})}`);
+  }
+}
+for(const windowType of [0,1,3,4,5,6,10,11]){
+  const calls=[];
+  let closes=0;
+  const app={position:[17,25],activeWindow:{windowType,seqno:42,objindex:244}};
+  const dismiss=dismissFactory(app,(name,fields)=>{calls.push({name,fields});return Promise.resolve();},()=>{closes++;app.activeWindow=null;});
+  dismiss();
+  if(closes!==1||calls.length!==0)throw new Error(`WN type ${windowType} must close locally without synthetic CANCEL`);
+}
 const escapeHandler = script.indexOf('if(event.key==="Escape")');
-if (escapeHandler < 0 || !/if\(app\.activeWindow\)\{event\.preventDefault\(\);closeServerWindow\(\);return;\}/.test(script.slice(escapeHandler, escapeHandler + 900))) {
-  throw new Error("Escape must close the active WN window before other screens");
+if (escapeHandler < 0 || !/if\(app\.activeWindow\)\{event\.preventDefault\(\);dismissServerWindow\(\)\.catch\(reportError\);return;\}/.test(script.slice(escapeHandler, escapeHandler + 900))) {
+  throw new Error("Escape must use the native type-aware WN dismiss path before other screens");
+}
+if (!/\$\("server-window-close"\)\.addEventListener\("click",\(\)=>dismissServerWindow\(\)\.catch\(reportError\)\)/.test(script)) {
+  throw new Error("WN close button must use the same native type-aware dismiss path");
 }
 const battleDepthStart = script.indexOf("  function battleProjectileVerticalPosition");
 const battleDepthEnd = script.indexOf("  /* Exact 5×5 positions from oft.cpp::oft_test()", battleDepthStart);

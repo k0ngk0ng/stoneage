@@ -14,6 +14,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="full-screen" content="yes">
   <meta name="x5-fullscreen" content="true">
+  <!-- Chromium otherwise probes /favicon.ico and leaves a misleading 404 in
+       DevTools.  The legacy game has no separate browser icon asset. -->
+  <link rel="icon" href="data:,">
   <link rel="manifest" href="/manifest.webmanifest">
   <title>StoneAge 2.5 · sa_2903 web</title>
   <style>
@@ -11348,6 +11351,22 @@
        resume looping NPC/player actions after the window is gone. */
     if(app.phase==="world"&&!app.battle){renderWorld(true);scheduleWorldAnimation();}
   }
+  function dismissServerWindow(){
+    const wnd=app.activeWindow;
+    if(!wnd)return Promise.resolve();
+    /* LOGIN.CPP::serverWindowType1 maps ESC/menu close to id=100, then
+       sends WINDOW_BUTTONTYPE_CANCEL with data "0" before destroying the
+       SELECT window.  The other WN handlers only destroy their local window
+       on ESC, so sending CANCEL for every dialog would invent a 2.5 server
+       action and can advance or poison unrelated NPC/shop sessions. */
+    if(Number(wnd.windowType)!==2){closeServerWindow();return Promise.resolve();}
+    const response=send("WN",[app.position[0],app.position[1],wnd.seqno,wnd.objindex,2,"0"]);
+    /* Match DeathAction() timing: the old SELECT is gone immediately after
+       its response is queued.  A later server WN therefore cannot be hidden
+       by completion of this request. */
+    closeServerWindow();
+    return response;
+  }
   function actorIsOwn(actor){
     if(!actor||actor.kind!=="character")return false;
     if(app.playerActorId!==null&&app.playerActorId!==undefined&&Number(actor.id)===Number(app.playerActorId))return true;
@@ -15720,7 +15739,7 @@
          advanced-screen decoration.  Close it first so hiding the screen
          cannot leave app.activeWindow pointing at a stale sequence/object;
          the old order called show(worldScreen) and stranded that state. */
-      if(app.activeWindow){event.preventDefault();closeServerWindow();return;}
+      if(app.activeWindow){event.preventDefault();dismissServerWindow().catch(reportError);return;}
       const active=document.querySelector(".advanced-screen:not(.hidden)");
       if(active){event.preventDefault();show(worldScreen);return;}
       if(app.phase==="character-create"){event.preventDefault();creationState.hovered=-1;cancelCreationAnimation();app.phase="character-list";show(characterScreen);}
@@ -15858,7 +15877,7 @@
   $("protocol-form").addEventListener("submit",event=>{event.preventDefault();const name=$("protocol-function").value;send(name,parseProtocolFields()).catch(reportError);});
   document.querySelectorAll("[data-event-fn]").forEach(item=>item.addEventListener("click",()=>triggerEvent(item.dataset.eventFn)));
   $("server-window-form").addEventListener("submit",event=>{event.preventDefault();if(!app.activeWindow)return;send("WN",[app.position[0],app.position[1],app.activeWindow.seqno,app.activeWindow.objindex,0,$("server-window-input").value]).then(closeServerWindow).catch(reportError);});
-  $("server-window-close").addEventListener("click",closeServerWindow);
+  $("server-window-close").addEventListener("click",()=>dismissServerWindow().catch(reportError));
   $("battle-command-form").addEventListener("submit",event=>{event.preventDefault();const value=$("battle-command-input").value.trim();if(value){battleCommand(value);$("battle-command-input").value="";}});
   populateProtocolFunctions(); renderJournal(); renderInventory(); renderPets(); renderStatus(); renderSocial();
   setInterval(()=>{ if(app.pendingMove&&app.pendingMoveAt>0&&Date.now()-app.pendingMoveAt>10000) cancelPendingMove("服务器没有确认这次移动，请稍后重试。"); },250);
