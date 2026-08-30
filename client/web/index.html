@@ -6144,6 +6144,27 @@
   function removeStaticNPCAt(x,y){
     for(const [id,actor] of app.actors){if(actor?.staticNPC&&Number(actor.x)===Number(x)&&Number(actor.y)===Number(y))app.actors.delete(id);}
   }
+  /* A live C record temporarily replaces the read-only floor-wide NPC
+     companion at the same tile.  NETPROC.CPP can later send that live object
+     in a CD delta when it leaves the current visibility set; the metadata
+     itself is still valid and must be painted again.  Without restoring the
+     companion here, walking across an M-window boundary made exactly those
+     NPCs disappear until the next floor change. */
+  function restoreStaticNPCAt(x,y){
+    const floor=Number(app.floor),key=npcMetadataKey(floor,x,y),metadata=app.npcMetadataByKey?.get(key);
+    if(!metadata||!Number.isFinite(Number(metadata.id))||Number(metadata.id)>=0)return;
+    if([...app.actors.values()].some(actor=>actor?.staticNPC&&Number(actor.npcFloor)===floor&&Number(actor.x)===Number(x)&&Number(actor.y)===Number(y)))return;
+    const existing=app.actors.get(Number(metadata.id));
+    if(existing&&!existing.staticNPC)return;
+    const staticActor=Object.assign(existing||{}, {
+      id:Number(metadata.id),objectType:1,charType:20,type:20,kind:"character",staticNPC:true,npcFloor:floor,
+      x:Number(x),y:Number(y),direction:clientDirectionFromServer(stateNumber(metadata.direction)),
+      wireDirection:stateNumber(metadata.direction),graphicKey:String(metadata.graphic||""),graphic:stateNumber(metadata.graphic),
+      level:0,name:String(metadata.name||""),freeName:"",walkable:1,height:1,charNameColor:0,fmName:"",petName:"",petLevel:0,
+      raw:"",npcTemplate:String(metadata.template||""),npcInteraction:String(metadata.interaction||""),npcSource:String(metadata.source||"")
+    });
+    ensureFieldActorAnimation(staticActor);app.actors.set(Number(metadata.id),staticActor);
+  }
   function requestNPCMetadata(floor){
     const targetFloor=Number(floor);if(!Number.isFinite(targetFloor)||targetFloor<0||app.npcMetadataLoading&&app.npcMetadataFloor===targetFloor)return;
     if(app.npcMetadataFloor===targetFloor&&app.npcMetadataReady)return;
@@ -11796,7 +11817,15 @@
           if(id===-1)break;
           if(Number.isFinite(id))ids.push(id);
         }
-        ids.forEach(id=>{const actor=app.actors.get(id);if(!actor?.staticNPC)app.actors.delete(id);});
+        ids.forEach(id=>{
+          const actor=app.actors.get(id);
+          /* A live C character can temporarily occupy the same tile as a
+             floor-wide metadata NPC.  Once NETPROC.CPP removes that live
+             record from the visibility window, put the read-only companion
+             back immediately instead of waiting for a floor change. */
+          if(actor&&!actor.staticNPC&&actor.kind==="character")restoreStaticNPCAt(actor.x,actor.y);
+          if(!actor?.staticNPC)app.actors.delete(id);
+        });
         renderWorld();
         break;
       }

@@ -417,7 +417,7 @@ func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 		`const charType=first,id=Protocol.base62(parts[1]||"0")`,
 		`actor.charType`,
 		`empty CD payload`,
-		`ids.forEach(id=>{const actor=app.actors.get(id);if(!actor?.staticNPC)app.actors.delete(id);});`,
+		`if(actor&&!actor.staticNPC&&actor.kind==="character")restoreStaticNPCAt(actor.x,actor.y);`,
 	}
 	for _, fragment := range required {
 		if !strings.Contains(body, fragment) {
