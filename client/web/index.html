@@ -236,12 +236,11 @@
        The browser's real pointer remains free during the curtain: every
        trusted physical pointermove repaints the fish at that position. A
        transition never recenters, hides, or otherwise drives this sprite. */
-    #world-move-target { left:0; top:0; width:64px; height:47px; transform:translate(-32px,-24px); opacity:.96; animation:world-target-pulse .72s steps(2,end) infinite; }
+    #world-move-target { left:0; top:0; width:64px; height:47px; transform:translate(-32px,-24px); opacity:1; }
     /* mouse.cpp stocks CG_MOUSE_CURSOR at mouse.nowPoint + (16,16); the
        bitmap itself carries (-16,-16) offsets, so the fish head/tip is the
        logical pointer coordinate, not the image centre. */
     #world-cursor { left:0; top:0; width:32px; height:32px; z-index:2; transform:none; }
-    @keyframes world-target-pulse { 0%,100%{opacity:.96} 50%{opacity:.55} }
     /* Runtime state stays in the DOM for diagnostics; the PC back buffer has
        no browser HUD laid over its artwork. */
     #hud { position:absolute; left:-10000px; top:0; width:1px; height:1px; overflow:hidden; }
@@ -13989,8 +13988,20 @@
     updateFieldMailLamp();
     const target=$("world-move-target"),cursor=$("world-cursor");if(!target||!cursor)return;
     const advancedOpen=advancedScreens.some(screen=>!screen.classList.contains("hidden"));
-    const targetPoint=app.moveTarget?tilePoint(app.moveTarget[0],app.moveTarget[1]):null;
-    if(targetPoint&&!advancedOpen&&!app.pointerMoveHeld&&!mapTransitionState.active){target.style.left=`${targetPoint[0]}px`;target.style.top=`${targetPoint[1]}px`;target.style.display="block";}else target.style.display="none";
+    /* MAP.CPP::drawGrid() derives CG_GRID_CURSOR from the current physical
+       mouse position on every field frame.  It is a hover cursor, not a
+       remembered left-click destination.  Recompute the tile here as the
+       camera moves so a stationary mouse keeps pointing at the ground cell
+       currently underneath it while the player walks. */
+    const hasPointerSample=Number(app.cursor?.updatedAt)>0&&Number.isFinite(Number(app.cursor?.x))&&Number.isFinite(Number(app.cursor?.y));
+    const pointerClientX=Number(app.cursorClientX),pointerClientY=Number(app.cursorClientY),sceneRect=worldScreen?.getBoundingClientRect();
+    const pointerOnScene=hasPointerSample&&sceneRect&&pointerClientX>=sceneRect.left&&pointerClientX<=sceneRect.right&&pointerClientY>=sceneRect.top&&pointerClientY<=sceneRect.bottom;
+    const pointerHit=pointerOnScene?document.elementFromPoint?.(pointerClientX,pointerClientY):null;
+    const pointerOverUi=Boolean(pointerHit&&isWorldUiTarget(pointerHit));
+    const hoverTile=app.phase==="world"&&!app.battle&&pointerOnScene&&!pointerOverUi&&!advancedOpen&&!mapTransitionState.active?nearestTileAt(Number(app.cursor.x),Number(app.cursor.y)):null;
+    if(hoverTile){app.cursor.tile=[Number(hoverTile[0]),Number(hoverTile[1])];app.cursor.updatedAt=Date.now();}
+    const targetPoint=hoverTile?tilePoint(hoverTile[0],hoverTile[1]):null;
+    if(targetPoint){target.style.left=`${targetPoint[0]}px`;target.style.top=`${targetPoint[1]}px`;target.style.display="block";}else target.style.display="none";
     /* The original PC client never falls back to the browser hand pointer.
        Keep the extracted fish-bone visible for the complete world surface,
        including the task bar and chat input; only non-world screens hide it. */
@@ -14088,6 +14099,28 @@
        upper-case cnvServDir() value.  L is the legacy LOOK/NPC command and
        must not be used for a plain right-click turn. */
     const now=Date.now();if(app.transport&&now-(app.turnSentAt||0)>=LEGACY_TURN_SEND_WAIT_MS){app.turnSentAt=now;send("W",[app.position[0],app.position[1],serverDirectionChar(direction,true)]).catch(reportError);}
+  }
+  function pickupObjectAtTile(target){
+    if(!Array.isArray(target))return false;
+    const x=Number(target[0]),y=Number(target[1]);
+    /* PC.CPP::getItem() accepts CHAROBJ_TYPE_NPC, ITEM and MONEY.  The
+       server ultimately decides whether an NPC is a put-down pet that can be
+       picked up; the browser only mirrors the original visible-object gate. */
+    return [...app.actors.values()].some(actor=>Number(actor?.x)===x&&Number(actor?.y)===y&&(
+      actor?.kind==="item"||actor?.kind==="money"||(actor?.kind==="character"&&!actorIsOwn(actor))
+    ));
+  }
+  function pickupFieldTile(target){
+    if(!Array.isArray(target)||app.phase!=="world"||app.battle||worldRouteInputBlocked())return false;
+    const dx=Number(target[0])-Number(app.position[0]),dy=Number(target[1])-Number(app.position[1]);
+    /* Native getItem() only permits the eight adjacent cells (and the
+       player's own cell for a last-resort drop). */
+    if(Math.abs(dx)>1||Math.abs(dy)>1||!pickupObjectAtTile(target))return false;
+    const candidate=directionFor(dx,dy),direction=candidate>=0?candidate:Number(app.direction)||0;
+    const now=Date.now();if(!app.transport||now-(app.pickupSentAt||0)<LEGACY_TURN_SEND_WAIT_MS)return false;
+    app.pickupSentAt=now;
+    send("PI",[app.position[0],app.position[1],serverDirectionFromClient(direction)]).catch(reportError);
+    return true;
   }
   function nearestTileAt(sx,sy){
     /* map.cpp's hit test is an inverse of the same isometric projection used
@@ -15477,7 +15510,10 @@
     if(event.button===2){
       event.preventDefault();
       if(mapMovementBlocked()||isWorldUiTarget(event.target))return;
-      const tile=worldTileFromPointer(event);if(tile)faceTowardTile(tile);
+      /* MAP.CPP runs turnAround() and getItem() for the same right click.
+         Keep the PI throttle independent from W so turning cannot consume
+         the pickup's native 500 ms send window. */
+      const tile=worldTileFromPointer(event);if(tile){faceTowardTile(tile);pickupFieldTile(tile);}
       return;
     }
     /* A look-at pointerdown deliberately skipped the held movement sampler.
@@ -15985,7 +16021,7 @@
   $("help-prev")?.addEventListener("click",()=>{if(Number(app.helpPage)>0){app.helpPage--;renderHelp();}});
   $("help-next")?.addEventListener("click",()=>{const max=Math.max(0,Math.ceil((app.taskLog?.length||0)/10)-1);if(Number(app.helpPage)<max){app.helpPage++;renderHelp();}});
   $("request-inventory").addEventListener("click",()=>send("C",[0]).catch(reportError));
-  $("inventory-pickup").addEventListener("click",()=>send("PI",[app.position[0],app.position[1],app.direction]).catch(reportError));
+  $("inventory-pickup").addEventListener("click",()=>send("PI",[app.position[0],app.position[1],serverDirectionFromClient(app.direction)]).catch(reportError));
   $("request-pets").addEventListener("click",()=>{send("C",[0]).catch(reportError);send("KS",[-1]).catch(reportError);});
   $("pet-follow").addEventListener("click",()=>toggleStandbyPet(app.selectedPet<0?0:app.selectedPet));
   $("pet-name-submit").addEventListener("click",()=>{const index=app.selectedPet<0?0:app.selectedPet;openLocalDialog("宠物改名","请输入新的宠物名称：",[{label:"确定",kind:"yes",handler:value=>{const name=String(value||"").trim();if(!name)return;closeLocalDialog();send("KN",[index,name]).catch(reportError);}},{label:"取消",kind:"no",handler:closeLocalDialog}],app.petSlots[index]?.name||"");});

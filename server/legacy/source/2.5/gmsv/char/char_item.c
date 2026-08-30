@@ -1624,15 +1624,20 @@ void CHAR_DropMoney( int charaindex,  int amount )
 		}
 	}
 	//ANDY_END
+	/* Keep the native facing preference, but exhaust all eight surrounding
+	 * cells before considering the player's occupied cell.  Trying index 1
+	 * (0,0) immediately after the facing cell made a blocked doorway drop
+	 * stones underneath the character even when another adjacent cell was
+	 * free. */
 	for( i  = 0 ; i < 7 ; i  ++ ){
-		dirx[i+2] = CHAR_getDX( CHAR_getInt(charaindex,CHAR_DIR) + i+1 );
-		diry[i+2] = CHAR_getDY( CHAR_getInt(charaindex,CHAR_DIR) + i+1 );
+		dirx[i+1] = CHAR_getDX( CHAR_getInt(charaindex,CHAR_DIR) + i+1 );
+		diry[i+1] = CHAR_getDY( CHAR_getInt(charaindex,CHAR_DIR) + i+1 );
 	}
 
 	dirx[0] = CHAR_getDX(CHAR_getInt(charaindex,CHAR_DIR));
 	diry[0] = CHAR_getDY(CHAR_getInt(charaindex,CHAR_DIR));
-	dirx[1] = 0;
-	diry[1] = 0;
+	dirx[8] = 0;
+	diry[8] = 0;
 
 	for( i = 0 ; i < 9 ; i ++ ){
 		int x = CHAR_getInt(charaindex,CHAR_X) + dirx[i];
@@ -1679,8 +1684,8 @@ void CHAR_DropMoney( int charaindex,  int amount )
 	}
 
 	{
-		int x = CHAR_getInt(charaindex,CHAR_X) + dirx[1];
-		int y = CHAR_getInt(charaindex,CHAR_Y) + diry[1];
+		int x = CHAR_getInt(charaindex,CHAR_X) + dirx[8];
+		int y = CHAR_getInt(charaindex,CHAR_Y) + diry[8];
 
 		ret = CHAR_DropMoneyFXY( charaindex,amount,
 								 CHAR_getInt(charaindex,CHAR_FLOOR),

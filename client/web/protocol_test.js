@@ -1011,7 +1011,17 @@ for (const expected of [
      to the centre even though the browser pointer did not move. */
   /A scene\/map change must never recenter the painted fish[\s\S]{0,520}const cursorX=Number\.isFinite\(Number\(app\.cursor\?\.x\)\)/,
   /function setMoveTarget\(target\)[\s\S]{0,140}worldRouteInputBlocked\(\)/,
-  /if\(targetPoint&&!advancedOpen&&!app\.pointerMoveHeld&&!mapTransitionState\.active\)/,
+  /* MAP.CPP::drawGrid() paints CG_GRID_CURSOR from the current mouse tile
+     every frame.  It must not be tied to the last left-click move target. */
+  /const pointerOnScene=hasPointerSample&&sceneRect&&pointerClientX>=sceneRect\.left&&pointerClientX<=sceneRect\.right&&pointerClientY>=sceneRect\.top&&pointerClientY<=sceneRect\.bottom;/,
+  /const hoverTile=app\.phase==="world"&&!app\.battle&&pointerOnScene&&!pointerOverUi&&!advancedOpen&&!mapTransitionState\.active\?nearestTileAt\(Number\(app\.cursor\.x\),Number\(app\.cursor\.y\)\):null;/,
+  /const targetPoint=hoverTile\?tilePoint\(hoverTile\[0\],hoverTile\[1\]\):null;/,
+  /#world-move-target\s*\{[^}]*opacity:1;[^}]*\}/,
+  /* A native right click first turns, then runs getItem() with a separate
+     500 ms throttle and the 2.5 server-direction number. */
+  /function pickupObjectAtTile\(target\)[\s\S]{0,900}actor\?\.kind==="item"\|\|actor\?\.kind==="money"/,
+  /function pickupFieldTile\(target\)[\s\S]{0,1300}Math\.abs\(dx\)>1\|\|Math\.abs\(dy\)>1[\s\S]{0,700}app\.pickupSentAt=now;[\s\S]{0,240}send\("PI",\[app\.position\[0\],app\.position\[1\],serverDirectionFromClient\(direction\)\]\)/,
+  /if\(event\.button===2\)[\s\S]{0,700}faceTowardTile\(tile\);pickupFieldTile\(tile\)/,
   /cursor\.style\.display=app\.cursor\.visible!==false\?"block":"none"/,
   /* The top-level cursor portal follows the physical pointer through the
      bottom task-bar row; only the viewport itself clips the final pixels. */
@@ -3429,4 +3439,15 @@ const actSettingSource = battleCommandSource.slice(actSettingStart, actSettingEn
 const primaryBroadcast = /if\( CHAR_getInt\( pindex, CHAR_WHICHTYPE \) == CHAR_TYPEPLAYER[\s\S]{0,260}BATTLE_CommandSend\( pindex, szBA \);/.test(actSettingSource);
 const linkedBroadcast = /charaindex = pBattle->Side\[0\]\.Entry\[i\]\.charaindex[\s\S]{0,300}BATTLE_CommandSend\( charaindex, szBA \);/.test(actSettingSource);
 if (!primaryBroadcast || !linkedBroadcast) throw new Error("BATTLE_ActSettingSend BA recipient regression");
+/* CHAR_DropMoney() owns the actual landing cell in the 2.5 GMSV.  Preserve
+   the order facing cell -> other seven neighbours -> own cell fallback. */
+const charItemSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/char/char_item.c", "latin1");
+const dropMoneyStart = charItemSource.indexOf("void CHAR_DropMoney(");
+const dropMoneyEnd = charItemSource.indexOf("END:", dropMoneyStart);
+if (dropMoneyStart < 0 || dropMoneyEnd <= dropMoneyStart) throw new Error("CHAR_DropMoney source missing");
+const dropMoneySource = charItemSource.slice(dropMoneyStart, dropMoneyEnd);
+if (!/dirx\[i\+1\] = CHAR_getDX\([\s\S]{0,260}dirx\[0\] = CHAR_getDX[\s\S]{0,180}dirx\[8\] = 0;/.test(dropMoneySource) ||
+    !/for\( i = 0 ; i < 9 ; i \+\+ \)[\s\S]{0,3000}CHAR_getInt\(charaindex,CHAR_X\) \+ dirx\[8\]/.test(dropMoneySource)) {
+  throw new Error("CHAR_DropMoney must exhaust surrounding cells before the player cell");
+}
 console.log("web protocol vectors OK");
