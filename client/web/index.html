@@ -897,7 +897,7 @@
       <img class="login-bitmap login-ok" src="/assets/bitmaps/bitmap_9114.png" alt="确定">
       <img class="login-bitmap login-quit" src="/assets/bitmaps/bitmap_9115.png" alt="退出">
       <form id="login-form" autocomplete="on">
-        <label for="account">账号</label><input id="account" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="next" maxlength="15" required>
+        <label for="account">账号</label><input id="account" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="next" maxlength="15" required autofocus>
         <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done" maxlength="12" required>
         <button class="primary" type="submit">连接并登录</button>
       </form>
@@ -1540,7 +1540,7 @@
      rooms to unrelated tracks and was one source of the repeated victory
      music reported during map changes. */
   const MAP_BGM_NO=Object.freeze({40:4,41:3,42:7,43:8,44:9,45:10,46:11});
-  const soundState={unlocked:false,bgm:null,bgmNo:-1,pendingBgm:null,pendingSE:[],context:null,seLast:new Map()};
+  const soundState={unlocked:false,bgm:null,bgmNo:-1,pendingBgm:null,pendingSE:[],activeSE:new Set(),context:null,seLast:new Map()};
   function audioURL(kind,file){return `/audio/${kind}/${encodeURIComponent(String(file||""))}`;}
   function clampAudio(value){return Math.max(0,Math.min(1,Number(value)||0));}
   function settingLevel(value,legacyValue=15){
@@ -1609,6 +1609,11 @@
     if(soundState.pendingSE.length){const pending=soundState.pendingSE.splice(0);for(const effect of pending)playSoundEffect(effect.tone,effect.x,effect.y,true);}
   }
   function stopBackgroundMusic(){if(soundState.bgm){try{soundState.bgm.pause();soundState.bgm.currentTime=0;}catch(_){}}soundState.bgm=null;soundState.bgmNo=-1;app.music.currentBgmNo=-1;}
+  function stopSoundEffects(){
+    for(const audio of soundState.activeSE||[]){try{audio.pause();audio.currentTime=0;}catch(_){}try{audio.remove();}catch(_){} }
+    soundState.activeSE?.clear?.();
+    soundState.pendingSE.length=0;
+  }
   function setBackgroundMusic(number,options={}){
     const bgmNo=Math.max(0,Math.trunc(Number(number)||0)),file=BGM_FILES[bgmNo];app.music.currentBgmNo=bgmNo;
     if(!app.systemSettings.bgm||app.systemSettings.soundMuted){soundState.pendingBgm=bgmNo;stopBackgroundMusic();return;}
@@ -1634,12 +1639,12 @@
        the developer's browser. */
     if(DEBUG_AUDIO_MUTED){
       app.systemSettings.soundMuted=true;app.systemSettings.bgm=false;app.systemSettings.se=false;
-      stopBackgroundMusic();soundState.pendingBgm=null;soundState.pendingSE.length=0;
+      stopBackgroundMusic();soundState.pendingBgm=null;stopSoundEffects();
       return;
     }
     app.systemSettings.soundMuted=Boolean(enabled);
     if(app.systemSettings.soundMuted){
-      stopBackgroundMusic();soundState.pendingBgm=null;soundState.pendingSE.length=0;
+      stopBackgroundMusic();soundState.pendingBgm=null;stopSoundEffects();
       return;
     }
     if(app.systemSettings.bgm){const target=musicIntentBgm();if(target>=0)setBackgroundMusic(target,{force:true});}
@@ -1665,6 +1670,7 @@
     if(!soundState.unlocked){if(!fromQueue&&soundState.pendingSE.length<16)soundState.pendingSE.push({tone,x,y});return;}
     const px=Math.max(0,Math.min(640,Number(x)||320)),pan=app.systemSettings.seStereo?Math.max(-1,Math.min(1,(px-320)/320)):0;
     const audio=new Audio(audioURL("se",file));audio.preload="auto";audio.volume=seVolume();audio.setAttribute("aria-hidden","true");
+    soundState.activeSE.add(audio);
     let source=null,panner=null;
     /* play_se() sets DirectSound's pan from the map x coordinate.  Keep the
        plain HTMLAudio path as the compatibility fallback, and add a
@@ -1673,7 +1679,9 @@
       try{source=soundState.context.createMediaElementSource(audio);panner=soundState.context.createStereoPanner();panner.pan.value=pan;source.connect(panner).connect(soundState.context.destination);}catch(_){source=null;panner=null;}
     }
     if("playbackRate" in audio)audio.playbackRate=1;
-    audio.play().catch(()=>{});audio.addEventListener("ended",()=>{try{source?.disconnect();panner?.disconnect();}catch(_){}audio.remove();});
+    const release=()=>{try{source?.disconnect();panner?.disconnect();}catch(_){}soundState.activeSE.delete(audio);try{audio.remove();}catch(_){} };
+    audio.addEventListener("ended",release,{once:true});audio.addEventListener("error",release,{once:true});
+    audio.play().catch(()=>{release();});
   }
   function mapMusicFromWindow(map){
     if(!map)return;
@@ -1884,7 +1892,7 @@
     #social-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:440px;--content-x:12px;--content-y:42px;--content-w:248px;--content-h:380px;--toolbar-x:16px;--toolbar-y:418px}
     #album-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:448px;--content-x:14px;--content-y:38px;--content-w:244px;--content-h:390px;--toolbar-x:80px;--toolbar-y:438px}
     #titles-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:332px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:260px;--toolbar-x:96px;--toolbar-y:310px}
-    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:288px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:212px;--toolbar-x:56px;--toolbar-y:300px}
+    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:260px;--toolbar-x:56px;--toolbar-y:348px}
     #actions-screen,#events-screen,#journal-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:112px;--content-y:144px;--content-w:416px;--content-h:150px;--toolbar-x:184px;--toolbar-y:338px}
     #server-window-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:140px;--content-y:136px;--content-w:360px;--content-h:160px;--toolbar-x:212px;--toolbar-y:248px}
     #system-screen .toolbar-row{display:none}
@@ -2280,7 +2288,7 @@
        7x8 geometry belonged to the optional 8.5 _NEW_SYSTEM_MENU branch and
        made the browser system panel visibly oversized and detached from the
        field UI.  Keep each page at the exact native origin/size. */
-    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:288px;--system-list-x:32px;--system-list-y:60px}
+    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--system-list-x:32px;--system-list-y:60px}
     #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:144px;--system-list-x:24px;--system-list-y:60px}
     #system-screen.system-page-chat{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:60px}
     #system-screen.system-page-bgm{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:68px}
@@ -2791,11 +2799,12 @@
       album:{bitmap:9286,x:4,y:4,w:272,h:448},
       titles:{bitmap:9140,x:4,y:4,w:272,h:332,generic:true},
       /* System pages use the native MakeWindowDisp nine-tile surface.  The
-         centre bitmap (9140) is not a complete window and must not be
-         stretched over the menu.  Stock 2.5 MENU.CPP opens the root at
-         (4,4) with a 3x6 (192x288) tile window; the subpage geometry is set
-         by configureSystemWindow() when selected. */
-      system:{x:4,y:4,w:192,h:288,native:true,title:9145},
+       centre bitmap (9140) is not a complete window and must not be
+       stretched over the menu.  The web menu keeps the five stock rows plus
+       the 2.5 in-place logout row, so its root frame needs one extra 48px
+       tile row; otherwise the final close row is clipped against the lower
+       border.  Subpage geometry is set by configureSystemWindow(). */
+      system:{x:4,y:4,w:192,h:336,native:true,title:9145},
       /* The protocol/event panes are local wrappers around native message
          windows.  Keep their diagnostics in the same 7x5 CG_WND_G frame as
          LOGIN.CPP instead of presenting a generic web card. */
@@ -3225,6 +3234,7 @@
        ready.  Keep it selected when a dropped session returns to the title. */
     setMusicMode("title",2);
     loginStatus(message);
+    window.setTimeout(focusLoginAccount,0);
   }
   /* CHAR_FS_* in the 2.5 server is not a consecutive UI enum:
        PARTY=1, BATTLE=2 (internal/unused), DUEL=4,
@@ -5834,8 +5844,12 @@
     /* This is the exact live text layer from MENU.CPP::mapWndNo==0.  Keep
        map geometry/resource diagnostics out of the native window. */
     summary.textContent=String(app.map.name||`楼层 ${app.map.floor}`);
-    xNode.textContent=`X ${String(Number(app.position[0])||0).padStart(3," ")}`;
-    yNode.textContent=`Y ${String(Number(app.position[1])||0).padStart(3," ")}`;
+    /* MENU.CPP::mapWndNo==0 writes the native compass labels (not generic
+       X/Y captions) at two fixed StockFontBuffer anchors.  Keep the three
+       digit field width so the second label never shifts when a coordinate
+       changes from 9 to 10 or 99 to 100. */
+    xNode.textContent=`东 ${String(Number(app.position[0])||0).padStart(3," ")}`;
+    yNode.textContent=`南 ${String(Number(app.position[1])||0).padStart(3," ")}`;
     /* The map window is opened after the first M packet in normal play, but
        the DAT request is intentionally lazy so entering a field never waits
        for a whole-floor file.  Keep the current player marker useful while
@@ -5914,7 +5928,7 @@
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
     ["system-page-menu","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:288,title:9145},"logout-record":{x:4,y:4,w:192,h:144,title:9146},"logout-place":{x:4,y:4,w:192,h:144,title:9146},chat:{x:4,y:4,w:256,h:384,title:9148},bgm:{x:4,y:4,w:256,h:384,title:9149},se:{x:4,y:4,w:256,h:288,title:9150},registry:{x:4,y:4,w:272,h:430,title:0}};
+    const specs={menu:{x:4,y:4,w:192,h:336,title:9145},"logout-record":{x:4,y:4,w:192,h:144,title:9146},"logout-place":{x:4,y:4,w:192,h:144,title:9146},chat:{x:4,y:4,w:256,h:384,title:9148},bgm:{x:4,y:4,w:256,h:384,title:9149},se:{x:4,y:4,w:256,h:288,title:9150},registry:{x:4,y:4,w:272,h:430,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -11636,6 +11650,11 @@
     if(app.transport===transport){app.transport=null;app.polling=false;app.pollingTransport=null;app.connectionToken++;}
     return transport?.close?.(options)??Promise.resolve(true);
   }
+  function focusLoginAccount(){
+    const input=$("account");
+    if(!input||app.phase!=="login"||loginScreen?.classList.contains("hidden"))return;
+    try{input.focus({preventScroll:true});}catch(_){try{input.focus();}catch(__){}}
+  }
   /* A normal in-page logout awaits the server response.  Refreshing or
      unloading cannot await a promise, so send one no-argument 2.5
      CharLogout with fetch keepalive; the bridge's close=1 path writes that
@@ -13599,14 +13618,14 @@
          their exact logical position for hit testing and movement. */
       const cursorX=Number.isFinite(app.cursor.x)?app.cursor.x:320;
       const cursorY=Number.isFinite(app.cursor.y)?app.cursor.y:240;
-      /* A pointer over the last few pixels of the map can still report the
-         canvas as its event target (the toolbar is transparent between hit
-         rectangles).  Clamp at either scene edge as a fallback as well, so
-         the fish never vanishes merely because the pointer crossed a 640x480
-         boundary. */
-      const edgeClamp=Boolean(app.cursorOverUi)||cursorX>608||cursorY>448;
-      cursor.style.left=`${edgeClamp?Math.min(608,Math.max(0,cursorX)):cursorX}px`;
-      cursor.style.top=`${edgeClamp?Math.min(448,Math.max(0,cursorY)):cursorY}px`;
+      /* The native cursor is allowed to cross the field/task-bar boundary.
+         The previous 608/448 clamp kept the fish a full sprite-width above
+         the bottom menu, so a pointer moved to the last row appeared to stop
+         at the menu edge.  #world-overlay is a top-level, pointer-transparent
+         portal; let the real physical sample paint at its exact logical
+         position and rely on the viewport clip only for the final pixels. */
+      cursor.style.left=`${Math.max(0,Math.min(640,cursorX))}px`;
+      cursor.style.top=`${Math.max(0,Math.min(480,cursorY))}px`;
       /* map.cpp samples a held pointer for continuous movement, but the
          browser pointer remains entirely independent.  Keep the painted fish
          above every field button; updateWorldPointer() only repaints it after
@@ -15156,14 +15175,30 @@
     $("account").focus();
   });
   $("login-form").addEventListener("submit",event=>{event.preventDefault();acceptLoginCredentials();});
+  let loginQuitRequested=false;
   function closeLoginPage(){
+    /* QUIT is a terminal title action.  Do not unlock audio or play the
+       generic button tone here: doing so starts a needless sas_17.wav fetch
+       while the tab is being closed (and that request can keep mobile WebView
+       tabs alive long enough for QUIT to appear to do nothing). */
+    if(loginQuitRequested)return;
+    loginQuitRequested=true;
+    stopBackgroundMusic();stopSoundEffects();
+    const button=$("login-quit-button");if(button)button.disabled=true;
     /* Browsers only permit window.close() for a tab opened by script.  Try
-       both the direct and self-targeted forms; when the browser still blocks
-       it, leave the game surface in its own quiet state instead of showing a
-       native alert/prompt. */
+       both legal forms during the click's user-activation turn.  If the
+       browser still blocks closing, replace the document with a blank page so
+       QUIT remains effective instead of leaving an interactive game behind. */
     try{window.close();}catch(_){/* browser policy */}
     try{window.open("","_self");window.close();}catch(_){/* browser policy */}
-    window.setTimeout(()=>{if(!document.hidden)loginStatus("浏览器阻止了自动关闭，请手动关闭此标签页。","");},120);
+    window.setTimeout(()=>{
+      if(document.hidden||document.visibilityState==="hidden")return;
+      try{window.location.replace("about:blank");}
+      catch(_){
+        document.documentElement.classList.add("quit-complete");
+        document.body.replaceChildren();
+      }
+    },150);
   }
   /* LOGIN.CPP swaps the grey title bubbles for the white pressed artwork on
      both mouse hover and keyboard focus.  Keep the visible state explicit in
@@ -15194,7 +15229,7 @@
     input.value=normalized;
     if(Number.isFinite(caret))input.setSelectionRange(caret,caret);
   });
-  $("login-quit-button").addEventListener("click",()=>{unlockAudio();playSoundEffect(217);closeLoginPage();});
+  $("login-quit-button").addEventListener("click",closeLoginPage);
   $("cancel-new").addEventListener("click",()=>$("new-character-form").classList.add("hidden")); $("new-character-form").addEventListener("submit",async event=>{event.preventDefault();openCreation();});
   $("creation-name").addEventListener("input",event=>{creationState.name=event.target.value;});
   $("creation-ok").addEventListener("click",finishCreation);$("creation-back").addEventListener("click",()=>{creationState.stage="select";renderCreation();});$("creation-home-back").addEventListener("click",()=>{creationState.stage="settings";renderCreation();});
@@ -15680,6 +15715,7 @@
   show(loginScreen);
   app.phase="login";
   renderWorld();
+  window.setTimeout(focusLoginAccount,0);
 })();
 </script>
 </body>

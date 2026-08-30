@@ -290,6 +290,17 @@ self.addEventListener("message", event => {
 self.addEventListener("fetch", event => {
   const request = event.request;
   if (!isStaticRequest(request)) return;
+  /* Chromium's media loader issues byte-range requests and expects the
+     response's 206/Content-Range contract to be preserved.  Cache Storage
+     cannot safely replay a cached full 200 (or a previously cached 206) for
+     that request, which leaves HTMLAudioElement with a media source error.
+     Let range/media requests go through the browser's normal HTTP cache and
+     network path; immutable audio headers still avoid repeat downloads while
+     ordinary fetch/prefetch requests continue to use Cache Storage below. */
+  if (request.destination === "audio" || request.headers.has("range")) {
+    event.respondWith(fetch(request));
+    return;
+  }
   const url = new URL(request.url);
   event.respondWith(isPublishedMarker(url) || isIndexRequest(url) ? networkFirst(request) : cacheFirst(request));
 });

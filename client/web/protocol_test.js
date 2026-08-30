@@ -148,6 +148,8 @@ for (const expected of [
   "data.deltaKnown",
   "data.deltaFrom",
   "data.changedAll",
+  "request.destination === \"audio\"",
+  "request.headers.has(\"range\")",
 ]) {
   if (!serviceWorker.includes(expected)) throw new Error(`Service Worker hash-delta reuse path missing: ${expected}`);
 }
@@ -388,6 +390,26 @@ if (!/function rememberStableViewport\([\s\S]{0,1800}previousArea/.test(script) 
 }
 if (!/function canonicalAccount\(value\)[\s\S]{0,420}replace\(\/\[A-Z\]\/g/.test(script)) {
   throw new Error("web login must canonicalise ASCII account names before sending them to 2.5");
+}
+if (!/id="account"[^>]*autofocus/.test(html) ||
+    !/function focusLoginAccount\(\)[\s\S]{0,420}input\.focus\(\{preventScroll:true\}\)/.test(script) ||
+    !/show\(loginScreen\);[\s\S]{0,180}window\.setTimeout\(focusLoginAccount,0\)/.test(script)) {
+  throw new Error("login page must focus the username field after it is shown");
+}
+/* QUIT must stop audio and use a blank-page fallback when browsers refuse
+   window.close().  It must not request the generic sas_17.wav button tone. */
+if (!/let loginQuitRequested=false;[\s\S]{0,900}stopBackgroundMusic\(\);stopSoundEffects\(\)/.test(script) ||
+    !/login-quit-button"\)\.addEventListener\("click",closeLoginPage\)/.test(script) ||
+    !/window\.location\.replace\("about:blank"\)/.test(script) ||
+    /login-quit-button"\)\.addEventListener\("click",\(\)=>\{unlockAudio\(\);playSoundEffect\(217\)/.test(script)) {
+  throw new Error("QUIT must stop audio and close/fallback without requesting sas_17.wav");
+}
+if (!/activeSE:new Set\(\)/.test(script) || !/function stopSoundEffects\(\)[\s\S]{0,500}activeSE/.test(script)) {
+  throw new Error("audio shutdown must stop active sound effects as well as BGM");
+}
+if (!/xNode\.textContent=`东 \$\{String\(Number\(app\.position\[0\]\)\|\|0\)\.padStart\(3," "\)\}`/.test(script) ||
+    !/yNode\.textContent=`南 \$\{String\(Number\(app\.position\[1\]\)\|\|0\)\.padStart\(3," "\)\}`/.test(script)) {
+  throw new Error("map coordinates must use fixed native 东/南 labels and three-digit anchors");
 }
 if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/id="world-loading-detail"/.test(html) ||
@@ -869,10 +891,9 @@ for (const expected of [
   /function setMoveTarget\(target\)[\s\S]{0,140}worldRouteInputBlocked\(\)/,
   /if\(targetPoint&&!advancedOpen&&!app\.pointerMoveHeld&&!mapTransitionState\.active\)/,
   /cursor\.style\.display=app\.cursor\.visible!==false\?"block":"none"/,
-  /* A clipped scene cannot paint a 32px fish past its bottom/right edge.
-     Keep the sprite visible over the native task bar while preserving the
-     unclamped logical pointer used by map hit testing. */
-  /const edgeClamp=Boolean\(app\.cursorOverUi\)\|\|cursorX>608\|\|cursorY>448;[\s\S]{0,260}cursor\.style\.top=`\$\{edgeClamp\?Math\.min\(448/,
+  /* The top-level cursor portal follows the physical pointer through the
+     bottom task-bar row; only the viewport itself clips the final pixels. */
+  /cursor\.style\.left=`\$\{Math\.max\(0,Math\.min\(640,cursorX\)\)\}px`;[\s\S]{0,120}cursor\.style\.top=`\$\{Math\.max\(0,Math\.min\(480,cursorY\)\)\}px`/,
   /* The painted fish is the final field layer, including over the black
      centre-fold curtain and task-bar hit regions; it must remain pointer
      transparent so the browser never turns the fish into a click shield. */
@@ -1121,8 +1142,8 @@ for (const expected of [
   /#map-screen #map-x\{left:449px\}/,
   /#map-screen #map-y\{left:522px\}/,
   /#map-screen #map-close\{left:472px;top:218px;width:80px;height:16px;/,
-  /xNode\.textContent=`X \$\{String\(Number\(app\.position\[0\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
-  /yNode\.textContent=`Y \$\{String\(Number\(app\.position\[1\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
+  /xNode\.textContent=`东 \$\{String\(Number\(app\.position\[0\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
+  /yNode\.textContent=`南 \$\{String\(Number\(app\.position\[1\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
   /* M's event layer is commonly empty in 2.5; warp/door checks must merge
      the static DAT event table without replacing live tile/object collision. */
   /const liveEvent=Number\(map\.events\?\.\[index\]\?\?0\);[\s\S]{0,900}event=Number\(full\.event\?\.\[fullIndex\]\?\?0\);[\s\S]{0,180}return \{tile:Number\(map\.tiles\?\.\[index\]\?\?0\),object:Number\(map\.objects\?\.\[index\]\?\?0\),event\};/,
@@ -1982,7 +2003,7 @@ for (const expected of [
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
 }
 for (const expected of [
-  /const specs=\{menu:\{x:4,y:4,w:192,h:288,title:9145\}/,
+  /const specs=\{menu:\{x:4,y:4,w:192,h:336,title:9145\}/,
   /chat:\{x:4,y:4,w:256,h:384,title:9148\}/,
   /bgm:\{x:4,y:4,w:256,h:384,title:9149\}/,
   /se:\{x:4,y:4,w:256,h:288,title:9150\}/,

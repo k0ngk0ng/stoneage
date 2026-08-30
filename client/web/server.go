@@ -1110,6 +1110,11 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			http.NotFound(response, request)
 			return
 		}
+		// Go's mime table uses the historical `audio/x-wav` alias.  Publish the
+		// standards spelling so browsers and external CDNs agree on the media
+		// type; the normal nosniff header remains in force for this read-only
+		// subtree as well as for HTML, API, map and image responses.
+		response.Header().Set("Content-Type", "audio/wav")
 		// Audio filenames come from the preserved executable data and never
 		// change during a local client session.  Let the browser keep the WAVs
 		// between map/battle transitions instead of re-reading large BGM files.

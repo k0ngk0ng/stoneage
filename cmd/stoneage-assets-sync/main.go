@@ -711,6 +711,14 @@ func syncObjectBatch(store objectStore, objects []plannedObject, previous map[st
 						continue
 					}
 					contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(object.Filename)))
+					// Go's mime table returns the historical `audio/x-wav` alias
+					// for .wav.  Chromium/WebKit treat that alias as unsupported
+					// when a CDN sends X-Content-Type-Options: nosniff, even though
+					// the PCM bytes are valid.  Publish the standards spelling so
+					// both the local handler and OSS/R2 objects are playable.
+					if strings.EqualFold(filepath.Ext(object.Filename), ".wav") {
+						contentType = "audio/wav"
+					}
 					if contentType == "" {
 						contentType = "application/octet-stream"
 					}

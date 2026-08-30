@@ -567,6 +567,9 @@ func TestHandlerServesConfiguredAudio(t *testing.T) {
 	if response.StatusCode != http.StatusOK || string(body) != "RIFF-test" {
 		t.Fatalf("audio status=%d body=%q", response.StatusCode, body)
 	}
+	if got := response.Header.Get("Content-Type"); got != "audio/wav" {
+		t.Fatalf("audio content type=%q", got)
+	}
 }
 
 func TestHTTPSessionForwardsGreetingPacketsAndClose(t *testing.T) {
