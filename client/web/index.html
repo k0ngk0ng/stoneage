@@ -3237,6 +3237,12 @@
   }
   function returnToAccountLogin(message="请输入账号和密码。"){
     cancelMapFloorTransition();
+    /* A title return is a hard scene boundary.  Clear any hit/skill effects
+       from the previous field or battle before selecting the title track;
+       otherwise a short SE can keep playing after logout or reconnect. */
+    stopSoundEffects();
+    stopBackgroundMusic();
+    soundState.pendingBgm=null;
     app.phase="login";
     show(loginScreen);
     /* login.cpp starts the title track when the account/character list is
@@ -11734,7 +11740,14 @@
     }
     const wasSelectingServer=app.phase==="connecting"||app.phase==="server-line"||app.phase==="character-list"||app.phase==="character-create"||app.phase==="login-error";
     const wasWorld=app.phase==="world"||app.battle||worldScreen?.classList.contains("hidden")===false;
-    closeTransport(sourceTransport||null);app.phase="disconnected";app.battle=false;setWorldState("连接已中断","error");status("连接中断","error");
+    closeTransport(sourceTransport||null);
+    /* Do not let a stale field/battle track or queued effect continue while
+       the reconnect dialog is shown.  returnToAccountLogin() selects the
+       title track again when the user explicitly returns to login. */
+    stopSoundEffects();
+    stopBackgroundMusic();
+    soundState.pendingBgm=null;
+    app.phase="disconnected";app.battle=false;setWorldState("连接已中断","error");status("连接中断","error");
     if(wasWorld){show(worldScreen);openLocalDialog("连接中断",`${reason}\n服务器连接已断开。`,[{label:"重新连接",kind:"yes",handler:retryAfterDisconnect},{label:"返回登录",kind:"no",handler:()=>returnToLogin("连接已断开，请重新登录。" )}]);}
     else if(wasSelectingServer&&app.account){showConnectionFailure(reason);}
     else {returnToAccountLogin(reason);loginStatus(reason,"error");}
