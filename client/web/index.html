@@ -1953,12 +1953,18 @@
     #inventory-screen #inventory-status{left:382px;top:333px;width:236px;text-align:left}
     /* MENU.CPP only paints the floor name, X/Y and one close button over
        CG_MAP_WND.  The old web diagnostic list covered the actual map art. */
-    #map-screen #map-summary{left:410px;top:35px;width:204px;margin:0;text-align:left;white-space:nowrap;overflow:hidden;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
+    #map-screen #map-summary{left:410px;top:35px;width:204px;margin:0;text-align:left;white-space:nowrap;overflow:hidden;color:#f5ecd4;font:bold 16px/16px "MS Gothic",SimSun,"Microsoft YaHei",monospace;text-shadow:1px 1px #080706}
     /* StockFontBuffer() places X/Y at two independent anchors.  A flex row
        makes Y drift whenever X changes width (especially at 10/100), while
        the native %3d fields remain fixed at x and x+73. */
-    #map-screen #map-coordinates{left:0;top:0;width:640px;height:480px;color:#ffe34f;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;white-space:pre;pointer-events:none}
-    #map-screen #map-x,#map-screen #map-y{position:absolute;top:190px}
+    #map-screen #map-coordinates{left:0;top:0;width:640px;height:480px;color:#ffe34f;font:bold 16px/16px "MS Gothic",SimSun,"Microsoft YaHei",monospace;text-shadow:1px 1px #080706;white-space:pre;pointer-events:none}
+    /* InitFont() gives every full-width glyph a 17px advance and every
+       half-width glyph a 9px advance at 640x480.  Browser fallback fonts do
+       not preserve those metrics, so stock each character in its native
+       cell instead of allowing proportional spaces to pull the number left. */
+    #map-screen #map-x,#map-screen #map-y{position:absolute;top:190px;height:16px;display:flex;align-items:flex-start}
+    #map-screen .map-coordinate-wide{display:block;flex:0 0 17px;width:17px;height:16px}
+    #map-screen .map-coordinate-half{display:block;flex:0 0 9px;width:9px;height:16px}
     #map-screen #map-x{left:449px}
     #map-screen #map-y{left:522px}
     /* CG_CLOSE_BTN is stocked at the window centre x=512, y=226.  Its
@@ -5878,6 +5884,12 @@
     for(let row=0;row<AUTO_MAP_HEIGHT;row++)for(let column=0;column<AUTO_MAP_WIDTH;column++){const color=colors[row*AUTO_MAP_WIDTH+column];if(!color)continue;const x=AUTO_MAP_ORIGIN_X+2*(row+column),y=AUTO_MAP_ORIGIN_Y+row-column;ctx.fillStyle=color;ctx.fillRect(x-1,y,3,1);ctx.fillRect(x,y-1,1,1);}
     const markerX=AUTO_MAP_ORIGIN_X+2*(27+27),markerY=AUTO_MAP_ORIGIN_Y;ctx.fillStyle=(Math.floor(Date.now()/500)&1)?"#fff":"#000";ctx.fillRect(markerX-1,markerY,3,1);ctx.fillRect(markerX,markerY-1,1,1);
   }
+  function renderNativeMapCoordinate(node,direction,value){
+    const wide=document.createElement("span");wide.className="map-coordinate-wide";wide.textContent=direction;
+    const number=String(Math.trunc(Number(value)||0)).padStart(3," ");
+    const half=[...` ${number}`].map(character=>{const cell=document.createElement("span");cell.className="map-coordinate-half";cell.textContent=character;return cell;});
+    node.replaceChildren(wide,...half);
+  }
   function renderMapDetails(){
     const summary=$("map-summary"),xNode=$("map-x"),yNode=$("map-y");
     const canvas=$("auto-map");
@@ -5890,8 +5902,8 @@
        X/Y captions) at two fixed StockFontBuffer anchors.  Keep the three
        digit field width so the second label never shifts when a coordinate
        changes from 9 to 10 or 99 to 100. */
-    xNode.textContent=`东 ${String(Number(app.position[0])||0).padStart(3," ")}`;
-    yNode.textContent=`南 ${String(Number(app.position[1])||0).padStart(3," ")}`;
+    renderNativeMapCoordinate(xNode,"東",app.position[0]);
+    renderNativeMapCoordinate(yNode,"南",app.position[1]);
     /* The map window is opened after the first M packet in normal play, but
        the DAT request is intentionally lazy so entering a field never waits
        for a whole-floor file.  Keep the current player marker useful while

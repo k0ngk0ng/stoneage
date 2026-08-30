@@ -407,9 +407,10 @@ if (!/let loginQuitRequested=false;[\s\S]{0,900}stopBackgroundMusic\(\);stopSoun
 if (!/activeSE:new Set\(\)/.test(script) || !/function stopSoundEffects\(\)[\s\S]{0,500}activeSE/.test(script)) {
   throw new Error("audio shutdown must stop active sound effects as well as BGM");
 }
-if (!/xNode\.textContent=`东 \$\{String\(Number\(app\.position\[0\]\)\|\|0\)\.padStart\(3," "\)\}`/.test(script) ||
-    !/yNode\.textContent=`南 \$\{String\(Number\(app\.position\[1\]\)\|\|0\)\.padStart\(3," "\)\}`/.test(script)) {
-  throw new Error("map coordinates must use fixed native 东/南 labels and three-digit anchors");
+if (!/function renderNativeMapCoordinate\(node,direction,value\)[\s\S]{0,700}map-coordinate-wide[\s\S]{0,700}padStart\(3," "\)[\s\S]{0,700}map-coordinate-half/.test(script) ||
+    !/renderNativeMapCoordinate\(xNode,"東",app\.position\[0\]\)/.test(script) ||
+    !/renderNativeMapCoordinate\(yNode,"南",app\.position\[1\]\)/.test(script)) {
+  throw new Error("map coordinates must use native 東/南 labels and fixed full/half-width glyph cells");
 }
 if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/id="world-loading-detail"/.test(html) ||
@@ -1156,9 +1157,11 @@ for (const expected of [
   /#map-screen #map-coordinates\{left:0;top:0;width:640px;height:480px;/,
   /#map-screen #map-x\{left:449px\}/,
   /#map-screen #map-y\{left:522px\}/,
+  /#map-screen \.map-coordinate-wide\{display:block;flex:0 0 17px;width:17px;height:16px\}/,
+  /#map-screen \.map-coordinate-half\{display:block;flex:0 0 9px;width:9px;height:16px\}/,
   /#map-screen #map-close\{left:472px;top:218px;width:80px;height:16px;/,
-  /xNode\.textContent=`东 \$\{String\(Number\(app\.position\[0\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
-  /yNode\.textContent=`南 \$\{String\(Number\(app\.position\[1\]\)\|\|0\)\.padStart\(3," "\)\}`;/,
+  /renderNativeMapCoordinate\(xNode,"東",app\.position\[0\]\);/,
+  /renderNativeMapCoordinate\(yNode,"南",app\.position\[1\]\);/,
   /* M's event layer is commonly empty in 2.5; warp/door checks must merge
      the static DAT event table without replacing live tile/object collision. */
   /const liveEvent=Number\(map\.events\?\.\[index\]\?\?0\);[\s\S]{0,900}event=Number\(full\.event\?\.\[fullIndex\]\?\?0\);[\s\S]{0,180}return \{tile:Number\(map\.tiles\?\.\[index\]\?\?0\),object:Number\(map\.objects\?\.\[index\]\?\?0\),event\};/,
