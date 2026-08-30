@@ -2723,6 +2723,21 @@ if (systemStateStart < 0 || systemMapBranchStart < 0 || systemMapBranchEnd < 0 |
 const mapRequestStart = script.indexOf("  const MAP_WINDOW_REQUEST_TIMEOUT_MS");
 const mapRequestEnd = script.indexOf("  function receiveMapChecksum(values)", mapRequestStart);
 if (mapRequestStart < 0 || mapRequestEnd <= mapRequestStart) throw new Error("map-window request lifecycle missing");
+const mapChecksumStart = script.indexOf("  const LEGACY_MAP_CHECKSUM_CELLS");
+if (mapChecksumStart < 0 || mapChecksumStart >= mapRequestStart) throw new Error("native DAT checksum implementation missing");
+const checksumMap = {
+  floor:1006,width:3,height:2,
+  tile:Uint16Array.from([1,2,3,4,5,6]),
+  parts:Uint16Array.from([0,5000,0,2,12804,0]),
+  event:Uint16Array.from([0xc003,0x4000,2,0,0xffff,1])
+};
+const mapChecksumHarness = new Function("app", `${script.slice(mapChecksumStart, mapRequestStart)};return {legacyMapLayerCRC,localMapChecksum};`)({autoMapData:checksumMap});
+const checksumVector=[1006,0,0,3,2,55263,32800,49963];
+const checksumResult=mapChecksumHarness.localMapChecksum(checksumVector);
+if (!checksumResult?.matches || checksumResult.sums.join(",") !== "55263,32800,49963" ||
+    mapChecksumHarness.localMapChecksum([...checksumVector.slice(0,5),55263,32800,49962])?.matches) {
+  throw new Error(`2.5 DAT CRC vector mismatch: ${JSON.stringify(checksumResult)}`);
+}
 const sentMapWindows = [], mapTimers = new Map();let nextMapTimer = 1;
 const mapRequestApp = {
   transport:{},phase:"world",floor:1006,connectionToken:7,pendingMapWindowRequest:null,
@@ -2751,6 +2766,11 @@ if (!mapRequestHarness.requestMapWindow(1006,-5,-4,32,33,{revision:`${initialMap
   throw new Error("a changed MC checksum must be allowed to refresh the same M rectangle");
 }
 mapRequestHarness.clearMapWindowRequest();
+const receiveMapChecksumSource=script.slice(mapRequestEnd,script.indexOf("  function parseLayer",mapRequestEnd));
+if (!receiveMapChecksumSource.includes("const localChecksum=hasWindow?localMapChecksum(values):null") ||
+    !receiveMapChecksumSource.includes("if(localChecksum?.matches)")) {
+  throw new Error("walking MC must use the installed DAT checksum before requesting M");
+}
 if (!script.includes("if(cached&&(!sameFloor||!hasWindow))")) {
   throw new Error("same-floor MC checksum must keep the live map back-buffer");
 }

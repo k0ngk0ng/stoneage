@@ -12202,9 +12202,43 @@
   enterWorld=function(){cancelMapFloorTransition();return enterWorldWithMapTransitionReset.apply(this,arguments);};
   const enterWorldWithMapEventReset=enterWorld;
   enterWorld=function(){clearMapEventRetry();app.moveLastWireSentAt=0;app.moveLastWireSteps=0;return enterWorldWithMapEventReset.apply(this,arguments);};
+  const LEGACY_MAP_CHECKSUM_CELLS=27*27;
+  const LEGACY_MAP_REVERSE_BYTES=Uint8Array.from({length:256},(_,value)=>{
+    let reversed=0;for(let bit=0;bit<8;bit++)reversed=(reversed<<1)|((value>>bit)&1);return reversed;
+  });
+  const LEGACY_MAP_CRC_TABLE=Uint16Array.from({length:256},(_,value)=>{
+    let crc=value<<8;for(let bit=0;bit<8;bit++)crc=(crc&0x8000)?((crc<<1)^0x1021):(crc<<1);return crc&0xffff;
+  });
+  function legacyMapLayerCRC(data,layer,x1,y1,x2,y2,eventLayer=false){
+    const width=Math.trunc(Number(x2)-Number(x1)),height=Math.trunc(Number(y2)-Number(y1)),count=width*height;
+    const mapWidth=Math.trunc(Number(data?.width)),mapHeight=Math.trunc(Number(data?.height));
+    if(!layer||width<=0||height<=0||count>LEGACY_MAP_CHECKSUM_CELLS||x1<0||y1<0||x2>mapWidth||y2>mapHeight)return null;
+    let crc=0;
+    for(let index=0;index<LEGACY_MAP_CHECKSUM_CELLS;index++){
+      let value=0;
+      if(index<count){const x=Number(x1)+index%width,y=Number(y1)+Math.floor(index/width);value=Number(layer[y*mapWidth+x]||0);if(eventLayer)value&=0x0fff;}
+      const low=value&0xff,high=(value>>8)&0xff;
+      crc=(LEGACY_MAP_CRC_TABLE[(crc>>8)&0xff]^((crc<<8)&0xffff)^LEGACY_MAP_REVERSE_BYTES[low])&0xffff;
+      crc=(LEGACY_MAP_CRC_TABLE[(crc>>8)&0xff]^((crc<<8)&0xffff)^LEGACY_MAP_REVERSE_BYTES[high])&0xffff;
+    }
+    return crc;
+  }
+  function localMapChecksum(values,data=app.autoMapData){
+    const floor=Math.trunc(Number(values?.[0])),x1=Math.trunc(Number(values?.[1])),y1=Math.trunc(Number(values?.[2])),x2=Math.trunc(Number(values?.[3])),y2=Math.trunc(Number(values?.[4]));
+    if(!data||Number(data.floor)!==floor)return null;
+    const sums=[legacyMapLayerCRC(data,data.tile,x1,y1,x2,y2),legacyMapLayerCRC(data,data.parts,x1,y1,x2,y2),legacyMapLayerCRC(data,data.event,x1,y1,x2,y2,true)];
+    if(sums.some(value=>value===null))return null;
+    const expected=values.slice(5,8).map(value=>Math.trunc(Number(value)||0));
+    return {sums,expected,matches:sums.every((value,index)=>value===expected[index])};
+  }
   const MAP_WINDOW_REQUEST_TIMEOUT_MS=2500;
   const MAP_WINDOW_REQUEST_MAX_ATTEMPTS=2;
+  const MAP_WINDOW_REVISION_LIMIT=256;
   function mapWindowRequestKey(floor,x1,y1,x2,y2){return [floor,x1,y1,x2,y2].map(value=>Math.trunc(Number(value)||0)).join("|");}
+  function rememberMapWindowRevision(key,revision){
+    if(!revision)return;app.mapWindowRevisionByKey.delete(key);app.mapWindowRevisionByKey.set(key,revision);
+    while(app.mapWindowRevisionByKey.size>MAP_WINDOW_REVISION_LIMIT)app.mapWindowRevisionByKey.delete(app.mapWindowRevisionByKey.keys().next().value);
+  }
   function clearMapWindowRequest(expected=null){
     if(expected&&app.pendingMapWindowRequest!==expected)return false;
     window.clearTimeout(app.mapWindowRequestTimer);app.mapWindowRequestTimer=0;app.pendingMapWindowRequest=null;return true;
@@ -12238,7 +12272,7 @@
        contained rectangle as the matching reply, but never let a late reply
        from an older floor unlock the current request. */
     if(response[0]!==requestedFloor||response[1]<left||response[2]<top||response[3]>right||response[4]>bottom)return false;
-    clearMapWindowRequest(request);if(request.revision)app.mapWindowRevisionByKey.set(request.key,request.revision);return true;
+    clearMapWindowRequest(request);rememberMapWindowRevision(request.key,request.revision);return true;
   }
   function receiveMapChecksum(values) {
     const floor=Number(values[0])||0,previous=app.map,sameFloor=Boolean(previous&&Number(previous.floor)===floor),hasWindow=Boolean(previous&&Array.isArray(previous.tiles)&&previous.tiles.length);
@@ -12267,7 +12301,18 @@
     }
     else if(!sameFloor||!hasWindow)setWorldState(`地图 ${app.floor} 校验已到达，读取窗口…`);
     bindMapFloorTransitionTarget(floor);
-    updateHUD(); const x=app.position[0],y=app.position[1],revision=[floor,...values.slice(1,8)].map(value=>Math.trunc(Number(value)||0)).join("|");
+    const x=app.position[0],y=app.position[1],revision=[floor,...values.slice(1,8)].map(value=>Math.trunc(Number(value)||0)).join("|");
+    /* MAP.CPP::mapCheckSum() reads this exact MC rectangle from the installed
+       DAT and asks GMSV for M only when one of the three CRCs differs.  Once a
+       playable window exists, the CDN DAT is the browser's installed map:
+       matching edge checksums during walking must keep the completed canvas
+       untouched instead of replacing it with another full 37x37 response. */
+    const localChecksum=hasWindow?localMapChecksum(values):null;
+    if(localChecksum?.matches){
+      rememberMapWindowRevision(mapWindowRequestKey(app.floor,x-20,y-16,x+17,y+21),revision);
+      updateHUD();return;
+    }
+    updateHUD();
     requestMapWindow(app.floor,x-20,y-16,x+17,y+21,{revision});
   }
   function parseLayer(text,expected) { if(!text)return Array(expected).fill(0); const values=text.split(",").slice(0,expected).map(token=>token?Protocol.base62(token):0); while(values.length<expected)values.push(0); return values; }
