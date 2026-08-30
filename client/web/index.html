@@ -2262,7 +2262,7 @@
     #pets-screen .pet-detail-atk{left:74px;top:182px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-def{left:74px;top:206px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-quick{left:74px;top:230px;width:24px;text-align:right;font-variant-numeric:tabular-nums}#pets-screen .pet-detail-ai{left:74px;top:254px;width:24px;text-align:right;font-variant-numeric:tabular-nums}
     #pets-screen .pet-detail-attr{position:absolute;left:183px;height:10px;max-width:80px;box-shadow:1px 1px #ddd8,2px 2px #2228;pointer-events:none}
     #pets-screen .pet-detail-attr.earth{top:187px;background:#3caa58}#pets-screen .pet-detail-attr.water{top:211px;background:#41a8ae}#pets-screen .pet-detail-attr.fire{top:235px;background:#c74736}#pets-screen .pet-detail-attr.wind{top:259px;background:#c2a72f}
-    #pets-screen .pet-detail-sprite{position:absolute;image-rendering:pixelated;pointer-events:none}
+    #pets-screen .pet-detail-sprite{position:absolute;image-rendering:pixelated;pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important;outline:0}
     #pets-screen .pet-detail-name-change{left:42px;top:62px;width:96px;height:16px;background-image:url('/assets/bitmaps/bitmap_9177.png')}
     #pets-screen .pet-detail-snapshot{left:36px;top:282px;width:80px;height:16px;background-image:url('/assets/bitmaps/bitmap_9263.png')}
     #pets-screen .pet-detail-skills{left:154px;top:282px;width:96px;height:16px;background-image:url('/assets/bitmaps/bitmap_9166.png')}
@@ -5587,6 +5587,10 @@
   }
   function openPetDetail(index,page="detail"){
     if(!app.petSlots[index])return;
+    /* MakeAnimDisp() creates every new detail preview at anim_ang=1.  Moving
+       between pets keeps the existing ACTION (and therefore its direction),
+       while returning from the skill/list page creates a fresh preview. */
+    if(page==="detail"&&app.petMenuPage!=="detail")app.petDetailDirection=1;
     app.petDetailIndex=index;app.petMenuPage=page;app.petSkillHover=-1;renderPets();
   }
   function cyclePetDetail(delta){
@@ -5607,12 +5611,26 @@
     if(changed)renderAlbumFixed();
   }
   function petDetailSprite(pet){
-    const actor={graphic:pet.graphic??pet.graNo,direction:0,action:3};
-    const entry=spriteEntryForActor(actor),animation=entry?.sprite?.actions?.find(item=>Number(item.direction)===0&&Number(item.action)===3)||entry?.sprite?.actions?.find(item=>Number(item.action)===3)||entry?.sprite?.actions?.[0];
-    const frame=animation?.frames?.[0];if(!frame?.file){if(!assetState.spritesReady)loadSpriteManifest().then(sprites=>{if(sprites&&app.petMenuPage==="detail")renderPets();});return null;}
-    const image=document.createElement("img");image.className="pet-detail-sprite";image.alt="";image.src=`/assets/${frame.file}`;
-    image.style.left=`${204+(Number(frame.x)||0)+(Number(frame.xoffset)||0)}px`;
-    image.style.top=`${148+(Number(frame.y)||0)+(Number(frame.yoffset)||0)}px`;
+    const direction=((Number(app.petDetailDirection??1)%8)+8)%8,actor={graphic:pet.graphic??pet.graNo,direction,action:3};
+    const entry=spriteEntryForActor(actor),nativeAnimation=spriteAnimationForAction(actor,direction,3),animation=nativeAnimation||entry?.sprite?.actions?.[0],frames=Array.isArray(animation?.frames)?animation.frames:[];
+    /* creation-sprites.json intentionally contains only direction 0.  Do not
+       mistake that small boot table for a complete pet preview: promote to
+       the full SPR table and repaint as soon as native direction 1 arrives. */
+    if(!nativeAnimation&&!assetState.spritesReady)loadSpriteManifest().then(sprites=>{if(sprites&&app.petMenuPage==="detail")renderPets();});
+    const first=frames[0];if(!first?.file){if(!assetState.spritesReady)loadSpriteManifest().then(sprites=>{if(sprites&&app.petMenuPage==="detail")renderPets();});return null;}
+    const image=document.createElement("img");image.className="pet-detail-sprite";image.alt="";image.tabIndex=0;image.setAttribute("role","button");image.setAttribute("aria-label","旋转宠物预览");
+    const paint=frame=>{if(!frame?.file)return;image.src=`/assets/${frame.file}`;image.style.left=`${204+(Number(frame.x)||0)+(Number(frame.xoffset)||0)}px`;image.style.top=`${148+(Number(frame.y)||0)+(Number(frame.yoffset)||0)}px`;};
+    paint(first);
+    /* AnimDisp::ANIM_DISP_PET calls pattern(..., ANM_LOOP) every process
+       tick.  Keep all extracted STAND frames on the same dtAnim clock; the
+       former first-frame-only <img> made every preview look frozen. */
+    if(frames.length>1&&typeof window.requestAnimationFrame==="function"){
+      const started=performance.now(),frameDuration=Math.max(1,Number(animation.frame_ms)||7)*LEGACY_FIELD_ANIMATION_TICK_MS;
+      const animate=now=>{const screen=$("pets-screen");if(!image.isConnected||!screen||screen.classList.contains("hidden")||app.petMenuPage!=="detail")return;paint(frames[Math.floor(Math.max(0,now-started)/frameDuration)%frames.length]);window.requestAnimationFrame(animate);};
+      window.requestAnimationFrame(animate);
+    }
+    const rotate=()=>{app.petDetailDirection=(direction+1)%8;playSoundEffect(217);renderPets();};
+    image.addEventListener("click",rotate);image.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();rotate();});
     return image;
   }
   function appendPetDetailValue(root,className,value){const node=document.createElement("span");node.className=className;node.textContent=textOr(value,"-");root.append(node);}

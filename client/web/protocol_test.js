@@ -1351,6 +1351,21 @@ for (const expected of [
 ]) {
   if (!expected.test(html)) throw new Error(`native pet-window layout regression: ${expected}`);
 }
+/* MakeAnimDisp(..., ANIM_DISP_PET) starts at anim_ang=1 and runs the full
+   standing row through pattern(..., ANM_LOOP).  It also increments anim_ang
+   when the preview is clicked; direction 0 plus frames[0] is a frozen back
+   view, not the native pet detail actor. */
+for (const expected of [
+  /if\(page==="detail"&&app\.petMenuPage!=="detail"\)app\.petDetailDirection=1/,
+  /const direction=\(\(Number\(app\.petDetailDirection\?\?1\)%8\)\+8\)%8,actor=\{graphic:pet\.graphic\?\?pet\.graNo,direction,action:3\}/,
+  /nativeAnimation=spriteAnimationForAction\(actor,direction,3\),animation=nativeAnimation\|\|entry\?\.sprite\?\.actions\?\.\[0\]/,
+  /if\(!nativeAnimation&&!assetState\.spritesReady\)loadSpriteManifest\(\)\.then\(sprites=>\{if\(sprites&&app\.petMenuPage==="detail"\)renderPets\(\);\}\)/,
+  /frameDuration=Math\.max\(1,Number\(animation\.frame_ms\)\|\|7\)\*LEGACY_FIELD_ANIMATION_TICK_MS/,
+  /paint\(frames\[Math\.floor\(Math\.max\(0,now-started\)\/frameDuration\)%frames\.length\]\)/,
+  /app\.petDetailDirection=\(direction\+1\)%8;playSoundEffect\(217\);renderPets\(\)/,
+]) {
+  if (!expected.test(renderPetsSource)) throw new Error(`native animated pet preview regression: ${expected}`);
+}
 /* MENU.CPP uses separate 8px-cell numeric fields. A single proportional
    padded string makes the HP columns drift because browser spaces are not
    eight pixels wide; the status %4d fields likewise end after 32px. */
