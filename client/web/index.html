@@ -1633,8 +1633,15 @@
     audio.addEventListener("error",()=>{if(soundState.bgm===audio){soundState.bgm=null;soundState.bgmNo=-1;}});
     soundState.bgm=audio;soundState.bgmNo=bgmNo;audio.play().catch(()=>{if(soundState.bgm===audio)soundState.pendingBgm=bgmNo;});
   }
-  function setBgmEnabled(enabled){app.systemSettings.bgm=DEBUG_AUDIO_MUTED||app.systemSettings.soundMuted?false:Boolean(enabled);if(app.systemSettings.bgm){const target=musicIntentBgm();if(target>=0)setBackgroundMusic(target,{force:true});}else stopBackgroundMusic();}
-  function setSeEnabled(enabled){app.systemSettings.se=DEBUG_AUDIO_MUTED||app.systemSettings.soundMuted?false:Boolean(enabled);if(!app.systemSettings.se)soundState.pendingSE.length=0;}
+  function setBgmEnabled(enabled){
+    app.systemSettings.bgm=DEBUG_AUDIO_MUTED||app.systemSettings.soundMuted?false:Boolean(enabled);
+    if(app.systemSettings.bgm){const target=musicIntentBgm();if(target>=0)setBackgroundMusic(target,{force:true});}
+    else{soundState.pendingBgm=null;stopBackgroundMusic();}
+  }
+  function setSeEnabled(enabled){
+    app.systemSettings.se=DEBUG_AUDIO_MUTED||app.systemSettings.soundMuted?false:Boolean(enabled);
+    if(!app.systemSettings.se){soundState.pendingSE.length=0;stopSoundEffects();}
+  }
   function setMasterMute(enabled){
     /* A debug-mute session is intentionally immutable: controls may still be
        exercised while checking layout, but a click must never start a WAV in
