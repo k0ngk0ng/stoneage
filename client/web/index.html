@@ -7030,9 +7030,11 @@
     if(!command)return false;
     /* BattleButtonJujutsu/Item/Pet save the old battleButtonFlag, call
        BattleButtonOff(), and reopen their window only when that old flag was
-       FALSE.  Therefore clicking the already-down bitmap is a local cancel,
-       including after a spell/item has advanced from its window to actor
-       targeting.  It must not send B or restart the shared BattleCntDown. */
+       FALSE. Clicking a still-open/down popup button is therefore a local
+       cancel. Once a J/I/W row advances to actor targeting, however, the
+       native row handler has already called ClearBattleButton(); pressing
+       that now-UP main button cancels the hit boxes and reopens its window.
+       Neither path sends B or restarts the shared BattleCntDown. */
     const pendingCommand=battleButtonCommandForAction(state.pendingAction),openCommand=battleButtonCommandForPopup(app.battlePopup?.kind);
     if(command===pendingCommand||command===openCommand){
       state.pendingAction=null;
@@ -7212,6 +7214,15 @@
     const state=app.battleState,kind=action.kind==="pet"?"pet":"player";
     battleSetCommandLock(state,kind,true);
     battleStartCommandPending(state,kind,command);
+    /* BattleTargetSelect() plays the submenu selection tone for actor/group
+       targeted J/I/W commands, then always plays the common command-confirm
+       tone.  H/T use only the common tone, and TARGET_NONE I/W commands also
+       skip 217 because no actor selector was confirmed.  Keep this local
+       feedback before the asynchronous bridge write, matching lssproto_B_send
+       followed immediately by play_se() in the 2.5 client. */
+    const actionKind=String(action.kind||"").toLowerCase();
+    if((actionKind==="magic"||actionKind==="item"||actionKind==="pet")&&Number(action.targetType)!==5)playSoundEffect(217,320,240);
+    playSoundEffect(203,320,240);
     /* ACT_ATR_HIT_BOX is a one-shot selector.  Remove it as soon as the
        command is accepted locally, before the HTTP round-trip completes;
        otherwise a second click can race the first B packet and the yellow
@@ -7788,10 +7799,11 @@
   function battleButtonCommandForAction(action){
     switch(String(action?.kind||"").toLowerCase()){
       case "attack":return "H|A";
-      case "magic":return "J|A";
       case "capture":return "C|A";
-      case "item":return "ITEM";
-      case "pet":return "PET";
+      /* BattleSetJujutsuHitBox(), the item target branches and
+         BattleSetWazaHitBox() all call ClearBattleButton() after a row is
+         chosen.  Their large popup owns DOWN only while it is open; actor
+         targeting itself does not keep the former main-menu button down. */
       default:return "";
     }
   }
@@ -7806,9 +7818,9 @@
   function battleButtonPressed(command,state=app.battleState){
     if(!state||!app.battle)return false;
     const wanted=String(command||"").toUpperCase();
-    /* The selected command remains down while its native submenu or actor
-       target mode owns the battle input.  This is the same battleButtonFlag
-       that BATTLEMENU.CPP paints into CG_BTL_BUTTON_*_DOWN. */
+    /* Attack/Capture keep battleButtonFlag while their actor selector owns
+       input. Jujutsu/Item/Pet clear that flag when a popup row advances to
+       targeting, so battleButtonCommandForAction deliberately omits them. */
     const pendingCommand=battleButtonCommandForAction(state.pendingAction);
     /* BattleButtonOff() clears every old flag before a target/submenu owner
        turns on its one button.  Treat an active selector as authoritative,
@@ -7817,17 +7829,9 @@
     if(pendingCommand)return pendingCommand.toUpperCase()===wanted;
     const popupCommand=battleButtonCommandForPopup(app.battlePopup?.kind);
     if(popupCommand)return popupCommand.toUpperCase()===wanted;
-    const pendingPlayer=String(state.commandPending?.player||"").trim().toUpperCase();
-    const pendingPet=String(state.commandPending?.pet||"").trim().toUpperCase();
-    if(pendingPet.startsWith("W|"))return wanted==="PET";
-    const commandHead=pendingPlayer.split("|",1)[0];
-    if(wanted==="H|A"&&commandHead==="H")return true;
-    if(wanted==="C|A"&&(commandHead==="C"||commandHead==="T"))return true;
-    if(wanted==="J|A"&&commandHead==="J")return true;
-    if(wanted==="ITEM"&&commandHead==="I")return true;
-    if(wanted==="PET"&&commandHead==="S")return true;
-    if(wanted==="G"&&commandHead==="G")return true;
-    if(wanted==="E"&&commandHead==="E")return true;
+    /* commandPending is the bridge/watchdog latch, not battleButtonFlag.
+       Once the submenu/target owner is gone, an in-flight B packet must not
+       keep its old bitmap depressed until the next BP acknowledgement. */
     return false;
   }
   function syncBattleButtonVisualStates(state=app.battleState){

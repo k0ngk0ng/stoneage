@@ -1169,7 +1169,7 @@ for (const expected of [
   /* The actor hit box is one-shot: locking the command must repaint the
      layer immediately so a second click cannot race the same B packet. */
   /const pendingTarget=state\.pendingAction&&battleActionAllowed\(state\.pendingAction,state\)\?state\.pendingAction:null;/,
-  /battleStartCommandPending\(state,kind,command\);[\s\S]{0,800}renderBattleWorld\(\);/,
+  /battleStartCommandPending\(state,kind,command\);[\s\S]{0,1800}renderBattleWorld\(\);/,
   /* EntrySort() already orders B segments by dex; the browser must append
      every segment to one timeline instead of assigning all of them now. */
   /state\.motionQueueAt=start\+length;/,
@@ -1599,6 +1599,44 @@ if (sendBattleTargetStart < 0 || sendBattleTargetEnd <= sendBattleTargetStart ||
     !/if\(kind==="player"\)\{[\s\S]{0,320}lastPlayerActionKind[\s\S]{0,220}\}else\{[\s\S]{0,220}lastPetActionKind/.test(sendBattleTargetSource)) {
   throw new Error("pet actor-target W must not overwrite the player's remembered command");
 }
+/* BattleTargetSelect() emits the row/target tone (217) for J/I/W and then
+   the shared command-confirm tone (203).  H/T have only the shared tone;
+   TARGET_NONE I uses only 203 because no actor target was selected. */
+const makeBattleTargetToneHarness=new Function("action",`
+  const state={pendingAction:{...action},myNo:0,commandLocked:false,petCommandLocked:false,commandPending:{player:null,pet:null}};
+  const app={battle:true,battleState:state,battleCommands:[],battleTarget:-1,battlePopup:null,character:"Tester"};
+  const tones=[],sends=[];
+  function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
+  function battleActionAllowed(){return true;}
+  function rejectFullBattleCapture(){return false;}
+  function rejectUnavailableBattleMagic(){return false;}
+  function battleTargetSelectable(){return true;}
+  function battleActionCommand(current,target){
+    const head={attack:"H",capture:"T",magic:"J",item:"I",pet:"W"}[current.kind];
+    return current.kind==="attack"||current.kind==="capture"?head+"|A":head+"|0|A";
+  }
+  function battleSetCommandLock(current,kind,locked){if(kind==="pet")current.petCommandLocked=locked;else current.commandLocked=locked;}
+  function battleStartCommandPending(current,kind,command){current.commandPending[kind]=command;}
+  function renderBattleWorld(){}
+  function send(name,values){sends.push([name,values]);return new Promise(()=>{});}
+  function reportError(error){throw error;}
+  ${sendBattleTargetSource}
+  sendBattleTarget({battleId:10,name:"Target"});
+  return {tones,sends};
+`);
+for(const [action,expected] of [
+  [{kind:"attack",targetType:1},[203]],
+  [{kind:"capture",targetType:1},[203]],
+  [{kind:"magic",targetType:1,index:0},[217,203]],
+  [{kind:"item",targetType:1,index:5},[217,203]],
+  [{kind:"pet",targetType:1,index:0},[217,203]],
+  [{kind:"item",targetType:5,index:5},[203]],
+]){
+  const result=makeBattleTargetToneHarness(action),actual=result.tones.map(item=>item[0]);
+  if(result.sends.length!==1||actual.join(",")!==expected.join(",")){
+    throw new Error(`battle target confirmation tone order drifted for ${action.kind}/${action.targetType}: ${JSON.stringify(result)}`);
+  }
+}
 const rawBattleCommandStart = script.indexOf("  async function battleCommand(command)");
 const rawBattleCommandEnd = script.indexOf("  function parseFormBytes", rawBattleCommandStart);
 const rawBattleCommandSource = script.slice(rawBattleCommandStart, rawBattleCommandEnd);
@@ -1608,16 +1646,39 @@ if (rawBattleCommandStart < 0 || rawBattleCommandEnd <= rawBattleCommandStart ||
   throw new Error("raw pet W must keep the player's battleButtonBak memory");
 }
 /* BattleButtonOff clears all old flags before one target/submenu owner is
-   activated.  Selector, popup and pet-W stages must short-circuit stale
-   player commandPending state instead of painting two buttons down. */
+   activated.  commandPending is only the network/watchdog latch and must
+   never paint a submitted command DOWN while waiting for the next BP. */
 const pressedStart = script.indexOf("  function battleButtonPressed(command,state=app.battleState)");
 const pressedEnd = script.indexOf("  function syncBattleButtonVisualStates", pressedStart);
 const pressedSource = script.slice(pressedStart, pressedEnd);
 if (pressedStart < 0 || pressedEnd <= pressedStart ||
     !/if\(pendingCommand\)return pendingCommand\.toUpperCase\(\)===wanted/.test(pressedSource) ||
     !/if\(popupCommand\)return popupCommand\.toUpperCase\(\)===wanted/.test(pressedSource) ||
-    !/if\(pendingPet\.startsWith\("W\|"\)\)return wanted==="PET"/.test(pressedSource)) {
+    /state\.commandPending|pendingPlayer|pendingPet/.test(pressedSource)) {
   throw new Error("battle pressed flags must have one native menu owner");
+}
+const pressedHelpersStart=script.indexOf("  function battleButtonCommandForAction(action)");
+const makeBattlePressedHarness=new Function("pendingAction","popupKind","commandPending",`
+  const state={pendingAction,commandPending};
+  const app={battle:true,battleState:state,battlePopup:popupKind?{kind:popupKind}:null};
+  ${script.slice(pressedHelpersStart,pressedEnd)}
+  return command=>battleButtonPressed(command,state);
+`);
+const selectorPressed=makeBattlePressedHarness({kind:"attack"},null,{player:"I|5|0",pet:"W|0|A"});
+if(!selectorPressed("H|A")||selectorPressed("ITEM")||selectorPressed("PET")){
+  throw new Error("active actor selector must be the sole DOWN battle button");
+}
+const rowTargetPressed=makeBattlePressedHarness({kind:"magic",index:0,targetType:1},null,{player:"J|0|A",pet:null});
+if(["H|A","J|A","ITEM","PET"].some(rowTargetPressed)){
+  throw new Error("Jujutsu/Item/Pet row targeting must follow native ClearBattleButton");
+}
+const popupPressed=makeBattlePressedHarness(null,"item",{player:"H|A",pet:"W|0|A"});
+if(!popupPressed("ITEM")||popupPressed("H|A")||popupPressed("PET")){
+  throw new Error("active battle popup must be the sole DOWN battle button");
+}
+const wireOnlyPressed=makeBattlePressedHarness(null,null,{player:"H|A",pet:"W|0|A"});
+if(["H|A","J|A","ITEM","PET","G","E"].some(wireOnlyPressed)){
+  throw new Error("in-flight battle command must not drive DOWN artwork");
 }
 /* BattleMenuProc paints *_UP + battleButtonFlag; HitDispNo hover is never a
    second source of DOWN artwork.  A cancelled button must visibly release
@@ -1674,10 +1735,11 @@ const closeBattlePopupSource=script.slice(script.indexOf("  function closeBattle
 if(/sendBattlePetDefault/.test(closeBattlePopupSource)||!/options\.clearChoiceTimer/.test(closeBattlePopupSource)){
   throw new Error("closing the native pet-skill window must keep the pet stage/countdown alive");
 }
-/* BattleButtonAttack/Jujutsu/Item/Pet all use bak + BattleButtonOff(): the
-   second press is a local cancel, not another selector/window activation.
-   Exercise the extracted production functions with an absolute countdown
-   and a send spy so this cannot regress into a CSS-only pressed-state fix. */
+/* BattleButtonAttack/Jujutsu/Item/Pet all use bak + BattleButtonOff(). A
+   second press closes a still-open popup, but selecting a J/I/W row calls
+   ClearBattleButton(); pressing that UP main button again must cancel the
+   actor hit boxes and reopen its popup. Exercise the production functions
+   with an absolute countdown and a send spy. */
 const battlePopupToggleStart=script.indexOf("  function openBattlePopup(kind)");
 const battlePopupToggleEnd=script.indexOf("  function battlePopupRow",battlePopupToggleStart);
 const battleActionToggleStart=script.indexOf("  function beginBattleAction(action,options={})");
@@ -1743,8 +1805,11 @@ toggleHarness.openBattlePopup("magic");
 if(!toggleHarness.beginBattleAction({kind:"magic",index:2,targetType:0},{closePopup:true})||toggleHarness.popup()!==null||toggleHarness.state.pendingAction?.kind!=="magic"){
   throw new Error("choosing a Jujutsu row must advance from popup to actor targeting");
 }
-if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.state.pendingAction!==null){
-  throw new Error("pressed Jujutsu must also cancel its actor-target phase");
+if(toggleHarness.openBattlePopup("magic")!==true||toggleHarness.state.pendingAction!==null||toggleHarness.popup()?.kind!=="magic"){
+  throw new Error("UP Jujutsu must cancel actor targeting and reopen its native window");
+}
+if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.popup()!==null){
+  throw new Error("second Jujutsu press must close the reopened native window");
 }
 if(toggleHarness.counts().sends!==0||toggleHarness.state.choiceDeadline!==toggleDeadline||toggleHarness.counts().unavailable!==0){
   throw new Error("battle command toggles changed packet count, countdown, or availability");
