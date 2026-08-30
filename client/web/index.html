@@ -1494,18 +1494,20 @@
      protocol behaviour.  Browser automation is muted automatically as a
      safety net: agent-browser exposes navigator.webdriver, and leaking a
      looping BGM from a forgotten test tab makes parallel visual checks very
-     noisy.  A normal, non-automated URL keeps the original client's BGM/SE
-     defaults and the in-game audio menu remains authoritative for players. */
+     noisy.  The explicit ?debug=1 inspection mode is also silent by default;
+     pass ?debugMute=0 when a deliberate audio-lifecycle check is required.
+     A normal, non-automated URL keeps the original client's BGM/SE defaults
+     and the in-game audio menu remains authoritative for players. */
   const DEBUG_AUDIO_MUTED=(()=>{
     try{
-      const query=new URLSearchParams(window.location.search),explicit=query.get("debugMute")??query.get("muteAudio");
+      const query=new URLSearchParams(window.location.search),explicit=query.get("debugMute")??query.get("muteAudio"),debug=query.get("debug")==="1";
       /* Automated visual checks stay silent by default, but an explicit 0
          opts into the real audio path for a deliberate music regression
          run.  Without this escape hatch navigator.webdriver made it
          impossible to verify map/BGM lifecycle with the same browser used
          for the rest of the release QA. */
       if(explicit==="0")return false;
-      return Boolean(navigator.webdriver)||explicit==="1"||window.localStorage?.getItem("stoneage:web:debug-mute")==="1";
+      return Boolean(navigator.webdriver)||explicit==="1"||(explicit===null&&debug)||window.localStorage?.getItem("stoneage:web:debug-mute")==="1";
     }catch(_){return false;}
   })();
   app.debugAudioMuted=DEBUG_AUDIO_MUTED;
