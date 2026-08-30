@@ -700,6 +700,12 @@
        surface and never intercepts the still-clickable native error hit. */
     #battle-capture-cross{left:523px;top:27px;width:40px;height:40px;pointer-events:none}
     #battle-capture-cross[hidden]{display:none !important}
+    /* NETPROC.CPP sets NoHelpFlag for EN result 2/5. BattleMenuProc() then
+       paints the same CG_BTL_BUTTON_CROSS over HELP at (577,27), while the
+       button remains a live error-tone hit area. */
+    #battle-help-cross{left:577px;top:27px;width:40px;height:40px;pointer-events:none}
+    #battle-help-cross[hidden]{display:none !important}
+    #battle-ui .battle-hit[data-command="HELP"].battle-command-no-help{filter:none}
     /* CG_PET_BTL_BUTTON_* is the active-pet command surface at buttonY=48.
        REALBIN's anchors put the base at (buttonX-110,8), the complete
        skill/cancel overlay at (buttonX-114,11).  StockDispBuffer hitFlag=2
@@ -994,6 +1000,7 @@
           <button class="battle-hit" data-command="PET"><img src="/assets/bitmaps/bitmap_8696.png" alt="宠物"></button>
           <button class="battle-hit" data-command="E"><img src="/assets/bitmaps/bitmap_8698.png" alt="逃跑"></button>
           <img id="battle-capture-cross" src="/assets/bitmaps/bitmap_8701.png" alt="" hidden aria-hidden="true">
+          <img id="battle-help-cross" src="/assets/bitmaps/bitmap_8701.png" alt="" hidden aria-hidden="true">
         </div>
         <div id="battle-pet-command-menu" hidden>
           <img class="battle-pet-base" src="/assets/bitmaps/bitmap_8718.png" alt="">
@@ -7164,10 +7171,20 @@
     renderBattleTargets();
     return true;
   }
+  function battleNoHelpType(type){const value=Number(type);return value===2||value===5;}
+  function battleHelpCommand(command){const text=String(command||"").trim().toUpperCase();return text==="HELP"||text==="?"||text.startsWith("?");}
+  function rejectBattleHelp(state=app.battleState){
+    if(!state?.noHelp)return false;
+    /* BattleButtonHelp() deliberately leaves helpFlag untouched and sends no
+       HL while NoHelpFlag is set.  The still-live hit area emits only the
+       native invalid-operation tone. */
+    playSoundEffect(220,320,240);syncBattleButtonVisualStates(state);return true;
+  }
   function battleMenuCommand(command){
-    const text=String(command||"").trim();
-    if(!battleCommandAllowed(text==="?"?"HELP":text)){battleExplainUnavailable(text);return;}
-    if(text==="HELP"||text==="?"||text.startsWith("?")){const next=Number(app.status.helpFlag)?0:1;app.status.helpFlag=next;setStatus("helpFlag",next);addChat("战斗",next?"已开启战斗求助":"已关闭战斗求助");return send("HL",[next]).catch(reportError);}
+    const text=String(command||"").trim(),help=battleHelpCommand(text);
+    if(help&&rejectBattleHelp())return false;
+    if(!battleCommandAllowed(help?"HELP":text)){battleExplainUnavailable(text);return false;}
+    if(help){const next=Number(app.status.helpFlag)?0:1;app.status.helpFlag=next;setStatus("helpFlag",next);addChat("战斗",next?"已开启战斗求助":"已关闭战斗求助");return send("HL",[next]).catch(reportError);}
     if(text.startsWith("H|"))return beginBattleAction({kind:"attack"});
     if(text.startsWith("T|")||text.startsWith("C|"))return beginBattleAction({kind:"capture"});
     if(text.startsWith("J|"))return openBattlePopup("magic");
@@ -7179,6 +7196,7 @@
   function battleCommandAllowed(command,state=app.battleState){
     const text=String(command||"");
     if(!app.battle||!state)return false;
+    if(battleHelpCommand(text)&&state.noHelp)return false;
     const flags=Number(state.bpFlags)||0;
     /* BP is the server's turn/menu gate.  Keep the same gate on the command
        text box and on delayed target clicks; otherwise a user could submit a
@@ -7584,9 +7602,11 @@
   }
   function syncBattleButtonVisualStates(state=app.battleState){
     const captureCross=$("battle-capture-cross");if(captureCross)captureCross.hidden=!app.battle||!battlePetCapacityFull();
+    const helpCross=$("battle-help-cross");if(helpCross)helpCross.hidden=!app.battle||!state?.noHelp;
     document.querySelectorAll("#battle-ui .battle-hit[data-command]").forEach(node=>{
       const active=battleButtonPressed(node.dataset.command,state),image=node.querySelector("img");
       node.classList.toggle("battle-command-active",active);
+      node.classList.toggle("battle-command-no-help",node.dataset.command==="HELP"&&Boolean(app.battle&&state?.noHelp));
       const normal=node.dataset.normalSrc,down=node.dataset.pressedSrc;
       /* BattleMenuProc() stocks CG_BTL_BUTTON_*_UP + battleButtonFlag on
          every frame.  HitDispNo only detects the click; hover/focus never
@@ -15033,7 +15053,7 @@
     /* InitBattleMenu() starts battleButtonBak at button 0.  The opening
        command menu therefore enters Attack exactly like every later turn
        whose remembered player command was Attack. */
-    app.battleState={field:fieldNo,fieldNo,fieldAtt:0,type:type||1,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,autoTurn:-1,implicitPlayerTurn:null,implicitPetTurn:null,petAfterPlayerReady:false,petAfterPlayerPending:false,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],actorNodes:new Map(),motionQueueAt:0,movieHoldUntil:0,pendingTurnState:null,pendingBattleStatuses:[],pendingBattleControls:[],turnApplyTimer:0,entryPending:true,entryReadyAt:0,entryTimer:0,rasterStartedAt:performance.now(),deathStartedAt:new Map(),escapePending:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,battleExitTimer:0,exitPending:false,flashUntil:0,movieActive:false,movieDone:false,commandLocked:true,petCommandLocked:true,commandTimers:{player:0,pet:0},commandPending:{player:null,pet:null},choiceTimer:0,choiceDeadline:0,choiceOwner:"",playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,deathExitPending:false,deathExitTimer:0,deathExitAt:0,deathExitFromPosition:false,transientTimer:0,escapeExitTimer:0,initializationTimer:0,initializing:true,rosterBeforeBp:false,lastPlayerActionKind:"attack",lastPlayerActionCommand:"",lastPetActionKind:"",lastPetActionCommand:"",defaultAttackTurnKey:null};
+    app.battleState={field:fieldNo,fieldNo,fieldAtt:0,type:type||1,noHelp:battleNoHelpType(type),myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,autoTurn:-1,implicitPlayerTurn:null,implicitPetTurn:null,petAfterPlayerReady:false,petAfterPlayerPending:false,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],actorNodes:new Map(),motionQueueAt:0,movieHoldUntil:0,pendingTurnState:null,pendingBattleStatuses:[],pendingBattleControls:[],turnApplyTimer:0,entryPending:true,entryReadyAt:0,entryTimer:0,rasterStartedAt:performance.now(),deathStartedAt:new Map(),escapePending:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,battleExitTimer:0,exitPending:false,flashUntil:0,movieActive:false,movieDone:false,commandLocked:true,petCommandLocked:true,commandTimers:{player:0,pet:0},commandPending:{player:null,pet:null},choiceTimer:0,choiceDeadline:0,choiceOwner:"",playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,deathExitPending:false,deathExitTimer:0,deathExitAt:0,deathExitFromPosition:false,transientTimer:0,escapeExitTimer:0,initializationTimer:0,initializing:true,rosterBeforeBp:false,lastPlayerActionKind:"attack",lastPlayerActionCommand:"",lastPetActionKind:"",lastPetActionCommand:"",defaultAttackTurnKey:null};
     app.battleState.lastPetActionSlot=-1;
     app.battleState.playerMenuOpenedTurnKey=null;
     app.battleState.petMenuStagePending=false;

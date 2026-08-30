@@ -1537,6 +1537,64 @@ if(toggleHarness.openBattlePopup("magic")!==false||toggleHarness.state.pendingAc
 if(toggleHarness.counts().sends!==0||toggleHarness.state.choiceDeadline!==toggleDeadline||toggleHarness.counts().unavailable!==0){
   throw new Error("battle command toggles changed packet count, countdown, or availability");
 }
+/* NETPROC.CPP sets NoHelpFlag for EN result 2/5. In that state the native
+   HELP button keeps its hit area, paints CG_BTL_BUTTON_CROSS at (577,27),
+   and a click emits only SE 220: no helpFlag mutation and no HL packet. */
+const battleNoHelpStart=script.indexOf("  function battleNoHelpType(type)");
+const battleNoHelpEnd=script.indexOf("  function battleActionAllowed",battleNoHelpStart);
+if(battleNoHelpStart<0||battleNoHelpEnd<=battleNoHelpStart){
+  throw new Error("battle NoHelp production function boundary missing");
+}
+const battleNoHelpSource=script.slice(battleNoHelpStart,battleNoHelpEnd);
+const battleNoHelpVisualSource=script.slice(script.indexOf("  function syncBattleButtonVisualStates"),script.indexOf("  function battlePendingShape"));
+if(!/#battle-help-cross\{left:577px;top:27px;width:40px;height:40px/.test(html)||
+   !/<img id="battle-help-cross" src="\/assets\/bitmaps\/bitmap_8701\.png"/.test(html)||
+   !/helpCross\.hidden=!app\.battle\|\|!state\?\.noHelp/.test(battleNoHelpVisualSource)||
+   !/battle-command-no-help/.test(battleNoHelpVisualSource)||
+   !script.includes("type:type||1,noHelp:battleNoHelpType(type)")){
+  throw new Error("battle NoHelp EN state, cross asset, or exact position regressed");
+}
+const makeBattleNoHelpHarness=new Function("noHelp","initialHelpFlag",`
+  const BATTLE_BP_PLAYER_MENU_NON=1<<1,BATTLE_BP_PET_MENU_NON=1<<3;
+  const state={noHelp:Boolean(noHelp),bpFlags:0,movieActive:false,commandLocked:false,petCommandLocked:false};
+  const app={battle:true,battleState:state,status:{helpFlag:Number(initialHelpFlag)?1:0}};
+  const sends=[],tones=[],statusWrites=[],chats=[];
+  function send(name,values){sends.push([name,[...values]]);return Promise.resolve();}
+  function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
+  function syncBattleButtonVisualStates(current){if(current!==state)throw new Error("NoHelp visual sync used stale state");}
+  function setStatus(name,value){statusWrites.push([name,value]);}
+  function addChat(channel,message){chats.push([channel,message]);}
+  function reportError(error){throw error;}
+  function battleExplainUnavailable(){throw new Error("NoHelp click must use the native SE 220 path");}
+  function battleChoiceExpired(){return false;}
+  function battleLocalDeath(){return false;}
+  function battleCommandKind(){return "player";}
+  ${battleNoHelpSource}
+  return {
+    state,app,battleNoHelpType,battleHelpCommand,rejectBattleHelp,battleMenuCommand,battleCommandAllowed,
+    result:()=>({sends:[...sends],tones:[...tones],statusWrites:[...statusWrites],chats:[...chats],helpFlag:app.status.helpFlag})
+  };
+`);
+const noHelpHarness=makeBattleNoHelpHarness(true,1);
+if(!noHelpHarness.battleNoHelpType(2)||!noHelpHarness.battleNoHelpType("5")||noHelpHarness.battleNoHelpType(1)||noHelpHarness.battleNoHelpType(6)){
+  throw new Error("EN result 2/5 must be the exact native NoHelp set");
+}
+if(noHelpHarness.battleCommandAllowed("HELP")!==false||noHelpHarness.battleMenuCommand("HELP")!==false){
+  throw new Error("NoHelp must reject HELP locally while retaining the live click path");
+}
+const noHelpResult=noHelpHarness.result();
+if(noHelpResult.helpFlag!==1||noHelpResult.sends.length!==0||noHelpResult.statusWrites.length!==0||noHelpResult.chats.length!==0||
+   noHelpResult.tones.length!==1||noHelpResult.tones[0].join(",")!=="220,320,240"){
+  throw new Error(`NoHelp must preserve helpFlag and emit only SE 220: ${JSON.stringify(noHelpResult)}`);
+}
+const normalHelpHarness=makeBattleNoHelpHarness(false,1);
+if(normalHelpHarness.battleCommandAllowed("?")!==true)throw new Error("ordinary battle HELP unexpectedly disabled");
+normalHelpHarness.battleMenuCommand("?");
+const normalHelpResult=normalHelpHarness.result();
+if(normalHelpResult.helpFlag!==0||normalHelpResult.sends.length!==1||normalHelpResult.sends[0][0]!=="HL"||normalHelpResult.sends[0][1][0]!==0||
+   normalHelpResult.tones.length!==0||normalHelpResult.statusWrites.length!==1||normalHelpResult.chats.length!==1){
+  throw new Error(`ordinary HELP toggle or HL packet regressed: ${JSON.stringify(normalHelpResult)}`);
+}
 /* CheckPetSuu() runs before BattleButtonCapture's bak/ButtonOff path. With
    five occupied pet slots, Capture paints CG_BTL_BUTTON_CROSS and a click
    emits only SE 220; it must not cancel a remembered Attack selector or let
