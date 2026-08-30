@@ -837,6 +837,10 @@ for (const expected of [
   /function setMoveTarget\(target\)[\s\S]{0,140}worldRouteInputBlocked\(\)/,
   /if\(targetPoint&&!advancedOpen&&!app\.pointerMoveHeld&&!mapTransitionState\.active\)/,
   /cursor\.style\.display=app\.cursor\.visible!==false\?"block":"none"/,
+  /* A clipped scene cannot paint a 32px fish past its bottom/right edge.
+     Keep the sprite visible over the native task bar while preserving the
+     unclamped logical pointer used by map hit testing. */
+  /const edgeClamp=Boolean\(app\.cursorOverUi\)\|\|cursorX>608\|\|cursorY>448;[\s\S]{0,260}cursor\.style\.top=`\$\{edgeClamp\?Math\.min\(448/,
   /* The painted fish is the final field layer, including over the black
      centre-fold curtain and task-bar hit regions; it must remain pointer
      transparent so the browser never turns the fish into a click shield. */
