@@ -426,6 +426,10 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/preferredStable=stable&&stable\.width\*stable\.height>current\.width\*current\.height/.test(script)) {
   throw new Error("map loading must show progress/received bytes and hide field controls while blocked");
 }
+if (!/const STATIC_RESOURCE_BASE=new URL\("\.\.\/",ASSET_RESOURCE_ROOT\)/.test(script) ||
+    !/const ASSET_VERSION_URL=new URL\("_client-version\.json",STATIC_RESOURCE_BASE\)/.test(script)) {
+  throw new Error("asset version marker must live beside assets/, maps/ and audio/");
+}
 /* Fixed field windows append their native CLOSE/RETURN bitmap inside the
    pointer-transparent list that owns the window. Keep the hit explicit and
    avoid a second static button at the same coordinates: otherwise the later

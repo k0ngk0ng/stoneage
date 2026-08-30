@@ -4067,7 +4067,11 @@
      against the resolved root instead of assuming every asset is same-origin
      at /assets/.  The CDN should send Timing-Allow-Origin for byte progress. */
   const ASSET_RESOURCE_ROOT=new URL("/assets/",window.location.href);
-  const STATIC_RESOURCE_BASE=new URL(".",ASSET_RESOURCE_ROOT);
+  /* The publication marker lives beside assets/, maps/ and audio/ (the
+     uploader writes <prefix>/_client-version.json), not inside assets/.  A
+     parent-relative URL keeps that contract for both the local origin and a
+     configured CDN root such as https://cdn.example/stoneage/. */
+  const STATIC_RESOURCE_BASE=new URL("../",ASSET_RESOURCE_ROOT);
   const STATIC_RESOURCE_ROOTS=Object.freeze([
     ASSET_RESOURCE_ROOT,
     new URL("maps/",STATIC_RESOURCE_BASE),

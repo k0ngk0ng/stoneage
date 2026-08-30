@@ -173,6 +173,18 @@ func TestHandlerServesPageAndHealth(t *testing.T) {
 	if response.StatusCode != http.StatusOK || health["status"] != "ok" {
 		t.Fatalf("health status=%d body=%v", response.StatusCode, health)
 	}
+	response, err = http.Get(server.URL + "/_client-version.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&version); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || version["revision"] != "local-dev" || version["changed_all"] != true {
+		t.Fatalf("local asset version status=%d body=%v", response.StatusCode, version)
+	}
 }
 
 func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {

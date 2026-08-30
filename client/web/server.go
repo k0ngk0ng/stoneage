@@ -65,6 +65,19 @@ var webManifest = []byte(`{
   "theme_color": "#101820"
 }`)
 
+// A local checkout does not run the object-storage publisher, but the page
+// still probes the publication marker so the same Service Worker update path
+// is exercised during development.  Keep a valid, no-cache marker on the Web
+// origin instead of returning a noisy 404; a CDN-configured page resolves the
+// same URL against its public static root and never uses this fallback.
+var localAssetVersion = []byte(`{
+  "revision": "local-dev",
+  "delta_known": false,
+  "changed_all": true,
+  "changed_objects": [],
+  "removed_objects": []
+}`)
+
 const (
 	// The browser client is intended to be usable from another device on the
 	// same LAN.  Keep the game gateway itself bound to localhost below; only
@@ -1033,6 +1046,19 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	handler.setHeaders(response, request)
 	if request.Method == http.MethodOptions {
 		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if request.URL.Path == "/_client-version.json" {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		if request.Method == http.MethodHead {
+			return
+		}
+		_, _ = response.Write(localAssetVersion)
 		return
 	}
 	if request.URL.Path == "/" {
