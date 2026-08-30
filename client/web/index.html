@@ -3796,10 +3796,15 @@
   }
   function assetNetworkBytes(file){
     /* ResourceTiming reports encodedBodySize for same-origin images even when
-       transferSize is zero because the image came from the HTTP cache. */
+       transferSize is zero because the image came from the HTTP cache.  The
+       page may rewrite /assets/ to an external CDN; build the lookup URL from
+       the resolved static root so CDN downloads contribute to progress too. */
     if(!file||typeof performance?.getEntriesByName!=="function")return 0;
     try{
-      const href=new URL(`/assets/${String(file).replace(/^\//,"")}`,window.location.href).href;
+      const relative=String(file).replace(/^\//,"");
+      const href=/^(?:maps|audio)\//i.test(relative)
+        ?new URL(relative,STATIC_RESOURCE_BASE).href
+        :new URL(relative,ASSET_RESOURCE_ROOT).href;
       const entries=performance.getEntriesByName(href);
       let bytes=0;
       const cached=assetState.byteSizes?.get(String(file));
@@ -4100,8 +4105,12 @@
     if(!entry?.name)return;
     try{
       const url=new URL(entry.name,window.location.href);
-      if(url.origin!==ASSET_RESOURCE_ROOT.origin||!url.pathname.startsWith(ASSET_RESOURCE_ROOT.pathname))return;
-      rememberAssetResourceSize(decodeURIComponent(url.pathname.slice(ASSET_RESOURCE_ROOT.pathname.length)),entry);
+      for(const root of STATIC_RESOURCE_ROOTS){
+        if(url.origin!==root.origin||!url.pathname.startsWith(root.pathname))continue;
+        const relative=decodeURIComponent(url.pathname.slice(root.pathname.length));
+        rememberAssetResourceSize(root===ASSET_RESOURCE_ROOT?relative:`${root.pathname.includes("/maps/")?"maps":"audio"}/${relative}`,entry);
+        return;
+      }
     }catch(_){/* malformed resource entries are not progress-critical */}
   }
   /* Observe entries as they finish so the byte total survives ResourceTiming

@@ -205,8 +205,9 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 		base + "/audio/${kind}/${encodeURIComponent(String(file||\"\"))}",
 		base + "/audio/auto.dat",
 		`const ASSET_RESOURCE_ROOT=new URL("` + base + `/assets/",window.location.href)`,
-		`url.origin!==ASSET_RESOURCE_ROOT.origin`,
-		`url.pathname.startsWith(ASSET_RESOURCE_ROOT.pathname)`,
+		`for(const root of STATIC_RESOURCE_ROOTS)`,
+		`url.origin!==root.origin`,
+		`url.pathname.startsWith(root.pathname)`,
 		`image=new Image();image.crossOrigin="anonymous";image.decoding="async"`,
 	} {
 		if !strings.Contains(text, fragment) {

@@ -365,6 +365,8 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/main\.field-loading-active #field-ui[\s\S]{0,260}visibility:hidden/.test(html) ||
     !/function mapLoadingProgress\([\s\S]{0,1800}assetNetworkBytes/.test(script) ||
     !/function assetCachedBytes\([\s\S]{0,900}base64/.test(script) ||
+    !/function assetNetworkBytes\([\s\S]{0,900}new URL\(relative,ASSET_RESOURCE_ROOT\)/.test(script) ||
+    !/function rememberAssetResourceEntry\([\s\S]{0,900}STATIC_RESOURCE_ROOTS/.test(script) ||
     !/function renderMapLoadingProgress\([\s\S]{0,1800}world-loading-detail/.test(script) ||
     !/if\(indeterminate\)bar\.style\.removeProperty\("width"\)/.test(script) ||
     !/function retryMapLoading\([\s\S]{0,1200}app\.mapLayerCache=null/.test(script) ||
