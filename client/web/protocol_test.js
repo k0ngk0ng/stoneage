@@ -505,12 +505,12 @@ if (JSON.stringify(inventoryContext.inventoryDeltaResult) !== JSON.stringify([
   throw new Error(`indexed I packets must merge one slot like native lssproto_I_recv: ${JSON.stringify(inventoryContext.inventoryDeltaResult)}`);
 }
 /* FIELD.CPP::ClearBackSurface() fills an opaque colour-0 back-buffer before
-   PutBmp().  The browser world surface must not regress to a transparent
-   canvas: the alpha corners of an isometric map tile would reveal the DOM
-   backdrop and create a triangular flash while walking or changing floors. */
-if (!/function getWorld2DContext\([\s\S]{0,1200}getCanvas2DContext\(canvas,\{alpha:false/.test(script) ||
+   PutBmp(), then DirectDraw Flip/Blt waits while presenting that completed
+   frame.  The private browser buffer may use the low-latency GPU hint, but
+   the visible surface must stay opaque and compositor-synchronised. */
+if (!/function getWorld2DContext\([\s\S]{0,1200}isFrontBuffer=canvas===visible[\s\S]{0,1200}isFrontBuffer[\s\S]{0,160}\?\{alpha:false,willReadFrequently:false\}[\s\S]{0,160}:\{alpha:false,desynchronized:true,willReadFrequently:false\}/.test(script) ||
     !/ctx\.globalCompositeOperation="copy";ctx\.fillStyle="#000";ctx\.fillRect\(0,0,canvas\.width,canvas\.height\);ctx\.globalCompositeOperation="source-over"/.test(script)) {
-  throw new Error("world back-buffer must use an opaque native-style clear before presenting");
+  throw new Error("world renderer must keep an opaque back-buffer and synchronised front-buffer presentation");
 }
 /* Keep the preserved 2.5 FIELD.CPP coordinates covered by the protocol smoke
    test as well.  The web surface uses the trade-capable 140/132px plates and

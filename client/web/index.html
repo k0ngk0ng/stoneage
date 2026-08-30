@@ -1458,7 +1458,18 @@
        and produced the black/green triangular flashes seen at map edges.
        Keep the visible world surface opaque so one completed frame has the
        same clear semantics as the native back-buffer. */
-    return getCanvas2DContext(canvas,{alpha:false,desynchronized:true,willReadFrequently:false});
+    const visible=$("world"),isFrontBuffer=canvas===visible;
+    /* DirectDraw writes freely to lpBACKBUFFER, then Flip(DDFLIP_WAIT) (or
+       Blt(..., DDBLT_WAIT) in windowed mode) presents the finished frame on
+       the display boundary.  `desynchronized:true` is useful for our private
+       drawing surface, but giving that low-latency hint to #world lets
+       Chromium bypass its normal compositor synchronisation and can expose a
+       just-presented walk frame between refreshes.  Keep the off-screen
+       buffer GPU-friendly while the visible/front buffer uses the browser's
+       synchronised presentation path. */
+    return getCanvas2DContext(canvas,isFrontBuffer
+      ?{alpha:false,willReadFrequently:false}
+      :{alpha:false,desynchronized:true,willReadFrequently:false});
   }
   function worldBackBuffer(visible=$("world")){
     if(!visible)return null;
