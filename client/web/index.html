@@ -12532,14 +12532,17 @@
   function parseProtocolFields(){return [...$("protocol-fields").querySelectorAll("[name^=field-]")].map(input=>input.dataset.kind==="int"?decimal(input.value):input.value);}
   function windowResponse(select,data=""){
     const wnd=app.activeWindow;if(!wnd)return Promise.reject(new Error("服务器窗口已关闭"));
-    return send("WN",[app.position[0],app.position[1],wnd.seqno,wnd.objindex,select,data]).then(()=>{
-      /* LOGIN.CPP keeps the same WN state only for paging.  All other
-         responses destroy the current back-buffer; the server may follow
-         with a fresh WN packet for the next shop/dialog page.  Do not let
-         completion of the old HTTP POST close that newer WN: the long-poll
-         response can legitimately win this race. */
-      if(select!==16&&select!==32&&app.activeWindow===wnd)closeServerWindow();
-    });
+    /* LOGIN.CPP clears the current back-buffer as soon as a non-paging
+       response is accepted by its send queue.  HTTP transport completion is
+       deliberately not part of that visual decision: a slow/failing POST
+       used to leave the OK/YES/NO window stuck on screen until the request
+       timeout.  Close this exact window synchronously after queueing the
+       packet; a follow-up WN from the server can then install its replacement
+       without being hidden by an old promise callback.  PREV/NEXT retain the
+       window for local paging, matching shopWindow3()/serverWindowType1(). */
+    const response=send("WN",[app.position[0],app.position[1],wnd.seqno,wnd.objindex,select,data]);
+    if(select!==16&&select!==32&&app.activeWindow===wnd)closeServerWindow();
+    return response;
   }
   function splitWindowTokens(data){return String(data||"").split("|").map(token=>unescapeCharacterOption(token));}
   function windowMessageLines(data){

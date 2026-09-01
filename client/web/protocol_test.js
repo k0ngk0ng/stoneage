@@ -1854,9 +1854,11 @@ for (const expected of [
      update the client-owned catalog instead of replacing it with an empty
      modal. */
   /const acknowledgement=shop\.valid===0&&shop\.items\.length===0[\s\S]{0,260}applyShopAcknowledgement\(previous\)/,
-  /* A fast replacement WN may arrive before the preceding POST resolves;
-     the old completion must not close the new shop page. */
-  /if\(select!==16&&select!==32&&app\.activeWindow===wnd\)closeServerWindow\(\)/,
+  /* The native client dismisses a non-paging WN immediately after its
+     response is queued.  Do not wait for HTTP completion (which can leave an
+     OK window stuck during a slow bridge request); a later WN owns its own
+     activeWindow and is therefore not affected by the old response. */
+  /const response=send\("WN",\[app\.position\[0\],app\.position\[1\],wnd\.seqno,wnd\.objindex,select,data\]\);[\s\S]{0,260}if\(select!==16&&select!==32&&app\.activeWindow===wnd\)closeServerWindow\(\);[\s\S]{0,80}return response;/,
   /frameX=\(640-frameW\)\/2,frameY=\(456-frameH\)\/2/,
   /* serverWindowType1 stocks each visible msgWN row once and overlays its
      MakeHitBox at the same 21-pixel row.  Do not duplicate selectable text
@@ -3119,6 +3121,32 @@ if (/worldTransitionActive\(\)\)return/.test(script.slice(worldPointerStart, wor
 const dismissStart = script.indexOf("  function dismissServerWindow(){");
 const dismissEnd = script.indexOf("  function actorIsOwn", dismissStart);
 if (dismissStart < 0 || dismissEnd <= dismissStart) throw new Error("native WN dismiss helper boundary missing");
+const responseStart = script.indexOf("  function windowResponse(select,data=\"\"){"),
+  responseEnd = script.indexOf("  function splitWindowTokens", responseStart);
+if (responseStart < 0 || responseEnd <= responseStart) throw new Error("native WN response helper boundary missing");
+const responseFactory = new Function("app", "send", "closeServerWindow", `${script.slice(responseStart, responseEnd)};return windowResponse;`);
+{
+  const calls=[];
+  let closes=0;
+  const app={position:[17,25],activeWindow:{windowType:0,seqno:271,objindex:1604}};
+  const respond=responseFactory(app,(name,fields)=>{calls.push({name,fields});return Promise.resolve();},()=>{closes++;app.activeWindow=null;});
+  const result=respond(1,"乌力～～乌力");
+  if (closes!==1 || app.activeWindow!==null || calls.length!==1 || calls[0].name!=="WN" ||
+      JSON.stringify(calls[0].fields)!==JSON.stringify([17,25,271,1604,1,"乌力～～乌力"]) ||
+      !(result&&typeof result.then==="function")) {
+    throw new Error(`message WN response must close immediately after queueing: ${JSON.stringify({closes,calls,active:app.activeWindow})}`);
+  }
+}
+{
+  const calls=[];
+  let closes=0;
+  const app={position:[17,25],activeWindow:{windowType:1,seqno:272,objindex:1604}};
+  const respond=responseFactory(app,(name,fields)=>{calls.push({name,fields});return Promise.resolve();},()=>{closes++;app.activeWindow=null;});
+  respond(32,"next");
+  if (closes!==0 || !app.activeWindow || calls.length!==1) {
+    throw new Error("paging WN response must retain the current window");
+  }
+}
 const dismissFactory = new Function("app", "send", "closeServerWindow", `${script.slice(dismissStart, dismissEnd)};return dismissServerWindow;`);
 {
   const calls=[];
