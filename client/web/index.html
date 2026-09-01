@@ -2723,6 +2723,14 @@
     html,body { width:100%; height:100%; height:100dvh; min-height:100%; overflow:hidden; overscroll-behavior:none; background:#000; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto; }
     body { display:block; padding:0; }
     #app { width:100%; height:100%; height:100dvh; min-height:100%; position:relative; overflow:hidden; }
+    /* The native mouse is an OS surface and is allowed to extend over the
+       field window's bottom task bar.  The Web fish is a sibling portal of
+       the scene, so clipping #app/main at the 4:3 scene edge cuts its bitmap
+       exactly when the pointer reaches the last toolbar row.  Open only the
+       outer shell during world play; #world-wrap still clips map pixels and
+       the viewport/body continue to bound the page itself. */
+    #app.world-active,
+    #app.world-active main { overflow:visible; }
     header { display:none; }
     main { position:relative; width:100%; height:100%; min-height:100%; overflow:hidden; isolation:isolate; background:transparent; }
     /* The 640×480 surface keeps its original aspect ratio, but the browser
@@ -2731,7 +2739,7 @@
        bright enough that the fill reads as scenery rather than a black frame. */
     main::before { content:""; position:absolute; inset:-8%; z-index:0; pointer-events:none; background:var(--scene-backdrop,linear-gradient(135deg,#16282d,#11130f 55%,#2a2117)); background-size:cover; background-position:center; filter:blur(18px) brightness(.72) saturate(.88); transform:scale(1.08); }
     main::after { content:""; position:absolute; inset:0; z-index:1; pointer-events:none; background:radial-gradient(ellipse at center,#0000 35%,#0003 100%); }
-    main[data-phase="world"] { cursor:none; }
+    main[data-phase="world"] { cursor:none; overflow:visible; }
     main[data-phase="world"] *, main[data-phase="world"] *::before, main[data-phase="world"] *::after { cursor:none !important; }
     /* NOW LOADING is modal in FIELD.CPP: do not leave the field toolbar or
        transparent movement hit areas visible while the map back-buffer is
@@ -3449,7 +3457,12 @@
        `world` phase here allowed Chromium to retain the fixed task-bar layer
        for one frame (or, on some GPU paths, until the next repaint). */
     const phase=screen===worldScreen?"world":screen===battleScreen?"battle":screen===battleResultScreen?"battle-result":(screen?.id||"offline");
-    document.querySelector("main")?.setAttribute("data-phase",phase);
+    const main=document.querySelector("main");
+    main?.setAttribute("data-phase",phase);
+    /* Keep the outer clipping override scoped to the field.  Battle/title
+       surfaces retain their normal viewport containment and never inherit a
+       cursor portal that is not painted for them. */
+    document.getElementById("app")?.classList.toggle("world-active",phase==="world");
   }
   /* Image elements in dormant native windows carry `data-src` instead of
      `src`.  Browsers are allowed to fetch an image even when its ancestor is

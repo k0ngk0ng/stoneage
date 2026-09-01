@@ -1570,6 +1570,11 @@ for (const expected of [
   /* The top-level cursor portal follows the physical pointer through the
      bottom task-bar row; only the viewport itself clips the final pixels. */
   /cursor\.style\.left=`\$\{Math\.max\(0,Math\.min\(640,cursorX\)\)\}px`;[\s\S]{0,120}cursor\.style\.top=`\$\{Math\.max\(0,Math\.min\(480,cursorY\)\)\}px`/,
+  /* The portal must not be clipped by the fixed 4:3 shell at the task-bar
+     edge.  Keep the map's own #world-wrap containment unchanged. */
+  /#app\.world-active\s*,\s*#app\.world-active main\s*\{[^}]*overflow:visible/,
+  /main\[data-phase="world"\]\s*\{[^}]*overflow:visible/,
+  /getElementById\("app"\)\?\.classList\.toggle\("world-active",phase==="world"\)/,
   /* The painted fish is the final field layer, including over the black
      centre-fold curtain and task-bar hit regions; it must remain pointer
      transparent so the browser never turns the fish into a click shield. */
