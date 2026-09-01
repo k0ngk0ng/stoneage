@@ -2048,6 +2048,28 @@ for (const expected of [
 ]) {
   if (!expected.test(html)) throw new Error(`native battle target prompt regression: ${expected}`);
 }
+/* BattleTargetSelect() uses a one-time y<228 choice, then the native
+   hysteresis thresholds y>300 / y<156. Exercise the placement helper so a
+   CSS-only regression cannot silently move the hint over the battle actors. */
+const targetPromptStart=script.indexOf("  function battleTargetPromptPlacement(panel){");
+const targetPromptEnd=script.indexOf("  function renderBattleTargets(){",targetPromptStart);
+if(targetPromptStart<0||targetPromptEnd<=targetPromptStart)throw new Error("battle target prompt placement helper missing");
+const makeBattleTargetPromptPlacement=new Function("battleCursorY",`const app={battleCursorY};${script.slice(targetPromptStart,targetPromptEnd)};return battleTargetPromptPlacement;`);
+function targetPromptPanel(cursorY,placement=""){
+  const classes=new Set();
+  return {dataset:{promptPlacement:placement},classList:{toggle(name,force){if(force===undefined? !classes.has(name):force)classes.add(name);else classes.delete(name);}},_classes:classes,cursorY};
+}
+for(const [cursorY,expected] of [[100,"bottom"],[227,"bottom"],[228,"top"],[479,"top"]]){
+  const panel=targetPromptPanel(cursorY);makeBattleTargetPromptPlacement(cursorY)(panel);
+  if(panel.dataset.promptPlacement!==expected||!panel._classes.has(`target-prompt-${expected}`)){
+    throw new Error(`native target prompt initial placement drifted at y=${cursorY}: ${JSON.stringify({placement:panel.dataset.promptPlacement,classes:[...panel._classes]})}`);
+  }
+}
+for(const [startY,followY,expected] of [["bottom",301,"top"],["top",155,"bottom"],["top",200,"top"],["bottom",300,"bottom"]]){
+  const panel=targetPromptPanel(followY,startY);
+  makeBattleTargetPromptPlacement(followY)(panel);
+  if(panel.dataset.promptPlacement!==expected)throw new Error(`native target prompt hysteresis drifted: ${startY} -> ${followY} = ${panel.dataset.promptPlacement}`);
+}
 /* InitBattleMenu/BattleButtonAttack keep the master's button memory
    independent from the active pet's later W menu.  A real H -> W turn must
    therefore reopen Attack on the next BP, and the opening turn starts with
@@ -4434,6 +4456,22 @@ if(mapLayerCacheUsable({ready:true,rasterComplete:false})||
    !mapLayerCacheUsable({ready:true})||
    mapLayerCacheUsable({ready:false,rasterComplete:true})){
   throw new Error("map layer must be publishable only after a complete raster");
+}
+const mapLayerRepairStart=script.indexOf("  function mapLayerCacheNeedsRepair(cache){");
+const mapLayerRepairEnd=script.indexOf("  /* A same-floor M refresh",mapLayerRepairStart);
+if(mapLayerRepairStart<0||mapLayerRepairEnd<=mapLayerRepairStart){
+  throw new Error("map layer stale-cache repair predicate missing");
+}
+const mapLayerCacheNeedsRepair=new Function(`${script.slice(mapLayerUsableStart,mapLayerRepairEnd)};return mapLayerCacheNeedsRepair;`)();
+if(!mapLayerCacheNeedsRepair({ready:true,rasterComplete:false,rasterScheduled:false,groundCells:null})||
+   mapLayerCacheNeedsRepair({ready:true,rasterComplete:false,rasterScheduled:true,groundCells:null})||
+   mapLayerCacheNeedsRepair({ready:true,rasterComplete:false,rasterScheduled:false,groundCells:[]} )||
+   mapLayerCacheNeedsRepair({ready:true,rasterComplete:true,rasterScheduled:false,groundCells:null})||
+   mapLayerCacheNeedsRepair({ready:false,rasterComplete:false,rasterScheduled:false,groundCells:null})){
+  throw new Error("an interrupted map raster must be detected and rebuilt");
+}
+if(!/current&&current\.key===key&&mapLayerCacheNeedsRepair\(current\)[\s\S]{0,180}current\.ready=false;current\.dirty=true;current\.rasterFailed=true/.test(script)){
+  throw new Error("ensureMapLayerCache must invalidate stale incomplete caches");
 }
 if(!/function mapLayerCacheUsable\(cache\)\{[\s\S]{0,260}cache\.rasterComplete!==false[\s\S]{0,120}cache\.rasterFailed/.test(script)||
    !/const waitingForDynamicCache=Boolean\(dynamicReady&&center&&\(!mapLayerCacheUsable\(layerCache\)&&!mapLayerCacheUsable\(app\.mapLayerFallback\)\)\)/.test(renderWorldGuardSource)||

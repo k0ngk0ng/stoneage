@@ -3189,6 +3189,15 @@
   function mapLayerCacheUsable(cache){
     return Boolean(cache?.ready&&cache.rasterComplete!==false&&!cache.rasterFailed);
   }
+  /* A cache created by an older page build can survive a Service Worker
+     navigation with `ready=true` even though its chunked ground pass was
+     interrupted before it published `rasterComplete`.  There is no useful
+     canvas to resume when both the scheduler and cell list are gone.  Mark
+     that impossible state for replacement instead of letting a later M
+     refresh reuse it as if it were a finished back-buffer. */
+  function mapLayerCacheNeedsRepair(cache){
+    return Boolean(cache?.ready===true&&cache.rasterComplete===false&&!cache.rasterScheduled&&!cache.groundCells);
+  }
   /* A same-floor M refresh may briefly set the loading curtain while its
      replacement tile images decode.  The native client keeps animating the
      existing back-buffer during that refresh; treating the flag as a hard
@@ -7861,10 +7870,12 @@
   }
   function battleTargetPromptPlacement(panel){
     if(!panel)return;
-    /* BattleTargetSelect() chooses the initial side using y<228 and then
-       only flips after the pointer crosses the 156/300 hysteresis bounds.
-       Keep the last placement while the pointer is in the middle band so
-       the brown hint does not jitter when the user aims at a tall sprite. */
+    /* BattleTargetSelect() creates MakeWindowDisp(210,356) when the first
+       cursor sample has mouse.y<228, otherwise it uses the upper anchor at 4.
+       On later frames it moves above at y>300 and back below at y<156. Keep
+       those exact native thresholds so the hint does not jitter in the middle
+       band while aiming at an actor.
+    */
     const cursorY=Number(app.battleCursorY);
     let placement=panel.dataset.promptPlacement||"";
     if(!placement)placement=Number.isFinite(cursorY)&&cursorY<228?"bottom":"top";
@@ -14933,6 +14944,9 @@
   function ensureMapLayerCache(map){
     if(!map)return null;
     const key=mapLayerCacheKey(map),current=app.mapLayerCache;
+    if(current&&current.key===key&&mapLayerCacheNeedsRepair(current)){
+      current.ready=false;current.dirty=true;current.rasterFailed=true;
+    }
     /* A live M window can reference many images.  While those images are
        loading, keep the last completed cache and wait for the final pending
        asset instead of rebuilding the whole 29×37 layer once per onload. */
