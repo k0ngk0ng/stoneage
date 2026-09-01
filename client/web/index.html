@@ -15990,9 +15990,15 @@
       if(currentKey===goal)break;
       for(const direction of DIRS){
         const next=[current[0]+direction[0],current[1]+direction[1]];
-        /* A* is only a local aid.  Do not wander outside the received M
-           rectangle when collision metadata is available there. */
-        if(assetState.manifest?.map_images?.walkable&&app.map&& !mapCellAt(next[0],next[1]))continue;
+        /* A* may start with the sliding M rectangle, but once the complete
+           floor DAT is resident it is the authoritative collision window
+           just like the native client's installed map.  The old guard kept
+           applying the M-only restriction even after autoMapData arrived,
+           so every click beyond the current 37x37 viewport stopped at its
+           edge instead of routing toward the requested cell.  Only defer
+           unknown cells while the full DAT is still unavailable. */
+        const hasCompleteFloorMap=Boolean(app.autoMapData&&Number(app.autoMapData.floor)===Number(app.floor));
+        if(assetState.manifest?.map_images?.walkable&&app.map&&!hasCompleteFloorMap&&!mapCellAt(next[0],next[1]))continue;
         const key=`${next[0]},${next[1]}`;
         /* Warp events are terminal in the native _etcEventCheck() path.  A
            long click must not enter an intermediate warp, trigger EV, and

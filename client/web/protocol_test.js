@@ -1500,6 +1500,10 @@ for (const expected of [
      fallback; returning the straight prefix strands the pointer several
      tiles away from the edge. */
   /Do not return the straight prefix[\s\S]{0,1000}const points=routeFromCells\(origin,to,moveTargetIsSolid\(to\)\);/,
+  /* A complete DAT replaces the sliding M viewport for collision/routing.
+     Keep the M-window guard only while that floor-wide back-buffer is still
+     unavailable, otherwise long clicks can never cross the current window. */
+  /const hasCompleteFloorMap=Boolean\(app\.autoMapData&&Number\(app\.autoMapData\.floor\)===Number\(app\.floor\)\);[\s\S]{0,220}app\.map&&!hasCompleteFloorMap&&!mapCellAt\(next\[0\],next\[1\]\)/,
   /* CHAR_Talk() reaches two facing cells, while CHAR_Look() dispatches only
      the one cell immediately ahead.  LOOKEDFUNC targets must therefore be
      approached before L; otherwise healers/doors appear unresponsive when
