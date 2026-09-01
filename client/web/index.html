@@ -3179,6 +3179,16 @@
     const main=document.querySelector("main");
     return Boolean(mapTransitionState.active||main?.classList.contains("scene-transition-active"));
   }
+  /* A map layer is only presentable after both its resource dependency set
+     and its ground raster have completed.  `ready` predates the chunked
+     raster pass and can briefly be true while `rasterComplete` is still
+     false; treating that intermediate state as a back-buffer exposes the
+     canvas' transparent/black clear colour as large black map blocks.  Keep
+     this predicate tolerant of legacy test/fallback objects that do not have
+     the new flag, but never accept an explicitly incomplete raster. */
+  function mapLayerCacheUsable(cache){
+    return Boolean(cache?.ready&&cache.rasterComplete!==false&&!cache.rasterFailed);
+  }
   /* A same-floor M refresh may briefly set the loading curtain while its
      replacement tile images decode.  The native client keeps animating the
      existing back-buffer during that refresh; treating the flag as a hard
@@ -3187,7 +3197,7 @@
   function mapMovementBlocked(){
     if(!app.mapLoading)return false;
     const map=app.map,hasWindow=Boolean(map&&Array.isArray(map.tiles)&&map.tiles.length);
-    const hasBackBuffer=Boolean(app.mapLayerFallback?.ready||app.mapLayerCache?.ready||map?.image?.complete);
+    const hasBackBuffer=Boolean(mapLayerCacheUsable(app.mapLayerFallback)||mapLayerCacheUsable(app.mapLayerCache)||map?.image?.complete);
     return !(hasWindow||hasBackBuffer);
   }
   /* Build the 8×8 black shutters once.  ProduceHagare() allocates 64 pieces
@@ -4730,7 +4740,7 @@
        object/character depth information; allowing it to satisfy this test
        would hide the loader before tree/roof/NPC tiles were decoded. */
     const ready=dynamicReady
-      ? Boolean(cache&&cache.ready&&pending===0&&failed===0)
+      ? Boolean(mapLayerCacheUsable(cache)&&pending===0&&failed===0)
       : Boolean(staticReady&&pending===0&&failed===0);
     if(ready){
       setMapLoading(false);
@@ -14177,7 +14187,7 @@
        window, so also accept the explicitly retained fallback.  Looking only
        at the live cache made every second M packet reopen NOW LOADING while
        the player walked. */
-    const previousReadyCache=app.mapLayerCache?.ready?app.mapLayerCache:(app.mapLayerFallback?.ready?app.mapLayerFallback:null);
+    const previousReadyCache=mapLayerCacheUsable(app.mapLayerCache)?app.mapLayerCache:(mapLayerCacheUsable(app.mapLayerFallback)?app.mapLayerFallback:null);
     /* A same-floor M is a normal viewport refresh while walking. Once the
        previous window is complete, it remains a valid back-buffer even if a
        transition/asset callback still has `app.mapLoading` set for one tick.
@@ -14896,7 +14906,7 @@
       cache.groundCells=null;cache.rasterScheduled=false;cache.rasterComplete=true;
       cache.dirty=cache.pending.size>0||cache.failed.size>0||cache.missing.size>0;
       cache.ready=!cache.dirty;
-      if(cache.ready){app.mapLayerFallback=null;renderMapLoadingProgress("正在解码地图贴片…");scheduleAssetRefresh(true);}
+      if(mapLayerCacheUsable(cache)){app.mapLayerFallback=null;renderMapLoadingProgress("正在解码地图贴片…");scheduleAssetRefresh(true);}
     };
     enqueue(pump);
   }
@@ -14915,7 +14925,7 @@
     /* A live M window can reference many images.  While those images are
        loading, keep the last completed cache and wait for the final pending
        asset instead of rebuilding the whole 29×37 layer once per onload. */
-    if(current&&current.key===key&&(!current.dirty||current.pending.size>0||current.failed.size>0||current.missing.size>0||current.rasterScheduled))return current;
+    if(current&&current.key===key&&(mapLayerCacheUsable(current)||current.pending.size>0||current.failed.size>0||current.missing.size>0||current.rasterScheduled))return current;
     const corners=[[map.x1,map.y1],[map.x1+map.width-1,map.y1],[map.x1,map.y1+map.height-1],[map.x1+map.width-1,map.y1+map.height-1]].map(point=>mapPixel(point[0],point[1]));
     if(corners.some(point=>!point))return null;
     let minX=Math.min(...corners.map(point=>point[0]))-512,minY=Math.min(...corners.map(point=>point[1]))-512;
@@ -14974,13 +14984,16 @@
       cache.groundCells=groundCells.slice().reverse();cache.rasterComplete=false;cache.dirty=true;cache.ready=false;scheduleMapLayerRaster(cache);
     }else{
       for(let index=groundCells.length-1;index>=0;index--){const cell=groundCells[index];drawBitmapAt(ctx,cell.image,cell.info,cell.anchor,1);}
+      /* Synchronous maps do not pass through scheduleMapLayerRaster(), so
+         publish the same explicit completion invariant as the chunked path. */
+      cache.rasterComplete=true;
     }
     /* Keep the original diagonal map traversal order.  map.cpp feeds parts
        to setPartsPrio() in that order and only compares them against
        characters; sorting this list by anchor Y first changes which side of
        a roof/tree is painted when two parts overlap. */
     if(!shouldRasterAsync){cache.dirty=cache.pending.size>0;cache.ready=cache.pending.size===0&&cache.failed.size===0&&cache.missing.size===0;}
-    if(cache.ready){cache.canvas=canvas;cache.minX=minX;cache.minY=minY;app.mapLayerFallback=null;}
+    if(mapLayerCacheUsable(cache)){cache.canvas=canvas;cache.minX=minX;cache.minY=minY;app.mapLayerFallback=null;}
     return cache;
   }
   // Paint the live M window with the same two-pass isometric order as
@@ -15209,7 +15222,7 @@
        blocks seen while walking.  On the first map there is no previous frame
        at all, so leave the front canvas untouched and let the modal loading
        curtain own the entire presentation until a complete cache exists. */
-    const waitingForDynamicCache=Boolean(dynamicReady&&center&&(!layerCache?.ready&&!app.mapLayerFallback?.ready));
+    const waitingForDynamicCache=Boolean(dynamicReady&&center&&(!mapLayerCacheUsable(layerCache)&&!mapLayerCacheUsable(app.mapLayerFallback)));
     if(waitingForDynamicCache&&app.mapLoading&&!mapTransitionState.active){
       maybeFinishMapLoading();
       renderWorldOverlay();
@@ -15228,7 +15241,7 @@
          other while the player is walking. */
       if(node)node.style.display="none";
       hideWorldGround();
-      const groundCache=layerCache?.ready?layerCache:(app.mapLayerFallback?.ready?app.mapLayerFallback:null);
+      const groundCache=mapLayerCacheUsable(layerCache)?layerCache:(mapLayerCacheUsable(app.mapLayerFallback)?app.mapLayerFallback:null);
       if(groundCache)drawWorldGroundToBuffer(ctx,groundCache,center);
       else {ctx.fillStyle="#050606";ctx.fillRect(0,0,canvas.width,canvas.height);}
     }else if(staticReady&&center){
@@ -15262,7 +15275,7 @@
     if(dynamicReady||staticReady){
       const domActors=actors.slice();
       if(!domActors.some(actor=>actor.name===app.character))domActors.push({name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3,x:app.position[0],y:app.position[1]});
-      const parts=dynamicReady?(layerCache?.ready?(layerCache.parts||[]):(app.mapLayerFallback?.ready?(app.mapLayerFallback.parts||[]):[])):[];
+      const parts=dynamicReady?(mapLayerCacheUsable(layerCache)?(layerCache.parts||[]):(mapLayerCacheUsable(app.mapLayerFallback)?(app.mapLayerFallback.parts||[]):[])):[];
       renderSceneActorsAndParts(domActors,parts,canvas);
       presentWorldBackBuffer(canvas);
       renderWorldOverlay();scheduleWorldAnimation();return;

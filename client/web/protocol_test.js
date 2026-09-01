@@ -4374,7 +4374,23 @@ if(renderWorldGuardStart<0||renderWorldGuardEnd<=renderWorldGuardStart){
   throw new Error("renderWorld source boundary missing");
 }
 const renderWorldGuardSource=script.slice(renderWorldGuardStart,renderWorldGuardEnd);
-if(!/const waitingForDynamicCache=Boolean\(dynamicReady&&center&&\(!layerCache\?\.ready&&!app\.mapLayerFallback\?\.ready\)\)/.test(renderWorldGuardSource)||
+const mapLayerUsableStart=script.indexOf("  function mapLayerCacheUsable(cache){");
+const mapLayerUsableEnd=script.indexOf("  /* A same-floor M refresh",mapLayerUsableStart);
+if(mapLayerUsableStart<0||mapLayerUsableEnd<=mapLayerUsableStart){
+  throw new Error("map layer readiness predicate boundary missing");
+}
+const mapLayerCacheUsable=new Function(`${script.slice(mapLayerUsableStart,mapLayerUsableEnd)};return mapLayerCacheUsable;`)();
+if(mapLayerCacheUsable({ready:true,rasterComplete:false})||
+   mapLayerCacheUsable({ready:true,rasterFailed:true})||
+   !mapLayerCacheUsable({ready:true,rasterComplete:true})||
+   !mapLayerCacheUsable({ready:true})||
+   mapLayerCacheUsable({ready:false,rasterComplete:true})){
+  throw new Error("map layer must be publishable only after a complete raster");
+}
+if(!/function mapLayerCacheUsable\(cache\)\{[\s\S]{0,260}cache\.rasterComplete!==false[\s\S]{0,120}cache\.rasterFailed/.test(script)||
+   !/const waitingForDynamicCache=Boolean\(dynamicReady&&center&&\(!mapLayerCacheUsable\(layerCache\)&&!mapLayerCacheUsable\(app\.mapLayerFallback\)\)\)/.test(renderWorldGuardSource)||
+   !/const groundCache=mapLayerCacheUsable\(layerCache\)\?layerCache:\(mapLayerCacheUsable\(app\.mapLayerFallback\)\?app\.mapLayerFallback:null\)/.test(renderWorldGuardSource)||
+   !/cache\.rasterComplete=true;/.test(script)||
    !/waitingForDynamicCache&&app\.mapLoading&&!mapTransitionState\.active\)[\s\S]{0,260}maybeFinishMapLoading\(\);[\s\S]{0,100}renderWorldOverlay\(\);[\s\S]{0,40}return;/.test(renderWorldGuardSource)||
    !/app\.worldBackBufferHasFrame=true/.test(script)||
    !/app\.worldBackBufferHasFrame=false;const result=enterWorldWithoutBattleTimers/.test(script)){
