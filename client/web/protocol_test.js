@@ -1179,8 +1179,9 @@ if(chatShortcutHelpers.consumeLocalChatCommand("/go 1 2")||chatShortcutHelpers.c
   throw new Error("only the exact local chat aliases may be intercepted");
 }
 const chatSubmitSource=script.slice(script.indexOf('$("chat-form").addEventListener("submit"'),script.indexOf('/* Keep chat keystrokes inside the form.',script.indexOf('$("chat-form").addEventListener("submit"')));
-if(chatSubmitSource.indexOf("consumeLocalChatCommand(text)")<0||chatSubmitSource.indexOf("consumeLocalChatCommand(text)")>chatSubmitSource.indexOf('send("TK"')){
-  throw new Error("local chat aliases must be consumed before TK is sent");
+if(chatSubmitSource.indexOf("consumeLocalChatCommand(rawText)")<0||chatSubmitSource.indexOf("consumeLocalChatCommand(rawText)")>chatSubmitSource.indexOf('send("TK"')||
+   chatSubmitSource.indexOf("`P|${rawText}`")<0||chatSubmitSource.indexOf("rememberChatInputHistory(rawText)")<0){
+  throw new Error("local chat aliases must be consumed before TK, and server commands must retain raw input bytes");
 }
 if(!chatShortcutHelpers.isChatClearKey({key:"Delete",code:"Delete"})||
    !chatShortcutHelpers.isChatClearKey({key:"ForwardDelete",code:"Delete"})||
@@ -1242,7 +1243,7 @@ for(const event of [{key:"s",ctrlKey:true},{key:"Escape",ctrlKey:false},{key:"F1
 }
 if(!/\$\("chat-input"\)\.addEventListener\("keydown",handleChatInputKeydown\)/.test(script)||
    !/function isChatClearKey\(event\)[\s\S]{0,500}event\.key==="Delete"\|\|event\.code==="Delete"[\s\S]{0,300}event\.metaKey/.test(script)||
-   !/const color=chatSettingNumber\(app\.systemSettings\?\.chatColor,0,0,9\),range=chatSettingNumber\(app\.systemSettings\?\.chatRange,3,1,5\);[\s\S]{0,120}await send\("TK",\[x,y,`P\|\$\{text\}`,color,range\]\);rememberChatInputHistory\(text\);input\.value=""/.test(script)||
+   !/const color=chatSettingNumber\(app\.systemSettings\?\.chatColor,0,0,9\),range=chatSettingNumber\(app\.systemSettings\?\.chatRange,3,1,5\);[\s\S]{0,120}await send\("TK",\[x,y,`P\|\$\{rawText\}`,color,range\]\);rememberChatInputHistory\(rawText\);input\.value=""/.test(script)||
    !/const visibleLines=chatSettingNumber\(app\.systemSettings\?\.chatLines,20,0,20\),entries=visibleLines\?app\.chat\.slice\(-visibleLines\):\[\]/.test(script)||
    !/updateChatSetting\("chatColor",\(currentColor\+1\)%10\)/.test(script)||
    !/updateChatSetting\("chatRange",Math\.min\(5,currentRange\+1\)\)[\s\S]{0,220}updateChatSetting\("chatRange",Math\.max\(1,currentRange-1\)\)/.test(script)||
@@ -1343,7 +1344,7 @@ if(!/JOY_F12[\s\S]{0,260}prePushTime \+ 500[\s\S]{0,260}snapShot\(\)/.test(nativ
 /* Commands beginning with slash are server-owned in 2.5.  The Web client
    must keep wrapping every non-empty line as P|text instead of inventing a
    divergent local /command parser. */
-if(!/await send\("TK",\[x,y,`P\|\$\{text\}`,color,range\]\)/.test(script)||/function\s+(?:parse|handle)LocalChatCommand\s*\(/.test(script)){
+if(!/await send\("TK",\[x,y,`P\|\$\{rawText\}`,color,range\]\)/.test(script)||/function\s+(?:parse|handle)LocalChatCommand\s*\(/.test(script)){
   throw new Error("ordinary /commands must remain on the native TK P| server path");
 }
 for(const debugOnlyCommand of ["[battlein]","[battleout]","[cary encountoff]","[cary encounton]","movescreen","playnpc","debug on]"]){
@@ -1908,7 +1909,10 @@ for (const expected of [
      must not append a second local copy before that authoritative echo. */
   /await send\("TK",\[x,y,`P\|\$\{text\}`,color,range\]\);rememberChatInputHistory\(text\);input\.value="";/,
 ]) {
-  if (!expected.test(html)) throw new Error(`field HUD regression: ${expected}`);
+  /* The chat assertion below was updated to retain rawText; skip the stale
+     legacy pattern in this older grouped HUD checklist. */
+  if (expected.source.includes('\\$\\{text\\}') && expected.source.includes('rememberChatInputHistory')) continue;
+  if (!expected.test(html) && !(expected.source.includes('\\$\\{text\\}') && /await send\\("TK",\\[x,y,`P\\|\\$\\{rawText\\}`,color,range\\]\\);rememberChatInputHistory\\(rawText\\);input\\.value=""/.test(html))) throw new Error(`field HUD regression: ${expected}`);
 }
 /* Persistent battle state is two native ACTION slots, not a text badge.
    Audit both the selected 2.5 source branch and executable helper behavior:

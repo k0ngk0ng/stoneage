@@ -17215,7 +17215,10 @@
   $("logout-character").addEventListener("click",()=>{closeTransport();app.character="";openServerSelection("group");});
   document.querySelectorAll("#world-actions [data-dir]").forEach(button=>button.addEventListener("click",()=>move(Number(button.dataset.dir)))); $("attack").addEventListener("click",()=>beginBattleAction({kind:"attack"})); $("guard").addEventListener("click",()=>battleCommand("G")); $("escape").addEventListener("click",()=>battleCommand("E"));
   $("world-loading-retry")?.addEventListener("click",retryMapLoading);
-  $("chat-form").addEventListener("submit",async event=>{event.preventDefault();const input=$("chat-input");normalizeChatInputValue(input);const text=input.value.trim();if(!text||(app.phase!=="world"&&app.phase!=="battle"))return;try{const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
+ $("chat-form").addEventListener("submit",async event=>{event.preventDefault();const input=$("chat-input");normalizeChatInputValue(input);const rawText=String(input.value||""),text=rawText.trim();if(!text||(app.phase!=="world"&&app.phase!=="battle"))return;try{const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
+    /* Keep the original buffer for TK.  The native chat path only rejects a
+       zero-length line; it does not trim command arguments before
+       makeSendString(), so leading/trailing spaces must survive here too. */
     /* CHAR_Talk() dispatches by the first byte of the message.  The native
        client always prefixes ordinary chat with `P|`; sending the visible
        text alone is silently ignored by the 2.5 server (and also makes GM
@@ -17225,9 +17228,9 @@
        that appends the chat line and paints the fukidashi.  Appending locally
        as well makes every message appear twice when the normal 2.5 echo
        arrives (and leaves a phantom line when the write is rejected). */
-    if(consumeLocalChatCommand(text)){input.value="";syncChatInputAppearance();return;}
+    if(consumeLocalChatCommand(rawText)){input.value="";syncChatInputAppearance();return;}
     const color=chatSettingNumber(app.systemSettings?.chatColor,0,0,9),range=chatSettingNumber(app.systemSettings?.chatRange,3,1,5);
-    await send("TK",[x,y,`P|${text}`,color,range]);rememberChatInputHistory(text);input.value="";
+    await send("TK",[x,y,`P|${rawText}`,color,range]);rememberChatInputHistory(rawText);input.value="";
   }catch(error){reportError(error);}});
   /* Keep chat keystrokes inside the form.  Explicitly submit on Enter instead
      of relying on the browser's implicit-submit heuristic: the native-looking
