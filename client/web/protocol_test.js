@@ -153,6 +153,29 @@ if(!/face\.id="creation-face-preview";face\.className="creation-face-preview"/.t
    !/settings\.querySelectorAll\("\.creation-arrow-hit,\.creation-face-selector,\.creation-face-preview"\)/.test(script)) {
   throw new Error("creation face preview must be removed before each redraw");
 }
+/* LOGIN.CPP keeps elemental creation points mutually exclusive by opposing
+   pair and, once the ten free points are spent, moves one point from the
+   first existing element when another allowed element is selected.  Test the
+   extracted handler itself so a disabled-looking arrow cannot silently leave
+   a valid character build stuck at its first element. */
+const creationAdjustStart = script.indexOf("  function creationAdjust(kind,index,delta)");
+const creationAdjustEnd = script.indexOf("  function openCreation()", creationAdjustStart);
+if (creationAdjustStart < 0 || creationAdjustEnd <= creationAdjustStart) {
+  throw new Error("creation attribute adjustment handler missing");
+}
+let creationRenders = 0;
+const transferState = {status:[0,0,0,0],attrs:[10,0,0,0],statusPoints:0,attrPoints:0,eye:0,mouth:0};
+const transferAdjust = new Function("creationState", "renderCreation", `${script.slice(creationAdjustStart, creationAdjustEnd)}; return creationAdjust;`)(transferState, ()=>{creationRenders++;});
+transferAdjust("attrs", 1, 1);
+if (transferState.attrs.join(",") !== "9,1,0,0" || transferState.attrPoints !== 0 || creationRenders !== 1) {
+  throw new Error(`creation attribute points did not transfer like LOGIN.CPP: ${JSON.stringify(transferState)}`);
+}
+const opposingState = {status:[0,0,0,0],attrs:[10,0,0,0],statusPoints:0,attrPoints:0,eye:0,mouth:0};
+const opposingAdjust = new Function("creationState", "renderCreation", `${script.slice(creationAdjustStart, creationAdjustEnd)}; return creationAdjust;`)(opposingState, ()=>{throw new Error("opposing element should remain blocked");});
+opposingAdjust("attrs", 2, 1);
+if (opposingState.attrs.join(",") !== "10,0,0,0") {
+  throw new Error("creation opposing elemental pair was not blocked");
+}
 /* MAIN.CPP does not send a chat packet for VK_DELETE: it clears only the
    visible chat buffer.  Keep the web-only touch aliases equally local and
    make sure the input handler still consumes the native forward-delete path.

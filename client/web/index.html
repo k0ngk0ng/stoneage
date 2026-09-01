@@ -13766,6 +13766,23 @@
     }
     const values=kind==="status"?creationState.status:creationState.attrs;
     const pointsKey=kind==="status"?"statusPoints":"attrPoints";
+    if(delta>0&&kind==="attrs"){
+      /* LOGIN.CPP allows only one element from each opposing pair
+         (earth/fire and water/wind).  When the ten free points are already
+         spent, pressing another allowed element does not become a dead
+         button: the native UI transfers one point from the first non-zero
+         element.  The old web handler simply returned here, so a perfectly
+         valid build such as earth 10 could never be changed to earth/water
+         without starting the whole character setup again. */
+      const opposite=index<2?index+2:index-2;
+      if(values[opposite]>0||values[index]>=10)return;
+      if(creationState.attrPoints>0){
+        values[index]++;creationState.attrPoints--;renderCreation();return;
+      }
+      const source=values.findIndex((value,sourceIndex)=>sourceIndex!==index&&value>0);
+      if(source>=0){values[index]++;values[source]--;renderCreation();}
+      return;
+    }
     if(delta>0&&creationState[pointsKey]<=0)return;
     if(delta<0&&values[index]<=0)return;
     values[index]+=delta;creationState[pointsKey]-=delta;renderCreation();
