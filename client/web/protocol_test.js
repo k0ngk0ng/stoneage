@@ -1049,16 +1049,16 @@ if (!fieldActionHandlerSource.includes("setLocalActorAction(actor,actionNo)") ||
     !fieldActionHandlerSource.includes("scheduleWorldAnimation()")) {
   throw new Error("field Action click must preview and send the selected native action number");
 }
-/* The executable has no transparent D-pad over the field.  Keyboard arrows
-   use the document listener and pointer/touch walking begins on the map
-   surface; a late dynamic-style override must not make the four semantic
-   fallback buttons steal central ground presses. */
+/* The executable's directional controls are transparent hit targets above
+   the field canvas.  Keep them clickable in the late dynamic style: leaving
+   pointer-events disabled makes Chromium report #world as the covering
+   element and silently drops button movement. */
 const advancedStyleStart=script.indexOf('  const advancedStyle=document.createElement("style")');
 const advancedStyleEnd=script.indexOf("  document.head.appendChild(advancedStyle)",advancedStyleStart);
 const advancedStyleSource=script.slice(advancedStyleStart,advancedStyleEnd);
-if(!/#world-actions \[data-dir\]\{pointer-events:none\}/.test(advancedStyleSource)||
-   /#world-actions \[data-dir\]\{[^}]*pointer-events:auto/.test(advancedStyleSource)){
-  throw new Error("invisible field D-pad must remain outside pointer hit testing");
+if(!/#world-actions \[data-dir\]\{[^}]*pointer-events:auto/.test(advancedStyleSource)||
+   !/#world-actions \[data-dir\]\{[^}]*cursor:url/.test(advancedStyleSource)){
+  throw new Error("field D-pad must remain above the canvas and clickable");
 }
 /* FIELD.CPP::actionShortCutKeyProc() exposes the same 13 actions through
    Ctrl+keys.  Keep the exact mapping in the web keyboard boundary and route
