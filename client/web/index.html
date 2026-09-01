@@ -13533,7 +13533,15 @@
       case "D": addEvent(`地图效果 category=${values[0]} dx=${values[1]} dy=${values[2]} ${values[3]||""}`); break;
       case "TK": receiveTK(values); break;
       case "WN": {
-        if([0,1,10,11].includes(Number(values[0])))addChat("系统",values[4]||"");
+        /* LOGIN.CPP feeds the same escaped WN text to both the native
+           message window and StockChatBufferLine().  The outer protocol
+           decoder leaves the legacy character-file escapes (including the
+           literal `\\n` used by old NPC scripts) intact, so normalize that
+           second layer before adding the line to the chat buffer.  The
+           window renderer already performs this conversion; omitting it
+           here made NPC dialogue appear as a visible "\\n" in chat while
+           the modal itself showed a proper line break. */
+        if([0,1,10,11].includes(Number(values[0])))addChat("系统",unescapeCharacterOption(values[4]||""));
         /* WN is the native NPC/menu acknowledgement.  Tie it to the object
            index rather than clearing every pending conversation (login and
            item windows can arrive asynchronously while a talk is active). */

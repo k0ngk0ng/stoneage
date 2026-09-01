@@ -3875,6 +3875,19 @@ const executablePacketSource = script.slice(script.indexOf("  function handlePac
 if (!/if\(battleServerSideDefeated\(state\)\)scheduleBattleDeathExit\(state,false\)/.test(executableReceiveBattleStatusSource) || !/case "XYD"[\s\S]{0,900}battleServerSideDefeated\(app\.battleState\)/.test(executablePacketSource)) {
   throw new Error("BC/XYD still treats the local character alone as the whole defeated side");
 }
+/* WN dialogue text uses the same legacy character-file escape layer as the
+   modal window.  Keep the chat copy newline-normalized too; otherwise an NPC
+   reply containing `\\n` is shown literally in the field chat buffer. */
+if (!/case "WN"[\s\S]{0,900}addChat\("系统",unescapeCharacterOption\(values\[4\]\|\|""\)\)/.test(executablePacketSource)) {
+  throw new Error("WN dialogue chat copy must decode legacy newline escapes");
+}
+const unescapeStart = script.indexOf("  function unescapeCharacterOption");
+const unescapeEnd = script.indexOf("  function parseMapWindowHeader", unescapeStart);
+if (unescapeStart < 0 || unescapeEnd <= unescapeStart) throw new Error("legacy text decoder boundary missing");
+const decodeLegacyCharacterOption = new Function(`${script.slice(unescapeStart, unescapeEnd)}; return unescapeCharacterOption;`)();
+if (decodeLegacyCharacterOption("甲\\n乙") !== "甲\n乙") {
+  throw new Error("legacy WN newline escape must decode to an actual line break");
+}
 /* RS/RD can race the final BC that is drained behind the last B movie.  Once
    a result owns the back-buffer, that late roster must not re-arm the local
    death watchdog or leave its timer behind the result screen. */
