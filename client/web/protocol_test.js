@@ -213,6 +213,13 @@ if (guardedRegionalMusic < 0 || nativeMapMusicSource.indexOf("case 53:") >= guar
     !/#ifdef\s+_NEWMUSICFILE6_0[\s\S]{0,220}case\s+54:[\s\S]{0,160}case\s+55:/.test(nativeMapMusicSource.slice(guardedRegionalMusic))) {
   throw new Error("map BGM 54/55 must remain behind the 6.0 music switch");
 }
+const battleMusicStart = script.indexOf("function beginBattleMusic");
+const battleMusicEnd = script.indexOf("function restoreMapMusic", battleMusicStart);
+const battleMusicSource = script.slice(battleMusicStart, battleMusicEnd);
+if (battleMusicStart < 0 || battleMusicEnd <= battleMusicStart ||
+    !/battleType===2\|\|battleType===4\|\|battleType===6/.test(battleMusicSource)) {
+  throw new Error("watcher battles must retain the native BGM6 selection");
+}
 function nativeMapContainsTone(filename, tone) {
   const data = fs.readFileSync(path.join(__dirname, "../../runtime/legacy-client/map", filename));
   if (data.length < 8) return false;

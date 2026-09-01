@@ -1930,11 +1930,11 @@
   }
   function beginBattleMusic(type=app.battleState?.type||1,field=app.battleState?.field||0){
     /* This deployment is the sa_2903/2.5 client.  BATTLEPROC.CPP selects
-       only BGM 6 when DuelFlag or eventEnemyFlag is set; every other EN
-       result (ordinary, watcher, DP, and boss types included) selects BGM 5.
-       The 8.5 hard-map 12/13/14 branch is not present in this client. */
+       BGM 6 for duel, watcher, and boss/event battles (EN types 2, 4, and 6);
+       ordinary P-vs-E and DP battles (types 1 and 5) use BGM 5.  The 8.5
+       hard-map 12/13/14 branch is not present in this client. */
     const battleType=Math.trunc(Number(type)||1);
-    const battleNo=(battleType===2||battleType===6)?6:5;
+    const battleNo=(battleType===2||battleType===4||battleType===6)?6:5;
     app.music.battleBgmNo=battleNo;app.music.mode="battle";setMusicMode("battle",battleNo);
   }
   function restoreMapMusic(){app.music.battleBgmNo=-1;app.music.mode="map";if(app.music.mapBgmNo>=0)setMusicMode("map",app.music.mapBgmNo);else setMusicMode("map",0);}
