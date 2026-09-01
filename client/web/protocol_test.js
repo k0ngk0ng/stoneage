@@ -1600,6 +1600,10 @@ for (const expected of [
   /* MAP.CPP keeps the last recognized marker in diagonal tile→part order
      and retains the active track when a partial M window has no marker. */
   /function mapMusicFromWindow\(map\)[\s\S]{0,2200}let ti=height-1,tj=0;[\s\S]{0,1400}if\(tone===null&&app\.music\.mapBgmNo>=0\)return;/,
+  /* M is a sliding viewport.  A manifest-miss fallback must derive the
+     isometric origin from the complete floor height, otherwise rectangular
+     maps (for example 30×40) shift actors and doors vertically. */
+  /function mapPixel\(x,y\)\{[\s\S]{0,900}const fullHeight=Math\.max\(1,Number\(app\.map\.fullHeight\)\|\|Number\(app\.map\.asset\?\.source_height\)\|\|Number\(app\.map\.height\)\|\|1\)[\s\S]{0,500}origin_y:\(fullHeight-1\)\*24\+256/,
   /* The native battle result window stops BGM, plays SE 215, and only
      restores the room track after the result is closed. */
   /app\.music\.mode="battle-result";stopBackgroundMusic\(\);playSoundEffect\(215,320,240\);[\s\S]{0,220}renderBattleResult\(\);show\(battleResultScreen\)/,

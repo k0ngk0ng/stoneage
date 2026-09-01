@@ -14754,7 +14754,21 @@
     updateHUD();renderWorld(true);renderWorldOverlay();scheduleWorldAnimation();
   }
   function updateHUD() { $("world-floor").textContent=app.floor<0?"-":String(app.floor); $("world-position").textContent=`${app.position[0]}, ${app.position[1]}`; $("world-actors").textContent=String(app.actors.size); }
-  function mapPixel(x,y){if(!app.map)return null;const definition=app.map.asset||{origin:[0,0],render:{origin_x:256,origin_y:(Math.max(1,Number(app.map.width)||1)-1)*24+256,tile_step:[32,24]}};const origin=definition.origin||[0,0],render=definition.render||{},step=render.tile_step||[32,24];const lx=Number(x)-Number(origin[0]||0),ly=Number(y)-Number(origin[1]||0);return [Number(render.origin_x??256)+(lx+ly)*Number(step[0]??32),Number(render.origin_y??952)+(ly-lx)*Number(step[1]??24)];}
+  function mapPixel(x,y){
+    if(!app.map)return null;
+    /* A live M packet is only a sliding viewport.  When the manifest/DAT
+       definition is not available yet, derive the isometric origin from the
+       complete floor height, not the viewport height.  Rectangular floors
+       such as 1006 (30×40) otherwise shift every actor/door 240px vertically
+       until the manifest arrives, making edge clicks and NPC interaction miss
+       their real cells. */
+    const fullHeight=Math.max(1,Number(app.map.fullHeight)||Number(app.map.asset?.source_height)||Number(app.map.height)||1);
+    const fallback={origin:[0,0],render:{origin_x:256,origin_y:(fullHeight-1)*24+256,tile_step:[32,24]}};
+    const definition=app.map.asset||fallback,origin=definition.origin||fallback.origin;
+    const render=Object.assign({},fallback.render,definition.render||{}),step=render.tile_step||fallback.render.tile_step;
+    const lx=Number(x)-Number(origin[0]||0),ly=Number(y)-Number(origin[1]||0);
+    return [Number(render.origin_x??fallback.render.origin_x)+(lx+ly)*Number(step[0]??32),Number(render.origin_y??fallback.render.origin_y)+(ly-lx)*Number(step[1]??24)];
+  }
   function walkProgress(now=performance.now()){const animation=app.walkAnimation;if(!animation)return 0;return Math.max(0,Math.min(1,(now-animation.startedAt)/animation.duration));}
   function viewPosition(){const animation=app.walkAnimation;if(!animation)return app.position;const progress=walkProgress();return [animation.from[0]+(animation.to[0]-animation.from[0])*progress,animation.from[1]+(animation.to[1]-animation.from[1])*progress];}
   function tilePoint(x,y){const canvas=$("world"),view=viewPosition(),px=view[0],py=view[1],center=mapPixel(px,py),point=mapPixel(x,y);if(center&&point)return [canvas.width/2+point[0]-center[0],canvas.height/2+point[1]-center[1]];return [canvas.width/2+(x-px+y-py)*32,canvas.height/2+(y-py-x+px)*24];}
