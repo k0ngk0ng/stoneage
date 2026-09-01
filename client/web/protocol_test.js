@@ -1854,8 +1854,12 @@ for (const expected of [
   /map-transition-cover-in[\s\S]{0,180}map-transition-cover-out/,
   /main\.map-transition-press-in #world-screen,[\s\S]{0,140}#chat-screen\s*\{[^}]*map-transition-field-press-in/,
   /main\.map-transition-press-out #world-screen,[\s\S]{0,140}#chat-screen\s*\{[^}]*map-transition-field-press-out/,
-  /@keyframes map-transition-field-press-in\s*\{[\s\S]{0,320}scaleY\(1\)[\s\S]{0,180}scaleY\(0\)/,
-  /@keyframes map-transition-field-press-out\s*\{[\s\S]{0,320}scaleY\(0\)[\s\S]{0,180}scaleY\(1\)/,
+  /* ProduceCenterPress() clips the captured field surface to a narrowing
+     centre band; scaling the entire DOM scene would squeeze every sprite
+     into one line and does not match the native back-buffer producer. */
+  /main\.map-transition-pressed #world-screen,[\s\S]{0,100}#chat-screen\s*\{[^}]*clip-path:inset\(50% 0 50% 0\)/,
+  /@keyframes map-transition-field-press-in\s*\{[\s\S]{0,240}clip-path:inset\(0 0 0 0\)[\s\S]{0,180}clip-path:inset\(50% 0 50% 0\)/,
+  /@keyframes map-transition-field-press-out\s*\{[\s\S]{0,240}clip-path:inset\(50% 0 50% 0\)[\s\S]{0,180}clip-path:inset\(0 0 0 0\)/,
   /function presentWorldBackBuffer\(buffer\)[\s\S]{0,420}if\(app\.mapBackBufferHold\)return;/,
   /function startMapFloorTransition\(targetFloor=null,eventSeq=0\)[\s\S]{0,3000}mapTransitionState\.targetFloor=floor/,
   /function deferMapTransitionPacket\(packet,sourceTransport,sourceToken\)[\s\S]{0,900}mapTransitionState\.pendingPackets\.push/,

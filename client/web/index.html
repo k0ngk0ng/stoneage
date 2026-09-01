@@ -679,10 +679,10 @@
        a single horizontal fold, never an 8x8 field of small squares. */
     /* ProduceCenterPress() does not grow two black panels over a live field.
        It keeps one finished 640x480 field surface, clears the back-buffer to
-       black, and vertically compresses that surface into the y=240 fold.
-       Keep the black surface below the field and animate the whole finished
-       field above it; this also removes the rounding seam created by two
-       independently scaled half-elements. */
+       black, and progressively clips the captured surface to the y=240 fold.
+       Use a centre clip-path rather than scaling the whole DOM scene: source
+       rows outside the narrowing band disappear just like the native surface
+       copy, while every sprite keeps its original size until it is hidden. */
     /* The curtain owns the gameplay lock, not the physical pointer.  Keeping
        it pointer-transparent lets the document-level pointer sampler update
        the painted fish while a floor fold is in progress; the cursor portal
@@ -690,11 +690,10 @@
        pointer-active curtain used to swallow those samples and made the fish
        appear frozen or disappear exactly when changing rooms.
 
-       Keep the two black halves above the animated field surface.  Chromium
-       can retain a one-pixel raster row when a canvas/DOM subtree is scaled
-       to scaleY(0); that stale row was the damaged horizontal strip seen in
-       real room transitions.  The halves meet at exactly y=240 and cover
-       that compositor residue without adding a visible seam of their own. */
+       Keep the two black halves above the clipped field surface.  Chromium
+       can retain a one-pixel raster row at a clip boundary; the halves meet
+       at exactly y=240 and cover that compositor residue without adding a
+       visible seam of their own. */
     #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1050; display:none; overflow:hidden; pointer-events:none; background:transparent; }
     #map-transition.active { display:block; }
     #map-transition .map-transition-half { position:absolute; left:0; display:block; width:100%; height:50%; margin:0; padding:0; background:#000; pointer-events:none; transform:scaleY(0); will-change:transform; }
@@ -708,16 +707,16 @@
     main.map-transition-press-in #world-screen,
     main.map-transition-press-in #chat-screen { animation:map-transition-field-press-in .50s steps(30,end) forwards; }
     main.map-transition-pressed #world-screen,
-    main.map-transition-pressed #chat-screen { transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0); }
+    main.map-transition-pressed #chat-screen { clip-path:inset(50% 0 50% 0); }
     main.map-transition-press-out #world-screen,
     main.map-transition-press-out #chat-screen { animation:map-transition-field-press-out .50s steps(30,end) forwards; }
     @keyframes map-transition-field-press-in {
-      from{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(1)}
-      to{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0)}
+      from{clip-path:inset(0 0 0 0)}
+      to{clip-path:inset(50% 0 50% 0)}
     }
     @keyframes map-transition-field-press-out {
-      from{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0)}
-      to{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(1)}
+      from{clip-path:inset(50% 0 50% 0)}
+      to{clip-path:inset(0 0 0 0)}
     }
     @keyframes map-transition-cover-in { from{transform:scaleY(0)} to{transform:scaleY(1)} }
     @keyframes map-transition-cover-out { from{transform:scaleY(1)} to{transform:scaleY(0)} }
@@ -15591,9 +15590,9 @@
       if(Number.isFinite(screenX)&&Number.isFinite(screenY)){app.cursorScreenX=screenX;app.cursorScreenY=screenY;}
       return;
     }
-    /* #world-screen is scaleY-compressed during a floor fold.  The cursor
-       portal stays uncompressed, so both transition and normal samples use
-       the stable 640×480 pointer surface. */
+    /* #world-screen is centre-clipped during a floor fold.  The cursor portal
+       stays uncompressed, so both transition and normal samples use the
+       stable 640×480 pointer surface. */
     const scene=$("world-overlay")?.getBoundingClientRect()||worldScreen?.getBoundingClientRect(); if(!scene||!scene.width||!scene.height)return;
     app.cursorClientX=clientX;app.cursorClientY=clientY;
     if(Number.isFinite(screenX)&&Number.isFinite(screenY)){app.cursorScreenX=screenX;app.cursorScreenY=screenY;}
