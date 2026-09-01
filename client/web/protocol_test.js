@@ -1504,18 +1504,17 @@ for (const expected of [
      Keep the M-window guard only while that floor-wide back-buffer is still
      unavailable, otherwise long clicks can never cross the current window. */
   /const hasCompleteFloorMap=Boolean\(app\.autoMapData&&Number\(app\.autoMapData\.floor\)===Number\(app\.floor\)\);[\s\S]{0,220}app\.map&&!hasCompleteFloorMap&&!mapCellAt\(next\[0\],next\[1\]\)/,
-  /* CHAR_Talk() reaches two facing cells, while CHAR_Look() dispatches only
-     the one cell immediately ahead.  LOOKEDFUNC targets must therefore be
-     approached before L; otherwise healers/doors appear unresponsive when
-     clicked from the second cell. */
-  /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,700}const lookInteraction=npcUsesLookInteraction\(current\);[\s\S]{0,260}if\(\(lookInteraction&&targetDistance>1\)\|\|\(!lookInteraction&&targetDistance>2\)\)[\s\S]{0,180}return approachNPC\(current\)/,
+  /* CHAR_Talk() and CHAR_Look() both use the native two-cell mouse radius;
+     LOOKEDFUNC targets are dispatched through L before any local route is
+     attempted, so a blocked doorway remains usable from its second cell. */
+  /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,1200}if\(targetDistance>2\)[\s\S]{0,220}return approachNPC\(current\)/,
   /* A map actor may be painted underneath one of the fixed field controls.
      Native display priority gives the control the click, so keep the UI hit
      guard before actorAtTile() instead of letting the covered NPC consume
      pointerdown and make the toolbar look intermittently unresponsive. */
-  /function handleWorldPointerDown\(event\)\{[\s\S]{0,900}if\(event\.button===0\)\{[\s\S]{0,900}if\(worldPointerIsUiTarget\(event\)\)\{[\s\S]{0,240}return;[\s\S]{0,900}const tile=worldTileFromPointer\(event\),actor=tile&&!pointerTilePrefersMapRoute\(tile\)\?actorAtTile\(tile,isTalkableActor\):null;/,
+  /function handleWorldPointerDown\(event\)[\s\S]{0,3000}actorAtPointer\(event,isTalkableActor\)/,
   /function pointerTilePrefersMapRoute\(tile\)[\s\S]{0,700}return isMapWarpEvent\(mapEventAt\(Number\(tile\[0\]\),Number\(tile\[1\]\)\)\);/,
-  /const clickedActor=pointerTilePrefersMapRoute\(tile\)\?null:actorAtTile\(tile,isTalkableActor\);/,
+  /const clickedActor=pointerTilePrefersMapRoute\(tile\)\?null:\(actorAtTile\(tile,isTalkableActor\)\|\|actorAtPointer\(event,isTalkableActor\)\);/,
   /if\(distance>0&&distance<=2\)\{[\s\S]{0,220}talkToTarget\(clickedActor\)\.catch\(reportError\);[\s\S]{0,180}return;/,
   /if\(distance===0\)\{[\s\S]{0,120}approachNPC\(clickedActor\);[\s\S]{0,80}return;/,
   /* A map/scene fold gates gameplay routing only.  The painted fish continues

@@ -13055,6 +13055,33 @@
       .filter(actor=>actor?.kind==="character"&&!actorIsOwn(actor)&&Number(actor.x)===x&&Number(actor.y)===y&&(!filter||filter(actor)))
       .sort((left,right)=>npcActorPriority(left)-npcActorPriority(right))[0]||null;
   }
+  /* A native click normally resolves a grid cell first, but tall NPC REALBIN
+     sprites extend several dozen pixels above that cell.  On a scaled browser
+     surface a click on the visible body can therefore land in the adjacent
+     diamond even though the user clearly clicked the NPC.  Keep the grid hit
+     as the authoritative path and use the exact painted sprite rectangle only
+     as a fallback.  This mirrors the client's visible-object hit affordance
+     without turning neighbouring ground tiles into NPC targets. */
+  function actorAtPointer(event,filter){
+    if(!event||!Number.isFinite(Number(event.clientX))||!Number.isFinite(Number(event.clientY)))return null;
+    const canvas=$("world"),rect=canvas?.getBoundingClientRect();
+    if(!canvas||!rect||!rect.width||!rect.height)return null;
+    const sx=(Number(event.clientX)-rect.left)*canvas.width/rect.width,sy=(Number(event.clientY)-rect.top)*canvas.height/rect.height;
+    if(!Number.isFinite(sx)||!Number.isFinite(sy)||sx<0||sy<0||sx>canvas.width||sy>canvas.height)return null;
+    const candidates=[];
+    for(const actor of app.actors.values()){
+      if(!actor||actor.kind!=="character"||actorIsOwn(actor)||filter&&!filter(actor))continue;
+      const anchor=tilePoint(Number(actor.x),Number(actor.y)),frame=actorFrame(actor),image=frame?.image;
+      if(!anchor||!image||!image.complete||!(image.naturalWidth||image.width))continue;
+      const width=Number(image.naturalWidth||image.width),height=Number(image.naturalHeight||image.height),left=Number(anchor[0])+Number(frame.x||0),top=Number(anchor[1])+Number(frame.y||0);
+      if(sx<left||sx>left+width||sy<top||sy>top+height)continue;
+      /* Prefer the front-most actor at an overlap, then the smallest painted
+         rectangle.  Static metadata is a fallback behind live C records. */
+      candidates.push({actor,depth:Number(anchor[1])||0,area:width*height});
+    }
+    candidates.sort((left,right)=>right.depth-left.depth||left.area-right.area||npcActorPriority(left.actor)-npcActorPriority(right.actor));
+    return candidates[0]?.actor||null;
+  }
   function rememberTalkTarget(actor){
     if(!actor||actorIsOwn(actor)||!npcFilterForTalk(actor))return;
     app.talkTargetId=Number(actor.id);app.talkTargetSelectedAt=Date.now();
@@ -13224,18 +13251,21 @@
         setWorldState("NPC 已离开视野，请重新选择。","error");return false;
       }
     }
-    /* CHAR_Talk() accepts TALKEDFUNC NPCs on the facing tile and the next
-       tile, so an ordinary conversation can be started from the native
-       two-tile line.  CHAR_Look(), however, examines exactly one cell in
-       front of the player before dispatching a LOOKEDFUNC (healer, door,
-       signboard, etc.).  Treating both kinds as a two-tile interaction sent
-       L from the wrong cell; the server then quite correctly found no object
-       and the click looked dead.  Keep the two-tile radius for TK NPCs but
-       approach LOOKEDFUNC targets until they are adjacent. */
+    /* pc.cpp::TalkToNPC() and lookAtAround() both accept an object selected
+       within two map cells.  TALKEDFUNC targets continue with the native
+       face/L/TK pair; LOOKEDFUNC targets use only L and let the server inspect
+       the object in its own facing/radius rules.  A target farther than that
+       is approached through a normal walkable route. */
     const targetDistance=Math.max(Math.abs(Number(current.x)-Number(app.position[0])),Math.abs(Number(current.y)-Number(app.position[1])));
     if(targetDistance===0){if(app.pendingTalk?.id===id)return false;return approachNPC(current);}
     const lookInteraction=npcUsesLookInteraction(current);
-    if((lookInteraction&&targetDistance>1)||(!lookInteraction&&targetDistance>2)){
+    /* pc.cpp::lookAtAround() accepts CHAROBJ_TYPE_LOOKAT within the same
+       two-cell mouse radius as TalkToNPC().  A LOOKEDFUNC object can sit
+       behind a decorative wall/door tile, so requiring an adjacent walkable
+       cell made valid nurse/door/signboard clicks fail with “附近没有可到达
+       的位置”.  Let the server's L handler perform the native face/object
+       check for both one- and two-cell targets. */
+    if(targetDistance>2){
       if(app.pendingTalk?.id===id)return false;
       return approachNPC(current);
     }
@@ -17014,7 +17044,8 @@
          CHAROBJ_TYPE_LOOKAT object before the movement sampler starts.  Do
          the same at pointerdown so the subsequent pointerup can send L
          without first walking onto the signboard/door/NPC tile. */
-      const tile=worldTileFromPointer(event),actor=tile&&!pointerTilePrefersMapRoute(tile)?actorAtTile(tile,isTalkableActor):null;
+      const tile=worldTileFromPointer(event),gridActor=tile&&!pointerTilePrefersMapRoute(tile)?actorAtTile(tile,isTalkableActor):null,
+        actor=gridActor||(!pointerTilePrefersMapRoute(tile)?actorAtPointer(event,isTalkableActor):null);
       if(actor){
         /* Keep the whole NPC click out of beginHeldWorldPointer().  The
            native moveProc() checks lookAtAround()/TalkToNPC() on mouse-down;
@@ -17060,8 +17091,8 @@
       app.pointerLookTargetId=null;app.pointerLookPointerId=null;
       if(pointerId!==null&&event.pointerId!==undefined&&Number(event.pointerId)!==pointerId)return;
       if(worldPointerIsUiTarget(event))return;
-      const target=app.actors.get(id),tile=worldTileFromPointer(event);
-      if(target&&tile&&Number(tile[0])===Number(target.x)&&Number(tile[1])===Number(target.y)){
+      const target=app.actors.get(id),tile=worldTileFromPointer(event),visualTarget=actorAtPointer(event,isTalkableActor);
+      if(target&&((tile&&Number(tile[0])===Number(target.x)&&Number(tile[1])===Number(target.y))||visualTarget&&Number(visualTarget.id)===id)){
         talkToTarget(target).catch(reportError);return;
       }
       /* The pointer was dragged away before release.  Fall through to the
@@ -17076,7 +17107,7 @@
     app.pendingTalk=null;
     const tile=heldTile||worldTileFromPointer(event);if(!tile)return;
     app.cursor.tile=tile;app.cursor.updatedAt=Date.now();
-    const clickedActor=pointerTilePrefersMapRoute(tile)?null:actorAtTile(tile,isTalkableActor);
+    const clickedActor=pointerTilePrefersMapRoute(tile)?null:(actorAtTile(tile,isTalkableActor)||actorAtPointer(event,isTalkableActor));
     if(clickedActor){
       rememberTalkTarget(clickedActor);
       /* MAP.CPP::lookAtAround() handles CHAROBJ_TYPE_LOOKAT on the
