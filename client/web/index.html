@@ -405,12 +405,6 @@
        (Avoid :has() here: Chromium has to recalculate it for every live
        contact/mail row mutation, which makes the native mail window stutter.) */
     main.field-overlay-suppressed #field-ui { visibility:hidden; }
-    /* FIELD.CPP gives the three right-hand field buttons IME3 priority over
-       the WND2 action/settings hit boxes.  Keep that small native toolbar
-       resident above an open WND2 window so clicking its owner again closes
-       the window (and keeps the pressed bitmap in sync); the rest of the
-       window remains interactive because the parent itself is pointer-free. */
-    main.field-window-open #field-ui { visibility:visible; z-index:40; }
     /* sa_2903::MenuProc(JOY_CTRL_T) owns a fixed 640x480 field surface.  Its
        classic 2.5 branch stocks logical CG 40000 at window origin (10,0),
        producing the exact 620x456 stone trade plate below.  Keep every live
@@ -2079,12 +2073,6 @@
     .field-window-screen .field-setting-row span{display:inline-block;width:85px}.field-window-screen .field-setting-row b{display:inline-block;color:#f0e5c6;font-weight:400}
     .field-window-screen .field-setting-row:hover,.field-window-screen .field-setting-row:focus-visible,.field-window-screen .field-action-row:hover,.field-window-screen .field-action-row:focus-visible{color:#ffe88b;text-shadow:0 0 3px #ffe88b,1px 1px #080706;filter:none;outline:0}
     .field-window-screen #field-settings-close,.field-window-screen #field-actions-close{position:absolute;z-index:3;width:80px;height:16px;padding:0;border:0;border-radius:0;color:transparent;background:transparent url('/assets/bitmaps/bitmap_9134.png') center/100% 100% no-repeat;box-shadow:none;outline:0;font-size:0;pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important}
-    /* The action WND2 overlaps the lower edge of CG_FIELD_MENU_RIGHT.  In
-       the native hit stack the IME3 Action button wins there, so provide a
-       transparent owner hit in the WND2 stack as well; it lets a second tap
-       on the pressed Action icon close the window instead of selecting the
-       first-row action underneath it. */
-    #field-actions-owner-hit{position:absolute;left:583px;top:42px;width:56px;height:14px;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;opacity:0;pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto!important;z-index:4}
     /* etcSwitchProc() builds the settings frame with h=5 and stocks the
        close control at centre (112,216).  CG_CLOSE_BTN itself is 80×16 with
        ADRN offset -40/-8, so its visible top-left is (72,208). */
@@ -3000,7 +2988,6 @@
           <button type="button" class="field-action-row field-action-last" data-action-no="12"> 投  掷 </button>
         </div>
         <button id="field-actions-close" type="button" aria-label="关闭动作视窗"></button>
-        <button id="field-actions-owner-hit" type="button" aria-hidden="true" tabindex="-1"></button>
       </section>
       <section id="trade-screen" class="advanced-screen legacy-screen hidden" aria-label="交易窗口">
         <h2>交易</h2>
@@ -3490,8 +3477,6 @@
     if(!main)return;
     const openScreen=advancedScreens.find(screen=>!screen.classList.contains("hidden"));
     main.classList.toggle("field-overlay-suppressed",Boolean(openScreen));
-    main.classList.toggle("field-window-open",Boolean(openScreen&&
-      (openScreen.id==="field-settings-screen"||openScreen.id==="field-actions-screen")));
     /* The fish/target overlay now lives above the task bar as a sibling.  Hide
        it in the same tick as a native WN/menu window so it cannot float over
        the dialog while the world phase remains active underneath. */
@@ -3662,7 +3647,6 @@
     }
   }
   function closeFieldWindow(){if(app.phase==="world")show(worldScreen);}
-  $("field-actions-owner-hit")?.addEventListener("click",closeFieldWindow);
   function renderFieldSettings(){
     const flags=Number(app.status.etcFlag)||0;
     document.querySelectorAll("#field-settings-list [data-field-setting]").forEach(row=>{

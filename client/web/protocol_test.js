@@ -934,6 +934,16 @@ if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 7 ||
     !/id="field-right-action" class="click"/.test(fieldUiMarkup)) {
   throw new Error("2.5 field HUD must contain four left and three right controls");
 }
+/* FIELD.CPP sets drawFieldButtonFlag=0 while any native menu/WN/action
+   surface is open.  Keep that rule strict: a later convenience override that
+   re-shows #field-ui above the settings/action window causes the HUD bitmaps
+   to overlap the window, which is not how the 2.5 back-buffer is painted. */
+if (!/main\.field-overlay-suppressed #field-ui\s*\{\s*visibility:hidden;\s*\}/.test(html) ||
+    /main\.field-window-open #field-ui/.test(html) ||
+    /id="field-actions-owner-hit"/.test(html) ||
+    !/const openScreen=advancedScreens\.find\(screen=>!screen\.classList\.contains\("hidden"\)\);[\s\S]{0,180}main\.classList\.toggle\("field-overlay-suppressed",Boolean\(openScreen\)\)/.test(script)) {
+  throw new Error("native field controls must disappear whenever a field window is open");
+}
 /* Dormant native surfaces must be lazy: the browser should not request their
    images while the login scene is visible, but the first activation must
    restore every data-src exactly once. */
