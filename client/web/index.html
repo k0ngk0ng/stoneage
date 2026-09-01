@@ -299,10 +299,11 @@
        buttons must never become an invisible D-pad over the centre of the
        map: doing so steals ordinary ground clicks before the canvas sees
        them. */
-    /* Keep the four native movement hit areas above the map back-buffer.  The
-       parent is a transparent overlay, but its buttons must still receive
-       pointer input; leaving them disabled makes every click fall through to
-       #world and prevents keyboard/touch-style directional movement. */
+    /* Keep these semantic movement controls out of pointer hit testing.  The
+       original field has no invisible D-pad: mouse/touch presses in the
+       central tiles belong to MAP.CPP's ground/NPC hit test.  Keyboard users
+       still use the document shortcut and assistive technology can invoke
+       the buttons programmatically without stealing a map click. */
     #world-actions button { position:absolute; opacity:0; pointer-events:none; }
     #world-actions [data-dir] { width:64px; height:64px; }
     #world-actions [data-dir="3"] { left:288px; top:160px; }
@@ -1965,12 +1966,9 @@
     #world-tools button:nth-child(7):hover,#world-tools button:nth-child(7):focus-visible,#world-tools button:nth-child(7):active,#world-tools button:nth-child(7).is-active{background-image:url('/assets/bitmaps/bitmap_9262.png')}
     #world-tools button:hover,#world-tools button:focus{filter:none;outline:0}
     #world-tools button:nth-child(n+8){display:none}
-    /* The directional buttons are transparent hit targets layered above the
-       field canvas.  The canvas must keep receiving clicks everywhere else,
-       but disabling pointer events on these four children makes Chromium
-       report the canvas as the covering element and drops keyboard-style
-       movement clicks entirely. */
-    #world-actions [data-dir]{pointer-events:auto;cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important;}
+    /* The native client has no central pointer D-pad.  Do not let these
+       accessibility-only controls cover ordinary ground/NPC clicks. */
+    #world-actions [data-dir]{pointer-events:none;}
     #battle-world{position:absolute;inset:0}
     @media(min-width:700px) and (min-height:800px){#field-ui,#world-actions,#world-tools,#chat-log,#world-actors-layer,#battle-actors-layer,#battle-target-overlay,#battle-field-ui{transform:scale(1.5);transform-origin:0 0}.advanced-screen{transform:translate(-50%,-50%) scale(1.5);transform-origin:center}}
 
