@@ -29,6 +29,11 @@ FIELD_BOOTSTRAP_ACTIONS = frozenset((3, 4))  # complete visible STAND/WALK rows
 # it as its initial value). Keep it in the compact field-action pack even
 # though it is not among the twelve character-select portraits.
 FIELD_ACTION_SPRITES = tuple(dict.fromkeys((*CREATION_SPRITES, 100025)))
+# SYSTEMINC/BATTLEMAP.H in the preserved sa_2903 client.  The accompanying
+# data directory also contains two later battle SABs, but the 2.5 executable
+# never indexes them: NETPROC.CPP and BATTLEMAP.CPP both fall back to map 0
+# when the server field is outside this range.
+BATTLE_MAP_FILES_25 = 218
 
 
 UI_BITMAPS = {
@@ -176,6 +181,20 @@ BATTLE_COUNTDOWN_LOGICAL_BASE = 25900
 # 99000 ms ``_SA_VERSION_25`` value belongs to a separate 8.5 source tree and
 # must not leak into this 2.5 web pack.
 BATTLE_COUNTDOWN_DURATION_MS = 30000
+
+# ``oft.cpp`` does not draw abstract primitives for ranged battle attacks.
+# ATT_BOW creates two T_PRIO_BOW actions: a ground shadow and the real
+# arrow/axe/stone/firecracker 28 pixels above it.  ATT_BOOMERANG uses the
+# original SPR_boomerang bitmap.  Export the complete 16-way arrow rows plus
+# the direct records used by the other stock 2.5 weapon types so the browser
+# can render the same REALBIN art instead of CSS approximations.
+BATTLE_PROJECTILE_BITMAPS = {
+    *range(25630, 25646),  # CG_ARROW_00 + course/2 (visible arrow)
+    *range(25650, 25666),  # CG_ARROW_00 + course/2 + 20 (ground shadow)
+    25785,                 # thrown stone
+    25786,                 # stone/firecracker shadow
+    24350,                 # firecracker
+}
 
 # The character-select protocol carries the portrait bitmap as the second
 # field of its legacy option string.  sa_2903's standard player portraits are
@@ -463,6 +482,20 @@ def ui_pack(records, by_number, real_path, palette, output, manifest):
                 # Reserved ADRN records are not drawable; skip only the bad
                 # alias and leave the rest of the deterministic UI pack.
                 manifest["bitmap_aliases"].pop(str(logical), None)
+    for logical in sorted(BATTLE_PROJECTILE_BITMAPS):
+        # Several weapon records (notably the stone/firecracker pair) are
+        # addressed directly by ADRN number and therefore have bmp_number 0.
+        # Match the named UI path's physical fallback instead of requiring a
+        # logical alias that does not exist in the 2.5 table.
+        candidates = by_number.get(logical) or ([logical] if logical in records else None)
+        if not candidates:
+            continue
+        physical = candidates[-1]
+        manifest["bitmap_aliases"][str(logical)] = str(physical)
+        try:
+            emit_bitmap(f"battle_projectile_{logical}", logical, records, real_path, palette, output, manifest)
+        except legacy.AssetError:
+            manifest["bitmap_aliases"].pop(str(logical), None)
 
 
 def collect_map_resources(records, by_number, real_path, palette, output, manifest):
@@ -772,16 +805,35 @@ def album_pack(records, by_number, real_path, palette, output, manifest):
 
 def battle_pack(battle_numbers, records, by_number, real_path, palette, output, manifest):
     battles = manifest.setdefault("battles", {})
+    # Refreshing an existing pack must also remove entries produced by an
+    # older extractor that enumerated every SAB found beside the executable.
+    # battle218/219 belong to the later data set and are unreachable in the
+    # sa_2903 BATTLE_MAP_FILES table.
+    for battle_key in list(battles):
+        try:
+            battle_number = int(battle_key)
+        except (TypeError, ValueError):
+            continue
+        if battle_number < 0 or battle_number >= BATTLE_MAP_FILES_25:
+            del battles[battle_key]
+    battle_output = output / "battle"
+    if battle_output.is_dir():
+        for image in battle_output.glob("battle_*.png"):
+            match = re.fullmatch(r"battle_(\d+)\.png", image.name)
+            if match and int(match.group(1)) >= BATTLE_MAP_FILES_25:
+                image.unlink()
     # Battle maps reuse a small ground-tile set.  Decode each physical REALBIN
     # bitmap once for the whole batch instead of once per 20×20 SAB file.
     bitmap_cache = {}
-    for battle_number in battle_numbers:
+    for battle_number in sorted({int(number) for number in battle_numbers if 0 <= int(number) < BATTLE_MAP_FILES_25}):
         _battle_pack_one(battle_number, records, by_number, real_path, palette, output, battles, bitmap_cache)
     if "0" in battles:
         manifest["battle"] = battles["0"]
 
 
 def _battle_pack_one(battle_number, records, by_number, real_path, palette, output, battles, bitmap_cache=None):
+    if battle_number < 0 or battle_number >= BATTLE_MAP_FILES_25:
+        return
     path = REPO / "runtime" / "legacy-client" / "data" / "battleMap" / f"battle{battle_number:02d}.sab"
     if not path.is_file():
         return
@@ -821,7 +873,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=REPO / "client" / "web" / "assets" / "original")
     parser.add_argument("--map", type=int, default=200)
     parser.add_argument("--battle", type=int, default=0)
-    parser.add_argument("--all-battles", action="store_true", help="extract every original battleMap/*.sab viewport")
+    parser.add_argument("--all-battles", action="store_true", help="extract all 218 sa_2903 battleMap viewports")
     parser.add_argument("--battles-only", action="store_true", help="refresh battle PNGs in an existing browser asset pack")
     parser.add_argument("--ui-only", action="store_true", help="refresh UI PNGs and aliases in an existing browser asset pack")
     parser.add_argument("--items-only", action="store_true", help="refresh 2.5 item PNGs and logical ADRN aliases in an existing browser asset pack")
@@ -853,7 +905,15 @@ def main() -> int:
     palette_output.mkdir(parents=True, exist_ok=True)
     for palette_file in sorted((data / "pal").glob("Palet_*.sap")):
         shutil.copyfile(palette_file, palette_output / palette_file.name)
-    battle_numbers = sorted(int(path.stem[6:]) for path in (data / "battleMap").glob("battle*.sab")) if args.all_battles else [args.battle]
+    battle_numbers = (
+        sorted(
+            number
+            for path in (data / "battleMap").glob("battle*.sab")
+            if 0 <= (number := int(path.stem[6:])) < BATTLE_MAP_FILES_25
+        )
+        if args.all_battles
+        else [args.battle]
+    )
     if args.ui_only:
         manifest_path = args.output / "manifest.json"
         if not manifest_path.is_file():

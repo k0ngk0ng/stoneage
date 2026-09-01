@@ -28,6 +28,40 @@ func testConfig(upstream string) Config {
 	return cfg
 }
 
+func TestDecodeLegacyNPCTextMixedCodePages(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{name: "generated cp936 mammoth", raw: []byte{0xb3, 0xa4, 0xc3, 0xab, 0xcf, 0xf3, 0xbf, 0xcd, 0xd4, 0xcb}, want: "长毛象客运"},
+		{name: "legacy big5 mammoth bus", raw: []byte{0xaa, 0xf8, 0xa4, 0xf2, 0xb6, 0x48, 0xa4, 0xbd, 0xa8, 0xae}, want: "長毛象公車"},
+		{name: "ascii", raw: []byte("npcgen_man"), want: "npcgen_man"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := decodeLegacyNPCText(test.raw); got != test.want {
+				t.Fatalf("decodeLegacyNPCText()=%q want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDecodeLegacyNPCTextChoosesEncodingPerLine(t *testing.T) {
+	// chatroom.create contains CP936 ticket names and Big5 mammoth names in
+	// the same file.  A whole-file decoder must not let one encoding poison
+	// the other; the parser consumes only the field lines after decoding.
+	raw := bytes.Join([][]byte{
+		[]byte("# Japanese comment (mixed legacy bytes)"),
+		[]byte("name=\xc3\xc5\xc6\xb1\xb7\xb7\xc2\xf4\xd4\xb1"), // 门票贩卖员 (GBK)
+		[]byte("name=\xaa\xf8\xa4\xf2\xb6\x48\xa4\xbd\xa8\xae"), // 長毛象公車 (Big5)
+	}, []byte{'\n'})
+	decoded := decodeLegacyNPCText(raw)
+	if !strings.Contains(decoded, "name=门票贩卖员") || !strings.Contains(decoded, "name=長毛象公車") {
+		t.Fatalf("per-line legacy decode lost mixed names: %q", decoded)
+	}
+}
+
 type fakeTCP struct {
 	listener net.Listener
 	accepted chan struct{}
@@ -428,12 +462,12 @@ func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 		`serverSelectionStage==="connecting"`,
 		`app.selectedServer="local-line"`,
 		`url('/assets/bitmaps/bitmap_9094.png')`,
-		`src="/assets/bitmaps/bitmap_9103.png"`,
-		`src="/assets/bitmaps/bitmap_9111.png"`,
+		`data-src="/assets/bitmaps/bitmap_9103.png"`,
+		`data-src="/assets/bitmaps/bitmap_9111.png"`,
 		`left:256px; top:270px; width:128px; height:144px`,
 		`left:238px; top:249px; width:124px; height:68px`,
 		`left:276px; top:421px`,
-		`data-action="card" src="/assets/bitmaps/bitmap_9221.png"`,
+		`data-action="card" data-src="/assets/bitmaps/bitmap_9221.png"`,
 		`send("TK",[app.position[0],app.position[1],"P|hi",0,3])`,
 		`interactive-widget=overlays-content`,
 		`autocapitalize="none"`,

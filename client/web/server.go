@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 // The executable is intentionally self-contained: index.html is the only
@@ -689,15 +690,69 @@ type npcMetadataResponse struct {
 	NPCs  []npcMetadata `json:"npcs"`
 }
 
-func decodeLegacyNPCText(data []byte) string {
-	decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(data)
-	if err == nil {
-		return string(decoded)
+func legacyNPCTextQuality(value string) int {
+	score := 0
+	for _, character := range value {
+		switch {
+		case character == '�':
+			score -= 40
+		case character < 32 && character != '\t' && character != '\n' && character != '\r':
+			score -= 20
+		case character >= 0xe000 && character <= 0xf8ff:
+			score -= 16
+		case character >= 0x3040 && character <= 0x30ff,
+			character >= 0x31f0 && character <= 0x31ff:
+			score -= 4
+		case character >= 0x00a0 && character <= 0x024f:
+			score -= 3
+		case character >= 0x3400 && character <= 0x4dbf,
+			character >= 0x4e00 && character <= 0x9fff:
+			score += 2
+		}
 	}
-	// A few local fixtures are already UTF-8.  Keeping the original bytes on
-	// decoder failure makes the endpoint useful for those test/development
-	// trees without weakening the GBK path used by the shipped data.
+	return score
+}
+
+func decodeLegacyTextSegment(data []byte) string {
+	// The deployed data tree mixes generated CP936 fields with a few older
+	// Big5 records.  In particular chatroom/bus.create stores
+	// "長毛象公車" as Big5; GBK rejects those bytes, while the normal NPC
+	// names in the same tree are CP936.  Decode one line/value at a time so a
+	// malformed Japanese comment cannot force the entire file to Big5.
+	simplifiedBytes, simplifiedErr := simplifiedchinese.GBK.NewDecoder().Bytes(data)
+	traditionalBytes, traditionalErr := traditionalchinese.Big5.NewDecoder().Bytes(data)
+	simplified := string(bytes.ToValidUTF8(simplifiedBytes, []byte("�")))
+	traditional := string(bytes.ToValidUTF8(traditionalBytes, []byte("�")))
+	// Keep GBK on a tie: it is the authoritative encoding for the generated
+	// 2.5 NPC tree.  Big5 wins only when it is valid and materially cleaner.
+	if traditionalErr == nil && (simplifiedErr != nil || legacyNPCTextQuality(traditional) > legacyNPCTextQuality(simplified)+4) {
+		return traditional
+	}
+	if simplifiedErr == nil {
+		return simplified
+	}
+	if traditionalErr == nil {
+		return traditional
+	}
+	// A few local fixtures are already UTF-8.  Keeping valid source text on
+	// two decoder failures preserves those development trees.
 	return string(bytes.ToValidUTF8(data, []byte("�")))
+}
+
+func decodeLegacyNPCText(data []byte) string {
+	// A .create file may contain several legacy encodings at once (comments
+	// from the Japanese client, CP936 generated fields and Big5 bus names).
+	// Selecting one decoder for the whole file lets an unrelated comment make
+	// every NPC name mojibake.  Syntax is ASCII, so decoding each physical line
+	// independently is safe and leaves braces/keys unchanged.
+	if !bytes.Contains(data, []byte{'\n'}) {
+		return decodeLegacyTextSegment(data)
+	}
+	lines := bytes.Split(data, []byte{'\n'})
+	for index, line := range lines {
+		lines[index] = []byte(decodeLegacyTextSegment(line))
+	}
+	return string(bytes.Join(lines, []byte{'\n'}))
 }
 
 func parseNPCInteger(value string) (int, bool) {
