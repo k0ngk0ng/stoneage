@@ -3896,7 +3896,8 @@
      command.  `/clear` is a small web-only convenience for touch keyboards
      and embedded WebViews that do not expose a forward-delete key.  Keep the
      interception exact: every other slash/bracket command still travels
-     unchanged through TK(P|text) to the 2.5 GMSV. */
+     through TK(P|text) to the 2.5 GMSV, after the same inner escaping that
+     chatStrSendForServer()/makeSendString() applies in the native client. */
   /* Touch keyboards do not expose a reliable forward-delete key.  Keep the
      native Delete shortcut, and accept a small set of unambiguous local
      aliases so clearing the visible buffer is still discoverable on phones.
@@ -3925,6 +3926,23 @@
     if(!LOCAL_CHAT_CLEAR_COMMANDS.has(command))return false;
     clearChatBuffer();
     return true;
+  }
+  /* NETPROC.CPP calls makeSendString() before lssproto_TK_send().  The outer
+     protocol string escaping handled by encodeString() is not a substitute:
+     CHAR_Talk() receives the P| envelope first, then decodes this inner
+     escape table so commas/vertical bars do not become accidental protocol
+     delimiters in trade/family/action commands.  Preserve every other byte,
+     including leading/trailing spaces, exactly as typed. */
+  function encodeNativeChatText(value){
+    let result="";
+    for(const character of String(value??"")){
+      if(character==="\n")result+="\\n";
+      else if(character===",")result+="\\c";
+      else if(character==="|")result+="\\z";
+      else if(character==="\\")result+="\\y";
+      else result+=character;
+    }
+    return result;
   }
   /* The _SA_VERSION_25 build of the 8.5 client keeps the native
      WM_KEYDOWN/VK_BACK branch: Shift+Backspace clears the currently focused
@@ -17244,7 +17262,7 @@
        arrives (and leaves a phantom line when the write is rejected). */
     if(consumeLocalChatCommand(rawText)){input.value="";syncChatInputAppearance();return;}
     const color=chatSettingNumber(app.systemSettings?.chatColor,0,0,9),range=chatSettingNumber(app.systemSettings?.chatRange,3,1,5);
-    await send("TK",[x,y,`P|${rawText}`,color,range]);rememberChatInputHistory(rawText);input.value="";
+    await send("TK",[x,y,`P|${encodeNativeChatText(rawText)}`,color,range]);rememberChatInputHistory(rawText);input.value="";
   }catch(error){reportError(error);}});
   /* Keep chat keystrokes inside the form.  Explicitly submit on Enter instead
      of relying on the browser's implicit-submit heuristic: the native-looking
