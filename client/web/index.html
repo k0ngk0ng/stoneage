@@ -2878,6 +2878,23 @@
        scale the finished 640×480 surface exactly once.  Using the visible
        viewport avoids sizing against the area hidden under a mobile address
        bar while it expands, collapses, or rotates. */
+    /* Transformed fixed scenes can still create a scrollable overflow area in
+       iOS/embedded Chromium even though the document has overflow:hidden.
+       After a rotation those engines may retain the old overflow origin in
+       body.scrollLeft/scrollTop, shifting the new portrait surface off-screen.
+       The game has no document scrolling; clear both scroll containers before
+       measuring and scaling the 640x480 back-buffer. */
+    try {
+      if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+      if (document.documentElement) {
+        document.documentElement.scrollLeft = 0;
+        document.documentElement.scrollTop = 0;
+      }
+      if (document.body) {
+        document.body.scrollLeft = 0;
+        document.body.scrollTop = 0;
+      }
+    } catch (_) { /* some WebViews expose read-only scroll offsets */ }
     const viewport=viewportForScene();
     const scale=Math.max(0.1,Math.min(viewport.width/640,viewport.height/480));
     document.documentElement.style.setProperty("--scene-scale",String(scale));

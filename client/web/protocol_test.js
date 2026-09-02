@@ -604,6 +604,9 @@ if (!/function rememberStableViewport\([\s\S]{0,1800}previousArea/.test(script) 
     !/\$\("account"\)\.addEventListener\("input",[\s\S]{0,420}normalized/.test(script)) {
   throw new Error("mobile login must retain the full pre-IME baseline and suppress keyboard account autocapitalisation");
 }
+if (!/function fitLegacyViewport\(\)[\s\S]{0,1800}document\.body\.scrollLeft\s*=\s*0[\s\S]{0,360}document\.body\.scrollTop\s*=\s*0/.test(script)) {
+  throw new Error("mobile scene fitting must clear stale body scroll offsets after rotation");
+}
 if (!/function releaseLoginInputViewportOnRotation\([\s\S]{0,1200}lockedLandscape[\s\S]{0,360}loginInputViewportLock=false[\s\S]{0,420}lockLoginInputViewport/.test(script) ||
     !/function settleLegacyViewport\(\)[\s\S]{0,180}releaseLoginInputViewportOnRotation\(visibleViewportSize\(\)\)/.test(script)) {
   throw new Error("mobile login viewport lock must be released and recaptured after portrait/landscape rotation");
