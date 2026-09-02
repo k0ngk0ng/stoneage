@@ -29,6 +29,11 @@ if (!battleExtractorSource.includes("crop_rect = (544, 472, 640, 480)") ||
     !battleExtractorSource.includes("image.unlink()")) {
   throw new Error("battle asset extractor lost the native viewport crop/cache path");
 }
+if (!battleExtractorSource.includes('"origin_y": (height - 1) * 24 + 256') ||
+    !battleExtractorSource.includes('"origin_y": 240 if map_number == 200 else (crop_h - 1) * 24 + 256') ||
+    !battleExtractorSource.includes('parser.add_argument(\n        "--map-origins-only"')) {
+  throw new Error("map asset extractor must derive isometric origins from floor height");
+}
 
 function generatedRGBAStats(filename) {
   const png = fs.readFileSync(filename);
@@ -92,6 +97,12 @@ if (transparentBattleFiles.join(",") !== "battle_129.png,battle_130.png,battle_1
   throw new Error(`unexpected transparent battle-map edges: ${transparentBattleFiles.join(",")}`);
 }
 const battleManifest = JSON.parse(fs.readFileSync(path.join(__dirname, "assets", "original", "manifest.json"), "utf8"));
+for (const [floor, entry] of Object.entries(battleManifest.maps || {})) {
+  const height = Number(entry?.source_height), originY = Number(entry?.render?.origin_y);
+  if (Number.isInteger(height) && height > 0 && originY !== (height - 1) * 24 + 256) {
+    throw new Error(`map ${floor} projection origin drifted: ${originY} != ${(height - 1) * 24 + 256}`);
+  }
+}
 if (Object.keys(battleManifest.battles || {}).length !== BATTLE_MAP_FILES_25) throw new Error("battle manifest must describe all 218 sa_2903 SAB files");
 if (battleManifest.battles?.["218"] || battleManifest.battles?.["219"]) throw new Error("later-client battle 218/219 leaked into the 2.5 manifest");
 /* ATT_BOW selects original direction-specific CG records.  All 16 visible
@@ -1648,6 +1659,9 @@ for (const expected of [
      isometric origin from the complete floor height, otherwise rectangular
      maps (for example 30×40) shift actors and doors vertically. */
   /function mapPixel\(x,y\)\{[\s\S]{0,900}const fullHeight=Math\.max\(1,Number\(app\.map\.fullHeight\)\|\|Number\(app\.map\.asset\?\.source_height\)\|\|Number\(app\.map\.height\)\|\|1\)[\s\S]{0,500}origin_y:\(fullHeight-1\)\*24\+256/,
+  /* A stale generated manifest must not override that height-derived origin
+     when its render.origin_y came from the old width-based script. */
+  /const definitionHeight=Math\.trunc\(Number\(definition\.source_height\)\|\|0\);[\s\S]{0,180}render\.origin_y=\(definitionHeight-1\)\*24\+256/,
   /* The native battle result window stops BGM, plays SE 215, and only
      restores the room track after the result is closed. */
   /app\.music\.mode="battle-result";stopBackgroundMusic\(\);playSoundEffect\(215,320,240\);[\s\S]{0,220}renderBattleResult\(\);show\(battleResultScreen\)/,

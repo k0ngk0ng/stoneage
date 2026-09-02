@@ -530,7 +530,11 @@ def collect_map_resources(records, by_number, real_path, palette, output, manife
             "origin": [0, 0],
             "render": {
                 "origin_x": 256,
-                "origin_y": (width - 1) * 24 + 256,
+                # Isometric Y is bounded by the floor's row count.  Using
+                # width here shifts every rectangular floor (for example
+                # 1006, 30×40) by (height-width)*24 pixels and makes live M
+                # actors/doors disagree with the server coordinates.
+                "origin_y": (height - 1) * 24 + 256,
                 "tile_step": [32, 24],
             },
         }
@@ -632,7 +636,7 @@ def map_pack(map_number, records, by_number, real_path, palette, output, manifes
             "width": px_w,
             "height": px_h,
             "origin_x": -448 if map_number == 200 else 256,
-            "origin_y": 240 if map_number == 200 else (crop_w - 1) * 24 + 256,
+            "origin_y": 240 if map_number == 200 else (crop_h - 1) * 24 + 256,
             "tile_step": [32, 24],
         },
     }
@@ -878,6 +882,11 @@ def main() -> int:
     parser.add_argument("--ui-only", action="store_true", help="refresh UI PNGs and aliases in an existing browser asset pack")
     parser.add_argument("--items-only", action="store_true", help="refresh 2.5 item PNGs and logical ADRN aliases in an existing browser asset pack")
     parser.add_argument(
+        "--map-origins-only",
+        action="store_true",
+        help="repair generated map projection origins in an existing browser asset pack",
+    )
+    parser.add_argument(
         "--creation-sprites-only",
         action="store_true",
         help="refresh the small pre-world character-selection SPR pack",
@@ -889,6 +898,27 @@ def main() -> int:
     )
     parser.add_argument("--sprite", type=int, action="append", default=[100000, 100025, 100250])
     args = parser.parse_args()
+
+    if args.map_origins_only:
+        manifest_path = args.output / "manifest.json"
+        if not manifest_path.is_file():
+            parser.error("--map-origins-only requires an existing manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        changed = 0
+        for entry in (manifest.get("maps") or {}).values():
+            height = int(entry.get("source_height") or 0)
+            if height <= 0:
+                continue
+            render = entry.setdefault("render", {})
+            expected = (height - 1) * 24 + 256
+            if render.get("origin_y") != expected:
+                render["origin_y"] = expected
+                changed += 1
+        temporary_manifest = manifest_path.with_name(manifest_path.name + ".tmp")
+        temporary_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary_manifest.replace(manifest_path)
+        print(json.dumps({"output": str(args.output), "map_origins_changed": changed}, ensure_ascii=False))
+        return 0
 
     root = REPO / "runtime" / "legacy-client"
     data = root / "data"

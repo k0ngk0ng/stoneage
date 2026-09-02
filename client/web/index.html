@@ -15040,7 +15040,16 @@
     const fullHeight=Math.max(1,Number(app.map.fullHeight)||Number(app.map.asset?.source_height)||Number(app.map.height)||1);
     const fallback={origin:[0,0],render:{origin_x:256,origin_y:(fullHeight-1)*24+256,tile_step:[32,24]}};
     const definition=app.map.asset||fallback,origin=definition.origin||fallback.origin;
-    const render=Object.assign({},fallback.render,definition.render||{}),step=render.tile_step||fallback.render.tile_step;
+    const render=Object.assign({},fallback.render,definition.render||{});
+    /* Treat the DAT dimensions as authoritative even if an older CDN
+       manifest is still cached with the historical width-based origin.  The
+       generated manifest is repaired as well, but this guard keeps one stale
+       index from shifting every actor/door on a rectangular floor for a
+       complete session.  Map 200 is the deliberately cropped 640×480
+       preview and retains its native origin. */
+    const definitionHeight=Math.trunc(Number(definition.source_height)||0);
+    if(definitionHeight>0&&Number(definition.id)!==200)render.origin_y=(definitionHeight-1)*24+256;
+    const step=render.tile_step||fallback.render.tile_step;
     const lx=Number(x)-Number(origin[0]||0),ly=Number(y)-Number(origin[1]||0);
     return [Number(render.origin_x??fallback.render.origin_x)+(lx+ly)*Number(step[0]??32),Number(render.origin_y??fallback.render.origin_y)+(ly-lx)*Number(step[1]??24)];
   }
