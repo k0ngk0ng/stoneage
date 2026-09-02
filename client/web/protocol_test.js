@@ -2094,6 +2094,9 @@ if (/id="field-right-help"/.test(html)) throw new Error("2.5 field HUD must not 
 if (!/\.legacy-screen>\.legacy-frame,\s*\.legacy-screen>\.legacy-native-frame\{z-index:0!important;pointer-events:none!important\}/.test(html)) {
   throw new Error("native window frame must not cover NPC/WN response buttons");
 }
+if (!/#server-window-screen #server-window-options \.server-window-controls\{[^}]*pointer-events:auto/.test(html)) {
+  throw new Error("native WN response controls must remain clickable when the choice list is pointer-transparent");
+}
 /* BATTLEMENU.CPP::BattleTargetSelect() is used by ordinary H as well as
    capture and actor-targeted magic.  Its MakeWindowDisp(210,356,3,2) pixels
    begin at pActInfoWnd->x/y after the REALBIN (-32,-24) anchor is applied;
