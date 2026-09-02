@@ -15129,7 +15129,8 @@
      for flat rocks but fails for tall trees/roofs because the native client
      also compares the part's map-space quadrant, priority class, and hit
      extents.  Keep this predicate in the same direction as the C++ code: a
-     true result means the part is inserted before the character. */
+     true result means setPartsPrio() inserts the part immediately AFTER the
+     existing character in the descending priority chain. */
   function mapPartBeforeActor(part,actorItem){
     const actor=actorItem.actor||{};
     const partInfo=visualPriorityInfo(part);
@@ -15219,7 +15220,11 @@
       let inserted=false;
       for(let index=0;index<items.length;index++){
         const candidate=items[index];
-        if(candidate.kind===1&&mapPartBeforeActor(part,candidate)){items.splice(index,0,entry);inserted=true;break;}
+        /* MAP.CPP::setPartsPrio() calls insertCharPartsPrio(ptc, part).
+           insertCharPartsPrio inserts after ptc, not before it.  `items` is
+           the same descending chain; the final reverse below then paints
+           the farther entry first, matching SortDispBuffer(). */
+        if(candidate.kind===1&&mapPartBeforeActor(part,candidate)){items.splice(index+1,0,entry);inserted=true;break;}
       }
       if(!inserted)items.push(entry);
     }
