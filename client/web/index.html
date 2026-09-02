@@ -13131,7 +13131,14 @@
          rectangle.  Static metadata is a fallback behind live C records. */
       candidates.push({actor,depth:Number(anchor[1])||0,area:width*height});
     }
-    candidates.sort((left,right)=>right.depth-left.depth||left.area-right.area||npcActorPriority(left.actor)-npcActorPriority(right.actor));
+    /* A live C record is the only object the server can actually dispatch.
+       Static /api/npcs metadata is deliberately painted as a fallback, but
+       bus stops (and a few signboards) share a tile with that fallback.  The
+       old depth/area-first ordering let a taller synthetic sprite win the
+       pixel hit, so clicking the visible bus sent P|hi to a negative id that
+       the server never knew about.  Prefer live actors first; depth/area then
+       resolves overlaps among the live records themselves. */
+    candidates.sort((left,right)=>npcActorPriority(left.actor)-npcActorPriority(right.actor)||right.depth-left.depth||left.area-right.area);
     return candidates[0]?.actor||null;
   }
   function rememberTalkTarget(actor){
@@ -14597,6 +14604,17 @@
             actor.npcTemplate=metadata.template||"";
             actor.npcInteraction=metadata.interaction||"";
             actor.npcSource=metadata.source||"";
+            /* NPC create files are a mix of CP936 and Big5.  The wire C
+               record has no encoding tag, so decoding its name in isolation
+               can turn the CP936 “长毛象客运” into plausible Big5 mojibake
+               (“酗禱砓諦堍”).  The floor metadata is parsed once with the
+               asset loader's known source encoding and carries the canonical
+               UTF-8 label; use it for the matching live object while leaving
+               dynamic players and unrelated NPCs untouched. */
+            if(String(metadata.name||"").trim()){
+              actor.name=String(metadata.name);
+              if(!String(metadata.freeName||"").trim())actor.freeName="";
+            }
           }
           const twin=[...app.actors.values()].find(candidate=>candidate?.staticNPC&&Number(candidate.x)===Number(actor.x)&&Number(candidate.y)===Number(actor.y));
           if(twin){
