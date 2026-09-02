@@ -9623,6 +9623,12 @@
     if(state.pendingAction||!Array.isArray(state.participants)||!state.participants.length)return false;
     if(!battleActionAllowed({kind:"attack"},state))return false;
     state.defaultAttackTurnKey=key;
+    /* BattleButtonBak is restored before CMD_INPUT paints the next menu.  The
+       selector is therefore already in Attack mode, and the native attack
+       bitmap remains down while the user chooses an actor; leaving the
+       visual latch empty made the web client look as if it still required a
+       second Attack click even though pendingAction was active. */
+    setBattleMenuPressedCommand(state,"H|A");
     state.pendingAction={kind:"attack",defaulted:true};
     renderBattleWorld();renderBattle();
     return true;

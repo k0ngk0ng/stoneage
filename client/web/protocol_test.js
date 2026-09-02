@@ -1513,7 +1513,7 @@ for (const expected of [
   /choiceTurnKey:null/,
   /const BATTLE_COUNTDOWN_LOGICAL_BASE=25900;/,
   /function battleButtonPressed\(command,state=app\.battleState\)[\s\S]{0,1100}pendingCommand=battleButtonCommandForAction\(state\.pendingAction\)/,
-  /function armDefaultBattleAttack\(state=app\.battleState\)[\s\S]{0,700}lastPlayerActionKind[\s\S]{0,120}attack[\s\S]{0,520}pendingAction=\{kind:"attack",defaulted:true\}[\s\S]{0,220}renderBattleWorld\(\);renderBattle\(\)/,
+  /function armDefaultBattleAttack\(state=app\.battleState\)[\s\S]{0,700}lastPlayerActionKind[\s\S]{0,120}attack[\s\S]{0,520}setBattleMenuPressedCommand\(state,"H\\|A"\);[\s\S]{0,180}pendingAction=\{kind:"attack",defaulted:true\}[\s\S]{0,220}renderBattleWorld\(\);renderBattle\(\)/,
   /* MAP.CPP derives environmental levels from nearby object parts 80..89;
      DIRECTDRAW.CPP then paints the exact indexed rain/snow pixel patterns
      into the same field back-buffer. */
