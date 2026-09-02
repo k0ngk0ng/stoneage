@@ -1538,6 +1538,10 @@
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
   const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  /* A touch press at the hidden task-bar edge first reveals the native bar;
+     keep its pointer id so the matching release cannot be mistaken for a
+     ground click.  This is reset on every world transition. */
+  app.taskbarRevealPointerId=null;
   /* CHAT.CPP defaults NowMaxVoice to three map cells and MENU.CPP lets the
      player select 1..5.  This is a chat range, not the SE volume control. */
   app.systemSettings.chatRange=3;
@@ -3602,7 +3606,7 @@
        strip from that stale layer. */
     const field=$("field-ui"),tools=$("world-tools"),actions=$("world-actions"),worldWrap=$("world-wrap"),worldOverlay=$("world-overlay");
     const worldVisible=screen===worldScreen;
-    if(!worldVisible)setWorldTaskbarVisible(false);
+    if(!worldVisible){setWorldTaskbarVisible(false);app.taskbarRevealPointerId=null;}
     if(!worldVisible&&app.pointerMoveHeld&&typeof cancelHeldWorldPointer==="function")cancelHeldWorldPointer();
     if(!worldVisible){app.pointerLookTargetId=null;app.pointerLookPointerId=null;}
     for(const node of [field,tools,actions,worldWrap,worldOverlay])if(node)node.style.display=worldVisible?"":"none";
@@ -15756,6 +15760,26 @@
     tools.classList.toggle("taskbar-hidden",!next);
     app.taskbarVisible=next;
   }
+  function touchPointerNearWorldTaskbar(event){
+    /* Pointer Events report `touch` on phones/tablets.  The maxTouchPoints
+       fallback covers embedded WebViews that incorrectly report `mouse` for
+       a finger, while leaving ordinary desktop mouse hover behaviour alone. */
+    if(event?.pointerType!=="touch"&&event?.pointerType!=="pen"&&!(typeof navigator!=="undefined"&&Number(navigator.maxTouchPoints)>0))return false;
+    if(app.phase!=="world"||app.battle||app.taskbarVisible)return false;
+    const rect=worldScreen?.getBoundingClientRect?.();
+    if(!rect||rect.width<=0||rect.height<=0)return false;
+    const sx=(Number(event.clientX)-rect.left)*640/rect.width;
+    const sy=(Number(event.clientY)-rect.top)*480/rect.height;
+    /* Give a finger a 32px logical reveal band.  The actual buttons remain
+       24px high; the extra 8px makes the first tap reliable at a scaled
+       scene edge without stealing normal map clicks farther up the field. */
+    if(!Number.isFinite(sx)||!Number.isFinite(sy)||sx<0||sx>640||sy<448||sy>480)return false;
+    setWorldTaskbarVisible(true);
+    app.taskbarRevealPointerId=event.pointerId===undefined?null:Number(event.pointerId);
+    event.preventDefault?.();
+    renderWorldOverlay();
+    return true;
+  }
   function updateWorldTaskbarPointer(clientX,clientY,target){
     if(app.phase!=="world"||app.battle){setWorldTaskbarVisible(false);return;}
     const rect=worldScreen?.getBoundingClientRect?.();
@@ -17244,6 +17268,11 @@
   }
   function handleWorldPointerDown(event){
     if(app.phase!=="world"||worldRouteInputBlocked()||(event.button!==0&&event.button!==2))return;
+    /* Touch devices have no hover event to wake the auto-hidden task bar.
+       Reveal it on the first bottom-edge press and remember that gesture so
+       pointerup cannot also issue a map route.  The user can tap the now
+       visible button on the following press, just like the native bar. */
+    if(event.button===0&&touchPointerNearWorldTaskbar(event))return;
     /* Bind this physical gesture to the current transition generations.  The
        fish cursor remains free to repaint, but a down/up pair that crosses a
        floor or scene fold must never issue a command to the new map. */
@@ -17285,6 +17314,15 @@
   }
   function handleWorldPointerUp(event){
     if(app.phase!=="world"||app.battle||worldRouteInputBlocked()||(event.button!==0&&event.button!==2))return;
+    if(app.taskbarRevealPointerId!==null&&(
+      event.pointerId===undefined||Number(event.pointerId)===Number(app.taskbarRevealPointerId)
+    )){
+      /* This release belongs to the reveal-only touch gesture.  Do not let
+         the newly exposed bar turn the same tap into a ground movement. */
+      app.taskbarRevealPointerId=null;
+      event.preventDefault?.();
+      return;
+    }
     const gestureMapToken=app.pointerGestureMapToken,gestureSceneToken=app.pointerGestureSceneToken;
     app.pointerGestureMapToken=null;app.pointerGestureSceneToken=null;
     if((gestureMapToken!==null&&gestureMapToken!==mapTransitionToken)||(gestureSceneToken!==null&&gestureSceneToken!==sceneTransitionToken)){
@@ -17560,7 +17598,8 @@
   document.addEventListener("pointerdown",handleWorldPointerDown,true);
   document.addEventListener("pointerup",handleWorldPointerUp,true);
   document.addEventListener("pointercancel",event=>{if(app.phase==="world")endHeldWorldPointer(event,false);},true);
-  window.addEventListener("blur",()=>{if(app.phase==="world")cancelHeldWorldPointer();},{passive:true});
+  document.addEventListener("pointercancel",()=>{if(app.phase==="world")app.taskbarRevealPointerId=null;},true);
+  window.addEventListener("blur",()=>{if(app.phase==="world"){app.taskbarRevealPointerId=null;cancelHeldWorldPointer();}},{passive:true});
   worldScreen.addEventListener("contextmenu",handleWorldContextMenu,true);
   /* The scene is assembled from several siblings (canvas, actor layer,
      field controls, task bar and the chat sibling).  A listener on only one
@@ -18057,7 +18096,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
+    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);
