@@ -294,6 +294,7 @@ for (const expected of [
 for (const expected of [
   "const PREVIOUS_STATE_KEY",
   "function assetObjectKey(url)",
+  "function isLocalStaticPath(url)",
   "previousDeltaKnown",
   "previousChangedAll",
   "previousDeltaFrom",
@@ -305,6 +306,10 @@ for (const expected of [
   "request.headers.has(\"range\")",
 ]) {
   if (!serviceWorker.includes(expected)) throw new Error(`Service Worker hash-delta reuse path missing: ${expected}`);
+}
+if (!/url\.origin === self\.location\.origin && isLocalStaticPath\(url\)/.test(serviceWorker) ||
+    /url\.origin === self\.location\.origin && isStaticPath\(url\)/.test(serviceWorker)) {
+  throw new Error("Service Worker must not cache same-origin /api/assets paths as static resources");
 }
 /* Most UI styles live inside the script's legacyStyle template literal.
    A stray backtick in a CSS comment can therefore leave a perfectly

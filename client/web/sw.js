@@ -40,6 +40,16 @@ function isStaticPath(url) {
     /(?:^|\/)audio\//.test(url.pathname);
 }
 
+/* Same-origin published trees always live at the root.  Keep this stricter
+   predicate separate from isStaticPath(), which also has to recognise a
+   configured CDN prefix such as /stoneage/assets/.  Without the distinction
+   a future /api/assets/... endpoint would be treated as immutable content and
+   cached by the worker, making a dynamic API response survive logout or an
+   update. */
+function isLocalStaticPath(url) {
+  return /^\/(?:assets|maps|audio)\//.test(url.pathname);
+}
+
 function isPublishedMarker(url) {
   /* Never treat an API endpoint that happens to share the marker filename as
      static content.  The real marker lives beside the published trees (or on
@@ -102,7 +112,7 @@ function isStaticRequest(request) {
   if (request.method !== "GET") return false;
   const url = new URL(request.url);
   if (isPublishedMarker(url)) return true;
-  if (url.origin === self.location.origin && isStaticPath(url)) return true;
+  if (url.origin === self.location.origin && isLocalStaticPath(url)) return true;
   if (isAllowedExternalRoot(url)) return true;
   /* The page sends roots immediately after registration, but the first
      navigation can race that message.  CDN paths still carry one of the
