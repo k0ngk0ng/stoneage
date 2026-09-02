@@ -17249,19 +17249,41 @@
      transparent layer leak the browser context menu or make a left click
      look like a no-op. UI hit targets are explicitly excluded; every other
      point in the 640×480 scene is ground input. */
-  function isWorldUiTarget(target){
+  /* The native client keeps MyChatBuffer in the field back-buffer; it is not
+     a mouse hit rectangle.  Our transparent HTML editor must remain focusable
+     for mobile keyboards, but it otherwise sits above the lower map strip
+     and can swallow a doorway click.  Let only a definite map interaction
+     (warp/enemy event or a talkable object) pass through that editor.  A tap
+     on any other part of the chat line still focuses the input normally. */
+  function chatInputMapHit(event){
+    const input=event?.target?.closest?.("#chat-input");
+    if(!input||app.phase!=="world"||app.battle)return false;
+    /* Once the user is editing, preserve the browser's native selection and
+       caret gestures; the pass-through path is for an unfocused transparent
+       overlay only. */
+    if(document.activeElement===input||String(input.value||""))return false;
+    const tile=worldTileFromPointer(event);
+    if(!tile)return false;
+    const cell=mapCellAt(tile[0],tile[1]);
+    if(!cell)return false;
+    const eventCode=(Number(cell.event)||0)&MAP_EVENT_MASK;
+    if(isMapWarpEvent(eventCode)||isMapEnemyEvent(eventCode))return true;
+    return Boolean(actorAtTile(tile,isTalkableActor)||actorAtPointer(event,isTalkableActor));
+  }
+  function isWorldUiTarget(target,event=null){
     if(!(target instanceof Element))return false;
+    if(target.closest("#chat-input")&&chatInputMapHit(event))return false;
     return Boolean(target.closest("#world-loading,#field-ui,#world-tools,button,input,textarea,select,[contenteditable=true]"));
   }
   function worldPointerIsUiTarget(event){
-    if(isWorldUiTarget(event?.target))return true;
+    if(isWorldUiTarget(event?.target,event))return true;
     /* Consult the painted hit target as well so dragging over the field
        toolbar still stops sampling a new destination instead of routing
        through a button.  The native client never captures or repositions the
        browser pointer; document-level listeners keep the held gesture alive
        without Pointer Capture. */
     const hit=document.elementFromPoint?.(Number(event?.clientX),Number(event?.clientY));
-    return isWorldUiTarget(hit);
+    return isWorldUiTarget(hit,event);
   }
   function worldTileFromPointer(event){
     return worldTileFromPointerPosition(Number(event?.clientX),Number(event?.clientY));
