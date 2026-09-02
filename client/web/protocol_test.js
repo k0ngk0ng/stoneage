@@ -4712,6 +4712,9 @@ if(!/function mapLayerCacheUsable\(cache\)\{[\s\S]{0,260}cache\.rasterComplete!=
    !/app\.worldBackBufferHasFrame=false;const result=enterWorldWithoutBattleTimers/.test(script)){
   throw new Error("map refresh must retain the last complete back-buffer until the replacement cache is ready");
 }
+if (!/app\.serverState=\{\};\s*clearChatBuffer\(\);/.test(script)) {
+  throw new Error("fresh character entry must clear chat lines from the previous character session");
+}
 if (!script.includes("function parseMapWindowHeader(value)") ||
     !script.includes("drawTimeAnime:true") ||
     !script.includes("app.mapDrawTimeAnime=header.drawTimeAnime!==false")) {
