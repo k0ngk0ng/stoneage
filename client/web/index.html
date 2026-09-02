@@ -4692,8 +4692,17 @@
        tiles, so it adds no post-map blank interval. */
     if(loading&&app.phase==="world"&&!assetState.fieldBootstrapSpritesReady&&!assetState.fieldBootstrapSpriteLoading&&!assetState.spritesReady)loadFieldBootstrapSpriteManifest();
     if(loading&&!app.mapLoadingStartedAt){app.mapLoadingStartedAt=Date.now();app.mapLoadingStats.startedAt=app.mapLoadingStartedAt;}
-    if(!loading){app.mapLoadingStats.startedAt=0;app.mapLoadingActorStats=null;}
-    app.mapLoadingStats.phase=String(text||"正在加载地图…");
+    if(!loading){
+      app.mapLoadingStats.startedAt=0;
+      app.mapLoadingActorStats=null;
+      /* Keep the final state explicit.  The loading plate is hidden at this
+         point, but debug/mobile status consumers still read this snapshot;
+         leaving the old "正在加载地图…" phase made a completed map look
+         stalled and made a later retry indistinguishable from the first
+         load. */
+      app.mapLoadingStats.phase="地图已就绪";
+      app.mapLoadingStats.progress=100;
+    }else app.mapLoadingStats.phase=String(text||"正在加载地图…");
     renderMapLoadingProgress(text);
     syncMapLoadingVisibility();
     if(app.mapLoading)scheduleMapLoadingProgress();
