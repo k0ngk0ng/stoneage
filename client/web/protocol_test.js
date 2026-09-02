@@ -1880,6 +1880,12 @@ for (const expected of [
   /function sceneTransitionAllowed\(previous,screen\)[\s\S]{0,900}previous===characterScreen&&screen===worldScreen[\s\S]{0,420}return previousInGame&&nextInGame/,
   /if\(!sceneTransitionAllowed\(previous,screen\)\)\{cancelSceneTransition\(\);return;\}/,
   /function cancelSceneTransition\(\)[\s\S]{0,520}sceneTransition\.classList\.remove\("reveal","active","battle-enter","battle-leave","generic"\)/,
+  /* Character selection must hold the shutter until the first opaque map
+     back-buffer is ready; a fixed reveal timer reintroduces black tile bars
+     on slow CDN/mobile loads. */
+  /function worldSceneBackBufferReady\(\)[\s\S]{0,520}if\(app\.mapLoading\)return false;/,
+  /previous===characterScreen&&screen===worldScreen[\s\S]{0,1800}setSceneTransitionLoading\(true\)[\s\S]{0,900}worldSceneBackBufferReady\(\)[\s\S]{0,420}sceneTransition\.classList\.add\("reveal"\)/,
+  /const SCENE_TRANSITION_WORLD_WAIT_TIMEOUT_MS=20000/,
   /const battleEnter=previous===worldScreen&&screen===battleScreen;/,
   /sceneTransition\.classList\.add\("active",battleEnter\?"battle-enter":battleLeave\?"battle-leave":"generic"\)/,
   /* BattleProc swaps back-buffers only between the two HAGARE producers:

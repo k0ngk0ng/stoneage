@@ -668,6 +668,18 @@
     @keyframes scene-tile-battle-leave-out { 0%{transform:rotateY(0deg) scale(1);opacity:1} 100%{transform:translate(calc(var(--scene-out-x,0px)),calc(var(--scene-out-y,0px))) rotateY(-18deg) scale(.05);opacity:0} }
     @keyframes scene-tile-battle-leave-in { 0%{transform:translate(calc(var(--scene-out-x,0px)),calc(var(--scene-out-y,0px))) rotateY(0deg) scale(.05);opacity:1} 100%{transform:translate(0,0) rotateY(0deg) scale(1);opacity:0} }
     @media (prefers-reduced-motion:reduce) { #scene-transition.reveal .scene-transition-tile,#scene-transition.phase-out .scene-transition-tile,#scene-transition.phase-in .scene-transition-tile { animation-duration:.01ms !important; animation-delay:0ms !important; } }
+    /* A character-selection fold can finish before the first M window has
+       decoded its map tiles.  Keep the black shutter closed until that
+       back-buffer is ready, but expose the same compact progress plate used
+       by NOW LOADING so a phone never looks frozen behind a blank curtain. */
+    #scene-transition-loading { position:absolute; left:50%; bottom:22px; z-index:901; display:none; width:286px; max-width:calc(100% - 24px); min-height:48px; padding:5px 8px 6px; transform:translateX(-50%); color:#f7e7b0; background:#1e120df2; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff5,inset -1px -1px #000b,0 1px 0 #120a06; text-align:left; font:10px/13px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #080504; pointer-events:none; }
+    #scene-transition-loading.active { display:block; }
+    #scene-transition-loading strong { display:block; color:#ffe08a; font:12px/15px Tahoma,"Microsoft YaHei",sans-serif; letter-spacing:.08em; }
+    #scene-transition-loading .scene-loading-text { display:block; min-height:13px; color:#f5ecd4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #scene-transition-loading .scene-loading-progress { position:relative; width:100%; height:8px; margin:4px 0 3px; overflow:hidden; background:#090706; border:1px solid #705331; box-shadow:inset 1px 1px #000b; }
+    #scene-transition-loading .scene-loading-progress-bar { display:block; width:0%; height:100%; background:linear-gradient(90deg,#a9682e,#f0c763 58%,#fff0a2); box-shadow:inset 1px 1px #fff6; transition:width .18s steps(5,end); }
+    #scene-transition-loading .scene-loading-progress.is-indeterminate .scene-loading-progress-bar { width:34%; animation:world-loading-scan 1.05s steps(8,end) infinite; }
+    #scene-transition-loading .scene-loading-detail { display:block; min-height:13px; color:#cdb987; font-size:9px; }
     /* MAP.CPP's warp path does not use the encounter HAGARE tile producer.
        PRODUCE_CENTER_PRESSIN/OUT copies the old/new 640x480 back-buffer in
        two horizontal halves that collapse to (or open from) y=240.  Keep a
@@ -998,6 +1010,12 @@
     <div id="orientation-lock" role="dialog" aria-modal="true" aria-labelledby="orientation-title" aria-describedby="orientation-message" hidden><div class="orientation-card"><strong id="orientation-title">调整显示方向</strong><span id="orientation-message">页面会自动适配横屏和竖屏。</span><button id="orientation-enter" type="button" aria-label="关闭提示">确定</button></div></div>
     <div id="scene-transition" aria-hidden="true"></div>
     <div id="map-transition" aria-hidden="true"><i class="map-transition-half top"></i><i class="map-transition-half bottom"></i></div>
+    <div id="scene-transition-loading" aria-hidden="true" aria-live="polite">
+      <strong>NOW LOADING</strong>
+      <span class="scene-loading-text">正在加载地图…</span>
+      <div class="scene-loading-progress" role="progressbar" aria-label="地图加载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i class="scene-loading-progress-bar"></i></div>
+      <small class="scene-loading-detail">准备读取地图资源…</small>
+    </div>
     <section id="server-screen" class="hidden" data-stage="group">
       <h2>选择服务器</h2>
       <img class="title-logo" data-src="/assets/bitmaps/bitmap_9103.png" alt="">
@@ -3159,7 +3177,8 @@
   });
   const sceneTransition=$("scene-transition");
   const mapTransition=$("map-transition");
-  let sceneTransitionToken=0,sceneTransitionTimer=0,sceneTransitionRevealTimer=0;
+  let sceneTransitionToken=0,sceneTransitionTimer=0,sceneTransitionRevealTimer=0,sceneTransitionWaitTimer=0,sceneTransitionWaitStartedAt=0;
+  const SCENE_TRANSITION_WORLD_WAIT_TIMEOUT_MS=20000;
   let mapTransitionToken=0,mapTransitionHoldTimer=0,mapTransitionRevealTimer=0,mapTransitionAbortTimer=0;
   const MAP_TRANSITION_RESPONSE_TIMEOUT_MS=5000;
   const mapTransitionState={active:false,pressed:false,revealRequested:false,targetFloor:-1,sourceFloor:-1,eventSeq:0,pendingPackets:[]};
@@ -3218,15 +3237,36 @@
   }
   function cancelSceneTransition(){
     sceneTransitionToken++;
-    window.clearTimeout(sceneTransitionTimer);window.clearTimeout(sceneTransitionRevealTimer);
-    sceneTransitionTimer=0;sceneTransitionRevealTimer=0;
+    window.clearTimeout(sceneTransitionTimer);window.clearTimeout(sceneTransitionRevealTimer);window.clearTimeout(sceneTransitionWaitTimer);
+    sceneTransitionTimer=0;sceneTransitionRevealTimer=0;sceneTransitionWaitTimer=0;sceneTransitionWaitStartedAt=0;
     document.querySelector("main")?.classList.remove("scene-transition-active");
     if(sceneTransition){sceneTransition.classList.remove("reveal","active","battle-enter","battle-leave","generic");sceneTransition.classList.remove("phase-out","phase-in");sceneTransition.setAttribute("aria-hidden","true");}
+    const loading=document.getElementById("scene-transition-loading");
+    if(loading){loading.classList.remove("active");loading.setAttribute("aria-hidden","true");}
     /* No transition code writes app.cursor.x/y.  Keep the existing painted
        position; the first trusted pointer event after release may update it
        from the browser's current physical location. */
     rebaselineWorldPointerAfterTransition();
     if(typeof renderWorldOverlay==="function")renderWorldOverlay();
+  }
+  function setSceneTransitionLoading(active){
+    const node=document.getElementById("scene-transition-loading");
+    if(!node)return;
+    const visible=Boolean(active);
+    node.classList.toggle("active",visible);
+    node.setAttribute("aria-hidden",visible?"false":"true");
+  }
+  function worldSceneBackBufferReady(){
+    /* `mapLoading` is cleared only by maybeFinishMapLoading() after the
+       complete M raster and bootstrap actor frames are usable.  Keep the
+       explicit map test as a guard for pages restored from a stale session
+       where the flag was reset before the first packet arrived. */
+    if(app.phase!=="world")return false;
+    if(app.mapLoading)return false;
+    const map=app.map,cache=app.mapLayerCache;
+    const dynamic=Boolean(map&&Array.isArray(map.tiles)&&map.tiles.length);
+    const staticReady=Boolean(map?.image?.complete&&map.image.naturalWidth);
+    return dynamic?mapLayerCacheUsable(cache):staticReady;
   }
   function sceneTransitionAllowed(previous,screen){
     /* LOGIN.CPP changes PROC_ID_PASSWORD -> PROC_TITLE_MENU ->
@@ -3244,8 +3284,9 @@
     if(!sceneTransition||!previous||!screen||previous===screen)return;
     if(!sceneTransitionAllowed(previous,screen)){cancelSceneTransition();return;}
     const token=++sceneTransitionToken;
-    window.clearTimeout(sceneTransitionTimer);window.clearTimeout(sceneTransitionRevealTimer);
-    sceneTransitionTimer=0;sceneTransitionRevealTimer=0;
+    window.clearTimeout(sceneTransitionTimer);window.clearTimeout(sceneTransitionRevealTimer);window.clearTimeout(sceneTransitionWaitTimer);
+    sceneTransitionTimer=0;sceneTransitionRevealTimer=0;sceneTransitionWaitTimer=0;sceneTransitionWaitStartedAt=0;
+    setSceneTransitionLoading(false);
     const battleEnter=previous===worldScreen&&screen===battleScreen;
     const battleLeave=previous===battleScreen&&screen===worldScreen;
     const battleSwap=battleEnter||battleLeave;
@@ -3302,6 +3343,36 @@
       sceneTransitionRevealTimer=0;sceneTransition.classList.add("reveal");
       sceneTransitionTimer=window.setTimeout(finish,1200);
     },90);
+    /* Character selection hands the field over to an asynchronous M/DAT
+       load.  The native client does not start its reveal until the new
+       back-buffer is complete; revealing on the fixed 1.2s timer exposed
+       transparent canvas rows as black bars on slow/CDN or mobile loads.
+       Keep the shutter closed while showing a small progress plate, then
+       run the ordinary reveal once the map is genuinely playable. */
+    if(previous===characterScreen&&screen===worldScreen){
+      window.clearTimeout(sceneTransitionRevealTimer);sceneTransitionRevealTimer=0;
+      setSceneTransitionLoading(true);sceneTransitionWaitStartedAt=Date.now();
+      const waitForWorld=()=>{
+        if(token!==sceneTransitionToken)return;
+        sceneTransitionWaitTimer=0;
+        if(worldSceneBackBufferReady()){
+          setSceneTransitionLoading(false);
+          sceneTransition.classList.add("reveal");
+          sceneTransitionTimer=window.setTimeout(finish,1200);
+          return;
+        }
+        /* A failed CDN/DAT request must eventually expose the normal NOW
+           LOADING retry surface instead of trapping the user behind an
+           unlabelled black screen forever. */
+        if(Date.now()-sceneTransitionWaitStartedAt>=SCENE_TRANSITION_WORLD_WAIT_TIMEOUT_MS){
+          setSceneTransitionLoading(false);
+          finish();
+          return;
+        }
+        sceneTransitionWaitTimer=window.setTimeout(waitForWorld,100);
+      };
+      sceneTransitionWaitTimer=window.setTimeout(waitForWorld,100);
+    }
   }
   function clearMapTransitionTimers(){
     window.clearTimeout(mapTransitionHoldTimer);mapTransitionHoldTimer=0;
@@ -4664,6 +4735,18 @@
     const retryVisible=Boolean(stalled&&app.mapLoading&&app.phase==="world");
     detail.textContent=`${suffix}${bootstrapText}${actorText}${byteText}${elapsed>0?` · ${elapsed}s`:""}${stalled?" · 资源响应较慢":""}`;
     if(retry){retry.hidden=!retryVisible;retry.setAttribute("aria-hidden",retryVisible?"false":"true");}
+    /* The character-entry shutter sits above #world-screen, so the normal
+       NOW LOADING panel is covered while that fold is held. Mirror its live
+       text/progress into the top-level transition plate so slow first loads
+       still expose byte counts without revealing a partial map. */
+    const sceneLoading=document.getElementById("scene-transition-loading");
+    if(sceneLoading){
+      const sceneText=sceneLoading.querySelector(".scene-loading-text"),sceneProgress=sceneLoading.querySelector(".scene-loading-progress"),sceneBar=sceneLoading.querySelector(".scene-loading-progress-bar"),sceneDetail=sceneLoading.querySelector(".scene-loading-detail");
+      if(sceneText)sceneText.textContent=phase;
+      if(sceneProgress){sceneProgress.classList.toggle("is-indeterminate",indeterminate);sceneProgress.setAttribute("aria-valuenow",String(Math.round(percent)));}
+      if(sceneBar){if(indeterminate)sceneBar.style.removeProperty("width");else sceneBar.style.width=`${percent}%`;}
+      if(sceneDetail)sceneDetail.textContent=detail.textContent;
+    }
     app.mapLoadingStats={requested:stats.total,loaded:stats.loaded,failed:stats.failed,bytes:stats.bytes,knownBytes:stats.knownBytes,manifestBytes:stats.manifestBytes,manifestTotalBytes:stats.manifestTotalBytes,fieldBootstrapBytes:stats.fieldBootstrapBytes,fieldBootstrapTotalBytes:stats.fieldBootstrapTotalBytes,progress:Math.round(percent),phase,startedAt,lastProgressAt,lastProgressKey:progressKey,stalled,retryVisible};
   }
   function syncMapLoadingVisibility(){
