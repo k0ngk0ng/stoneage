@@ -16156,7 +16156,15 @@
            long click must not enter an intermediate warp, trigger EV, and
            silently continue routing on a different floor.  Only the actual
            requested destination may be a warp tile. */
-        if(!localStepWalkable(current,next,key===goal))continue;
+        /* MAP.CPP::_etcEventCheck() walks the route in order and truncates it
+           at the first warp tile, even when the original click was farther
+           beyond that doorway.  Treat an intermediate warp as enterable here;
+           startNextMove() sends only the prefix through that tile and
+           finalizePendingMove() raises EV, clearing the remainder.  Rejecting
+           every non-goal warp made clicking just outside a building stop one
+           cell short with no scene transition. */
+        const nextEvent=mapEventAt(next[0],next[1]);
+        if(!localStepWalkable(current,next,isMapWarpEvent(nextEvent)||key===goal))continue;
         const nextCost=(cost.get(currentKey)||0)+1;
         if(!cost.has(key)||nextCost<cost.get(key)){
           cost.set(key,nextCost);
@@ -16181,7 +16189,12 @@
        player where it is and let the caller report a blocked direction. */
     if(isInsideFloor(to[0],to[1],app.floor)===false||isInsideFloor(origin[0],origin[1],app.floor)===false)return [];
     let x=origin[0],y=origin[1],blocked=false;
-    while((x!==to[0]||y!==to[1])&&queue.length<MOVE_MAX){const dx=Math.sign(to[0]-x),dy=Math.sign(to[1]-y),direction=directionFor(dx,dy);if(direction<0)break;const next=[x+dx,y+dy],isGoal=next[0]===to[0]&&next[1]===to[1];if(!localStepWalkable([x,y],next,isGoal)){blocked=true;break;}x=next[0];y=next[1];queue.push({direction,target:next});}
+    while((x!==to[0]||y!==to[1])&&queue.length<MOVE_MAX){const dx=Math.sign(to[0]-x),dy=Math.sign(to[1]-y),direction=directionFor(dx,dy);if(direction<0)break;const next=[x+dx,y+dy],isGoal=next[0]===to[0]&&next[1]===to[1],nextEvent=mapEventAt(next[0],next[1]);
+      /* The native route is allowed to include a doorway/warp before the
+         clicked destination.  _etcEventCheck() will cut the two-step send at
+         that tile and dispatch EV; treating only the final cell as a warp
+         made clicks just outside a building stop before its entrance. */
+      if(!localStepWalkable([x,y],next,isMapWarpEvent(nextEvent)||isGoal)){blocked=true;break;}x=next[0];y=next[1];queue.push({direction,target:next});}
     if(!blocked)return queue;
     /* An outside-floor destination was rejected above and therefore never
        reaches this branch.  For an in-floor wall/scene rim, continue with
