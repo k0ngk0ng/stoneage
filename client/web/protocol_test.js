@@ -2374,6 +2374,36 @@ if (sendBattleTargetStart < 0 || sendBattleTargetEnd <= sendBattleTargetStart ||
     !/if\(kind==="player"\)\{[\s\S]{0,320}lastPlayerActionKind[\s\S]{0,220}\}else\{[\s\S]{0,220}lastPetActionKind/.test(sendBattleTargetSource)) {
   throw new Error("pet actor-target W must not overwrite the player's remembered command");
 }
+/* The native menu remembers battleButtonBak before lssproto_B_send returns.
+   Exercise the extracted helper directly so an HTTP/BP ordering change cannot
+   silently reintroduce the old await-after-send race. */
+const playerActionHelperStart = script.indexOf("  function battlePlayerActionKind(");
+const playerActionHelperEnd = script.indexOf("  function battlePetSwitchEntry(", playerActionHelperStart);
+if (playerActionHelperStart < 0 || playerActionHelperEnd <= playerActionHelperStart) {
+  throw new Error("battle player-action memory helper boundary missing");
+}
+const battlePlayerActionHelpers = new Function(`${script.slice(playerActionHelperStart, playerActionHelperEnd)};return {battlePlayerActionKind,battleRememberPlayerAction,battleResolvePlayerAction};`)();
+{
+  const state = {lastPlayerActionKind:"guard",lastPlayerActionCommand:"G",movieGeneration:0,battleBpSeq:0,commandPending:{player:"H|A"},pendingBattleControls:[]};
+  const stamp = battlePlayerActionHelpers.battleRememberPlayerAction(state,"H|A");
+  if (state.lastPlayerActionKind !== "attack" || state.lastPlayerActionCommand !== "H|A") throw new Error("player action must be remembered before B resolves");
+  state.commandPending.player = null; state.battleBpSeq = 1;
+  battlePlayerActionHelpers.battleResolvePlayerAction(state,stamp,false);
+  if (state.lastPlayerActionKind !== "attack" || state.lastPlayerActionCommand !== "H|A") throw new Error("an acknowledged BP must keep the remembered attack");
+}
+{
+  const state = {lastPlayerActionKind:"guard",lastPlayerActionCommand:"G",movieGeneration:0,battleBpSeq:0,commandPending:{player:"H|A"},pendingBattleControls:[]};
+  const stamp = battlePlayerActionHelpers.battleRememberPlayerAction(state,"H|A");
+  battlePlayerActionHelpers.battleResolvePlayerAction(state,stamp,false);
+  if (state.lastPlayerActionKind !== "guard" || state.lastPlayerActionCommand !== "G") throw new Error("an unacknowledged failed B must restore the previous action");
+}
+{
+  const state = {lastPlayerActionKind:"guard",lastPlayerActionCommand:"G",movieGeneration:0,battleBpSeq:0,commandPending:{player:"H|A"},pendingBattleControls:[]};
+  const stamp = battlePlayerActionHelpers.battleRememberPlayerAction(state,"H|A");
+  state.movieGeneration = 1;
+  battlePlayerActionHelpers.battleResolvePlayerAction(state,stamp,false);
+  if (state.lastPlayerActionKind !== "attack" || state.lastPlayerActionCommand !== "H|A") throw new Error("a progressed battle movie must keep the remembered attack");
+}
 /* BattleTargetSelect() emits the row/target tone (217) for J/I/W and then
    the shared command-confirm tone (203).  H/T have only the shared tone;
    TARGET_NONE I uses only 203 because no actor target was selected. */

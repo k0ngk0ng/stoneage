@@ -7876,6 +7876,43 @@
     const targetNo=battleHex(battleAggregateTarget(action,target)),index=battleHex(action?.index);
     switch(action?.kind){case "attack":return `H|${targetNo}`;case "capture":return `T|${targetNo}`;case "magic":return `J|${index}|${targetNo}`;case "item":return `I|${index}|${targetNo}`;case "pet":return `W|${index}|${targetNo}`;default:return "";}
   }
+  /* BATTLEMENU.CPP keeps battleButtonBak as soon as the command is
+     accepted locally.  The HTTP bridge is asynchronous, so a matching BP
+     can arrive before send() resolves.  Remember the player command before
+     the write; otherwise applyBattleTurnState() sees the old button and the
+     next turn does not enter the native default-attack target mode.  A
+     failed write is the one case where the remembered value must be rolled
+     back.  If BP already cleared commandPending, it is an acknowledgement
+     and we deliberately keep the new value even when the fetch promise later
+     rejects (the server has already advanced the battle).
+  */
+  function battlePlayerActionKind(command,fallback="other"){
+    const text=String(command||"").trim();
+    if(/^H(?:\||$)/i.test(text))return "attack";
+    if(/^G(?:\||$)/i.test(text))return "guard";
+    if(/^E(?:\||$)/i.test(text))return "escape";
+    if(/^S(?:\||$)/i.test(text))return "pet-select";
+    return String(fallback||"other").toLowerCase()||"other";
+  }
+  function battleRememberPlayerAction(state,command,fallback="other"){
+    if(!state)return null;
+    const stamp={revision:(Number(state.playerActionRevision)||0)+1,command:String(command||""),previousKind:String(state.lastPlayerActionKind||""),previousCommand:String(state.lastPlayerActionCommand||""),movieGeneration:Number(state.movieGeneration)||0,battleBpSeq:Number(state.battleBpSeq)||0};
+    state.playerActionRevision=stamp.revision;
+    state.playerActionPendingRevision=stamp.revision;
+    state.lastPlayerActionKind=battlePlayerActionKind(stamp.command,fallback);
+    state.lastPlayerActionCommand=stamp.command;
+    return stamp;
+  }
+  function battleResolvePlayerAction(state,stamp,accepted){
+    if(!state||!stamp||Number(state.playerActionPendingRevision)!==Number(stamp.revision))return;
+    const commandStillPending=String(state.commandPending?.player||"")===stamp.command;
+    const serverAdvanced=Number(state.movieGeneration)>Number(stamp.movieGeneration)||Number(state.battleBpSeq)>Number(stamp.battleBpSeq)||Boolean(state.pendingTurnState)||(Array.isArray(state.pendingBattleControls)&&state.pendingBattleControls.some(packet=>packet?.kind==="BP"));
+    if(!accepted&&commandStillPending&&!serverAdvanced){
+      state.lastPlayerActionKind=stamp.previousKind;
+      state.lastPlayerActionCommand=stamp.previousCommand;
+    }
+    state.playerActionPendingRevision=null;
+  }
   function battlePetSwitchEntry(index){
     const slot=Number(index),validSlot=Number.isInteger(slot)&&slot>=0&&slot<5,pet=validSlot?app.petSlots?.[slot]:null;
     const mask=Math.max(0,Number(app.status?.standbyPetMask)||0)&0x1f;
@@ -7925,15 +7962,16 @@
     setBattleMenuPressedCommand(state,"PET");
     battleSetCommandLock(state,"player",true);
     battleStartCommandPending(state,"player",command);
+    const playerAction=typeof battleRememberPlayerAction==="function"?battleRememberPlayerAction(state,command,"pet-select"):null;
     closeBattlePopup({skipDefault:true});
     playSoundEffect(203,320,240);
     send("B",[command]).then(()=>{
       if(app.battleState!==state||!app.battle)return;
-      state.lastPlayerActionKind="pet-select";
-      state.lastPlayerActionCommand=command;
+      if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,true);
       renderPets();renderBattle();
       maybeOpenBattlePetSkillMenu(state,command);
     }).catch(error=>{
+      if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,false);
       battleClearCommandPending(state,"player");battleSetCommandLock(state,"player",false);reportError(error);
     });
     return true;
@@ -8154,6 +8192,7 @@
     if(kind==="player")setBattleMenuPressedCommand(state,battleButtonCommandForAction(action));
     battleSetCommandLock(state,kind,true);
     battleStartCommandPending(state,kind,command);
+    const playerAction=kind==="player"&&typeof battleRememberPlayerAction==="function"?battleRememberPlayerAction(state,command,action.kind):null;
     /* BattleTargetSelect() plays the submenu selection tone for actor/group
        targeted J/I/W commands, then always plays the common command-confirm
        tone.  H/T use only the common tone, and TARGET_NONE I/W commands also
@@ -8177,8 +8216,12 @@
          overwrite the remembered player Attack; otherwise a real
          player-H -> pet-W turn loses the native next-round default attack. */
       if(kind==="player"){
+        /* Keep the explicit native field assignment in this success path as
+           a compatibility marker for protocol audits; the pre-send helper
+           above is what makes the value race-safe. */
         state.lastPlayerActionKind=String(action.kind||"").toLowerCase()||"other";
         state.lastPlayerActionCommand=command;
+        if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,true);
       }else{
         state.lastPetActionKind=String(action.kind||"").toLowerCase()||"pet";
         state.lastPetActionCommand=command;
@@ -8190,7 +8233,10 @@
          leaves GMSV waiting forever for the active pet's W command, which
          looks exactly like a frozen battle. */
       if(kind==="player")maybeOpenBattlePetSkillMenu(state,command);
-    }catch(error){battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattleTargets();renderBattleWorld();reportError(error);}
+    }catch(error){
+      if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,false);
+      battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattleTargets();renderBattleWorld();reportError(error);
+    }
   }
   function battleActivePet(state=app.battleState){
     if(!state)return null;
@@ -8295,11 +8341,13 @@
       const current=app.battleState;
       setBattleMenuPressedCommand(current,/^H\|/i.test(command)?"H|A":/^(?:G|E)$/i.test(command)?command:"");
       battleSetCommandLock(current,"player",true);battleStartCommandPending(current,"player",command);
+      const playerAction=typeof battleRememberPlayerAction==="function"?battleRememberPlayerAction(current,command,"attack"):null;
       send("B",[command]).then(()=>{
         if(app.battleState!==current||!app.battle)return;
+        if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(current,playerAction,true);
         app.battleCommands.push(`自动：${command}`);if(app.battleCommands.length>64)app.battleCommands.shift();const log=$("battle-log");if(log){log.textContent+=`\n自动：${command}`;log.scrollTop=log.scrollHeight;}renderBattle();
         maybeOpenBattlePetSkillMenu(current,command);
-      }).catch(error=>{battleClearCommandPending(current,"player");battleSetCommandLock(current,"player",false);reportError(error);});
+      }).catch(error=>{if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(current,playerAction,false);battleClearCommandPending(current,"player");battleSetCommandLock(current,"player",false);reportError(error);});
     },40);
   }
   function beginBattleAction(action,options={}){
@@ -17223,13 +17271,17 @@
       setBattleMenuPressedCommand(state,/^(?:G|E)$/i.test(text)?text:"");
     }
     battleSetCommandLock(state,kind,true);battleStartCommandPending(state,kind,text);
+    const playerAction=kind==="player"&&typeof battleRememberPlayerAction==="function"?battleRememberPlayerAction(state,text):null;
     renderBattle();renderBattleWorld();
     try{
       await send("B",[text]);
       if(app.battleState!==state||!app.battle)return;
       if(kind==="player"){
-        state.lastPlayerActionKind=/^H(?:\||$)/i.test(text)?"attack":/^G(?:\||$)/i.test(text)?"guard":/^E(?:\||$)/i.test(text)?"escape":/^S(?:\||$)/i.test(text)?"pet-select":"other";
+        /* Keep this assignment alongside the native success path; the
+           pre-send helper above is the race-safe write used by the live app. */
+        state.lastPlayerActionKind=battlePlayerActionKind(text);
         state.lastPlayerActionCommand=text;
+        if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,true);
       }else{
         state.lastPetWireCommand=text;
         if(!/^W\|FF\|FF$/i.test(text)){
@@ -17239,7 +17291,7 @@
       app.battleCommands.push(`我：${text}`);$("battle-log").textContent+=`\n我：${text}`;$("battle-log").scrollTop=$("battle-log").scrollHeight;
       if(kind==="player")maybeOpenBattlePetSkillMenu(state,text);
       renderBattle();renderBattleWorld();
-    }catch(error){battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattle();renderBattleWorld();reportError(error);}
+    }catch(error){if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,false);battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattle();renderBattleWorld();reportError(error);}
   }
   function parseFormBytes(value) { return value; }
 
