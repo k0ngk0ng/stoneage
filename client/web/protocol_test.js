@@ -1869,7 +1869,7 @@ for (const expected of [
   /renderNativeMapCoordinate\(yNode,"南",app\.position\[1\]\);/,
   /* M's event layer is commonly empty in 2.5; warp/door checks must merge
      the static DAT event table without replacing live tile/object collision. */
-  /const liveEvent=Number\(map\.events\?\.\[index\]\?\?0\);[\s\S]{0,900}event=Number\(full\.event\?\.\[fullIndex\]\?\?0\);[\s\S]{0,180}return \{tile:Number\(map\.tiles\?\.\[index\]\?\?0\),object:Number\(map\.objects\?\.\[index\]\?\?0\),event\};/,
+  /const liveEvent=Number\(map\.events\?\.\[index\]\?\?0\);[\s\S]{0,1100}\(event&MAP_EVENT_MASK\)===0[\s\S]{0,500}event=\(event&~MAP_EVENT_MASK\)\|\(fullEvent&MAP_EVENT_MASK\);[\s\S]{0,240}return \{tile:Number\(map\.tiles\?\.\[index\]\?\?0\),object:Number\(map\.objects\?\.\[index\]\?\?0\),event\};/,
   /* ProduceHagare() cuts the 640x480 back-buffer into 64 80x60 shutters;
      keep the scene transition from regressing to the old 8x6 viewport grid. */
   /#scene-transition\s*\{[^}]*width:640px; height:480px;[^}]*grid-template-columns:repeat\(8,[^}]*grid-template-rows:repeat\(8,/s,

@@ -15837,11 +15837,17 @@
          server-side door or map edit and remain authoritative for collision. */
       let event=liveEvent;
       const full=app.autoMapData;
-      if(!event&&full&&Number(full.floor)===Number(app.floor)){
+      /* M's event word commonly contains only MAP_READ_FLAG (0xc000).  The
+         native client keeps that flag while still consulting the complete
+         DAT event grid for the low 12-bit warp/enemy code.  Treating the
+         flag-only value as authoritative hid DAT warps inside an already
+         loaded M window, so stepping onto a doorway could never issue EV. */
+      if((event&MAP_EVENT_MASK)===0&&full&&Number(full.floor)===Number(app.floor)){
         const fullX=Number(x),fullY=Number(y),fullWidth=Number(full.width),fullHeight=Number(full.height);
         if(Number.isInteger(fullX)&&Number.isInteger(fullY)&&fullX>=0&&fullY>=0&&fullX<fullWidth&&fullY<fullHeight){
           const fullIndex=fullY*fullWidth+fullX;
-          event=Number(full.event?.[fullIndex]??0);
+          const fullEvent=Number(full.event?.[fullIndex]??0);
+          event=(event&~MAP_EVENT_MASK)|(fullEvent&MAP_EVENT_MASK);
         }
       }
       return {tile:Number(map.tiles?.[index]??0),object:Number(map.objects?.[index]??0),event};
