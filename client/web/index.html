@@ -4647,7 +4647,7 @@
       renderWorld(true);
       window.setTimeout(()=>{if(actor.speechUntil<=Date.now()){actor.speech="";renderWorld(true);}},1050);
     }
-    if(actor&&app.talkConversation&&Number(app.talkConversation.id)===Number(actor.id)){
+    if(talkConversationMatchesObject(index,"TK")){
       app.talkConversation=null;
       setWorldState("对话完成","good");
     }
@@ -13306,6 +13306,48 @@
     app.talkTargetId=Number(actor.id);app.talkTargetSelectedAt=Date.now();
   }
   function forgetTalkTarget(){app.talkTargetId=null;app.talkTargetSelectedAt=0;}
+  /* WN/TK normally carry the same object index as the C record selected by
+     the native client.  During a 2.5 object-table refresh, however, an NPC
+     can be rebuilt between the L/TK request and its callback; the visible C
+     row then has the new index while the callback still carries the old one.
+     Keep the exact id as the first (and safest) match, then use the locked
+     target's floor/tile and NPC identity as a narrowly-scoped fallback.  A
+     random WN from another NPC must never clear an active conversation. */
+  function talkConversationMatchesObject(objectIndex,kind="WN"){
+    const conversation=app.talkConversation,index=Number(objectIndex);
+    if(!conversation||!Number.isFinite(index)||index<0)return false;
+    if(Number(conversation.id)===index)return true;
+    /* The reserved post-login WN has object index -1 and is rejected by the
+       guard above.  TK likewise uses -1 for ordinary player/system chat. */
+    const target=app.actors.get(Number(conversation.id));
+    const floor=Number(conversation.floor),targetFloor=Number(app.floor);
+    if(Number.isFinite(floor)&&Number.isFinite(targetFloor)&&floor!==targetFloor)return false;
+    const targetX=Number.isFinite(Number(target?.x))?Number(target.x):Number(conversation.x);
+    const targetY=Number.isFinite(Number(target?.y))?Number(target.y):Number(conversation.y);
+    if(!Number.isFinite(targetX)||!Number.isFinite(targetY))return false;
+    const npcCandidates=[...app.actors.values()].filter(actor=>actor&&actor.kind==="character"&&!actorIsOwn(actor)&&npcFilterForTalk(actor)&&Number(actor.x)===targetX&&Number(actor.y)===targetY);
+    /* A rebuilt object may not yet be present in the actor table.  Metadata
+       still identifies the one NPC occupying this tile, so it is safe to
+       accept its callback while the object id is in the old table. */
+    const metadata=app.npcMetadataByKey?.get(npcMetadataKey(targetFloor,targetX,targetY));
+    const conversationName=String(conversation.name||"").trim(),conversationTemplate=String(conversation.template||"").trim().toLowerCase();
+    const identityMatches=actor=>{
+      if(!actor)return false;
+      const name=String(actor.name||"").trim(),template=String(actor.npcTemplate||"").trim().toLowerCase();
+      return Boolean((conversationName&&name===conversationName)||(conversationTemplate&&template===conversationTemplate));
+    };
+    if(npcCandidates.some(actor=>identityMatches(actor)))return true;
+    if(metadata&&((conversationName&&String(metadata.name||"").trim()===conversationName)||(conversationTemplate&&String(metadata.template||"").trim().toLowerCase()===conversationTemplate)))return true;
+    /* A live C row can briefly lose its decoded label while its sprite is
+       being replaced.  Its locked object identity and interaction kind still
+       provide a safe match at the exact tile. */
+    const targetInteraction=String(target?.npcInteraction||"").trim().toLowerCase(),conversationInteraction=String(conversation.interaction||"").trim().toLowerCase();
+    if(target&&Number(target.id)===Number(conversation.id)&&Number(target.x)===targetX&&Number(target.y)===targetY&&conversationInteraction&&targetInteraction===conversationInteraction&&npcCandidates.length===1)return true;
+    /* With no identity label (some generated NPCs intentionally have an
+       empty name/template), a single NPC at the locked interaction tile is
+       still unambiguous.  Never broaden this to a nearby/ranged object. */
+    return !conversationName&&!conversationTemplate&&(npcCandidates.length===1||Boolean(metadata));
+  }
   function resumePendingTalk(){
     const pending=app.pendingTalk;if(!pending)return;
     const target=pendingTalkActor();
@@ -13504,7 +13546,7 @@
          exact object in the WN handler below; the identity check prevents a
          late timeout from touching a newer conversation. */
       app.talkSentAt=now;
-      const lookConversation={id,startedAt:now,mode:"look"};
+      const lookConversation={id,startedAt:now,mode:"look",floor:Number(app.floor),x:Number(current.x),y:Number(current.y),name:String(current.name||""),template:String(current.npcTemplate||""),interaction:String(current.npcInteraction||"")};
       app.talkConversation=lookConversation;
       setWorldState(`正在查看 ${current.name||"NPC"}…`);
       try{await send("L",[wireDirection]);}catch(error){if(app.talkConversation===lookConversation)app.talkConversation=null;reportError(error);return false;}
@@ -13536,7 +13578,7 @@
       await new Promise(resolve=>window.setTimeout(resolve,60));
     }
     app.talkSentAt=Date.now();
-    const conversation={id,startedAt:app.talkSentAt};
+    const conversation={id,startedAt:app.talkSentAt,floor:Number(app.floor),x:Number(current.x),y:Number(current.y),name:String(current.name||""),template:String(current.npcTemplate||""),interaction:String(current.npcInteraction||"")};
     app.talkConversation=conversation;
     setWorldState(`正在与 ${current.name||"NPC"} 交谈…`);
     try{await send("TK",[app.position[0],app.position[1],"P|hi",0,3]);}catch(error){if(Number(app.talkConversation?.id)===id)app.talkConversation=null;reportError(error);return false;}
@@ -13816,10 +13858,11 @@
            the modal itself showed a proper line break. */
         if([0,1,10,11].includes(Number(values[0])))addChat("系统",unescapeCharacterOption(values[4]||""));
         /* WN is the native NPC/menu acknowledgement.  Tie it to the object
-           index rather than clearing every pending conversation (login and
-           item windows can arrive asynchronously while a talk is active). */
+           index (with the locked NPC/tile fallback) rather than clearing every
+           pending conversation; login and item windows can arrive
+           asynchronously while a talk is active. */
         const windowObject=Number(values[3]);
-        if(Number.isFinite(windowObject)&&Number(app.talkConversation?.id)===windowObject){
+        if(talkConversationMatchesObject(windowObject,"WN")){
           app.talkConversation=null;
           if(app.phase==="world"&&!app.battle)setWorldState("对话完成","good");
         }

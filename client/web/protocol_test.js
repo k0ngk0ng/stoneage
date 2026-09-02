@@ -1564,7 +1564,14 @@ for (const expected of [
   /* LOOKEDFUNC NPCs may legally omit a WN response.  Keep a short-lived
      object-specific latch and release it after the native-style timeout so
      a conditional service NPC cannot strand the field in “正在查看…”. */
-  /const lookConversation=\{id,startedAt:now,mode:"look"\};[\s\S]{0,900}app\.talkConversation===lookConversation[\s\S]{0,300}NPC 没有回应。/,
+  /const lookConversation=\{id,startedAt:now,mode:"look",floor:Number\(app\.floor\),x:Number\(current\.x\),y:Number\(current\.y\),name:String\(current\.name\|\|""\),template:String\(current\.npcTemplate\|\|""\),interaction:String\(current\.npcInteraction\|\|""\)\};[\s\S]{0,900}app\.talkConversation===lookConversation[\s\S]{0,300}NPC 没有回应。/,
+  /* A dynamic NPC may be rebuilt between L/TK and WN.  The callback may
+     carry the previous object id, so the fallback must stay constrained to
+     the locked floor/tile and NPC identity instead of clearing every WN. */
+  /function talkConversationMatchesObject\(objectIndex,kind="WN"\)[\s\S]{0,4500}targetInteraction=String\(target\?\.npcInteraction\|\|""\)[\s\S]{0,700}!conversationName&&!conversationTemplate&&\(npcCandidates\.length===1\|\|Boolean\(metadata\)\)/,
+  /const conversation=\{id,startedAt:app\.talkSentAt,floor:Number\(app\.floor\),x:Number\(current\.x\),y:Number\(current\.y\),name:String\(current\.name\|\|""\),template:String\(current\.npcTemplate\|\|""\),interaction:String\(current\.npcInteraction\|\|""\)\};/,
+  /if\(talkConversationMatchesObject\(index,"TK"\)\)/,
+  /if\(talkConversationMatchesObject\(windowObject,"WN"\)\)/,
   /if\(distance===0\)\{[\s\S]{0,120}approachNPC\(clickedActor\);[\s\S]{0,80}return;/,
   /* A map/scene fold gates gameplay routing only.  The painted fish continues
      to follow trusted physical pointer samples; no synthetic recenter,
@@ -1992,6 +1999,26 @@ for (const expected of [
   if (expected.source.includes('\\$\\{text\\}') && expected.source.includes('rememberChatInputHistory')) continue;
   if (!expected.test(html) && !(expected.source.includes('\\$\\{text\\}') && /await send\\("TK",\\[x,y,`P\\|\\$\\{encodeNativeChatText\\(rawText\\)\\}`,color,range\\]\\);rememberChatInputHistory\\(rawText\\);input\\.value=""/.test(html))) throw new Error(`field HUD regression: ${expected}`);
 }
+/* Exercise the object-rebuild fallback without starting the full page.  A
+   stale WN id is accepted only when the locked NPC identity is still present
+   at the exact tile; a different NPC at that tile must not consume it. */
+const talkMatchStart = script.indexOf("  function talkConversationMatchesObject");
+const talkMatchEnd = script.indexOf("  function resumePendingTalk", talkMatchStart);
+if (talkMatchStart < 0 || talkMatchEnd <= talkMatchStart) throw new Error("NPC conversation matcher boundary missing");
+const talkMatch = new Function("app","actorIsOwn","npcFilterForTalk","npcMetadataKey", `${script.slice(talkMatchStart, talkMatchEnd)}; return talkConversationMatchesObject;`);
+const talkApp = {
+  floor: 1000,
+  talkConversation: {id:241,floor:1000,x:10,y:10,name:"药剂师",template:"medicine",interaction:"talk"},
+  npcMetadataByKey: new Map(),
+  actors: new Map([[241,{id:241,kind:"character",x:10,y:10,name:"药剂师",npcTemplate:"medicine",npcInteraction:"talk"}]])
+};
+const isOwnTalkActor = actor => Number(actor?.id)===1;
+const isTalkNPC = actor => Boolean(actor?.kind==="character"&&!isOwnTalkActor(actor));
+const matchStaleWindow = talkMatch(talkApp,isOwnTalkActor,isTalkNPC,(floor,x,y)=>`${floor}:${x}:${y}`);
+if (!matchStaleWindow(240,"WN")) throw new Error("stale NPC WN object id was not associated with its locked target");
+talkApp.actors.set(999,{id:999,kind:"character",x:10,y:10,name:"另一位 NPC",npcTemplate:"other",npcInteraction:"talk"});
+talkApp.actors.delete(241);
+if (matchStaleWindow(240,"WN")) throw new Error("unrelated NPC WN object cleared the locked conversation");
 /* Persistent battle state is two native ACTION slots, not a text badge.
    Audit both the selected 2.5 source branch and executable helper behavior:
    BM owns main replacement/removal, BR owns reverse, BC only fills an empty
