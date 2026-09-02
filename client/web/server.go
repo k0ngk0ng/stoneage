@@ -257,8 +257,29 @@ func pageWithCDNBase(source []byte, baseURL string) []byte {
 		return source
 	}
 	result := append([]byte(nil), source...)
-	for _, prefix := range []string{"/assets/", "/maps/", "/audio/"} {
-		result = bytes.ReplaceAll(result, []byte(prefix), []byte(baseURL+prefix))
+	// Rewrite the origin-relative static roots in two passes.  Replacing them
+	// one at a time can rewrite the CDN root that was inserted by an earlier
+	// pass when the root itself contains another tree name (for example
+	// https://cdn.example/game/maps).  Keep the markers deliberately opaque,
+	// then expand them only after all source references have been isolated.
+	const (
+		assetsMarker = "__STONEAGE_STATIC_ASSETS_ROOT__"
+		mapsMarker   = "__STONEAGE_STATIC_MAPS_ROOT__"
+		audioMarker  = "__STONEAGE_STATIC_AUDIO_ROOT__"
+	)
+	markers := []struct {
+		prefix string
+		marker string
+	}{
+		{prefix: "/assets/", marker: assetsMarker},
+		{prefix: "/maps/", marker: mapsMarker},
+		{prefix: "/audio/", marker: audioMarker},
+	}
+	for _, item := range markers {
+		result = bytes.ReplaceAll(result, []byte(item.prefix), []byte(item.marker))
+	}
+	for _, item := range markers {
+		result = bytes.ReplaceAll(result, []byte(item.marker), []byte(baseURL+item.prefix))
 	}
 	return result
 }

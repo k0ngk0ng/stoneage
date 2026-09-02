@@ -291,6 +291,19 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 	}
 }
 
+func TestPageWithCDNBaseDoesNotRewriteInsertedRoot(t *testing.T) {
+	// A CDN is allowed to publish under a path that happens to contain one of
+	// the client's tree names.  Rewriting /assets/, /maps/ and /audio/ in a
+	// single pass used to reprocess that inserted path and duplicate segments.
+	base := "https://cdn.example.com/game/maps/audio"
+	source := []byte(`assets=/assets/a.png maps=/maps/1000.MAP audio=/audio/bgm/sabgm_s0.wav`)
+	got := string(pageWithCDNBase(source, base))
+	want := `assets=https://cdn.example.com/game/maps/audio/assets/a.png maps=https://cdn.example.com/game/maps/audio/maps/1000.MAP audio=https://cdn.example.com/game/maps/audio/audio/bgm/sabgm_s0.wav`
+	if got != want {
+		t.Fatalf("CDN root was rewritten more than once:\n got %q\nwant %q", got, want)
+	}
+}
+
 func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
 	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "https://cdn.example.com/stoneage/")
 	if got := configFromEnvironment().CDNBaseURL; got != "https://cdn.example.com/stoneage/" {
