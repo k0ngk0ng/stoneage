@@ -2197,6 +2197,10 @@ for (const expected of [
   /#pets-screen\.pet-list-populated #pets-close\{left:156px\}/,
   /surface=\{list:\{bitmap:9164,height:320\},detail:\{bitmap:9165,height:332\},skills:\{bitmap:9238,height:348\}\}/,
   /const skills=imageButton\("查看宠物技能",9166,[\s\S]{0,180}pet-detail-skills/,
+  /#pets-screen \.pet-skill-capacity\{[^}]*width:auto;height:auto;max-width:none;max-height:none/,
+  /const barOrigins=\[\[17,61\],\[18,85\],\[18,110\],\[17,135\],\[18,160\],\[17,185\],\[15,210\]\]/,
+  /bar\.style\.left=`\$\{barOrigins\[i\]\[0\]\}px`;bar\.style\.top=`\$\{barOrigins\[i\]\[1\]\}px`/,
+  /#pets-screen \.pet-skill-row\{[^}]*padding:0 0 0 56px/,
 ]) {
   if (!expected.test(html)) throw new Error(`native pet-window layout regression: ${expected}`);
 }

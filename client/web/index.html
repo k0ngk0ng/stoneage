@@ -2488,9 +2488,15 @@
     #pets-screen .pet-detail-next-button,#pets-screen .pet-skill-next{left:92px;width:32px;height:16px;background-image:url('/assets/bitmaps/bitmap_9272.png')}
     #pets-screen .pet-detail-prev,#pets-screen .pet-detail-next-button{top:313px}
     #pets-screen .pet-skill-page{position:absolute;inset:0;color:#f5ecd4;font:11px/16px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706;pointer-events:none}
-    #pets-screen .pet-skill-capacity{position:absolute;left:4px;top:4px;width:272px;height:348px;image-rendering:pixelated;pointer-events:none}
+    /* CG_PET_WAZA_BAR_1..7 are independent 240px strips.  Their REALBIN
+       offsets are relative to the same window centre as bitmap_9238, so the
+       browser must keep each strip at its intrinsic size and place it at its
+       native row.  Stretching a strip to the full 272x348 window turns its
+       transparent pixels into the white/blue vertical bands seen in the
+       broken skills page. */
+    #pets-screen .pet-skill-capacity{position:absolute;left:auto;top:auto;width:auto;height:auto;max-width:none;max-height:none;image-rendering:pixelated;pointer-events:none}
     #pets-screen .pet-skill-name{position:absolute;left:16px;top:36px;width:128px;text-align:center;white-space:nowrap;overflow:hidden}
-    #pets-screen .pet-skill-row{position:absolute;left:19px;width:220px;height:22px;margin:0;padding:0;color:#f5ecd4;background:transparent;border:0;box-shadow:none;text-align:left;text-shadow:inherit;pointer-events:auto}
+    #pets-screen .pet-skill-row{position:absolute;left:19px;width:220px;height:22px;margin:0;padding:0 0 0 56px;color:#f5ecd4;background:transparent;border:0;box-shadow:none;text-align:left;text-shadow:inherit;pointer-events:auto}
     #pets-screen .pet-skill-row.battle-only{color:#969696}
     #pets-screen .pet-skill-row:hover,#pets-screen .pet-skill-row:focus-visible{color:#ffe88b;filter:none;outline:0;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
     #pets-screen .pet-skill-memo{position:absolute;left:36px;top:256px;width:200px;height:60px;overflow:hidden;white-space:pre-wrap;line-height:20px;pointer-events:none}
@@ -6647,7 +6653,12 @@
   function renderPetSkills(list,pet,index){
     const root=document.createElement("div");root.className="pet-skill-page";
     const skills=(app.petSkills[index]||[]).slice(0,7),capacity=Math.max(skills.length,Math.min(7,Math.max(0,decimal(pet.maxSkill??pet.slot,0))));
-    for(let i=0;i<capacity;i++){const bar=document.createElement("img");bar.className="pet-skill-capacity";bar.alt="";bar.src=`/assets/bitmaps/bitmap_${9239+i}.png`;root.append(bar);}
+    /* StockDispBuffer() uses the window centre (mx=140,my=178) for every
+       skill strip.  These origins are mx+xoffset/my+yoffset from manifest
+       entries 26131..26137; keep them explicit because the strips differ by
+       one pixel in width and their y offsets are not a uniform CSS grid. */
+    const barOrigins=[[17,61],[18,85],[18,110],[17,135],[18,160],[17,185],[15,210]];
+    for(let i=0;i<capacity;i++){const bar=document.createElement("img");bar.className="pet-skill-capacity";bar.alt="";bar.src=`/assets/bitmaps/bitmap_${9239+i}.png`;bar.style.left=`${barOrigins[i][0]}px`;bar.style.top=`${barOrigins[i][1]}px`;root.append(bar);}
     const name=document.createElement("span");name.className="pet-skill-name";name.textContent=petDisplayName(pet);root.append(name);
     const memo=document.createElement("div");memo.className="pet-skill-memo";memo.textContent=skills.find(skill=>Number(skill.index)===Number(app.petSkillHover))?.memo||"";root.append(memo);
     skills.forEach((skill,rowIndex)=>{const field=Number(skill.field),row=button(skill.name||`技能 ${rowIndex+1}`,()=>useFieldPetSkill(index,skill));row.className=`pet-skill-row${field===1?" battle-only":""}`;row.style.top=`${62+rowIndex*25}px`;row.title=field===1?"战斗中使用":"点击使用宠物技能";row.setAttribute("aria-label",`${skill.name||`技能 ${rowIndex+1}`}（${field===1?"战斗技能":"场景技能"}）`);row.addEventListener("pointerenter",()=>{app.petSkillHover=Number(skill.index);memo.textContent=skill.memo||"";});row.addEventListener("focus",()=>{app.petSkillHover=Number(skill.index);memo.textContent=skill.memo||"";});root.append(row);});
