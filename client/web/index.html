@@ -4473,7 +4473,12 @@
     const activePet=battleActivePet(state);
     if(battleLocalDeath(state)){
       clearBattleChoiceTimer(state);resetBattleMenuMotion(state,{keepGeneration:true});
-      if(activePet)sendBattlePetDefault(state,{force:true,clearChoice:true});
+      /* A live same-side player keeps BATTLE_Command() active.  In that
+         party case BATTLE_CommandWait() still waits for this dead master's
+         live pet, so reproduce BattleMenuProc()'s W|FF|FF hand-off.  When
+         no player remains, BATTLE_CountAlive()==0 and the final BC pet row
+         is stale; ensureBattlePetAfterLocalDeath() deliberately sends no W. */
+      if(activePet&&!battleServerSideDefeated(state))ensureBattlePetAfterLocalDeath(state);
       if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);
       return;
     }
@@ -9005,24 +9010,36 @@
   function battleLocalDeath(state=app.battleState){
     return battleParticipantDefeated(battleLocalParticipant(state));
   }
-  /* A dead master is deliberately absent from BATTLE_CommandWait().  The
-     server therefore waits only for the active pet's command, even when the
-     matching BP snapshot arrived before BC and the normal unavailable-menu
-     path had no pet row to inspect yet.  Keep this recovery separate from the
-     player N hand-off: once BC proves that the master is dead and a live
-     BattleMyNo+5 pet exists, submit exactly one native no-op for this BP/menu
-     generation.  Repeated BC/BA polls are common on the HTTP bridge and must
-     not duplicate W|FF|FF.
+  /* A dead master is skipped by BATTLE_CommandWait(), and the 2.5 server's
+     BATTLE_CountAlive() excludes CHAR_TYPEPET.  If another player is still
+     alive, the battle continues and that master's live pet remains a command
+     owner, so the native pet-stage W|FF|FF is required.  If no player remains,
+     the final BC can still expose a stale pet row while BATTLE_Finish() is
+     pending; that terminal path must not receive a synthetic W.
    */
   function ensureBattlePetAfterLocalDeath(state=app.battleState){
     /* Compatibility hook for old queued-state callers.  2.5's
        BATTLE_CountAlive() ignores pets, so a dead master never needs a
-       recovery W command; the terminal XYD/BC path owns scene exit. */
+       recovery W command; the terminal XYD/RS path owns scene exit.  A
+       final BC may still contain the pet row until BATTLE_Finish() removes
+       the whole roster, but that row is not a command owner. */
     if(!state||app.battleState!==state||!app.battle||state.movieActive||!battleLocalDeath(state))return false;
     clearBattleChoiceTimer(state);
+    const terminal=battleServerSideDefeated(state),activePet=battleActivePet(state);
+    if(!terminal&&activePet){
+      /* Only a live same-side player leaves the server in C_WAIT after the
+         master dies.  Key the implicit W to the native BP/menu generation so
+         repeated BC/BA polls cannot submit it twice. */
+      const key=Number.isFinite(Number(state.turnKey))?Number(state.turnKey):Number(state.turn)||0;
+      if(state.implicitPetTurn!==key){
+        state.implicitPetTurn=key;
+        sendBattlePetDefault(state,{force:true,clearChoice:true});
+      }
+      return true;
+    }
     /* Legacy diagnostic expression retained for protocol audits:
        if(battleLocalSideDefeated(state))scheduleBattleDeathExit(state,false) */
-    if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);
+    if(terminal)scheduleBattleDeathExit(state,false);
     return false;
   }
   function battleLocalSideDefeated(state=app.battleState){
@@ -9654,17 +9671,16 @@
        cleared flags and submits a second N/W pair for the same turn. */
     const surpriseTurn=state.surpriseAutoTurn;
     if(surpriseTurn!==null&&surpriseTurn!==undefined&&Number(surpriseTurn)===key)return;
-    /* A dead master follows a distinct native branch: it is marked command
-       complete without an N write, then a live active pet receives the
-       mandatory W|FF|FF.  Do not briefly paint/click the player menu just
-       because a gateway omitted BP_PLAYER_MENU_NON from that BC snapshot. */
+    /* A dead master is not an N command.  If another player remains,
+       ensureBattlePetAfterLocalDeath() submits the native W|FF|FF for the
+       live pet; when BATTLE_CountAlive()==0 it only arms the terminal
+       watchdog, because the final BC pet row is stale. */
     if(battleLocalDeath(state)&&state.implicitPlayerTurn!==key){
       state.implicitPlayerTurn=key;
       state.commandLocked=true;
       clearBattleChoiceTimer(state);
       resetBattleMenuMotion(state,{keepGeneration:true});
-      state.petAfterPlayerReady=true;
-      continueBattlePetAfterPlayer(state);
+      ensureBattlePetAfterLocalDeath(state);
       if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);
       return;
     }
@@ -9673,12 +9689,9 @@
       state.implicitPlayerTurn=key;
       setBattleMenuPressedCommand(state,"");
       battleSetCommandLock(state,"player",true);
-      /* BattleMenuProc() still performs the player->pet hand-off when the
-         master is dead.  BATTLE_CommandWait() skips the dead player, but it
-         keeps waiting on a live myNo+5 pet in C_WAIT; omitting the following
-         W|FF|FF strands a party battle as if the browser had frozen.  The
-         terminal watchdog remains armed below, so a truly defeated side can
-         still leave normally after its final XYD/BU boundary. */
+      /* This branch is only for a live player whose menu is unavailable.  A
+         dead master was handled above and must not be converted into an N/W
+         pair merely because a terminal BC still carries its old pet row. */
       state.petAfterPlayerPending=true;
       battleStartCommandPending(state,"player","N");
       app.battleCommands.push("自动：N（战斗菜单不可用）");if(app.battleCommands.length>64)app.battleCommands.shift();
@@ -9731,8 +9744,11 @@
     if(battleLocalDeath(state)||state.escapeLocalSuccess||state.escape){
       if(battleLocalDeath(state)){
         clearBattleChoiceTimer(state);
-        sendBattlePetDefault(state,{force:true,clearChoice:true});
-        if(battleServerSideDefeated(state))scheduleBattleDeathExit(state,false);
+        /* The 2.5 server excludes pets from BATTLE_CountAlive() and enters
+           BATTLE_Finish() after the local player dies only when no player
+           remains.  A living teammate keeps BATTLE_CommandWait() active and
+           requires the dead master's live pet to submit W|FF|FF. */
+        ensureBattlePetAfterLocalDeath(state);
         return;
       }
       sendBattlePetDefault(state,{force:true,clearChoice:true});
@@ -12627,11 +12643,10 @@
        carry the same state. */
     submitBattleUnavailableDefaults(state,state.turnKey??state.turn);
     continueBattlePetAfterPlayer(state);
-    /* BC may be the first packet that exposes the live pet after a BP marked
-       the now-dead player menu unavailable.  The native server skips the
-       dead player in BATTLE_CommandWait() and waits for W from that pet; run
-       the independent recovery after the authoritative roster is installed
-       so this BP cannot strand the battle in C_WAIT. */
+    /* BC may be the first packet that exposes the live pet after the local
+       player has died.  In 2.5 that pet row is not counted by
+       BATTLE_CountAlive(); ensureBattlePetAfterLocalDeath() only clears the
+       stale command deadline and lets the terminal BC/RS path drain. */
     ensureBattlePetAfterLocalDeath(state);
     /* A normal defeat has no RS/BU packet in the 2.5 server: BATTLE_Exit()
        sends XYD directly.  Arm the watchdog only when every actual member of

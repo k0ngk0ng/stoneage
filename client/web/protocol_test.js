@@ -1712,8 +1712,9 @@ for (const expected of [
      command; it is not a local already-submitted lock. */
   /function maybeOpenBattlePetSkillMenu\(state,command=""\)[\s\S]{0,1900}queueBattlePetMenuStage\(state,command\)/,
   /function sendBattlePetDefault[\s\S]{0,500}state\.commandPending\?\.pet/,
-  /* A dead/escaped master cannot open the pet-skill chooser. */
-  /function continueBattlePetAfterPlayer[\s\S]{0,1000}battleLocalDeath\(state\)\|\|state\.escapeLocalSuccess\|\|state\.escape[\s\S]{0,220}sendBattlePetDefault\(state,\{force:true,clearChoice:true\}\)/,
+  /* A dead master follows 2.5's terminal path (BATTLE_CountAlive excludes
+     pets); only an escape keeps the explicit pet wait command. */
+  /function continueBattlePetAfterPlayer[\s\S]{0,1100}if\(battleLocalDeath\(state\)\)[\s\S]{0,420}BATTLE_Finish|function continueBattlePetAfterPlayer[\s\S]{0,1000}state\.escapeLocalSuccess\|\|state\.escape[\s\S]{0,260}sendBattlePetDefault\(state,\{force:true,clearChoice:true\}\)/,
   /sendBattlePetDefault\(state,\{force:true,clearChoice:true\}\)/,
   /function showConnectionFailure\(error,fallback="服务器连接失败。"\)\{[^}]*openServerSelection\("group",""\)/s,
   /* BattleMenu.CPP paints an actor hit box for H/T; ordinary attacks must
@@ -4087,6 +4088,26 @@ if (!localDefeat.battleServerSideDefeated(missingFlagMasterDownPetAlive) ||
     !localDefeat.battleServerSideDefeated({myNoKnown:true,myNo:10,participants:[sideOneDeadHero,sideOneLivingPet,sideOneEnemy]}) ||
     localDefeat.battleServerSideDefeated({myNoKnown:true,myNo:10,participants:[sideOneDeadHero,sideOneLivingTeammate,sideOneLivingPet,sideOneEnemy]})) {
   throw new Error("server-side defeat must use the 2.5 player slots when terminal BC omits BC_FLG_PLAYER");
+}
+/* The 2.5 server enters BATTLE_Finish() as soon as BATTLE_CountAlive()
+   reaches zero; CHAR_TYPEPET rows are excluded from that count.  Guard the
+   production dead-master branch against a future refactor that reintroduces
+   the old synthetic W|FF|FF write while the final BC/RS pair is draining. */
+const unavailableStart = script.indexOf("  function submitBattleUnavailableDefaults");
+const playerUnavailableStart = script.indexOf("    const playerUnavailable=", unavailableStart);
+const executableDeadMasterBranch = script.slice(unavailableStart, playerUnavailableStart)
+  .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+if (/sendBattlePetDefault\s*\(/.test(executableDeadMasterBranch)) {
+  throw new Error("dead-master terminal branch must not submit a synthetic pet wait command");
+}
+const ensureDeadMasterStart = script.indexOf("  function ensureBattlePetAfterLocalDeath");
+const ensureDeadMasterEnd = script.indexOf("  function battleLocalSideDefeated", ensureDeadMasterStart);
+const executableEnsureDeadMaster = script.slice(ensureDeadMasterStart, ensureDeadMasterEnd)
+  .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+if (!/const terminal=battleServerSideDefeated\(state\),activePet=battleActivePet\(state\)/.test(executableEnsureDeadMaster) ||
+    !/if\(!terminal&&activePet\)[\s\S]{0,700}sendBattlePetDefault\(state,\{force:true,clearChoice:true\}\)/.test(executableEnsureDeadMaster) ||
+    !/if\(terminal\)scheduleBattleDeathExit\(state,false\)/.test(executableEnsureDeadMaster)) {
+  throw new Error("dead-master pet hand-off must distinguish a live teammate from terminal defeat");
 }
 const localExitSource = script.slice(script.indexOf("  function finishLocalBattleDeath"), script.indexOf("  function battleStartCommandPending"));
 const executableLocalExitSource = localExitSource.replace(/\/\*[\s\S]*?\*\//g,"").replace(/\/\/.*$/gm,"");
