@@ -4703,7 +4703,11 @@
       app.mapLoadingStats.phase="地图已就绪";
       app.mapLoadingStats.progress=100;
     }else app.mapLoadingStats.phase=String(text||"正在加载地图…");
-    renderMapLoadingProgress(text);
+    /* Do not feed the loading default back into the completed snapshot.  The
+       no-argument `setMapLoading(false)` path must keep the explicit
+       "地图已就绪" phase above; passing its default text here immediately
+       overwrote that state while the curtain was being hidden. */
+    renderMapLoadingProgress(loading?text:"");
     syncMapLoadingVisibility();
     if(app.mapLoading)scheduleMapLoadingProgress();
     else {window.clearTimeout(mapLoadingProgressTimer);mapLoadingProgressTimer=0;}
