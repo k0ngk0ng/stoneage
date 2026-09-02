@@ -7128,6 +7128,14 @@
         live.npcTemplate=String(record.template||"");
         live.npcInteraction=String(record.interaction||"");
         live.npcSource=String(record.source||"");
+        /* Metadata may arrive after the live C packet.  Apply the canonical
+           UTF-8 label here as well as in receiveActors(), otherwise a slow
+           /api/npcs response leaves the already-painted bus/signboard name
+           in its ambiguous Big5/CP936 mojibake form until the next refresh. */
+        if(String(name||"").trim()){
+          live.name=String(name);
+          if(!String(record.freeName||"").trim())live.freeName="";
+        }
         continue;
       }
       const staticActor=Object.assign(existing||{}, {id,objectType:1,charType:20,type:20,kind:"character",staticNPC:true,npcFloor:Number(floor),x,y,direction:clientDirectionFromServer(stateNumber(record.direction)),wireDirection:stateNumber(record.direction),graphicKey:String(graphic),graphic,level:0,name,freeName:"",walkable:1,height:1,charNameColor:0,fmName:"",petName:"",petLevel:0,raw:"",npcTemplate:String(record.template||""),npcInteraction:String(record.interaction||""),npcSource:String(record.source||"")});
