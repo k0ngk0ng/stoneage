@@ -3453,6 +3453,35 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
    the list after the next successful login. */
 const failureSource = script.slice(script.indexOf("function showConnectionFailure"), script.indexOf("function returnToAccountLogin"));
 if (/addEvent\(/.test(failureSource)) throw new Error("connection failure leaked into the event list");
+/* SAAC may answer one CharList request with a transient `locked` status
+   while releasing an abandoned session.  The native flow retries once after
+   the lock is released; other errors must go straight to the common dialog.
+   Keep these source contracts beside the title failure checks so a future
+   refactor cannot reintroduce a second click or an infinite reconnect loop. */
+const charListRetryStart = script.indexOf("const CHAR_LIST_LOCK_RETRY_DELAY_MS");
+const charListRetryEnd = script.indexOf("function returnToAccountLogin", charListRetryStart);
+if (charListRetryStart < 0 || charListRetryEnd <= charListRetryStart) {
+  throw new Error("transient CharList lock retry path missing");
+}
+const charListRetrySource = script.slice(charListRetryStart, charListRetryEnd);
+if (!/CHAR_LIST_LOCK_RETRY_DELAY_MS=350/.test(charListRetrySource) ||
+    !/function retryLockedCharacterList\(reason\)/.test(charListRetrySource) ||
+    !/toLowerCase\(\)!=="locked"\|\|Number\(app\.charListLockRetryCount\|\|0\)>0\)return false/.test(charListRetrySource) ||
+    !/app\.charListLockRetryCount=1/.test(charListRetrySource) ||
+    !/closeTransport\(\);[\s\S]{0,180}openServerSelection\("connecting"/.test(charListRetrySource) ||
+    !/window\.setTimeout\(\(\)=>\{[\s\S]{0,320}connectLogin\(\)\.catch/.test(charListRetrySource) ||
+    !/\},CHAR_LIST_LOCK_RETRY_DELAY_MS\)/.test(charListRetrySource)) {
+  throw new Error("CharList lock retry must be delayed, one-shot, and reconnect through connectLogin");
+}
+const receiveCharacterListSource = script.slice(script.indexOf("function receiveCharacterList"), script.indexOf("function escapeHTML", script.indexOf("function receiveCharacterList")));
+if (!/if\(retryLockedCharacterList\(reason\)\)return;/.test(receiveCharacterListSource) ||
+    !/showConnectionFailure\(reason,"读取人物列表失败，请稍后重试。"\)/.test(receiveCharacterListSource)) {
+  throw new Error("CharList failures must retry only locked responses and otherwise show the common dialog");
+}
+const serverSelectionSource = script.slice(script.indexOf("function renderServerSelection"), script.indexOf("function openServerSelection"));
+if (!/if\(stage==="group"\)app\.charListLockRetryCount=0/.test(serverSelectionSource)) {
+  throw new Error("new server-list visits must reset the CharList retry budget");
+}
 /* The stock 2.5 MENU.CPP has no _NEW_SYSTEM_MENU/SaMenu branch. Keep the
    browser menu honest: only the implemented logout paths and local chat/audio
    settings are visible, and no placeholder is allowed to fall back to a
