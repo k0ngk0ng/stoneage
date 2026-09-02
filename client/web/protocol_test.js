@@ -1530,7 +1530,7 @@ for (const expected of [
   /function updateHeldWorldPointer\(event\)[\s\S]{0,700}app\.cursor\.visible=true/,
   /function updateHeldWorldPointer\(event\)[\s\S]{0,1100}moveModeReady[\s\S]{0,320}setHeldMoveDestination\(tile,Date\.now\(\),false\)/,
   /function endHeldWorldPointer\(event=null,commit=true\)[\s\S]{0,1500}clearHeldWorldPointerSample\(\)[\s\S]{0,700}app\.cursor\.visible=true[\s\S]{0,500}app\.cursor\.updatedAt=Date\.now\(\)/,
-  /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{app\.cursor\.visible=true;/,
+  /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{setWorldTaskbarVisible\(false\);app\.cursor\.visible=true;/,
   /function moveTargetIsSolid\(target\)[\s\S]{0,900}isMapWarpEvent\(event\)\|\|isMapEnemyEvent\(event\)[\s\S]{0,260}localCellWalkable\(target\[0\],target\[1\],false\)===false/,
   /function installMoveRoute\(route,requested\)[\s\S]{0,900}moveTargetIsSolid\(requested\)[\s\S]{0,180}app\.moveTarget=\[Number\(last\[0\]\),Number\(last\[1\]\)\]/,
   /* An in-floor wall/scene-rim click must use the bounded A* nearest-cell
@@ -1598,6 +1598,10 @@ for (const expected of [
      transparent so the browser never turns the fish into a click shield. */
   /#world-overlay\s*\{[^}]*z-index:1100;[^}]*pointer-events:none/,
   /#world-tools button\s*\{[^}]*pointer-events:auto/,
+  /#world-tools\s*\{[^}]*transform:translateY\(24px\)[^}]*transition:transform/,
+  /#world-tools\.taskbar-visible\s*\{[^}]*transform:translateY\(0\)/,
+  /function updateWorldTaskbarPointer\(clientX,clientY,target\)[\s\S]{0,900}sy>=456&&sy<=480/,
+  /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{setWorldTaskbarVisible\(false\)/,
   /document\.addEventListener\("pointerdown",handleWorldPointerDown,true\)/,
   /document\.addEventListener\("pointercancel",event=>\{if\(app\.phase==="world"\)endHeldWorldPointer\(event,false\);\},true\)/,
   /* play_map_bgm() keeps regional markers 47..53 outside the 6.0 music

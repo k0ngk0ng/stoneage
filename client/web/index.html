@@ -311,7 +311,9 @@
     #world-actions [data-dir="7"] { left:288px; top:288px; }
     #world-actions [data-dir="1"] { left:224px; top:224px; }
     #world-actions .wide { left:242px; top:230px; width:156px; height:55px; }
-    #world-tools { position:absolute; left:0; bottom:0; z-index:12; width:640px; max-width:none; height:24px; margin:0; padding:0; display:block; border:0; background:transparent url('/assets/bitmaps/bitmap_9147.png') center/100% 24px no-repeat; }
+    #world-tools { position:absolute; left:0; bottom:0; z-index:12; width:640px; max-width:none; height:24px; margin:0; padding:0; display:block; border:0; background:transparent url('/assets/bitmaps/bitmap_9147.png') center/100% 24px no-repeat; transform:translateY(24px); transition:transform 180ms steps(12,end); }
+    #world-tools.taskbar-visible { transform:translateY(0); }
+    #world-tools:not(.taskbar-visible) button { pointer-events:none; }
     /* The toolbar is a transparent hit layer over the native task bitmap.
        pointer-events:none belongs to the parent so the empty strip does not
        swallow map clicks; each actual button must opt back in or Chromium
@@ -1938,6 +1940,8 @@
   advancedStyle.textContent=`
     #world-tools{display:block}
     #world-tools{background:transparent;bottom:0;left:0;height:24px;pointer-events:none}
+    #world-tools.taskbar-hidden{transform:translateY(24px)!important}
+    #world-tools.taskbar-visible{transform:translateY(0)!important}
     #world-tools button{font-size:0;opacity:1;pointer-events:auto;border:0;border-radius:0;box-shadow:none;padding:0;background-repeat:no-repeat;background-position:center;background-size:100% 24px;image-rendering:pixelated}
     #world-tools button:nth-child(1){background-image:url('/assets/bitmaps/bitmap_9249.png');width:92px}
     #world-tools button:nth-child(2){background-image:url('/assets/bitmaps/bitmap_9251.png');width:92px}
@@ -3527,6 +3531,7 @@
        strip from that stale layer. */
     const field=$("field-ui"),tools=$("world-tools"),actions=$("world-actions"),worldWrap=$("world-wrap"),worldOverlay=$("world-overlay");
     const worldVisible=screen===worldScreen;
+    if(!worldVisible)setWorldTaskbarVisible(false);
     if(!worldVisible&&app.pointerMoveHeld&&typeof cancelHeldWorldPointer==="function")cancelHeldWorldPointer();
     if(!worldVisible){app.pointerLookTargetId=null;app.pointerLookPointerId=null;}
     for(const node of [field,tools,actions,worldWrap,worldOverlay])if(node)node.style.display=worldVisible?"":"none";
@@ -15629,6 +15634,31 @@
       cursor.style.display=app.cursor.visible!==false?"block":"none";
     }else cursor.style.display="none";
   }
+  /* MENU.CPP only exposes the task bar while the physical pointer is in the
+     bottom 24 logical pixels (mouse.y >= 456).  Keeping the bar mounted but
+     translated below the 640x480 surface preserves its native auto-hide
+     behaviour and, importantly, leaves a bottom building doorway clickable
+     when the pointer is elsewhere. */
+  function setWorldTaskbarVisible(visible){
+    const tools=$("world-tools");
+    if(!tools)return;
+    const next=Boolean(visible);
+    tools.classList.toggle("taskbar-visible",next);
+    tools.classList.toggle("taskbar-hidden",!next);
+    app.taskbarVisible=next;
+  }
+  function updateWorldTaskbarPointer(clientX,clientY,target){
+    if(app.phase!=="world"||app.battle){setWorldTaskbarVisible(false);return;}
+    const rect=worldScreen?.getBoundingClientRect?.();
+    if(!rect||rect.width<=0||rect.height<=0){setWorldTaskbarVisible(false);return;}
+    const sx=(Number(clientX)-rect.left)*640/rect.width;
+    const sy=(Number(clientY)-rect.top)*480/rect.height;
+    const overToolbar=Boolean(target?.closest?.("#world-tools"));
+    /* Keep the bar visible while a click is being released on one of its
+       buttons even if a fractional compositor coordinate is just above the
+       456px threshold. */
+    setWorldTaskbarVisible(overToolbar||(sx>=0&&sx<=640&&sy>=456&&sy<=480));
+  }
   function rebaselineWorldPointerAfterTransition(){
     /* Keep the last painted fish position; this hook deliberately does not
        recenter, hide, synthesize a pointermove, or manipulate the browser's
@@ -15643,6 +15673,7 @@
        worldRouteInputBlocked(). */
     const clientX=Number(event?.clientX),clientY=Number(event?.clientY);
     if(!Number.isFinite(clientX)||!Number.isFinite(clientY))return;
+    updateWorldTaskbarPointer(clientX,clientY,event?.target);
     /* Always reject synthetic samples so only a real browser pointer can
        repaint the fish. */
     if(event?.isTrusted===false)return;
@@ -17395,7 +17426,7 @@
     updateWorldPointer(event);
     updateHeldWorldPointer(event);
   },{passive:true});
-  worldScreen.addEventListener("pointerleave",()=>{if(app.phase==="world"){app.cursor.visible=true;renderWorldOverlay();}});
+  worldScreen.addEventListener("pointerleave",()=>{if(app.phase==="world"){setWorldTaskbarVisible(false);app.cursor.visible=true;renderWorldOverlay();}});
   /* Listen at document level so a ground press remains tracked even when the
      pointer crosses from #world into a sibling toolbar or the task bar. */
   document.addEventListener("pointerdown",handleWorldPointerDown,true);
