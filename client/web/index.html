@@ -17313,7 +17313,7 @@
     event.preventDefault();
   }
   function handleWorldPointerUp(event){
-    if(app.phase!=="world"||app.battle||worldRouteInputBlocked()||(event.button!==0&&event.button!==2))return;
+    if(app.phase!=="world"||app.battle||(event.button!==0&&event.button!==2))return;
     if(app.taskbarRevealPointerId!==null&&(
       event.pointerId===undefined||Number(event.pointerId)===Number(app.taskbarRevealPointerId)
     )){
@@ -17323,6 +17323,7 @@
       event.preventDefault?.();
       return;
     }
+    if(worldRouteInputBlocked())return;
     const gestureMapToken=app.pointerGestureMapToken,gestureSceneToken=app.pointerGestureSceneToken;
     app.pointerGestureMapToken=null;app.pointerGestureSceneToken=null;
     if((gestureMapToken!==null&&gestureMapToken!==mapTransitionToken)||(gestureSceneToken!==null&&gestureSceneToken!==sceneTransitionToken)){
