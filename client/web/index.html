@@ -13452,8 +13452,23 @@
       app.direction=desired>=0?desired:app.direction;
       const self=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
       if(self){self.direction=app.direction;self.wireDirection=wireDirection;setLocalActorAction(self,3);}
-      app.talkSentAt=now;setWorldState(`正在查看 ${current.name||"NPC"}…`);
-      try{await send("L",[wireDirection]);}catch(error){reportError(error);return false;}
+      /* A LOOKEDFUNC may intentionally have no WN callback (for example a
+         conditional family/service NPC).  Keep the same short-lived
+         conversation latch as the TK path so a missing callback cannot leave
+         the field status stuck on “正在查看…” forever.  A real WN clears this
+         exact object in the WN handler below; the identity check prevents a
+         late timeout from touching a newer conversation. */
+      app.talkSentAt=now;
+      const lookConversation={id,startedAt:now,mode:"look"};
+      app.talkConversation=lookConversation;
+      setWorldState(`正在查看 ${current.name||"NPC"}…`);
+      try{await send("L",[wireDirection]);}catch(error){if(app.talkConversation===lookConversation)app.talkConversation=null;reportError(error);return false;}
+      window.setTimeout(()=>{
+        if(app.talkConversation===lookConversation&&Date.now()-lookConversation.startedAt>=4500){
+          app.talkConversation=null;
+          if(app.phase==="world"&&!app.battle)setWorldState("NPC 没有回应。","error");
+        }
+      },4600);
       forgetTalkTarget();return true;
     }
     if(desired>=0){

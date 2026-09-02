@@ -1558,6 +1558,10 @@ for (const expected of [
   /function pointerTilePrefersMapRoute\(tile\)[\s\S]{0,700}return isMapWarpEvent\(mapEventAt\(Number\(tile\[0\]\),Number\(tile\[1\]\)\)\);/,
   /const clickedActor=pointerTilePrefersMapRoute\(tile\)\?null:\(actorAtTile\(tile,isTalkableActor\)\|\|actorAtPointer\(event,isTalkableActor\)\);/,
   /if\(distance>0&&distance<=2\)\{[\s\S]{0,220}talkToTarget\(clickedActor\)\.catch\(reportError\);[\s\S]{0,180}return;/,
+  /* LOOKEDFUNC NPCs may legally omit a WN response.  Keep a short-lived
+     object-specific latch and release it after the native-style timeout so
+     a conditional service NPC cannot strand the field in “正在查看…”. */
+  /const lookConversation=\{id,startedAt:now,mode:"look"\};[\s\S]{0,900}app\.talkConversation===lookConversation[\s\S]{0,300}NPC 没有回应。/,
   /if\(distance===0\)\{[\s\S]{0,120}approachNPC\(clickedActor\);[\s\S]{0,80}return;/,
   /* A map/scene fold gates gameplay routing only.  The painted fish continues
      to follow trusted physical pointer samples; no synthetic recenter,
