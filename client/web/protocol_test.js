@@ -3461,7 +3461,7 @@ for (const label of ["官方主页","我的邮箱","原地遇敌","取消原地"
   if (systemMenuSource.includes(`"${label}"`)) throw new Error(`8.5-only system menu entry leaked: ${label}`);
 }
 for (const expected of [
-  /add\("回记录点",openLogoutChoice,0\)/,
+  /add\("退出游戏",openLogoutChoice,0\)/,
   /add\("聊天设定",[\s\S]{0,120}systemPage="chat"/,
   /add\("背景音乐",[\s\S]{0,120}systemPage="bgm"/,
   /add\("音效设定",[\s\S]{0,120}systemPage="se"/,

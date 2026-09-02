@@ -7134,7 +7134,12 @@
          logout row so the root geometry and the 40/40/40/52 cadence remain
          identical to 2.5. */
       const add=(label,handler,top)=>list.append(systemChoice(label,handler,top));
-      add("回记录点",openLogoutChoice,0);
+      /* MENU.CPP labels the root entry “退出游戏”; the following page is
+         where the 2.5-compatible record-point logout and the web client's
+         in-place logout are kept distinct.  Showing “回记录点” at the root
+         made the two paths look identical even though they save different
+         coordinates. */
+      add("退出游戏",openLogoutChoice,0);
       add("聊天设定",()=>{app.systemPage="chat";renderSystem();},40);
       add("背景音乐",()=>{app.systemPage="bgm";renderSystem();},80);
       add("音效设定",()=>{app.systemPage="se";renderSystem();},120);
