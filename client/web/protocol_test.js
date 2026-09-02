@@ -3288,6 +3288,12 @@ if (escapeHandler < 0 || !/if\(app\.activeWindow\)\{event\.preventDefault\(\);di
 if (!/\$\("server-window-close"\)\.addEventListener\("click",\(\)=>dismissServerWindow\(\)\.catch\(reportError\)\)/.test(script)) {
   throw new Error("WN close button must use the same native type-aware dismiss path");
 }
+/* MESSAGEANDLINEINPUT and WIDEMESSAGEANDLINEINPUT submit their text through
+   WINDOW_BUTTONTYPE_OK (1).  A zero select value is not a form index and is
+   ignored by the 2.5 NPC handlers. */
+if (!/\$\("server-window-form"\)\.addEventListener\("submit",[\s\S]{0,900}windowResponse\(1,\$\("server-window-input"\)\.value\)/.test(script)) {
+  throw new Error("WN line-input form must submit the native OK bit");
+}
 const battleDepthStart = script.indexOf("  function battleProjectileVerticalPosition");
 const battleDepthEnd = script.indexOf("  /* Exact 5×5 positions from oft.cpp::oft_test()", battleDepthStart);
 if (battleDepthStart < 0 || battleDepthEnd <= battleDepthStart) throw new Error("battle shared depth helper boundary missing");

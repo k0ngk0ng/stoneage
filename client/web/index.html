@@ -17839,7 +17839,17 @@
   $("social-close")?.addEventListener("click",closeMailCompose);
   $("protocol-form").addEventListener("submit",event=>{event.preventDefault();const name=$("protocol-function").value;send(name,parseProtocolFields()).catch(reportError);});
   document.querySelectorAll("[data-event-fn]").forEach(item=>item.addEventListener("click",()=>triggerEvent(item.dataset.eventFn)));
-  $("server-window-form").addEventListener("submit",event=>{event.preventDefault();if(!app.activeWindow)return;send("WN",[app.position[0],app.position[1],app.activeWindow.seqno,app.activeWindow.objindex,0,$("server-window-input").value]).then(closeServerWindow).catch(reportError);});
+  $("server-window-form").addEventListener("submit",event=>{
+    event.preventDefault();
+    const wnd=app.activeWindow;
+    if(!wnd)return;
+    /* LOGIN.CPP's line-input windows submit through the OK button path.  The
+       select field is a bit mask, not a zero-based form index; sending 0
+       made NPC_Quiz/NPC_Alldoman ignore an otherwise valid answer.  Reuse
+       windowResponse() so the native close timing and paging exceptions stay
+       identical to a click on the bitmap OK button. */
+    windowResponse(1,$("server-window-input").value).catch(reportError);
+  });
   $("server-window-close").addEventListener("click",()=>dismissServerWindow().catch(reportError));
   $("battle-command-form").addEventListener("submit",event=>{event.preventDefault();const value=$("battle-command-input").value.trim();if(value){battleCommand(value);$("battle-command-input").value="";}});
   populateProtocolFunctions(); renderJournal(); renderInventory(); renderPets(); renderStatus(); renderSocial();
