@@ -1882,7 +1882,7 @@ for (const expected of [
      changes can keep their native transitions. */
   /function sceneTransitionAllowed\(previous,screen\)[\s\S]{0,900}previous===characterScreen&&screen===worldScreen[\s\S]{0,420}return previousInGame&&nextInGame/,
   /if\(!sceneTransitionAllowed\(previous,screen\)\)\{cancelSceneTransition\(\);return;\}/,
-  /function cancelSceneTransition\(\)[\s\S]{0,520}sceneTransition\.classList\.remove\("reveal","active","battle-enter","battle-leave","generic"\)/,
+  /function cancelSceneTransition\(\)[\s\S]{0,520}sceneTransition\.classList\.remove\("reveal","active","battle-enter","battle-leave","character-enter","generic"\)/,
   /* Character selection must hold the shutter until the first opaque map
      back-buffer is ready; a fixed reveal timer reintroduces black tile bars
      on slow CDN/mobile loads. */
@@ -1890,7 +1890,11 @@ for (const expected of [
   /previous===characterScreen&&screen===worldScreen[\s\S]{0,1800}setSceneTransitionLoading\(true\)[\s\S]{0,900}worldSceneBackBufferReady\(\)[\s\S]{0,420}sceneTransition\.classList\.add\("reveal"\)/,
   /const SCENE_TRANSITION_WORLD_WAIT_TIMEOUT_MS=20000/,
   /const battleEnter=previous===worldScreen&&screen===battleScreen;/,
-  /sceneTransition\.classList\.add\("active",battleEnter\?"battle-enter":battleLeave\?"battle-leave":"generic"\)/,
+  /#scene-transition\.character-enter\s*\{[^}]*display:block;[^}]*background:#030303[^}]*\}/,
+  /#scene-transition\.character-enter \.scene-transition-tile\s*\{[^}]*display:none[^}]*\}/,
+  /#scene-transition\.character-enter\.reveal\s*\{[^}]*scene-character-fold-open[^}]*\}/,
+  /@keyframes scene-character-fold-open\s*\{[\s\S]{0,180}clip-path:inset\(50% 0 50% 0\)/,
+  /const characterEnter=previous===characterScreen&&screen===worldScreen;[\s\S]{0,220}sceneTransition\.classList\.add\("active",battleEnter\?"battle-enter":battleLeave\?"battle-leave":characterEnter\?"character-enter":"generic"\)/,
   /* BattleProc swaps back-buffers only between the two HAGARE producers:
      keep the source screen through phase-out, call the deferred screen swap,
      then run phase-in before releasing the gameplay gate. */

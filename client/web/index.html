@@ -653,6 +653,14 @@
        retained for title/result swaps.  Staggering by tile index is a stable
        browser equivalent of the client's random 0..63 selection. */
     #scene-transition.reveal .scene-transition-tile { animation:scene-tile-flip .54s cubic-bezier(.25,.7,.25,1) forwards; animation-delay:calc(var(--scene-tile-index) * 10ms); }
+    /* PRODUCE_BRAN_BIG is the one title-to-field hand-off. Render its centre
+       shutter as one continuous surface in the browser instead of exposing
+       implementation tiles; the 8x8 battle-piece grid remains reserved for
+       HAGARE_OCHI. */
+    #scene-transition.character-enter { display:block; background:#030303; }
+    #scene-transition.character-enter .scene-transition-tile { display:none; }
+    #scene-transition.character-enter.reveal { animation:scene-character-fold-open .82s steps(30,end) forwards; }
+    @keyframes scene-character-fold-open { from{clip-path:inset(0 0 0 0)} to{clip-path:inset(50% 0 50% 0)} }
     /* HAGARE_OCHI_OUT/IN are two different producers.  Keep the old field
        surface visible until the first producer has finished, then swap the
        screen while the curtain is black and run the incoming producer. */
@@ -667,7 +675,7 @@
     @keyframes scene-tile-battle-enter-in { 0%{transform:translateY(-112%) rotateY(0deg) scaleX(.05);opacity:1} 42%{transform:translateY(-8%) rotateY(12deg) scaleX(.96);opacity:.8} 100%{transform:translateY(0) rotateY(0deg) scaleX(1);opacity:0} }
     @keyframes scene-tile-battle-leave-out { 0%{transform:rotateY(0deg) scale(1);opacity:1} 100%{transform:translate(calc(var(--scene-out-x,0px)),calc(var(--scene-out-y,0px))) rotateY(-18deg) scale(.05);opacity:0} }
     @keyframes scene-tile-battle-leave-in { 0%{transform:translate(calc(var(--scene-out-x,0px)),calc(var(--scene-out-y,0px))) rotateY(0deg) scale(.05);opacity:1} 100%{transform:translate(0,0) rotateY(0deg) scale(1);opacity:0} }
-    @media (prefers-reduced-motion:reduce) { #scene-transition.reveal .scene-transition-tile,#scene-transition.phase-out .scene-transition-tile,#scene-transition.phase-in .scene-transition-tile { animation-duration:.01ms !important; animation-delay:0ms !important; } }
+    @media (prefers-reduced-motion:reduce) { #scene-transition.reveal .scene-transition-tile,#scene-transition.phase-out .scene-transition-tile,#scene-transition.phase-in .scene-transition-tile { animation-duration:.01ms !important; animation-delay:0ms !important; } #scene-transition.character-enter.reveal { animation-duration:.01ms !important; } }
     /* A character-selection fold can finish before the first M window has
        decoded its map tiles.  Keep the black shutter closed until that
        back-buffer is ready, but expose the same compact progress plate used
@@ -3250,7 +3258,7 @@
     window.clearTimeout(sceneTransitionTimer);window.clearTimeout(sceneTransitionRevealTimer);window.clearTimeout(sceneTransitionWaitTimer);
     sceneTransitionTimer=0;sceneTransitionRevealTimer=0;sceneTransitionWaitTimer=0;sceneTransitionWaitStartedAt=0;
     document.querySelector("main")?.classList.remove("scene-transition-active");
-    if(sceneTransition){sceneTransition.classList.remove("reveal","active","battle-enter","battle-leave","generic");sceneTransition.classList.remove("phase-out","phase-in");sceneTransition.setAttribute("aria-hidden","true");}
+    if(sceneTransition){sceneTransition.classList.remove("reveal","active","battle-enter","battle-leave","character-enter","generic");sceneTransition.classList.remove("phase-out","phase-in");sceneTransition.setAttribute("aria-hidden","true");}
     const loading=document.getElementById("scene-transition-loading");
     if(loading){loading.classList.remove("active");loading.setAttribute("aria-hidden","true");}
     /* No transition code writes app.cursor.x/y.  Keep the existing painted
@@ -3300,7 +3308,7 @@
     const battleEnter=previous===worldScreen&&screen===battleScreen;
     const battleLeave=previous===battleScreen&&screen===worldScreen;
     const battleSwap=battleEnter||battleLeave;
-    sceneTransition.classList.remove("reveal","battle-enter","battle-leave","generic","phase-out","phase-in");
+    sceneTransition.classList.remove("reveal","battle-enter","battle-leave","character-enter","generic","phase-out","phase-in");
     if(battleLeave){
       /* Produce4Way() moves four 320x240 quadrants away from the centre.
          The 8x8 shutter is still used as the raster surface, but give each
@@ -3312,7 +3320,8 @@
         tile.style.setProperty("--scene-out-y",`${row<4?-480:480}px`);
       });
     }
-    sceneTransition.classList.add("active",battleEnter?"battle-enter":battleLeave?"battle-leave":"generic");
+    const characterEnter=previous===characterScreen&&screen===worldScreen;
+    sceneTransition.classList.add("active",battleEnter?"battle-enter":battleLeave?"battle-leave":characterEnter?"character-enter":"generic");
     document.querySelector("main")?.classList.add("scene-transition-active");
     if(typeof renderWorldOverlay==="function")renderWorldOverlay();
     sceneTransition.setAttribute("aria-hidden","false");
@@ -3321,7 +3330,7 @@
     void sceneTransition.offsetWidth;
     const finish=()=>{
       if(token!==sceneTransitionToken)return;
-      sceneTransitionTimer=0;sceneTransition.classList.remove("reveal","active","battle-enter","battle-leave","generic");sceneTransition.classList.remove("phase-out","phase-in");sceneTransition.setAttribute("aria-hidden","true");
+      sceneTransitionTimer=0;sceneTransition.classList.remove("reveal","active","battle-enter","battle-leave","character-enter","generic");sceneTransition.classList.remove("phase-out","phase-in");sceneTransition.setAttribute("aria-hidden","true");
       /* The timed completion path must release the same root state as an
          explicit cancel, otherwise every later field frame remains marked
          as a transition and input stays gated. */
@@ -3351,7 +3360,7 @@
     sceneTransitionRevealTimer=window.setTimeout(()=>{
       if(token!==sceneTransitionToken)return;
       sceneTransitionRevealTimer=0;sceneTransition.classList.add("reveal");
-      sceneTransitionTimer=window.setTimeout(finish,1200);
+      sceneTransitionTimer=window.setTimeout(finish,characterEnter?900:1200);
     },90);
     /* Character selection hands the field over to an asynchronous M/DAT
        load.  The native client does not start its reveal until the new
@@ -3368,7 +3377,7 @@
         if(worldSceneBackBufferReady()){
           setSceneTransitionLoading(false);
           sceneTransition.classList.add("reveal");
-          sceneTransitionTimer=window.setTimeout(finish,1200);
+          sceneTransitionTimer=window.setTimeout(finish,characterEnter?900:1200);
           return;
         }
         /* A failed CDN/DAT request must eventually expose the normal NOW
