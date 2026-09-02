@@ -4086,18 +4086,38 @@
     const match=/^F([1-8])$/.exec(String(event?.key||""));
     return match?Number(match[1])-1:-1;
   }
+  /* CHAT.CPP's Ctrl+V path reads the system clipboard into whichever
+     STR_BUFFER currently owns focus.  Browser default paste already covers
+     a focused <input>, but the native client keeps MyChatBuffer active even
+     after a ground/actor click.  Restore that useful behaviour for gameplay:
+     when no editor has focus, read the clipboard and insert at the chat
+     caret, preserving the native 70-byte limit and the current selection. */
+  function insertChatTextAtSelection(input,text){
+    if(!input||typeof input.value!=="string")return false;
+    const value=String(input.value||""),start=Number.isFinite(input.selectionStart)?input.selectionStart:value.length,end=Number.isFinite(input.selectionEnd)?input.selectionEnd:start;
+    const before=value.slice(0,start),after=value.slice(end),available=Math.max(0,CHAT_INPUT_BYTE_LIMIT-chatInputByteLength(before)-chatInputByteLength(after)),addition=trimChatInputToBytes(text,available);
+    input.focus?.({preventScroll:true});
+    if(!addition)return false;
+    if(typeof input.setRangeText==="function")input.setRangeText(addition,start,end,"end");
+    else {input.value=before+addition+after;if(typeof input.setSelectionRange==="function")input.setSelectionRange(start+addition.length,start+addition.length);}
+    input.dispatchEvent?.(new Event("input",{bubbles:true}));
+    return true;
+  }
+  async function pasteChatClipboard(input=$("chat-input")){
+    if(!input||typeof navigator==="undefined"||!navigator.clipboard?.readText)return false;
+    try{
+      const text=await navigator.clipboard.readText();
+      return insertChatTextAtSelection(input,text);
+    }catch(_){
+      /* Clipboard permissions are intentionally optional.  Returning false
+         leaves a focused editor's native browser paste path untouched and
+         avoids surfacing a distracting dialog for an ordinary shortcut. */
+      return false;
+    }
+  }
   function insertRegisteredChat(index,input=$("chat-input")){
     if(!input||index<0||index>=8)return false;
-    const registered=String(app.chatRegistry[index]||""),value=String(input.value||"");
-    const start=Number.isFinite(input.selectionStart)?input.selectionStart:value.length,end=Number.isFinite(input.selectionEnd)?input.selectionEnd:start;
-    const before=value.slice(0,start),after=value.slice(end),available=Math.max(0,CHAT_INPUT_BYTE_LIMIT-chatInputByteLength(before)-chatInputByteLength(after)),addition=trimChatInputToBytes(registered,available);
-    input.focus({preventScroll:true});
-    if(addition){
-      if(typeof input.setRangeText==="function")input.setRangeText(addition,start,end,"end");
-      else input.value=value.slice(0,start)+addition+value.slice(end);
-      input.dispatchEvent?.(new Event("input",{bubbles:true}));
-    }
-    return true;
+    return insertChatTextAtSelection(input,String(app.chatRegistry[index]||""));
   }
   function handleChatInputKeydown(event){
     const input=event.currentTarget||$("chat-input");
@@ -17565,6 +17585,20 @@
        JOY_F5 to ChatProc as registered phrase 5.  The chat/mail cases above
        therefore win; everywhere else F5 is consumed without refreshing. */
     if(event.key==="F5"){event.preventDefault();return;}
+    /* CHAT.CPP consumes Ctrl+V at the game-loop boundary even when the
+       transparent chat buffer has lost DOM focus.  Focused editors retain the
+       browser's native paste handling; only restore the global gameplay path
+       when no editor owns the key event. */
+    const pasteShortcut=(event.ctrlKey||event.metaKey)&&!event.altKey&&!event.shiftKey&&String(event.key||"").toLowerCase()==="v";
+    if(pasteShortcut&&gameplayChat&&!activeEditor){
+      const input=$("chat-input");
+      const canReadClipboard=input&&typeof navigator!=="undefined"&&navigator.clipboard?.readText&&globalThis.isSecureContext!==false;
+      if(canReadClipboard){
+        event.preventDefault();
+        void pasteChatClipboard(input);
+      }else input?.focus?.({preventScroll:true});
+      return;
+    }
     /* MyChatBuffer remains the native input owner while the field shortcuts
        are evaluated.  Let Ctrl chords work with #chat-input focused, but do
        not steal editing commands from login, mail, registry or dialog input. */
@@ -17841,7 +17875,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
+    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);

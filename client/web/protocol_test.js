@@ -1163,7 +1163,7 @@ function makeChatLog(){return {replaceCount:0,scrollTop:17,removed:[],replaceChi
 for(const log of Object.values(chatLogs))log.classList.owner=log;
 const chatShortcutState={chat:[{text:"one"},{text:"two"}],chatRegistry:Array(8).fill(""),chatInputHistory:[],chatInputHistoryIndex:-1,chatInputHistoryDraft:"",systemSettings:{chatLines:7,chatColor:9,chatRange:5}};
 const chatShortcutHelpers=new Function("app","$","Event","CHAT_INPUT_HISTORY_LIMIT",
-  `${script.slice(chatShortcutStart,chatShortcutEnd)};return {loadLocalChatState,saveLocalChatState,clearChatBuffer,consumeLocalChatCommand,encodeNativeChatText,isChatClearKey,isShiftBackspace,clearEditableInputBuffer,rememberChatInputHistory,browseChatInputHistory,registeredChatShortcutIndex,insertRegisteredChat,handleChatInputKeydown};`,
+  `${script.slice(chatShortcutStart,chatShortcutEnd)};return {loadLocalChatState,saveLocalChatState,clearChatBuffer,consumeLocalChatCommand,encodeNativeChatText,isChatClearKey,isShiftBackspace,clearEditableInputBuffer,rememberChatInputHistory,browseChatInputHistory,registeredChatShortcutIndex,insertChatTextAtSelection,pasteChatClipboard,insertRegisteredChat,handleChatInputKeydown};`,
 )(chatShortcutState,id=>id==="chat-input"?chatInput:chatLogs[id]||null,class MockEvent{},64);
 chatInput.value="draft survives clear";
 chatShortcutState.chatInputHistory=["history survives clear"];
@@ -1252,6 +1252,14 @@ chatShortcutHelpers.insertRegisteredChat(2,chatInput);
 if(chatInput.value.length!==70){
   throw new Error("registered chat insertion must not exceed the native 70-byte input limit");
 }
+chatInput.value="AB";chatInput.selectionStart=chatInput.selectionEnd=1;
+if(!chatShortcutHelpers.insertChatTextAtSelection(chatInput,"粘贴😀")||chatInput.value!=="A粘贴😀B"){
+  throw new Error("Ctrl+V clipboard insertion must preserve the caret and native byte limit");
+}
+chatInput.value="A".repeat(67);chatInput.selectionStart=chatInput.selectionEnd=67;
+if(!chatShortcutHelpers.insertChatTextAtSelection(chatInput,"你")||chatInput.value.length!==68){
+  throw new Error("clipboard insertion must truncate at the native 70-byte limit");
+}
 let tabPrevented=0,tabStopped=0;chatInput.value="keep me";
 chatShortcutHelpers.handleChatInputKeydown({key:"Tab",isComposing:false,currentTarget:chatInput,preventDefault(){tabPrevented++;},stopPropagation(){tabStopped++;}});
 if(chatInput.value!=="keep me"||tabPrevented!==1||tabStopped!==1)throw new Error("Tab must keep MyChatBuffer focused and unchanged");
@@ -1313,6 +1321,10 @@ if(redirectPrintableFieldKeyToChat({key:"c",ctrlKey:true,metaKey:false,altKey:fa
   throw new Error("Ctrl/Meta/Alt field shortcuts must remain outside chat redirection");
 }
 const documentKeyHandlerSource=script.slice(printableRedirectEnd,script.indexOf('  $("mail-form")',printableRedirectEnd));
+if(!/function pasteChatClipboard\(input=\$\("chat-input"\)\)/.test(script)||
+   !/const pasteShortcut=\(event\.ctrlKey\|\|event\.metaKey\)[\s\S]{0,500}pasteChatClipboard\(input\)/.test(documentKeyHandlerSource)){
+  throw new Error("global gameplay Ctrl+V clipboard handling is missing");
+}
 if(!/if\(redirectPrintableFieldKeyToChat\(event\)\)return;/.test(documentKeyHandlerSource)||
    !/const gameplayChat=\(app\.phase==="world"&&!app\.battle\)\|\|\(app\.phase==="battle"&&app\.battle\)/.test(documentKeyHandlerSource)||
    !/if\(gameplayChat&&event\.key==="Tab"\)/.test(documentKeyHandlerSource)||
