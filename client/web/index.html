@@ -9019,10 +9019,10 @@
    */
   function ensureBattlePetAfterLocalDeath(state=app.battleState){
     /* Compatibility hook for old queued-state callers.  2.5's
-       BATTLE_CountAlive() ignores pets, so a dead master never needs a
-       recovery W command; the terminal XYD/RS path owns scene exit.  A
-       final BC may still contain the pet row until BATTLE_Finish() removes
-       the whole roster, but that row is not a command owner. */
+       BATTLE_CountAlive() ignores pets for victory, but a live same-side
+       teammate keeps BATTLE_CommandWait() active and still requires the
+       master's pet W command.  With no player left, the terminal XYD/RS path
+       owns scene exit; a final BC pet row is only stale roster data. */
     if(!state||app.battleState!==state||!app.battle||state.movieActive||!battleLocalDeath(state))return false;
     clearBattleChoiceTimer(state);
     const terminal=battleServerSideDefeated(state),activePet=battleActivePet(state);
@@ -12645,8 +12645,9 @@
     continueBattlePetAfterPlayer(state);
     /* BC may be the first packet that exposes the live pet after the local
        player has died.  In 2.5 that pet row is not counted by
-       BATTLE_CountAlive(); ensureBattlePetAfterLocalDeath() only clears the
-       stale command deadline and lets the terminal BC/RS path drain. */
+       BATTLE_CountAlive(); ensureBattlePetAfterLocalDeath() sends W only when
+       another same-side player keeps the battle alive, otherwise it lets the
+       terminal BC/RS path drain without a synthetic command. */
     ensureBattlePetAfterLocalDeath(state);
     /* A normal defeat has no RS/BU packet in the 2.5 server: BATTLE_Exit()
        sends XYD directly.  Arm the watchdog only when every actual member of

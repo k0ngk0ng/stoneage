@@ -4109,6 +4109,36 @@ if (!/const terminal=battleServerSideDefeated\(state\),activePet=battleActivePet
     !/if\(terminal\)scheduleBattleDeathExit\(state,false\)/.test(executableEnsureDeadMaster)) {
   throw new Error("dead-master pet hand-off must distinguish a live teammate from terminal defeat");
 }
+const makeDeadMasterPetHarness = terminal => {
+  const state = {movieActive:false,turnKey:7,turn:7,participants:[],implicitPetTurn:null};
+  const app = {battle:true,battleState:state};
+  const sends = [];
+  let exits = 0;
+  const ensure = new Function(
+    "app","battleLocalDeath","clearBattleChoiceTimer","battleServerSideDefeated",
+    "battleActivePet","sendBattlePetDefault","scheduleBattleDeathExit",
+    `${ensureDeadMasterStart < ensureDeadMasterEnd ? script.slice(ensureDeadMasterStart, ensureDeadMasterEnd) : ""}; return ensureBattlePetAfterLocalDeath;`
+  )(
+    app,
+    () => true,
+    () => {},
+    () => terminal,
+    () => ({battleId:5,hp:1,dead:false}),
+    (current,options) => sends.push([current,options]),
+    () => { exits++; },
+  );
+  return {state,sends,ensure,exits:()=>exits};
+};
+const terminalDeadMaster = makeDeadMasterPetHarness(true);
+if (terminalDeadMaster.ensure(terminalDeadMaster.state) !== false || terminalDeadMaster.sends.length !== 0 || terminalDeadMaster.exits() !== 1) {
+  throw new Error("terminal dead-master roster must wait for RS/XYD without sending W");
+}
+const teammateDeadMaster = makeDeadMasterPetHarness(false);
+if (teammateDeadMaster.ensure(teammateDeadMaster.state) !== true || teammateDeadMaster.sends.length !== 1 ||
+    teammateDeadMaster.sends[0][1]?.force !== true || teammateDeadMaster.sends[0][1]?.clearChoice !== true ||
+    teammateDeadMaster.ensure(teammateDeadMaster.state) !== true || teammateDeadMaster.sends.length !== 1 || teammateDeadMaster.exits() !== 0) {
+  throw new Error("dead master's live pet must receive one W when a teammate keeps battle alive");
+}
 const localExitSource = script.slice(script.indexOf("  function finishLocalBattleDeath"), script.indexOf("  function battleStartCommandPending"));
 const executableLocalExitSource = localExitSource.replace(/\/\*[\s\S]*?\*\//g,"").replace(/\/\/.*$/gm,"");
 if (/send\("EO"/.test(executableLocalExitSource) || !/battleServerSideDefeated\(state\)/.test(executableLocalExitSource) || !/battleTerminalHoldUntil\(state\)/.test(executableLocalExitSource) || !/sendBattleEndOnce\(state,"local-side-defeat"\)/.test(executableLocalExitSource)) {
