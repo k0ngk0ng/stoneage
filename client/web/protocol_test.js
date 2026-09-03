@@ -639,6 +639,15 @@ if (delayedCAPoint?.[0] !== 18 || delayedCAPoint?.[1] !== 21 ||
     delayedCAState.serverPosition[0] !== 18 || delayedCAState.serverPosition[1] !== 21) {
   throw new Error(`receiveActions rolled back a locally completed route: ${JSON.stringify({position: delayedCAState.position, actor: [delayedCAActor?.x, delayedCAActor?.y], server: delayedCAState.serverPosition, delayedCAPoint})}`);
 }
+/* A battle CA can arrive while the local route animation is still marked as
+   walking.  CHAR_ACTBATTLE is a non-walk state; it must clear that marker so
+   returning from battle cannot leave the owner stuck in the walking HUD/frame
+   loop. */
+delayedCAActor.walking = true;
+delayedCAHelpers("1|18|23|20|0|0|0|0");
+if (delayedCAActor.walking !== false || delayedCAActor.action !== 20) {
+  throw new Error(`non-walk CA action must clear walking state: ${JSON.stringify({walking: delayedCAActor.walking, action: delayedCAActor.action})}`);
+}
 /* The fish-bone is a painted legacy sprite.  A browser Pointer Lock would
    move/recapture the user's real mouse during a map fold, which is the
    opposite of the native client's behavior and makes the cursor appear to

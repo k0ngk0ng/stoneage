@@ -14803,6 +14803,13 @@
     app.walkAnimation=null;app._walkNextStartAt=0;app.walkCycleStartedAt=0;app.walkCycleDirection=null;
     app.pointerMoveHeld=false;app.pointerMovePointerId=null;app.pointerMoveTile=null;app.pointerMoveInitialTile=null;app.pointerMoveInitialClientX=NaN;app.pointerMoveInitialClientY=NaN;app.pointerMoveDragged=false;app.pointerLookTargetId=null;app.pointerLookPointerId=null;
     app.pointerMoveLastAt=0;app.pointerMoveStartedAt=0;
+    /* EN hands the field back-buffer to BattleProc immediately.  If the
+       encounter fired on the same process tick as a local walk, the owner
+       actor can still carry walking=true even though the route/timer above
+       has been cancelled.  Clear the native walk row at the hand-off so the
+       actor returns standing when the battle surface is later released. */
+    const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
+    if(actor){actor.walking=false;setLocalActorAction(actor,3);}
   }
   function scheduleMovePredictionRelease(){
     window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;
@@ -15165,6 +15172,13 @@
       const actionChanged=!existing||Number(existing.caAction)!==action||Number(existing.wireDirection)!==wireDirection||Number(existing.direction)!==nextDirection;
       const hadAnimationStart=Number.isFinite(Number(actor.animationStartedAt))&&Number(actor.animationStartedAt)>0;
       actor.x=x;actor.y=y;actor.action=action;actor.caAction=action;
+      /* CA's action is the authoritative field process state.  In
+         particular, CHAR_ACTBATTLE (20) and the other non-walk actions must
+         clear a walking flag left by the optimistic route animation.  The
+         native client derives this from the same CHAR_ACTWALK enum; keeping
+         the flag stale made a player continue to render/interpolate as
+         walking after a battle returned to the map. */
+      actor.walking=action===1;
       /* The owner is previewing an Action locally and the 2.5 server may
          still echo a CA record while the HTTP poll is draining.  CA's
          CHAR_ACT_* value is a wire enum, not the ANIM_LIST row selected by
