@@ -2332,6 +2332,17 @@ if (occupiedPetsStart < 0 || renderPetsStart <= occupiedPetsStart || renderPetsE
     /app\.pets\.length\?app\.pets/.test(renderPetsSource)) {
   throw new Error("pet menu must render each occupied owned-pet slot exactly once");
 }
+/* Kx is the owned-pet status stream, while PME/C records describe transient
+   field-visible pets.  Repeated K0 updates must therefore update only the
+   canonical five-slot roster; mirroring them into app.pets creates duplicate
+   album/cache entries after login and every status refresh. */
+const petStatusStart = script.indexOf('      case "K": {');
+const petStatusEnd = script.indexOf('      case "E": {', petStatusStart);
+const petStatusSource = script.slice(petStatusStart, petStatusEnd);
+if (petStatusStart < 0 || petStatusEnd <= petStatusStart || /app\.pets\.push|app\.pets=app\.pets\.filter/.test(petStatusSource) ||
+    !script.includes('for(const pet of app.petSlots||[])if(markAlbumPet(pet))changed=true;')) {
+  throw new Error("owned K pet updates must stay in petSlots and feed the album without duplicates");
+}
 for (const expected of [
   /#pets-screen \.legacy-pet-row\{[^}]*height:51px/,
   /#pets-screen \.legacy-pet-row \.pet-name\{[^}]*left:73px;top:35px/,

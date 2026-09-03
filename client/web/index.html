@@ -5702,6 +5702,14 @@
     if(!app.albumCatalogReady)return;
     let changed=false;
     for(const pet of app.pets||[])if(markAlbumPet(pet))changed=true;
+    /* Kx is the owned-pet status stream and is stored in the five fixed
+       petSlots below.  Do not mirror it into app.pets: that array is also
+       fed by PME/C records for pets visible in the field, so copying every
+       K refresh there made one owned pet appear several times after login,
+       battle, or a repeated status request.  Include the canonical slots
+       here so the album still discovers an owned pet without duplicating
+       the cache used for transient field actors. */
+    for(const pet of app.petSlots||[])if(markAlbumPet(pet))changed=true;
     if(changed&&persist)saveAlbumState();
   }
   function attachMapImage(){ if(!app.map)return; const definition=mapDefinition(app.map.floor),node=$("world-map"); app.map.asset=definition||null; app.map.image=null; app.map.staticFailed=false; if(!definition||!definition.image){if(node){node.removeAttribute("src");node.style.display="none";}renderWorld(true);maybeFinishMapLoading();return;} const source=mapAssetSource(definition.image); document.documentElement.style.setProperty("--scene-backdrop",`url('${source}')`); if(node){node.onload=()=>{app.map.staticFailed=false;renderWorld(true);renderWorldOverlay();maybeFinishMapLoading();};node.onerror=()=>{app.map.staticFailed=true;renderWorld(true);maybeFinishMapLoading();};node.src=source;node.style.display="block";} app.map.image=node;renderWorld(true); }
@@ -7553,7 +7561,6 @@
         const slot=decimal(kind.slice(1),0),target=app.petSlots[slot]||{slot,index:slot};
         if(Protocol.base62(parts[1]||"0")===0){
           app.petSlots[slot]=null;
-          app.pets=app.pets.filter(p=>p.slot!==slot&&p.index!==slot);
         }else if(Protocol.base62(parts[1]||"0")===1){
           // Login/status K records are made by CHAR_makeStatusString("Kx")
           // and contain the 2.5-only transmigration value before the two
@@ -7564,13 +7571,11 @@
           target.freeName=unescapeCharacterOption(parts[22]||target.freeName||"");
           target.userPetName=target.freeName;target.index=slot;target.slot=target.slot??slot;
           app.petSlots[slot]=target;
-          const old=app.pets.find(p=>p.slot===slot);if(old)Object.assign(old,target);else app.pets.push(target);
         }else{
           applyMaskedFields(parts,target,PET_FIELDS);
           target.slot=target.slot??slot;target.index=slot;target.graphic=target.graphic??target.graNo;
           if(target.freeName!==undefined)target.userPetName=target.freeName;
           app.petSlots[slot]=target;
-          const old=app.pets.find(p=>p.slot===slot);if(old)Object.assign(old,target);else app.pets.push(target);
         }
         break;
       }
