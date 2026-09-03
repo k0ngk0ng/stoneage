@@ -305,6 +305,27 @@ for (const expected of [
     throw new Error(`asset manifest must revalidate across deployments: ${expected}`);
   }
 }
+/* The title/login scene must not eagerly pull the multi-megabyte shared
+   manifest or the auto-map colour tables.  Those requests belong to the
+   authenticated character/world/map paths; a standalone check on the
+   startup slice catches an accidental reintroduction of the old eager pair. */
+const startupAssetSliceStart = script.indexOf("  /* Keep the title/login request small.");
+const startupAssetSliceEnd = script.indexOf("  function reportError", startupAssetSliceStart);
+if (startupAssetSliceStart < 0 || startupAssetSliceEnd <= startupAssetSliceStart) {
+  throw new Error("lazy asset startup boundary missing");
+}
+const startupAssetSlice = script.slice(startupAssetSliceStart, startupAssetSliceEnd);
+if (/^\s*loadAssetManifest\(\);\s*$/m.test(startupAssetSlice) ||
+    /^\s*loadAutoMapColors\(\);\s*$/m.test(startupAssetSlice)) {
+  throw new Error("login/title startup must not eagerly load world asset indexes");
+}
+const mapDetailsStart = script.indexOf("  function renderMapDetails");
+const mapDetailsEnd = script.indexOf("  function renderTitles", mapDetailsStart);
+if (mapDetailsStart < 0 || mapDetailsEnd <= mapDetailsStart ||
+    !script.slice(mapDetailsStart, mapDetailsEnd).includes("if(!autoMapColorReady)loadAutoMapColors();") ||
+    !script.slice(script.indexOf("  function receiveCharacterList"), script.indexOf("  function escapeHTML")).includes("loadAssetManifest()")) {
+  throw new Error("world/map asset indexes must be loaded from their owning screens");
+}
 /* Published indexes use one stable object key.  Cache invalidation comes from
    _client-version.json and the worker namespace; putting dated/tagged query
    strings on each CDN URL creates an unbounded set of cache entries. */
