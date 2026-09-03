@@ -17358,6 +17358,14 @@
     if(!tile)return false;
     const cell=mapCellAt(tile[0],tile[1]);
     if(!cell)return false;
+    /* CHAT.CPP paints the input line into the field back-buffer; it never
+       owns a native context-menu/right-click hit rectangle.  The transparent
+       browser editor must therefore let every right-button field gesture
+       through, including a plain turn on an empty tile and PI pickup of a
+       money/item pile that happens to sit behind the lower chat strip.  The
+       focused/non-empty editor remains an ordinary text control above, so a
+       user editing chat does not lose selection/context behaviour. */
+    if(Number(event?.button)===2)return true;
     const eventCode=(Number(cell.event)||0)&MAP_EVENT_MASK;
     if(isMapWarpEvent(eventCode)||isMapEnemyEvent(eventCode))return true;
     return Boolean(actorAtTile(tile,isTalkableActor)||actorAtPointer(event,isTalkableActor));
@@ -17587,7 +17595,11 @@
     }
     if(event.button===2){
       event.preventDefault();
-      if(mapMovementBlocked()||isWorldUiTarget(event.target))return;
+      /* Pass the full pointer event through the chat-input hit test.  Without
+         it, isWorldUiTarget() cannot see button=2 and treats the transparent
+         editor as an opaque UI layer, so right-click turns/PI pickups in the
+         bottom chat strip are silently discarded. */
+      if(mapMovementBlocked()||isWorldUiTarget(event.target,event))return;
       /* MAP.CPP runs turnAround() and getItem() for the same right click.
          Keep the PI throttle independent from W so turning cannot consume
          the pickup's native 500 ms send window. */

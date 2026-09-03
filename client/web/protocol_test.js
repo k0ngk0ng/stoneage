@@ -216,6 +216,17 @@ if (!/LOCAL_CHAT_CLEAR_COMMANDS\.has\(command\)/.test(clearHandlerSource) ||
     !/function isChatClearKey\(event\)[\s\S]{0,260}event\.key==="Delete"\|\|event\.code==="Delete"/.test(script)) {
   throw new Error("chat-clear aliases must be consumed locally and Delete must remain wired");
 }
+/* The native chat line is painted into the field back-buffer and never owns
+   a right-button hit region.  Keep the transparent web editor from swallowing
+   right-click turns or PI pickup when an item/money pile is under the lower
+   chat strip. */
+const chatInputMapHitStart = script.indexOf("function chatInputMapHit(event)");
+const chatInputMapHitEnd = script.indexOf("function isWorldUiTarget", chatInputMapHitStart);
+if (chatInputMapHitStart < 0 || chatInputMapHitEnd <= chatInputMapHitStart ||
+    !/Number\(event\?\.button\)===2\)return true/.test(script.slice(chatInputMapHitStart, chatInputMapHitEnd)) ||
+    !/if\(mapMovementBlocked\(\)\|\|isWorldUiTarget\(event\.target,event\)\)return/.test(script)) {
+  throw new Error("chat input must pass native right-click field gestures through");
+}
 /* The switch-compatible 8.5 `_SA_VERSION_25` main loop adds one harmless
    local edit shortcut: Shift+Backspace clears the focused STR_BUFFER.  Keep
    that behavior in the web editor without turning it into a server command. */
