@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -827,6 +828,112 @@ func TestHTTPSessionGracefulDeleteWaitsForPeerClose(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("graceful delete did not finish after peer close")
+	}
+}
+
+func TestHTTPSessionPollCancellationCleansSession(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerDone := make(chan struct{})
+	go func() {
+		defer close(peerDone)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		_, _ = connection.Write([]byte{'L', 0})
+		_, _ = io.Copy(io.Discard, connection)
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		select {
+		case <-peerDone:
+		case <-time.After(time.Second):
+			t.Error("poll-cancellation TCP peer did not stop")
+		}
+	})
+
+	handler, err := NewHandler(testConfig(listener.Addr().String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("create status=%d", response.StatusCode)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pollRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/sessions/"+created.ID+"/events?timeout=60000", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pollDone := make(chan error, 1)
+	go func() {
+		pollResponse, requestErr := http.DefaultClient.Do(pollRequest)
+		if pollResponse != nil {
+			pollResponse.Body.Close()
+		}
+		pollDone <- requestErr
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		session, ok := handler.sessions.get(created.ID)
+		if ok {
+			session.mu.Lock()
+			polling := session.polling
+			session.mu.Unlock()
+			if polling {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("events request did not reach the session poll")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	select {
+	case <-pollDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled events request did not return")
+	}
+
+	deadline = time.Now().Add(time.Second)
+	for {
+		response, err = http.Get(server.URL + "/healthz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var health map[string]any
+		if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+			response.Body.Close()
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if health["sessions"] == float64(0) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("canceled poll leaked sessions=%v", health["sessions"])
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

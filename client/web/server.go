@@ -534,6 +534,17 @@ func (session *tcpSession) write(packet []byte) error {
 // queue is empty.  Only one outstanding poll is allowed for a session so that
 // event ordering remains exactly the TCP ordering seen by the original client.
 func (session *tcpSession) poll(timeout time.Duration) ([]packetEvent, error) {
+	return session.pollContext(context.Background(), timeout)
+}
+
+// pollContext is the request-aware form used by the HTTP handler.  A browser
+// tab can disappear while /events is waiting; honoring that cancellation is
+// important because otherwise the bridge keeps the TCP socket (and its
+// transient legacy-account lock) alive until the idle watchdog fires.
+func (session *tcpSession) pollContext(ctx context.Context, timeout time.Duration) ([]packetEvent, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	session.mu.Lock()
 	if session.polling {
 		session.mu.Unlock()
@@ -570,6 +581,8 @@ func (session *tcpSession) poll(timeout time.Duration) ([]packetEvent, error) {
 			continue
 		case <-session.closed:
 			continue
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-deadline.C:
 			return nil, nil
 		}
@@ -613,6 +626,21 @@ func (store *sessionStore) get(id string) (*tcpSession, bool) {
 	return session, ok
 }
 
+// removeIf drops a session only when the map still points at expected.  A
+// browser can reconnect while the old read loop is unwinding; the old loop
+// must never remove the replacement session that happens to reuse its id
+// (ids are random today, but keeping this identity check makes the ownership
+// contract explicit and race-safe).
+func (store *sessionStore) removeIf(id string, expected *tcpSession) bool {
+	store.mu.Lock()
+	current, ok := store.sessions[id]
+	if ok && current == expected {
+		delete(store.sessions, id)
+	}
+	store.mu.Unlock()
+	return ok && current == expected
+}
+
 func (store *sessionStore) delete(id string) {
 	store.mu.Lock()
 	session := store.sessions[id]
@@ -640,18 +668,24 @@ func (store *sessionStore) closeIdle(idle time.Duration) {
 	}
 	now := time.Now()
 	store.mu.RLock()
-	stale := make([]*tcpSession, 0)
-	for _, session := range store.sessions {
+	type staleSession struct {
+		id      string
+		session *tcpSession
+	}
+	stale := make([]staleSession, 0)
+	for id, session := range store.sessions {
 		session.mu.Lock()
 		last := session.lastActivity
 		session.mu.Unlock()
 		if now.Sub(last) > idle {
-			stale = append(stale, session)
+			stale = append(stale, staleSession{id: id, session: session})
 		}
 	}
 	store.mu.RUnlock()
-	for _, session := range stale {
-		session.finish("session idle timeout")
+	for _, item := range stale {
+		if store.removeIf(item.id, item.session) {
+			item.session.finish("session idle timeout")
+		}
 	}
 }
 
@@ -1483,8 +1517,15 @@ func (handler *Handler) pollEvents(response http.ResponseWriter, request *http.R
 		}
 		timeout = time.Duration(milliseconds) * time.Millisecond
 	}
-	events, err := session.poll(timeout)
+	events, err := session.pollContext(request.Context(), timeout)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// The client is gone.  Remove the session before closing the TCP
+			// side so a replacement login cannot race a dead bridge entry.
+			handler.sessions.removeIf(session.id, session)
+			session.finish("HTTP events request canceled")
+			return
+		}
 		http.Error(response, err.Error(), http.StatusConflict)
 		return
 	}
