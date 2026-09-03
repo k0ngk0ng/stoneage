@@ -4817,7 +4817,16 @@
        zero-width strip while the manifest/Content-Length is still unknown. */
     if(indeterminate)bar.style.removeProperty("width");
     else bar.style.width=`${percent}%`;
-    const phase=String(text||app.mapLoadingStats?.phase||"正在加载地图…");
+    /* Raster/image callbacks can arrive after setMapLoading(false) has
+       published the completed state.  They still call this helper with a
+       transient phase label (for example “正在解码地图贴片…”), but the
+       loading surface is no longer active at that point.  Do not let those
+       late callbacks resurrect a stale loading phase in the observable
+       progress snapshot; the native client considers the map ready once the
+       completed back-buffer has been revealed. */
+    const phase=app.mapLoading
+      ?String(text||app.mapLoadingStats?.phase||"正在加载地图…")
+      :String(app.mapLoadingStats?.phase||"地图已就绪");
     const label=$("world-loading-text");if(label)label.textContent=phase;
     const suffix=manifestPending
       ?(manifestHasTotal

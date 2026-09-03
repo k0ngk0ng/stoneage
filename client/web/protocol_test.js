@@ -734,6 +734,9 @@ if (!/if\(!loading\)\{[\s\S]{0,420}app\.mapLoadingStats\.phase="地图已就绪"
 if (!/renderMapLoadingProgress\(loading\?text:""\)/.test(script)) {
   throw new Error("completed map loading must not overwrite the ready phase with the loading default");
 }
+if (!/const phase=app\.mapLoading\s*\?\s*String\(text\|\|app\.mapLoadingStats\?\.phase\|\|"正在加载地图…"\)\s*:\s*String\(app\.mapLoadingStats\?\.phase\|\|"地图已就绪"\)/.test(script)) {
+  throw new Error("late map raster callbacks must not resurrect a stale loading phase after the map is ready");
+}
 if (!/const STATIC_RESOURCE_BASE=new URL\("\.\.\/",ASSET_RESOURCE_ROOT\)/.test(script) ||
     !/const ASSET_VERSION_URL=new URL\("_client-version\.json",STATIC_RESOURCE_BASE\)/.test(script)) {
   throw new Error("asset version marker must live beside assets/, maps/ and audio/");
