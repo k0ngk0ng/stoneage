@@ -7763,8 +7763,16 @@
        synthetic row id here. */
     if(action?.kind==="attack"){
       const boomerang=Boolean(Number(state.bpFlags)&BATTLE_BP_BOOMERANG);
-      return participants.filter(item=>Number(item.battleId)!==myNo&&
-        (boomerang?battleBoomerangTargetAllowed(item,state):true));
+      /* Keep ordinary H on the opponent formation.  The native button paints
+         a broad hit-box pass (and the reference build's optional _CANT_ATK
+         switch is disabled), but the 2.5 web gameplay contract is that a
+         normal attack chooses an opponent, never the local player/party.
+         Boomerang keeps its native row-based exception below. */
+      return participants.filter(item=>{
+        const id=Number(item.battleId);
+        if(boomerang)return id!==myNo&&battleBoomerangTargetAllowed(item,state);
+        return id!==myNo&&id!==myPetNo&&battleIsEnemy(item);
+      });
     }
     if(action?.kind==="capture")return participants.filter(item=>Number(item.battleId)!==myNo&&battleIsEnemy(item));
     if(!battleTargetTypeAllowed(action))return [];
@@ -7828,7 +7836,13 @@
     }
     if(!battleAlive(item,allowDead,state))return false;
     const id=Number(item.battleId),myNo=Number(state.myNo),mySide=battleSide(myNo),itemSide=battleSide(id),type=Number(action.targetType);
-    if(action.kind==="attack")return id!==myNo&&(!(Number(state.bpFlags)&BATTLE_BP_BOOMERANG)||battleBoomerangTargetAllowed(item,state));
+    if(action.kind==="attack"){
+      const boomerang=Boolean(Number(state.bpFlags)&BATTLE_BP_BOOMERANG);
+      if(boomerang)return id!==myNo&&battleBoomerangTargetAllowed(item,state);
+      /* Keep this in lock-step with CheckBattelTarget(): own player and own
+         active pet are never valid ordinary attack targets. */
+      return id!==myNo&&id!==myNo+5&&itemSide>=0&&itemSide!==mySide;
+    }
     if(action.kind==="capture")return id!==myNo&&itemSide>=0&&itemSide!==mySide;
     if(type===5)return (action.kind==="item"&&id===myNo)||(action.kind==="pet"&&id===myNo+5);
     if(type===2)return itemSide===mySide;

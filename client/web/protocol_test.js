@@ -1772,7 +1772,9 @@ for (const expected of [
      actor outside BattleMyNo's five-slot row, then send the clicked actor id
      unchanged so the 2.5 server can perform its bid/5 row conversion. */
   /const BATTLE_BP_BOOMERANG=1<<2;/,
-  /if\(action\?\.kind==="attack"\)\{[\s\S]{0,500}boomerang\?battleBoomerangTargetAllowed\(item,state\):true\)/,
+  /* Ordinary H uses the web 2.5 gameplay contract: only the opponent
+     formation is selectable; boomerang keeps its row rule. */
+  /if\(action\?\.kind==="attack"\)\{[\s\S]{0,1500}if\(boomerang\)return id!==myNo&&battleBoomerangTargetAllowed\(item,state\);[\s\S]{0,420}id!==myNo&&id!==myPetNo&&battleIsEnemy\(item\)/,
   /function battleBoomerangTargetAllowed\(item,state=app\.battleState\)[\s\S]{0,600}Math\.floor\(battleId\/5\)!==Math\.floor\(myNo\/5\)/,
   /* MOUSE.CPP excludes ACT_ATR_TRAVEL actors from every ordinary target
      pass.  BC does not carry that local action bit, so the web renderer must
@@ -2571,18 +2573,20 @@ const petAttackTargetHarness=new Function("targetCore","actionCommand","popupSou
   function send(name,values){sends.push([name,[...values]]);return new Promise(()=>{});}
   function reportError(error){throw error;}
   eval(popupSource);eval(beginSource);eval(sendSource);
+  const playerAttackIds=battleTargetCandidates({kind:"attack"}).map(item=>Number(item.battleId));
   renderBattlePopup();
   const popupRows=[...nodes["battle-popup-list"].children];
   popupRows[0]?.dispatch("click");
   const proxyIds=targetProxies.map(node=>Number(node.dataset.battleTarget));
   const enemyProxy=targetProxies.find(node=>Number(node.dataset.battleTarget)===10);
   enemyProxy?.dispatch("click");
-  return {app,state,sends,tones,popupRows,proxyIds};
+  return {app,state,sends,tones,popupRows,proxyIds,playerAttackIds};
 `)(
   script.slice(battleTargetCoreStart,battleTargetCoreEnd),script.slice(battleActionCommandStart,battleActionCommandEnd),
   script.slice(battlePopupRowStart,battlePopupRowEnd),script.slice(beginBattleActionStart,beginBattleActionEnd),sendBattleTargetSource
 );
-if(petAttackTargetHarness.popupRows[0]?.title!=="攻击"||petAttackTargetHarness.proxyIds.join(",")!=="0,10"||
+if(petAttackTargetHarness.playerAttackIds.join(",")!=="10"||
+   petAttackTargetHarness.popupRows[0]?.title!=="攻击"||petAttackTargetHarness.proxyIds.join(",")!=="0,10"||
    petAttackTargetHarness.sends.length!==1||petAttackTargetHarness.sends[0][0]!=="B"||petAttackTargetHarness.sends[0][1][0]!=="W|0|A"||
    !petAttackTargetHarness.state.petCommandLocked||!petAttackTargetHarness.state.commandLocked||
    petAttackTargetHarness.state.choiceDeadline!==987654321||petAttackTargetHarness.state.lastPlayerActionCommand!=="H|A"){
