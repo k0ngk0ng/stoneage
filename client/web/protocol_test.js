@@ -1528,6 +1528,11 @@ for (const expected of [
      error. */
   /function interruptWorldMovementForBattle\(\)[\s\S]{0,1200}app\.pendingMove=false;[\s\S]{0,700}app\.movePredictionActive=false/,
   /function enterBattle\(field,type=1\)[\s\S]{0,700}interruptWorldMovementForBattle\(\);/,
+  /* A W POST may resolve after EN has handed the back-buffer to BattleProc;
+     its completion must not restore the stale field “行走中…” status. */
+  /function interruptWorldMovementForBattle\(\)[\s\S]{0,120}app\.moveWireGeneration=Number\(app\.moveWireGeneration\|\|0\)\+1;/,
+  /const wireGeneration=Number\(app\.moveWireGeneration\|\|0\)\+1;[\s\S]{0,180}app\.moveWireGeneration=wireGeneration;/,
+  /send\("W",\[wireFrom\[0\],wireFrom\[1\],route\]\)\.then\(\(\)=>\{[\s\S]{0,1000}Number\(app\.moveWireGeneration\)!==wireGeneration/,
   /* A repeated BP snapshot belongs to the same native battleMenuFlag2 turn;
      it must not restart BattleCntDown and silently grant extra time. */
   /const existingKey=state\.choiceTurnKey;[\s\S]{0,220}Number\(existingKey\)===turnKey\)return;/,
