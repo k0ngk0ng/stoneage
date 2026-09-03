@@ -338,6 +338,14 @@ for (const expected of [
 ]) {
   if (!serviceWorker.includes(expected)) throw new Error(`Service Worker hash-delta reuse path missing: ${expected}`);
 }
+/* Dynamic same-origin endpoints may contain the word "assets" in their
+   path (for example /api/assets/status).  The static-path fallback is only
+   for a CDN request that raced set-asset-roots; same-origin non-root paths
+   must be rejected before that fallback or API responses can survive a
+   release in Cache Storage. */
+if (!/if\s*\(url\.origin\s*===\s*self\.location\.origin\)\s*return\s*false;/.test(serviceWorker)) {
+  throw new Error("Service Worker must reject same-origin dynamic paths before static fallback");
+}
 if (!/url\.origin === self\.location\.origin && isLocalStaticPath\(url\)/.test(serviceWorker) ||
     /url\.origin === self\.location\.origin && isStaticPath\(url\)/.test(serviceWorker)) {
   throw new Error("Service Worker must not cache same-origin /api/assets paths as static resources");

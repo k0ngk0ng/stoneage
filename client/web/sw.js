@@ -114,6 +114,12 @@ function isStaticRequest(request) {
   if (isPublishedMarker(url)) return true;
   if (url.origin === self.location.origin && isLocalStaticPath(url)) return true;
   if (isAllowedExternalRoot(url)) return true;
+  /* Same-origin paths outside the three published roots belong to the web
+     application (including /api/assets/*).  Do not let the resource-like
+     destination fallback below turn a dynamic API response into an
+     immutable Cache Storage entry.  A same-origin CDN prefix is already
+     accepted by isAllowedExternalRoot() above. */
+  if (url.origin === self.location.origin) return false;
   /* The page sends roots immediately after registration, but the first
      navigation can race that message.  CDN paths still carry one of the
      published tree names; only cache resource-like requests on this fallback
