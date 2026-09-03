@@ -4673,6 +4673,16 @@
        Preserve the short defeat notice so the user does not see a misleading
        "arrived" status immediately after the death animation. */
     if(Number(app.battleFailureNoticeUntil)>Date.now()&&String(text||"")!=="战斗失败，角色已倒下。")return;
+    /* A W POST can resolve after EN/BU has already handed the back-buffer
+       back to the field.  Its success callback is intentionally generation
+       guarded, but a callback that won the race just before the encounter
+       still must not leave a stale “行走中…” label behind once every local
+       movement latch has been retired.  The native field status is settled
+       at that boundary; ignore only this stale label when there is no active
+       route, animation, prediction, or wire drain. */
+    if(String(text||"")==="行走中…"&&app.phase==="world"&&!app.battle&&
+      !app.pendingMove&&!app.walkAnimation&&!app.moveQueue.length&&
+      !app.moveSentSteps&&!app.moveWirePending&&app.moveTarget===null)return;
     const element=$("world-state"); element.textContent=text; element.style.color=kind==="error"?"var(--danger)":kind==="good"?"var(--good)":"var(--accent)";
   }
   /* The local renderer can finish its optimistic route before the 2.5

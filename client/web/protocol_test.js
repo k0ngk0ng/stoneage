@@ -246,6 +246,32 @@ if (!/case VK_BACK:[\s\S]{0,260}JOY_RSHIFT[\s\S]{0,220}pNowStrBuffer->cnt\s*=\s*
     !/if\(isShiftBackspace\(event\)\)\{event\.preventDefault\(\);clearEditableInputBuffer\(input\);event\.stopPropagation\(\);return;\}/.test(script)) {
   throw new Error("Shift+Backspace must clear the focused 2.5-compatible input buffer locally");
 }
+/* A real encounter can interrupt a W response at the exact field/battle
+   hand-off.  Once every movement latch is gone, that stale callback must not
+   overwrite the battle-exit message with a fake "walking" state.  Execute
+   the extracted helper with both the settled and live-route shapes so the
+   guard cannot accidentally suppress an ordinary in-progress W. */
+const worldStateStart = script.indexOf("  function setWorldState(text,kind=\"\")");
+const worldStateEnd = script.indexOf("  function refreshSettledMoveState", worldStateStart);
+if (worldStateStart < 0 || worldStateEnd <= worldStateStart) {
+  throw new Error("world state helper boundary missing");
+}
+const worldStateNode = {textContent:"战斗结束",style:{color:""}};
+const worldStateApp = {
+  battleFailureNoticeUntil:0, phase:"world", battle:false,
+  pendingMove:false, walkAnimation:null, moveQueue:[], moveSentSteps:0,
+  moveWirePending:false, moveTarget:null,
+};
+const setWorldStateHarness = new Function("app", "$", `${script.slice(worldStateStart, worldStateEnd)}; return setWorldState;`)(worldStateApp, ()=>worldStateNode);
+setWorldStateHarness("行走中…");
+if (worldStateNode.textContent !== "战斗结束") {
+  throw new Error("settled battle exit accepted a stale walking status");
+}
+worldStateApp.moveWirePending = true;
+setWorldStateHarness("行走中…");
+if (worldStateNode.textContent !== "行走中…") {
+  throw new Error("live W route no longer exposes its walking status");
+}
 /* The 8.5 source tree is also the switch-compatible reference for the
    deployed 2.5 mode.  Its regional map cases 47..53 are unconditional;
    only the later 54/55 recordings are protected by _NEWMUSICFILE6_0. */
