@@ -2762,7 +2762,7 @@
        without stretching the PC scene or leaving black side bars. */
     html,body { width:100%; height:100%; height:100dvh; min-height:100%; overflow:hidden; overscroll-behavior:none; background:#000; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto; }
     body { display:block; padding:0; }
-    #app { width:100%; height:100%; height:100dvh; min-height:100%; position:relative; overflow:hidden; }
+    #app { width:100%; height:100%; height:100dvh; min-height:100%; position:fixed; inset:0; overflow:hidden; }
     /* The native mouse is an OS surface and is allowed to extend over the
        field window's bottom task bar.  The Web fish is a sibling portal of
        the scene, so clipping #app/main at the 4:3 scene edge cuts its bitmap
@@ -3614,11 +3614,41 @@
     const id=name==="serverWindow"?"server-window-screen":name==="localDialog"?"local-dialog-screen":`${String(name||"")}-screen`;
     return hydrateScreenImages($(id));
   }
+  function resetLegacyViewportScroll(){
+    /* BODY is a scroll container in Chromium even with overflow:hidden when
+       a transformed descendant receives focus.  Keep the game surface
+       anchored at the viewport origin; never move the user's OS pointer. */
+    try{
+      if(window.scrollX||window.scrollY)window.scrollTo(0,0);
+      const root=document.documentElement,body=document.body;
+      if(root){root.scrollLeft=0;root.scrollTop=0;}
+      if(body){body.scrollLeft=0;body.scrollTop=0;}
+    }catch(_){/* some embedded WebViews expose read-only scroll offsets */}
+  }
   function syncFieldOverlayVisibility(){
     const main=document.querySelector("main");
     if(!main)return;
     const openScreen=advancedScreens.find(screen=>!screen.classList.contains("hidden"));
     main.classList.toggle("field-overlay-suppressed",Boolean(openScreen));
+    /* A task-bar click leaves the source button focused.  Once the legacy
+       window is made visible that focus target is no longer part of the
+       active surface, and Chromium tries to keep it visible by scrolling the
+       BODY.  Drop only this stale field-control focus (inputs inside the
+       newly opened window keep their normal focus/IME behaviour). */
+    const focused=document.activeElement;
+    if(openScreen&&focused&&focused!==document.body&&!openScreen.contains(focused)&&
+       focused.matches?.("#world-tools button,#field-ui button,[data-panel],[data-field-action]"))focused.blur();
+    /* Opening a transformed legacy window through a bottom task-bar button
+       leaves that button focused.  Chromium then performs focus scrolling on
+       the BODY scroll container even though the document is visually locked
+       (body.scrollTop/scrollLeft become the exact offset of the button).
+       The 640x480 client surface is fixed and must never be panned by focus;
+       clear both scroll containers after every panel transition.  Use a
+       queued frame as well as the immediate reset because the UA applies its
+       focus scroll after the click handler returns. */
+    resetLegacyViewportScroll();
+    window.setTimeout(resetLegacyViewportScroll,0);
+    if(typeof window.requestAnimationFrame==="function")window.requestAnimationFrame(resetLegacyViewportScroll);
     /* The fish/target overlay now lives above the task bar as a sibling.  Hide
        it in the same tick as a native WN/menu window so it cannot float over
        the dialog while the world phase remains active underneath. */

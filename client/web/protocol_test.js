@@ -157,6 +157,15 @@ if(!/<input id="chat-input"[^>]*aria-label="聊天输入"[^>]*maxlength="70"[^>]
    !/#battle-chat-log \{[^}]*left:8px[^}]*width:560px[^}]*height:400px[^}]*font:16px\/20px/.test(html)){
   throw new Error("chat buffer must use the native transparent 70-byte/8,432 layout");
 }
+/* The fixed 640x480 scene must not be focus-scrolled by Chromium when a
+   transformed legacy panel is opened from the bottom task bar.  Keep the
+   outer shell fixed to the viewport; otherwise BODY.scrollTop/scrollLeft can
+   pan every map/menu surface away from its native origin. */
+if(!/#app \{[^}]*position:fixed[^}]*inset:0[^}]*overflow:hidden/.test(html) ||
+   !/function resetLegacyViewportScroll\(\)[\s\S]{0,500}body\.scrollLeft=0;body\.scrollTop=0/.test(script) ||
+   !/resetLegacyViewportScroll\(\);\s*window\.setTimeout\(resetLegacyViewportScroll,0\)/.test(script)) {
+  throw new Error("legacy viewport must stay anchored when panels receive focus");
+}
 /* Creation.CPP redraws the face preview after every point/style change.  The
    DOM preview must carry the cleanup class used by renderCreation(); an
    id-only node survives each redraw and stacks duplicate face bitmaps. */
