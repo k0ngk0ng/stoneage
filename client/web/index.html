@@ -14027,7 +14027,13 @@
         const seq=Number(values[0])||0,result=Number(values[1])||0;setStatus("lastEventResult",`${seq}:${result}`);
         if(app.activeMapEvent?.seq===seq){
           const eventInfo=app.activeMapEvent;addEvent(`地图事件回应 seq=${seq} result=${result}`);app.activeMapEvent=null;
-          if(result===0&&isMapWarpEvent(eventInfo.event)&&Number(eventInfo.retryCount||0)<4&&app.phase==="world"&&!app.battle){
+          /* The Linux 2.5 GMSV returns the C TRUE value (1) from
+             EVENT_main() for an accepted warp/encounter.  The later 8.5
+             client uses the opposite convention (0 == accepted), so
+             copying that handler verbatim made every successful 2.5 warp
+             look rejected and released the floor transition too early. */
+          const accepted=result===1;
+          if(!accepted&&isMapWarpEvent(eventInfo.event)&&Number(eventInfo.retryCount||0)<4&&app.phase==="world"&&!app.battle){
             /* A W batch is consumed by CHAR_walk_check every 10 ms.  A
                browser walk can finish first; retry after one server tick so
                EV's one-tile proximity check sees the actual character. */
@@ -14035,8 +14041,8 @@
             scheduleMapEventRetry({...eventInfo,retryCount:Number(eventInfo.retryCount||0)+1},MOVE_SERVER_WALK_INTERVAL_MS+120);
             setWorldState("传送同步中…");
           }else{
-            if(result!==0)setWorldState("门/传送事件未被服务器接受。","error");
-            if(result!==0)releaseMapFloorTransitionForEvent(seq);
+            if(!accepted)setWorldState("门/传送事件未被服务器接受。","error");
+            if(!accepted)releaseMapFloorTransitionForEvent(seq);
           }
         }
         break;

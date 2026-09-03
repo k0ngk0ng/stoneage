@@ -2048,6 +2048,11 @@ for (const expected of [
      is valid in both the native NOON and EVENING sections. */
   /function mapTimeSection\(hour=currentSaTimeHour\(\)\)[\s\S]{0,420}value>700&&value<=930[\s\S]{0,180}value>200&&value<=300[\s\S]{0,180}value>300&&value<=700/,
   /function mapWarpAllowedAtHour\(event,hour=currentSaTimeHour\(\)\)[\s\S]{0,650}case 6:return mapTimeSection\(hour\)==="morning"[\s\S]{0,260}section==="noon"\|\|section==="evening"[\s\S]{0,180}case 8:return mapTimeSection\(hour\)==="night"/,
+  /* The preserved 2.5 GMSV returns TRUE (1) from EVENT_main() for an
+     accepted warp.  8.5's newer server/client pair uses 0 for success; the
+     web client must follow the actual 2.5 wire contract or every successful
+     scene change is painted as a rejected door. */
+  /const accepted=result===1;[\s\S]{0,900}if\(!accepted\)[\s\S]{0,180}门\/传送事件未被服务器接受/,
   /* CHAR_Talk() is echoed by the server through TK_recv; the submit path
      must not append a second local copy before that authoritative echo. */
   /await send\("TK",\[x,y,`P\|\$\{text\}`,color,range\]\);rememberChatInputHistory\(text\);input\.value="";/,
@@ -2056,6 +2061,17 @@ for (const expected of [
      legacy pattern in this older grouped HUD checklist. */
   if (expected.source.includes('\\$\\{text\\}') && expected.source.includes('rememberChatInputHistory')) continue;
   if (!expected.test(html) && !(expected.source.includes('\\$\\{text\\}') && /await send\\("TK",\\[x,y,`P\\|\\$\\{encodeNativeChatText\\(rawText\\)\\}`,color,range\\]\\);rememberChatInputHistory\\(rawText\\);input\\.value=""/.test(html))) throw new Error(`field HUD regression: ${expected}`);
+}
+const native25EventSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/callfromcli.c", "utf8");
+const native25EventSourceSlice = native25EventSource.slice(native25EventSource.indexOf("void lssproto_EV_recv"), native25EventSource.indexOf("void lssproto_EN_recv"));
+if (!/rc\s*=\s*EVENT_main\(fd_charaindex, event,fx,fy\)/.test(native25EventSourceSlice) ||
+    !/lssproto_EV_send\( fd, seqno, rc\)/.test(native25EventSourceSlice)) {
+  throw new Error("2.5 EV response must expose EVENT_main()'s TRUE/FALSE result");
+}
+const native25EventSourceEvent = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/char/event.c", "utf8");
+if (!/static int EVENT_onWarpNPC[\s\S]{0,1200}return TRUE;/.test(native25EventSourceEvent) ||
+    !/MAPPOINT_MapWarpHandle[\s\S]{0,180}rc = TRUE;/.test(native25EventSourceEvent)) {
+  throw new Error("2.5 warp handlers must return TRUE on acceptance");
 }
 /* Exercise the object-rebuild fallback without starting the full page.  A
    stale WN id is accepted only when the locked NPC identity is still present
