@@ -5972,8 +5972,10 @@
        it until the new bitmap is ready; clearing the sprite for one refresh
        is the intermittent “人物消失” seen on slower mobile decoders. */
     const previousFrame=actor&&typeof actor==="object"?actor._lastFrame:null;
-    const manifest=assetState.manifest;if(!manifest)return previousFrame||null;
-    const keys=assetManifestKeys(actorGraphicValue(actor)),spriteEntry=spriteEntryForKeys(keys),key=spriteEntry?.key||keys.find(candidate=>manifest.bitmaps?.[candidate])||keys[0];
+    /* Bootstrap SPR rows may be ready before the large manifest on mobile. */
+    const manifest=assetState.manifest||null;
+    const keys=assetManifestKeys(actorGraphicValue(actor)),spriteEntry=spriteEntryForKeys(keys),key=spriteEntry?.key||keys.find(candidate=>manifest?.bitmaps?.[candidate])||keys[0];
+    if(!manifest&&!spriteEntry)return previousFrame||null;
     /* C/CA can briefly carry an empty/unknown graphic while the replacement
        record is being decoded.  Keep the completed frame that was painted
        for this actor instead of clearing it for one compositor tick. */
