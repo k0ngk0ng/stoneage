@@ -2973,10 +2973,28 @@
      full scene viewport here so a WebView that resizes visualViewport before
      focusin cannot make the title artwork and input collapse for one frame. */
   document.addEventListener("pointerdown",event=>{
-    if(event.target?.matches?.("#login-form input"))lockLoginInputViewport();
+    if(event.target?.matches?.("#login-form input")){
+      lockLoginInputViewport();
+      /* Browsers reject autoplay until a trusted gesture.  LOGIN.CPP already
+         owns the title track before the first field is focused; unlock it on
+         that same gesture so a fresh title visit and a post-logout title
+         visit have the same music lifecycle.  QUIT is intentionally excluded
+         here so closing the tab never starts a needless sound request. */
+      unlockAudio();
+    }
   },{capture:true,passive:true});
   document.addEventListener("touchstart",event=>{
-    if(event.target?.matches?.("#login-form input"))lockLoginInputViewport();
+    if(event.target?.matches?.("#login-form input")){
+      lockLoginInputViewport();
+      unlockAudio();
+    }
+  },{capture:true,passive:true});
+  /* A hardware keyboard can be the first user gesture on desktop or a
+     mobile WebView.  Unlock only for actual title-field input; programmatic
+     autofocus does not dispatch keydown and therefore cannot unexpectedly
+     start audio during page load. */
+  document.addEventListener("keydown",event=>{
+    if(event.target?.matches?.("#login-form input")&&!event.isComposing)unlockAudio();
   },{capture:true,passive:true});
   document.addEventListener("focusin",event=>{
     if(!event.target?.matches?.("#login-form input"))return;

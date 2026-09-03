@@ -609,6 +609,11 @@ if (!/function lockLoginInputViewport\(\)[\s\S]{0,900}lastStableViewport/.test(s
     !/document\.addEventListener\("touchstart",[\s\S]{0,260}lockLoginInputViewport/.test(script)) {
   throw new Error("mobile login must capture the pre-IME viewport before focus resizes visualViewport");
 }
+if (!/document\.addEventListener\("pointerdown",[\s\S]{0,900}#login-form input[\s\S]{0,500}unlockAudio\(\)/.test(script) ||
+    !/document\.addEventListener\("touchstart",[\s\S]{0,900}#login-form input[\s\S]{0,300}unlockAudio\(\)/.test(script) ||
+    !/document\.addEventListener\("keydown",[\s\S]{0,500}#login-form input[\s\S]{0,180}unlockAudio\(\)/.test(script)) {
+  throw new Error("the first title-field user gesture must unlock title music without touching QUIT");
+}
 if (!/function rememberStableViewport\([\s\S]{0,1800}previousArea/.test(script) ||
     !/id="account"[^>]*enterkeyhint="next"/.test(html) ||
     !/id="password"[^>]*enterkeyhint="done"/.test(html) ||
