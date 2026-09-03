@@ -3593,6 +3593,7 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
     !/battleId=normalizeBattleMapId\(rawBattleId\)/.test(battleWorldSource) ||
     !/battleId>=0&&battleId<BATTLE_MAP_FILES_25/.test(battleWorldSource) ||
     !/const fieldNo=normalizeBattleMapId\(field\)/.test(enterBattleSource) ||
+    !/hydrateScreenImages\(battleScreen\);[\s\S]{0,260}beginBattleMusic\(type,fieldNo\)/.test(enterBattleSource) ||
     !/beginBattleMusic\(type,fieldNo\)/.test(enterBattleSource) ||
     !/服务器战斗（场景 \$\{fieldNo\}）/.test(enterBattleSource) ||
     !/BATTLE_RASTER_MAP_MIN=148,BATTLE_RASTER_MAP_MAX=150,BATTLE_RASTER_CLEARANCE=8/.test(script) ||
@@ -4101,6 +4102,15 @@ if (!/const freshDead=Boolean\(\(item\.flags&BATTLE_BC_FRESH\)&&!old\)/.test(rec
     !/if\(freshDead\)[\s\S]{0,1300}state\.deathStartedAt\.set\(Number\(item\.battleId\),Date\.now\(\)-deadDuration-BATTLE_PROC_TICK_MS\)/.test(receiveBattleStatusForFreshDeath) ||
     !/\}\s*else\{\s*battleQueueDeath\(/.test(receiveBattleStatusForFreshDeath)) {
   throw new Error("BC fresh+dead must enter the held final corpse frame without replaying the death chain");
+}
+/* A lethal ATT_DAMAGE (BD) uses the direct VCT78/79 death movie.  BP resets
+   the transient movie arrays at the next turn boundary, so that direct
+   terminal motion must cross the reset just like the normal VCT10..14 death
+   chain; otherwise a subsequent XYD callback returns to the field before the
+   corpse animation has painted. */
+const applyBattleTurnSource = script.slice(script.indexOf("  function applyBattleTurnState"), script.indexOf("  function battleApplyAnimationState"));
+if (!/preservedDeathMotions=\(Array\.isArray\(state\.motions\)\?state\.motions:\[\]\)\.filter\(motion=>motion\?\.kind==="death"\|\|motion\?\.kind==="death-direct"\)/.test(applyBattleTurnSource)) {
+  throw new Error("BP turn reset must preserve direct lethal death movies");
 }
 const battleDamageSource = script.slice(script.indexOf('      }else if(marker==="BD")'), script.indexOf('      }else if(marker==="B+")'));
 const battleMovieScopeSource = script.slice(script.indexOf("  function battleMovieEffects(command){"), script.indexOf("  function receiveBattlePacket", script.indexOf("  function battleMovieEffects(command){")));

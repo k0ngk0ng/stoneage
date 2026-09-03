@@ -9406,7 +9406,7 @@
        until the next roster packet.  Carry the authoritative death timestamps
        across the boundary and rebuild their terminal motion entries below.
     */
-    const preservedDeaths=state.deathStartedAt instanceof Map?new Map(state.deathStartedAt):new Map(),preservedDeathMotions=(Array.isArray(state.motions)?state.motions:[]).filter(motion=>motion?.kind==="death").map(motion=>({...motion}));
+    const preservedDeaths=state.deathStartedAt instanceof Map?new Map(state.deathStartedAt):new Map(),preservedDeathMotions=(Array.isArray(state.motions)?state.motions:[]).filter(motion=>motion?.kind==="death"||motion?.kind==="death-direct").map(motion=>({...motion}));
     /* A gateway can deliver BC before BP even though the native command
        sequence normally writes BP first.  If that BC contains BC_FLG_NEW,
        receiveBattleStatus() has already queued the CHAR_IN-equivalent appear
@@ -17393,6 +17393,13 @@
     app.battleState.petMenuStagePending=false;
     app.battleState.pendingPetMenuCommand="";
     battleMenuMotionShape(app.battleState);
+    /* The world -> battle curtain deliberately defers applyScreenVisibility()
+       until its black hand-off.  Hydrate the battle surface at EN time as a
+       small, deterministic UI preheat so the fixed command/menu bitmaps are
+       already decoding while the curtain runs.  This does not pull actor or
+       map resources forward; renderBattleWorld() still waits for BC/BP and
+       the battle back-buffer remains locked until native entry is complete. */
+    hydrateScreenImages(battleScreen);
     beginBattleMusic(type,fieldNo);$("battle-result-screen")?.classList.add("hidden");show(battleScreen);
     $("battle-state").textContent=`服务器战斗（场景 ${fieldNo}），等待 BC/BP 状态。`;$("battle-log").textContent="战斗开始。";status("战斗","good");
     scheduleBattleInitializationTimeout(app.battleState);renderBattleWorld();renderBattle();renderBattlePopup();
