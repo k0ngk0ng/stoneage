@@ -4917,7 +4917,10 @@ const npcMetadataEnd = script.indexOf("function removeStaticNPCAt", npcMetadataS
 const npcMetadataSource = script.slice(npcMetadataStart, npcMetadataEnd);
 if (npcMetadataStart < 0 || npcMetadataEnd <= npcMetadataStart ||
     !/const metadata=\{[^}]*graphic,direction:stateNumber\(record\.direction\)/.test(npcMetadataSource) ||
-    !/graphicKey:String\(metadata\.graphic\|\|\"\"\)/.test(script)) {
+    !/graphicKey:String\(metadata\.graphic\|\|\"\"\)/.test(script) ||
+    !/function npcMetadataIsDynamic\(record\)/.test(script) ||
+    !/if\(npcMetadataIsDynamic\(record\)\)continue/.test(npcMetadataSource) ||
+    !/if\(npcMetadataIsDynamic\(metadata\)\)return/.test(script)) {
   throw new Error("static NPC metadata must preserve graphic/direction for live-object restoration");
 }
 const cliHeader = fs.readFileSync(__dirname + "/../../vendor/upstream/code_sa_client/SYSTEMINC/LSSPROTO_CLI.H", "utf8");

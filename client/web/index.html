@@ -7343,10 +7343,24 @@
      decides whether a character is actually spawned, in range, and allowed
      to answer TK; these records never synthesize a dialogue/WN response. */
   function npcMetadataKey(floor,x,y){return `${Number(floor)}:${Number(x)}:${Number(y)}`;}
+  /* Transport NPCs are stateful server objects, not stationary map décor.
+     `chatroom/bus.create` (and the airplane equivalent) describes a spawn
+     point only; the 2.5 GMSV emits the moving object through C/CA/CD.  A
+     floor-wide fallback for these records leaves a ghost vehicle after CD,
+     and clicking that negative synthetic id sends TK to the player instead
+     of using the native party/boarding flow. */
+  function npcMetadataIsDynamic(record){
+    const template=String(record?.template||"").trim().toLowerCase();
+    const source=String(record?.source||"").trim().toLowerCase();
+    return template==="bus"||template==="airplane"||template==="npcgen_airplane"||
+      /(?:^|\/)chatroom\/bus(?:\.create|\.arg)?$/.test(source)||
+      /(?:^|\/)chatroom\/airplane(?:\.create|\.arg)?$/.test(source);
+  }
   function mergeStaticNPCMetadata(records,floor){
     if(Number(floor)!==Number(app.floor)||!Array.isArray(records))return;
     const wanted=new Set();
     for(const record of records){
+      if(npcMetadataIsDynamic(record))continue;
       const id=Number(record?.id);if(!Number.isFinite(id)||id>=0)continue;
       const x=stateNumber(record.x),y=stateNumber(record.y),graphic=stateNumber(record.graphic),name=unescapeCharacterOption(record.name||"");
       if(isInsideFloor(x,y,floor)===false)continue;
@@ -7398,6 +7412,7 @@
      NPCs disappear until the next floor change. */
   function restoreStaticNPCAt(x,y){
     const floor=Number(app.floor),key=npcMetadataKey(floor,x,y),metadata=app.npcMetadataByKey?.get(key);
+    if(npcMetadataIsDynamic(metadata))return;
     if(!metadata||!Number.isFinite(Number(metadata.id))||Number(metadata.id)>=0)return;
     if([...app.actors.values()].some(actor=>actor?.staticNPC&&Number(actor.npcFloor)===floor&&Number(actor.x)===Number(x)&&Number(actor.y)===Number(y)))return;
     const existing=app.actors.get(Number(metadata.id));
