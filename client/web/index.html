@@ -17858,7 +17858,28 @@
   $("creation-name").addEventListener("input",event=>{creationState.name=event.target.value;});
   $("creation-ok").addEventListener("click",finishCreation);$("creation-back").addEventListener("click",()=>{creationState.stage="select";renderCreation();});$("creation-home-back").addEventListener("click",()=>{creationState.stage="settings";renderCreation();});
   document.querySelectorAll("#creation-home [data-home]").forEach(button=>button.addEventListener("click",()=>submitCreation(Number(button.dataset.home))));
-  $("logout-character").addEventListener("click",()=>{closeTransport();app.character="";openServerSelection("group");});
+  /* LOGIN.CPP destroys the character-list socket before it paints the title
+     server window.  The old web handler fired DELETE and immediately opened
+     the next page; on a busy 2.5 GMSV that left the account's transient
+     CharList lock alive, so the very next server click could report
+     "locked"/connection failure.  Serialize the scene change behind the
+     bridge close (and ignore a second click while it drains). */
+  let characterLogoutPending=false;
+  $("logout-character").addEventListener("click",async()=>{
+    if(characterLogoutPending)return;
+    characterLogoutPending=true;
+    const button=$("logout-character");
+    if(button)button.disabled=true;
+    const transport=app.transport;
+    try{
+      if(transport)await closeTransport(transport,{waitForPeer:true});
+    }finally{
+      characterLogoutPending=false;
+      if(button)button.disabled=false;
+      app.character="";
+      openServerSelection("group");
+    }
+  });
   document.querySelectorAll("#world-actions [data-dir]").forEach(button=>button.addEventListener("click",()=>move(Number(button.dataset.dir)))); $("attack").addEventListener("click",()=>beginBattleAction({kind:"attack"})); $("guard").addEventListener("click",()=>battleCommand("G")); $("escape").addEventListener("click",()=>battleCommand("E"));
   $("world-loading-retry")?.addEventListener("click",retryMapLoading);
  $("chat-form").addEventListener("submit",async event=>{event.preventDefault();const input=$("chat-input");normalizeChatInputValue(input);const rawText=String(input.value||""),text=rawText.trim();if(!text||(app.phase!=="world"&&app.phase!=="battle"))return;try{const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
