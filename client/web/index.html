@@ -16818,7 +16818,15 @@
       app.moveWirePending=true;app.moveWireTarget=[wireX,wireY];app.moveWireRoute=route;
       window.clearTimeout(app.moveWireTimer);
       app.moveWireTimer=window.setTimeout(expireMoveWire,MOVE_WIRE_TIMEOUT_MS);
+      /* Keep the asynchronous write tied to this exact local send window.
+         A 2.5 EN/B packet can take ownership of the field before the HTTP
+         POST resolves; interruptWorldMovementForBattle() then clears the
+         wire latch.  Letting that stale promise update the field status (or
+         cancel the new battle position on error) was the source of the
+         lingering “行走中…” message after returning from an encounter. */
+      const sentRoute=route;
       send("W",[wireFrom[0],wireFrom[1],route]).then(()=>{
+        if(app.phase!=="world"||app.battle||!app.moveWirePending||String(app.moveWireRoute)!==sentRoute)return;
         /* The 2.5 server does not send XYD/C for an ordinary owner walk.
            Give CHAR_walk_start()/CHAR_walkcall() one processing window before
            the pending L/TK face-to-face pair is allowed through. */
@@ -16837,7 +16845,13 @@
           window.setTimeout(retry,320);
         }
         setWorldState("行走中…");
-      }).catch(error=>cancelPendingMove(`移动发送失败：${error.message||error}`));
+      }).catch(error=>{
+        /* The write may reject after a battle/warp has already cancelled this
+           route.  Never let that old error roll the freshly restored field
+           position back; only the still-owned wire window may be cancelled. */
+        if(app.phase==="world"&&!app.battle&&app.moveWirePending&&String(app.moveWireRoute)===sentRoute)
+          cancelPendingMove(`移动发送失败：${error.message||error}`);
+      });
     }
     app.pendingMove=true;app.pendingMoveAt=Date.now();app.pendingMoveFrom=from;app.pendingMoveTarget=target;
     /* W/a-h use the server's 0..7 direction.  Character sprites in CA/MC
