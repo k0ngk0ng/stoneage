@@ -3631,8 +3631,8 @@ if (!/CHAR_LIST_LOCK_RETRY_DELAY_MS=350/.test(charListRetrySource) ||
     !/function retryLockedCharacterList\(reason\)/.test(charListRetrySource) ||
     !/toLowerCase\(\)!=="locked"\|\|Number\(app\.charListLockRetryCount\|\|0\)>0\)return false/.test(charListRetrySource) ||
     !/app\.charListLockRetryCount=1/.test(charListRetrySource) ||
-    !/closeTransport\(\);[\s\S]{0,180}openServerSelection\("connecting"/.test(charListRetrySource) ||
-    !/window\.setTimeout\(\(\)=>\{[\s\S]{0,320}connectLogin\(\)\.catch/.test(charListRetrySource) ||
+    !/closeTransport\([^)]*\{waitForPeer:true\}\);[\s\S]{0,240}openServerSelection\("connecting"/.test(charListRetrySource) ||
+    !/Promise\.resolve\(closePromise\)\.then\(\(\)=>window\.setTimeout\(\(\)=>\{[\s\S]{0,320}connectLogin\(\)\.catch/.test(charListRetrySource) ||
     !/\},CHAR_LIST_LOCK_RETRY_DELAY_MS\)/.test(charListRetrySource)) {
   throw new Error("CharList lock retry must be delayed, one-shot, and reconnect through connectLogin");
 }
@@ -5034,6 +5034,14 @@ if (!fieldActionToggle.test(script)) throw new Error("field settings/action wind
 if (!/function setActivePanelButton\(name=""\)\{[\s\S]{0,500}node\.dataset\.fieldAction===name/.test(script) ||
     !/function openFieldWindow\(name\)\{[\s\S]{0,700}setActivePanelButton\(name==="actions"\?"action":"settings"\)/.test(script)) {
   throw new Error("field MENU/Action pressed artwork is not synchronized");
+}
+
+/* Returning from the character list must drain the old 2.5 socket before
+   reopening the title server list.  Otherwise SAAC can still hold the
+   account's CharList lock and the next server click reports a spurious
+   connection failure. */
+if (!/let characterLogoutPending=false;[\s\S]{0,1200}addEventListener\("click",async\(\)=>\{[\s\S]{0,700}await closeTransport\(transport,\{waitForPeer:true\}\)[\s\S]{0,350}openServerSelection\("group"\)/.test(script)) {
+  throw new Error("character-list logout must await graceful transport close");
 }
 
 /* BATTLE_ActSettingSend() has two broadcast loops: the primary battle and

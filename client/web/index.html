@@ -3778,12 +3778,16 @@
     if(String(reason||"").trim().toLowerCase()!=="locked"||Number(app.charListLockRetryCount||0)>0)return false;
     app.charListLockRetryCount=1;
     const account=String(app.account||""),password=String(app.password||"");
-    closeTransport();
+    /* Do not start the replacement login until the bridge has completed the
+       old session's graceful close.  A fixed delay alone is not sufficient
+       on a loaded GMSV: the account lock is released only after the FIN is
+       observed. */
+    const closePromise=closeTransport(null,{waitForPeer:true});
     openServerSelection("connecting","正在清理旧会话…");
-    window.setTimeout(()=>{
+    Promise.resolve(closePromise).then(()=>window.setTimeout(()=>{
       if(app.phase!=="connecting"||app.account!==account||app.password!==password)return;
       connectLogin().catch(error=>showConnectionFailure(error,"读取人物列表失败，请稍后重试。"));
-    },CHAR_LIST_LOCK_RETRY_DELAY_MS);
+    },CHAR_LIST_LOCK_RETRY_DELAY_MS));
     return true;
   }
   function returnToAccountLogin(message="请输入账号和密码。"){
