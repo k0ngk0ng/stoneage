@@ -7441,6 +7441,21 @@
     if(mask===1){for(const [,key,,type] of fields)target[key]=take(type);}else{for(const [bit,key,,type] of fields)if((mask&bit)!==0)target[key]=take(type);}
     return target;
   }
+  /* CHAR_makeStatusString('w') emits five positional fields per pet-skill
+     slot (id, field, target, name, memo).  Most responses end in the wire
+     delimiter, but an HTTP/TCP gateway may trim that final empty token.  Keep
+     the parser anchored to the required id/field/target/name fields so a
+     single skill without a trailing `|` is still available in battle. */
+  function parsePetSkillStatusTokens(tokens){
+    const values=Array.isArray(tokens)?tokens:[],skills=[];
+    for(let offset=0;offset+3<values.length;offset+=5){
+      const name=values[offset+3]||"";
+      if(!name)continue;
+      const targetRaw=stateNumber(values[offset+2]);
+      skills.push({index:offset/5,skillId:stateNumber(values[offset]),field:stateNumber(values[offset+1]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name,memo:values[offset+4]||""});
+    }
+    return skills;
+  }
   /* `serverPosition` is also used as a soft prediction anchor while a local
      walk is being animated.  Keep a monotonic receipt marker alongside it so
      interactions that require a face-to-face server check (NPC TK/WN) can
@@ -7606,7 +7621,7 @@
       case "J": { const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:unescapeCharacterOption(parts[5]||""),memo:unescapeCharacterOption(parts[6]||"")};app.magic[slot]=entry;break; }
       case "N": { const slot=decimal(kind.slice(1),0),target=app.party[slot]||{slot};if(Protocol.base62(parts[1]||"0")===0){app.party[slot]=null;}else{applyMaskedFields(parts,target,PARTY_FIELDS);target.slot=slot;app.party[slot]=target;}break; }
       case "I": receiveInventory([kind.slice(1),...parts.slice(1)].join("|"),false);break;
-      case "W": { const slot=decimal(kind.slice(1),0),tokens=parts.slice(1),skills=[];for(let offset=0;offset+5<tokens.length;offset+=5){const name=tokens[offset+3]||"";if(!name)continue;const targetRaw=stateNumber(tokens[offset+2]);skills.push({index:offset/5,skillId:stateNumber(tokens[offset]),field:stateNumber(tokens[offset+1]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name,memo:tokens[offset+4]||""});}app.petSkills[slot]=skills;break; }
+      case "W": { const slot=decimal(kind.slice(1),0);app.petSkills[slot]=parsePetSkillStatusTokens(parts.slice(1));break; }
       case "S": { const tokens=[kind.slice(1),...parts.slice(1)],skills=[];for(let offset=0;offset+2<=tokens.length;offset+=2){const id=stateNumber(tokens[offset],-1);if(id<0)continue;skills.push({id,level:stateNumber(tokens[offset+1])});}app.skills=skills;break; }
       case "T": { const titles=[kind.slice(1),...parts.slice(1)].filter(Boolean);app.titles=titles.map((name,index)=>({index,name:unescapeCharacterOption(name),active:index===Number(app.pc.titleNo)}));break; }
       case "G": app.status.gems=parts.slice(1).filter(Boolean);break;

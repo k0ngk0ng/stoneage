@@ -1773,7 +1773,8 @@ for (const expected of [
   /* W status records contain five fields for every native pet-skill slot,
      including empty slots.  The command must retain petskillloop instead of
      compacting the visible rows, or W will execute a different skill. */
-  /case "W": \{[\s\S]{0,700}index:offset\/5[\s\S]{0,260}app\.petSkills\[slot\]=skills/,
+  /function parsePetSkillStatusTokens\(tokens\)[\s\S]{0,700}index:offset\/5/,
+  /case "W": \{[\s\S]{0,220}parsePetSkillStatusTokens\(parts\.slice\(1\)\)/,
   /* A deadline-edge click must remain on the chooser and explain the native
      timeout.  Closing first silently discarded the skill and exposed no
      actor hit boxes while W|FF|FF was submitted in the background. */
@@ -2091,6 +2092,31 @@ for (const expected of [
      legacy pattern in this older grouped HUD checklist. */
   if (expected.source.includes('\\$\\{text\\}') && expected.source.includes('rememberChatInputHistory')) continue;
   if (!expected.test(html) && !(expected.source.includes('\\$\\{text\\}') && /await send\\("TK",\\[x,y,`P\\|\\$\\{encodeNativeChatText\\(rawText\\)\\}`,color,range\\]\\);rememberChatInputHistory\\(rawText\\);input\\.value=""/.test(html))) throw new Error(`field HUD regression: ${expected}`);
+}
+/* CHAR_makeStatusString('w') normally leaves a final `|`, but a bridge may
+   trim that delimiter.  The parser must still expose a one-skill W0 row and
+   retain its native slot index; empty five-field slots remain skipped. */
+const petSkillParserStart = script.indexOf("  function parsePetSkillStatusTokens(tokens){");
+const petSkillParserEnd = script.indexOf("  function recordServerPosition", petSkillParserStart);
+if (petSkillParserStart < 0 || petSkillParserEnd <= petSkillParserStart) {
+  throw new Error("pet skill status parser helper boundary missing");
+}
+const parsePetSkillStatusTokens = new Function(
+  "stateNumber",
+  `${script.slice(petSkillParserStart, petSkillParserEnd)}; return parsePetSkillStatusTokens;`,
+)(
+  (value, fallback = 0) => {
+    const parsed = Number(String(value ?? ""));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  },
+);
+const petSkillWithoutTrailingDelimiter = parsePetSkillStatusTokens(["123", "1", "6", "攻击", "memo"]);
+const petSkillWithTrailingDelimiter = parsePetSkillStatusTokens(["123", "1", "6", "攻击", "memo", ""]);
+const petSkillWithEmptySlot = parsePetSkillStatusTokens(["", "", "", "", "", "123", "1", "6", "攻击", "memo"]);
+if (petSkillWithoutTrailingDelimiter.length !== 1 || petSkillWithoutTrailingDelimiter[0]?.index !== 0 ||
+    petSkillWithoutTrailingDelimiter[0]?.skillId !== 123 || petSkillWithoutTrailingDelimiter[0]?.target !== 6 ||
+    petSkillWithTrailingDelimiter.length !== 1 || petSkillWithEmptySlot.length !== 1 || petSkillWithEmptySlot[0]?.index !== 1) {
+  throw new Error(`pet skill status trailing-delimiter compatibility failed: ${JSON.stringify({petSkillWithoutTrailingDelimiter,petSkillWithTrailingDelimiter,petSkillWithEmptySlot})}`);
 }
 const native25EventSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/callfromcli.c", "utf8");
 const native25EventSourceSlice = native25EventSource.slice(native25EventSource.indexOf("void lssproto_EV_recv"), native25EventSource.indexOf("void lssproto_EN_recv"));
