@@ -1245,6 +1245,61 @@
     const traditional=big5TextDecoder.decode(bytes);
     return legacyTextQuality(traditional)>legacyTextQuality(simplified)+4?traditional:simplified;
   }
+  function legacyEncodedUnitLength(bytes,index) {
+    const lead=bytes[index],second=bytes[index+1];
+    if(lead<0x81||lead>0xfe||second===undefined)return 1;
+    /* GB18030 extends the common two-byte CP936/Big5 shape with a four-byte
+       sequence lead-digit-lead-digit.  Skip the complete encoded character
+       while looking for ASCII record delimiters; 0x7c is itself a legal
+       second byte and must never be mistaken for a wire pipe. */
+    if(second>=0x30&&second<=0x39&&bytes[index+2]>=0x81&&bytes[index+2]<=0xfe&&bytes[index+3]>=0x30&&bytes[index+3]<=0x39)return 4;
+    return 2;
+  }
+  function decodeLegacyTalkText(value) {
+    const bytes=u8(value),whole=decodeLegacyText(bytes);
+    let best=whole,bestQuality=legacyTextQuality(whole);
+    /* CHAR_talkToCli() builds one TK string by appending the live actor name,
+       the CP936 full-width colon (A3 BA), and the NPC script sentence.  The
+       preserved 2.5 transport data is genuinely mixed: chatroom/bus.create
+       stores “長毛象公車” in Big5 while bus.arg stores its messages in
+       CP936.  Choosing one decoder for the complete field therefore corrupts
+       one half.  The native separator is the safe source boundary: score the
+       speaker prefix and sentence independently, then join them unchanged. */
+    for(let index=2;index+1<bytes.length;){
+      if(bytes[index]===0xa3&&bytes[index+1]===0xba){
+        const candidate=decodeLegacyText(bytes.slice(0,index))+decodeLegacyText(bytes.slice(index));
+        const quality=legacyTextQuality(candidate);
+        /* A3 BA can also be one valid Big5 code point.  Accept it as the
+           CP936 speaker separator only when segmentation is materially
+           cleaner than decoding the complete field in one code page. */
+        if(quality>bestQuality+4){best=candidate;bestQuality=quality;}
+      }
+      index+=legacyEncodedUnitLength(bytes,index);
+    }
+    return best;
+  }
+  function decodeLegacyDelimitedText(value) {
+    const bytes=u8(value),parts=[];
+    let start=0;
+    /* CHAR_makeObjectCString() is a pipe-delimited record list whose C packet
+       joins actors with commas.  Text fields retain their source encoding:
+       the 2.5 bus C record combines its Big5 create-file name with the CP936
+       route title loaded from bus.arg.  Decode each protocol field on its own
+       source boundary while preserving the delimiters consumed by the actor
+       parser.  Escaped user commas/pipes are still backslash sequences here,
+       so only literal wire delimiters split a field. */
+    for(let index=0;index<bytes.length;){
+      const byte=bytes[index];
+      if(byte===0x7c||byte===0x2c){
+        parts.push(decodeLegacyText(bytes.slice(start,index)),String.fromCharCode(byte));
+        start=++index;
+        continue;
+      }
+      index+=legacyEncodedUnitLength(bytes,index);
+    }
+    parts.push(decodeLegacyText(bytes.slice(start)));
+    return parts.join("");
+  }
   // The executable is an ANSI/CP936 client. Browsers only expose UTF-8
   // TextEncoder, so keep the common chat glyphs byte-accurate and use UTF-8
   // as a safe fallback for a character outside this compact table. Raw
@@ -1353,7 +1408,7 @@
   function decodePacket(packet) { packet=u8(packet); if (packet.length && packet[packet.length-1]===10) packet=packet.slice(0,-1); const compressed=jDecode(decode64(packet)); if (compressed.length<2) throw new Error("compressed packet too short"); if (compressed[0]%2===0) { const raw=compressed.slice(1); const end=raw.indexOf(0); if (end<0) throw new Error("missing uncompressed terminator"); return raw.slice(0,end); } return ringoDecompress(compressed.slice(1)); }
   function parseMessage(raw) { raw=u8(raw); const tokens=[]; let start=0; for (let i=0;i<raw.length;i++) if (raw[i]===32) { tokens.push(raw.slice(start,i)); start=i+1; } tokens.push(raw.slice(start)); if (tokens.length<3 || tokens[tokens.length-1].length!==0) throw new Error("invalid function envelope"); const idText=new TextDecoder().decode(tokens[0]); if (!/^\d+$/.test(idText)) throw new Error("invalid message id"); const functionName=new TextDecoder().decode(tokens[1]); if (!functionName) throw new Error("missing function name"); const fields=tokens.slice(2,-1); return {id:Number(idText),function:functionName,fields}; }
   function packetMessage(id, functionName, values) { const schema=CLIENT_FIELDS[functionName]; if (!schema) throw new Error(`unsupported client function ${functionName}`); if (values.length!==schema.length) throw new Error(`${functionName} expects ${schema.length} fields`); const fields=schema.map((kind,i)=>kind==="int"?encodeInt(values[i]):encodeString(values[i])); return encodePacket(rawMessage(id,functionName,fields)); }
-  function decodeMessage(packet) { const raw=decodePacket(packet), message=parseMessage(raw), schema=SERVER_FIELDS[message.function]||[]; message.values=message.fields.map((field,i)=>schema[i]==="int"?decodeInt(field):schema[i]==="string"?decodeString(field):field); message.textValues=message.values.map((value,i)=>schema[i]==="string"?decodeLegacyText(value):value); message.schema=schema; return message; }
+  function decodeMessage(packet) { const raw=decodePacket(packet), message=parseMessage(raw), schema=SERVER_FIELDS[message.function]||[]; message.values=message.fields.map((field,i)=>schema[i]==="int"?decodeInt(field):schema[i]==="string"?decodeString(field):field); message.textValues=message.values.map((value,i)=>schema[i]==="string"?(message.function==="TK"&&i===1?decodeLegacyTalkText(value):message.function==="C"&&i===0?decodeLegacyDelimitedText(value):decodeLegacyText(value)):value); message.schema=schema; return message; }
   function toBase64(bytes) { let binary=""; const value=u8(bytes); for (let i=0;i<value.length;i+=0x8000) binary += String.fromCharCode(...value.subarray(i,i+0x8000)); if (typeof btoa==="function") return btoa(binary); if (typeof Buffer!=="undefined") return Buffer.from(value).toString("base64"); throw new Error("base64 is unavailable"); }
   function fromBase64(value) { if (typeof atob==="function") { const binary=atob(value), out=new Uint8Array(binary.length); for (let i=0;i<out.length;i++) out[i]=binary.charCodeAt(i); return out; } if (typeof Buffer!=="undefined") return Uint8Array.from(Buffer.from(value,"base64")); throw new Error("base64 is unavailable"); }
   function base62(value) { const text=typeof value==="string"?value:new TextDecoder().decode(value); if (!text) return 0; let negative=text[0]==="-"; let input=negative?text.slice(1):text, result=0; for (const c of input) { const digit=BASE62_CHARS.indexOf(c); if (digit<0) return 0; result=result*62+digit; } return negative?-result:result; }
@@ -4699,7 +4754,13 @@
     /* Normal XYD/C/CA/map refreshes may arrive just after BATTLE_Exit().
        Preserve the short defeat notice so the user does not see a misleading
        "arrived" status immediately after the death animation. */
-    if(Number(app.battleFailureNoticeUntil)>Date.now()&&String(text||"")!=="战斗失败，角色已倒下。")return;
+    const nextText=String(text||"");
+    /* finishLocalBattleDeath() uses the server-side wording “我方已全灭”,
+       while the older single-actor path used “角色已倒下”.  Treat the
+       semantic battle-failure prefix as the owned notice.  Requiring one
+       obsolete exact sentence blocked the current notice itself and exposed
+       whatever field label happened to be underneath (often “行走中…”). */
+    if(Number(app.battleFailureNoticeUntil)>Date.now()&&!nextText.startsWith("战斗失败"))return;
     /* A W POST can resolve after EN/BU has already handed the back-buffer
        back to the field.  Its success callback is intentionally generation
        guarded, but a callback that won the race just before the encounter
@@ -4707,10 +4768,10 @@
        movement latch has been retired.  The native field status is settled
        at that boundary; ignore only this stale label when there is no active
        route, animation, prediction, or wire drain. */
-    if(String(text||"")==="行走中…"&&app.phase==="world"&&!app.battle&&
+    if(nextText==="行走中…"&&app.phase==="world"&&!app.battle&&
       !app.pendingMove&&!app.walkAnimation&&!app.moveQueue.length&&
       !app.moveSentSteps&&!app.moveWirePending&&app.moveTarget===null)return;
-    const element=$("world-state"); element.textContent=text; element.style.color=kind==="error"?"var(--danger)":kind==="good"?"var(--good)":"var(--accent)";
+    const element=$("world-state"); element.textContent=nextText; element.style.color=kind==="error"?"var(--danger)":kind==="good"?"var(--good)":"var(--accent)";
   }
   /* The local renderer can finish its optimistic route before the 2.5
      gateway drains the final W direction.  Only the live wire write is a

@@ -272,6 +272,16 @@ setWorldStateHarness("行走中…");
 if (worldStateNode.textContent !== "行走中…") {
   throw new Error("live W route no longer exposes its walking status");
 }
+/* The current terminal path says “我方已全灭”; the earlier exact-string
+   exception only allowed “角色已倒下”, so the protected notice rejected
+   itself and left the pre-battle walking label visible. */
+worldStateApp.moveWirePending = false;
+worldStateApp.battleFailureNoticeUntil = Date.now() + 4000;
+setWorldStateHarness("战斗失败，我方已全灭。", "error");
+setWorldStateHarness("已到达目标位置。", "good");
+if (worldStateNode.textContent !== "战斗失败，我方已全灭。" || worldStateNode.style.color !== "var(--danger)") {
+  throw new Error(`terminal battle notice did not replace stale field status: ${JSON.stringify(worldStateNode)}`);
+}
 /* The 8.5 source tree is also the switch-compatible reference for the
    deployed 2.5 mode.  Its regional map cases 47..53 are unconditional;
    only the later 54/55 recordings are protected by _NEWMUSICFILE6_0. */
@@ -4723,6 +4733,32 @@ const big5MammothName=Uint8Array.from([0xaa,0xf8,0xa4,0xf2,0xb6,0x48,0xa4,0xbd,0
 if(P.decodeText(big5MammothName)!=="長毛象公車")throw new Error(`mixed Big5 NPC name decode failed: ${JSON.stringify(P.decodeText(big5MammothName))}`);
 const cp936MammothName=Uint8Array.from([0xb3,0xa4,0xc3,0xab,0xcf,0xf3,0xbf,0xcd,0xd4,0xcb]);
 if(P.decodeText(cp936MammothName)!=="长毛象客运")throw new Error(`CP936 NPC name decode regressed: ${JSON.stringify(P.decodeText(cp936MammothName))}`);
+/* The deployed 2.5 bus is one genuinely mixed TK field: its live name comes
+   from the Big5 bus.create record, while CHAR_appendNameAndTitle() appends a
+   CP936 colon and the CP936 bus.arg departure message.  Decode around that
+   native source boundary rather than forcing either code page on both. */
+const cp936BusDeparture=Uint8Array.from([0xa3,0xba,0xb0,0xc8,0xb0,0xc8,0xb0,0xc8,0xa1,0xab,0xa1,0xab,0xa1,0xab,0xa3,0xa8,0xb3,0xf6,0xb7,0xa2,0xa1,0xab,0xa1,0xab,0xa1,0xab,0x86,0xaa,0xa3,0xa9]);
+const mixedBusTalk=Uint8Array.from([0x50,0x7c,...big5MammothName,...cp936BusDeparture]);
+const mixedBusTK=P.decodeMessage(P.encodePacket(P.rawMessage(11,"TK",[P.encodeInt(1514),P.encodeString(mixedBusTalk),P.encodeInt(4)])));
+if(mixedBusTK.textValues[1]!=="P|長毛象公車：叭叭叭～～～（出发～～～啰）"){
+  throw new Error(`mixed Big5/CP936 bus TK decode failed: ${JSON.stringify(mixedBusTK.textValues[1])}`);
+}
+const cp936BusRoute=Uint8Array.from([0xc8,0xf8,0xc4,0xb7,0xbc,0xaa,0xb6,0xfb,0xa1,0xab,0xbf,0xc2,0xb0,0xc2,0xd6,0xae,0xbc,0xe4]);
+const mixedBusActor=Uint8Array.from([
+  ...Buffer.from("32|oq|563|588|1|100355|1|0|","ascii"),...big5MammothName,0x7c,...cp936BusRoute,
+  ...Buffer.from("|1|1|0|||0","ascii"),
+]);
+const mixedBusC=P.decodeMessage(P.encodePacket(P.rawMessage(12,"C",[P.encodeString(mixedBusActor)])));
+if(mixedBusC.textValues[0]!=="32|oq|563|588|1|100355|1|0|長毛象公車|萨姆吉尔～柯奥之间|1|1|0|||0"){
+  throw new Error(`mixed Big5/CP936 bus C decode failed: ${JSON.stringify(mixedBusC.textValues[0])}`);
+}
+/* 0x7c is both the ASCII pipe delimiter and a legal CP936/Big5 trail byte.
+   The record scanner must skip complete DBCS characters before splitting. */
+const dbcsPipeTrailActor=Uint8Array.from([...Buffer.from("abc|1|2|3|4|","ascii"),0x81,0x7c]);
+const dbcsPipeTrailC=P.decodeMessage(P.encodePacket(P.rawMessage(13,"C",[P.encodeString(dbcsPipeTrailActor)])));
+if(dbcsPipeTrailC.textValues[0]!=="abc|1|2|3|4|亅"){
+  throw new Error(`C decoder split a DBCS pipe trail byte: ${JSON.stringify(dbcsPipeTrailC.textValues[0])}`);
+}
 /* Generated npcgen_man replies are CP936.  Their punctuation bytes decode
    to Big5 compatibility brackets/bopomofo, which used to outrank the
    correct sentence and display NPC text as mojibake. */
