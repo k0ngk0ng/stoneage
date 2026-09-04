@@ -4420,11 +4420,27 @@ if (!/const timedMotion=[\s\S]{0,1600}const scheduleBDMotion=/.test(battleMovieS
     /const wasDead=Boolean\(battleFindParticipant\(target\)\?\.dead\),hitTiming=timedMotion\(\{kind:"hit"/.test(battleDamageSource)) {
   throw new Error("BD must use native 60-tick grouped VCT78/79 timing and direct fatal death");
 }
+/* ATT_PROSKILL carries three distinct native values in B+: e selects whether
+   the caster enters VCT1 and approaches the target, s is the pre-cast sprite
+   on the caster, and h is the target impact sprite.  A regression that routes
+   every B+ through scheduleAttack() makes Sonic/Regret/Temptation walk across
+   the field and drops the pre-cast animation. */
+const battleProSkillSource = script.slice(script.indexOf('      }else if(marker==="B+")'), script.indexOf('      }else if(marker==="BM")'));
+if (!/warriorEffect=battleSegmentNumber\(segment,"e",0,0\)/.test(battleProSkillSource) ||
+    !/preGraphic=battleSegmentNumber\(segment,"s",0,0\)/.test(battleProSkillSource) ||
+    !/nextGraphic=battleSegmentNumber\(segment,"h",0,0\)/.test(battleProSkillSource) ||
+    !/movesToTarget=warriorEffect===2/.test(battleProSkillSource) ||
+    !/movesToTarget\?"attack":"cast"/.test(battleProSkillSource) ||
+    !/graphic:preGraphic/.test(battleProSkillSource) ||
+    !/graphicNo:nextGraphic/.test(battleProSkillSource) ||
+    !/standingCast:\!movesToTarget/.test(battleProSkillSource) ||
+    !/motion\.standingCast\?3/.test(script.slice(script.indexOf('      }else if(motion.kind==="cast"'), script.indexOf('      }else if(motion.kind==="guard"')))) {
+  throw new Error("B+ profession-skill pre/impact effects and e-controlled movement are incomplete");
+}
 for (const expected of [
   /marker==="BP"[\s\S]{0,500}scheduleAttack\(segment,target,"attack",0,flags\)/,
   /String\(segment\.rawMarker\|\|""\)==="Bb"[\s\S]{0,3000}modelPlan=battleModelPlan\(attacker,modelTuples[\s\S]{0,2200}timing=modelPlan\.hits\[index\]/,
   /String\(segment\.rawMarker\|\|""\)==="Bd"[\s\S]{0,900}scheduleAttack\(segment,target,"attack",0,flags\|BATTLE_FLAG\.death\)/,
-  /marker==="B\+"[\s\S]{0,500}scheduleAttack\(segment,target,"attack",0,flags\)/,
   /marker==="BY"[\s\S]{0,1800}scheduleAttackPair\(attacker,target,"attack",0,flags\)/,
   /* EarthRound is two native records: BC_FLG_HIDE/BF followed by BI.  The
      ATT_IN parser clears the visual hide state and walks from the edge before

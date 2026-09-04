@@ -11682,7 +11682,10 @@
         value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
       }else if(motion.kind==="cast"&&actor===Number(id)){
         if(Number.isFinite(Number(motion.direction)))value.direction=Number(motion.direction);
-        value.action=Number(motion.attackAction??0);value.attack=true;value.animationLoop=false;
+        /* PROSKILL values e=0/1 keep the caster in VCT0/standing while the
+           pre-cast sprite runs.  Other cast records (BJ/B$/BN) retain their
+           native one-shot attack pose. */
+        value.action=motion.standingCast?3:Number(motion.attackAction??0);value.attack=!motion.standingCast;value.animationLoop=Boolean(motion.standingCast);
         value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
       }else if(motion.kind==="guard"&&(actor===Number(id)||target===Number(id))){
         /* BG/X-style guard records are a single pose.  A guard reaction
@@ -12625,15 +12628,42 @@
              in that form it is the sole d value, not tuple index 2. */
           const signed=fields.d!==undefined?battleSignedNumber(fields.d):battleSegmentSigned(segment,"d",2,0),label=BATTLE_ATTRIBUTE_NAMES[bdKind]||BATTLE_STATUS_NAMES[bdKind]||"状态";battlePushEffect(effects,target,`${label} ${signed>0?"+":""}${signed||amount}`,"status",{duration:1050,startsAt:hitAt});}
       }else if(marker==="B+"){
-        const target=battleSegmentNumber(segment,"r",0,-1),flags=battleSegmentNumber(segment,"f",0,0),graphic=battleSegmentNumber(segment,"h",0,0),graphicKey=fields.h||"",timing=scheduleAttack(segment,target,"attack",0,flags);
-        if(target<0)continue;if(graphic)battlePushEffect(effects,target,"","skill",{graphic,graphicKey,duration:1500});
-        const impactStart=timingContactAt(timing);
-        battleApplyFlagEffects(effects,target,flags,impactStart,{graphicNo:graphic,skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",0,0):undefined});
-        if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge");queueDodge(target,timing);}else if(flags&BATTLE_FLAG.guard)battlePushEffect(effects,target,"防御","guard");
-        if(flags&BATTLE_FLAG.critical)battlePushEffect(effects,target,"暴击","critical",{duration:900,offsetY:-72});
+        /* ATT_PROSKILL (oft.cpp::master case 230) is not an ordinary melee
+           attack.  `e` is ATR_WARRIOR_EFFECT: only value 2 changes the
+           actor to VCT1 and makes it walk to the target.  Values 0/1 leave
+           the caster at its formation slot (VCT230 -> VCT0/1), while `s`
+           is AttPreMagicNum (a pre-cast sprite on the caster) and `h` is
+           AttNextMagicNum (the impact sprite painted by damage_num() on the
+           target).  The old web branch always called scheduleAttack(), so
+           Sonic/Regret/Temptation visibly ran across the field and their
+           pre-effect was silently discarded. */
+        const attacker=battleSegmentNumber(segment,"a",0,-1),target=battleSegmentNumber(segment,"r",0,-1),flags=battleSegmentNumber(segment,"f",0,0),warriorEffect=battleSegmentNumber(segment,"e",0,0),preGraphic=battleSegmentNumber(segment,"s",0,0),nextGraphic=battleSegmentNumber(segment,"h",0,0),skillNo=(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",0,0):undefined;
+        if(target<0)continue;
+        const movesToTarget=warriorEffect===2,spec=attacker>=0
+          ?battleAttackMotionSpec(attacker,movesToTarget?target:-1,movesToTarget?"attack":"cast",0,flags)
+          :null,motion=spec?{...spec,standingCast:!movesToTarget}:null,timing=motion?queueMotion(motion,motion.duration):null;
+        const impactStart=timing
+          ?(movesToTarget?timingContactAt(timing):Number(timing.startAt)+Math.max(0,Number(spec.contactOffset)||0))
+          :Date.now()+220;
+        if(attacker>=0&&preGraphic){
+          /* PROSKILL+1 positions the pre ACTION on the caster's feet and
+             plays its non-looping SPR before the target impact. */
+          battlePushEffect(effects,attacker,"","skill",{graphic:preGraphic,graphicKey:String(preGraphic),duration:950,offsetY:-40,startsAt:timing?Number(timing.startAt):Date.now()});
+        }
+        if(nextGraphic){
+          /* h is the exact value used by set_damage_num(..., 41, -64+25)
+             when ATT_ATTNEXTPROSKILL is set.  Keep it anchored to the
+             target and let battleApplyFlagEffects merge the same native
+             graphic when the skill bit is present. */
+          battlePushEffect(effects,target,"","skill",{graphic:nextGraphic,graphicKey:String(nextGraphic),duration:1500,offsetY:-42,startsAt:impactStart});
+        }
+        battleApplyFlagEffects(effects,target,flags,impactStart,{graphicNo:nextGraphic,skillNo});
+        if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing||{contactAt:impactStart,direction:battleFacingDirection(attacker,target)});}else if(flags&BATTLE_FLAG.guard)battlePushEffect(effects,target,"防御","guard",{startsAt:impactStart});
+        if(flags&BATTLE_FLAG.critical)battlePushEffect(effects,target,"暴击","critical",{duration:900,offsetY:-72,startsAt:impactStart});
         if(!(flags&BATTLE_FLAG.dodge)){
-          const damageTarget=(flags&BATTLE_FLAG.reflect)&&battleSegmentNumber(segment,"a",0,-1)>=0?battleSegmentNumber(segment,"a",0,-1):target;
-          addDirectDamage(damageTarget,fields.d!==undefined?battleNumber(fields.d):0,fields.p!==undefined?battleNumber(fields.p):0,flags,0,timing,{graphicNo:graphic,skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",0,0):undefined});
+          const damageTarget=(flags&BATTLE_FLAG.reflect)&&attacker>=0?attacker:target;
+          const damageTiming=timing?{...timing,contactAt:impactStart}: {startAt:impactStart,endAt:impactStart+BATTLE_PROC_TICK_MS,duration:BATTLE_PROC_TICK_MS,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):battleSlotDirection(target)};
+          addDirectDamage(damageTarget,fields.d!==undefined?battleNumber(fields.d):0,fields.p!==undefined?battleNumber(fields.p):0,flags,0,damageTiming,{graphicNo:nextGraphic,skillNo});
         }
       }else if(marker==="BM"){
         /* battle.c::BATTLE_BadStatusString() uses the compact positional
