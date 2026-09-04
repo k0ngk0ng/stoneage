@@ -544,12 +544,28 @@ if (Object.keys(fieldSpritePayload.sprites || {}).sort().join(",") !== expectedF
     fieldSpriteBytes > 1024 * 1024) {
   throw new Error(`field Action SPR pack shape/size regression: ${fieldSpriteBytes}`);
 }
+/* CHARACTER.CPP loops HAND/HAPPY/ANGRY/SAD/WALK/STAND/NOD and advances the
+   remaining rows once.  The stock 2.5 player SPRs deliberately contain only
+   one visual frame for SIT and GUARD; every other Action row has at least two
+   different bitmap/offset states.  Checking only that a row has `frames`
+   allowed a bad extractor to repeat one bitmap across the complete row and
+   made all thirteen menu entries look static even though the browser clock
+   was still running. */
+const nativeSingleVisualFieldActions = new Set([5, 10]);
 for (const graphic of expectedFieldSprites) {
   const rows = fieldSpritePayload.sprites?.[graphic]?.actions || [];
   for (let action = 0; action <= 12; action++) for (let direction = 0; direction < 8; direction++) {
     const row = rows.find(item => Number(item.direction) === direction && Number(item.action) === action);
     if (!row || !Array.isArray(row.frames) || !row.frames.length) {
       throw new Error(`field Action SPR row missing for ${graphic}/${direction}/${action}`);
+    }
+    const visuals = new Set(row.frames.map(frame => [
+      String(frame?.file || ""), Number(frame?.x) || 0, Number(frame?.y) || 0,
+      Number(frame?.xoffset) || 0, Number(frame?.yoffset) || 0,
+    ].join("|")));
+    const expectedSingle = nativeSingleVisualFieldActions.has(action);
+    if ((expectedSingle && visuals.size !== 1) || (!expectedSingle && visuals.size < 2)) {
+      throw new Error(`field Action SPR visual sequence drifted for ${graphic}/${direction}/${action}: ${visuals.size}`);
     }
   }
 }
