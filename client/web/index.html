@@ -12962,7 +12962,14 @@
        the snapshot for the next BP; applyBattleTurnState() consumes the mark
        instead of reopening awaitingBattleRoster after the roster is already
        installed. */
-    if(!state.awaitingBattleRoster)state.rosterBeforeBp=true;
+    /* BC and BP are independent callbacks.  The opening BC can legitimately
+       arrive before the first BP while the initial roster gate is still
+       armed; that roster must be remembered so applyBattleTurnState() does
+       not reopen awaitingBattleRoster for a battle that already has its
+       participants.  For later turns the same mark is needed when BC leads
+       a fresh BP, while a BP-first turn (bpReceived && awaiting=true) must
+       keep waiting for this BC instead of carrying it into the next turn. */
+    if(!state.bpReceived||!state.awaitingBattleRoster)state.rosterBeforeBp=true;
     const packetSeq=(Number(state.battlePacketSeq)||0)+1;
     state.battlePacketSeq=packetSeq;
     state.battleRosterSeq=packetSeq;
@@ -18487,7 +18494,10 @@
   chatScreen.addEventListener("pointermove",updateWorldPointer);
   function paintBattleHoverTarget(targetId){
     const state=app.battleState;if(!state)return;
-    const next=Number.isInteger(Number(targetId))?Number(targetId):null;
+    /* Number(null) is 0 in JavaScript.  A pointerleave explicitly passes
+       null to clear the native hover marker; coercing it would accidentally
+       highlight battle slot 0 whenever that slot is a valid group target. */
+    const next=targetId===null||targetId===undefined?null:(Number.isInteger(Number(targetId))?Number(targetId):null);
     const highlighted=battleTargetHighlightIds(next,state.pendingAction,state);
     state.battleHoverTarget=highlighted.size?next:null;
     document.querySelectorAll("#battle-target-overlay [data-battle-target]").forEach(proxy=>{

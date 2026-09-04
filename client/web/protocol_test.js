@@ -1720,7 +1720,9 @@ for (const expected of [
   /* BP normally opens the roster gate, but a split poll can deliver BC
      first; consume rosterBeforeBp so that order cannot leave the menu stuck. */
   /const rosterAlreadyReceived=Boolean\(state\.rosterBeforeBp\)[\s\S]{0,220}state\.awaitingBattleRoster=!rosterAlreadyReceived;/,
-  /if\(!state\.awaitingBattleRoster\)state\.rosterBeforeBp=true;/,
+  /if\(!state\.bpReceived\|\|!state\.awaitingBattleRoster\)state\.rosterBeforeBp=true;/,
+  /* Clearing a battle hover target must not coerce null to slot 0. */
+  /const next=targetId===null\|\|targetId===undefined\?null:\(Number\.isInteger\(Number\(targetId\)\)\?Number\(targetId\):null\);/,
   /if\(!battleEntryPending\(state\)&&!state\.awaitingBattleRoster\)\{[\s\S]{0,120}battleOpenCommandCountdown\(state\)/,
   /choiceTurnKey:null/,
   /const BATTLE_COUNTDOWN_LOGICAL_BASE=25900;/,
