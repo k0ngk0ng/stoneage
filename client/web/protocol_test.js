@@ -1346,7 +1346,9 @@ if (!fieldPartyTargetActor({charType:1}) || !fieldPartyTargetActor({charType:32}
   throw new Error("field party target must accept players and 2.5 buses only");
 }
 const fieldActionSource = script.slice(script.indexOf("  function fieldAction(name){"), script.indexOf("  function canonicalAccount", script.indexOf("  function fieldAction(name){")));
-if (!/if\(name==="party"\)[\s\S]{0,500}fieldFacingPartyTarget\(\)[\s\S]{0,500}fieldSend\("PR",\[x,y,1\]\)/.test(fieldActionSource)) {
+if (!/if\(name==="party"\)[\s\S]{0,500}fieldFacingPartyTarget\(\)[\s\S]{0,500}fieldSend\("PR",\[x,y,1\]\)/.test(fieldActionSource) ||
+    !/function fieldFacingJoinTarget\(\)[\s\S]{0,700}return target&&Number\(target\.charType\)===32\?target:fieldFacingPlayer\(\);/.test(script) ||
+    !/fieldFacingJoinTarget\(\)[\s\S]{0,700}if\(name==="join-battle"&&Number\(target\.charType\)===32\)\{\s*fieldSend\("PR",\[x,y,1\]\)/.test(fieldActionSource)) {
   throw new Error("field party button must send PR for a facing player or mammoth bus");
 }
 /* FIELD.CPP sets drawFieldButtonFlag=0 while any native menu/WN/action

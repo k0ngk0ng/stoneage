@@ -4059,6 +4059,15 @@
   }
   function fieldFacingPartyTarget(){return facingActor(fieldPartyTargetActor,1);}
   function fieldFacingPlayer(){return facingActor(actor=>Number(actor.charType)===1,1);}
+  function fieldFacingJoinTarget(){
+    /* The native right-side Join button normally emits JB/LB for a player,
+       but the 2.5 field also exposes the same proximity hit test for a
+       CHAR_TYPEBUS.  Bus stops are represented as CHAR_TYPEBUS and are joined
+       through the ordinary PR party request; filtering this helper to players
+       made the button silently do nothing when the player faced a mammoth. */
+    const target=fieldFacingPartyTarget();
+    return target&&Number(target.charType)===32?target:fieldFacingPlayer();
+  }
   function fieldAction(name){
     /* Keep all field/action shortcuts behind the same WN ownership gate as
        openPanel().  Hidden DOM controls remain addressable to WebViews even
@@ -4117,8 +4126,11 @@
     }
     if(name==="join-battle"||name==="duel"){
       if(fieldOwnParty()&&!fieldOwnPartyLeader()){setWorldState("只有队长可以执行这个操作。","error");return;}
-      const target=fieldFacingPlayer();
+      const target=fieldFacingJoinTarget();
       if(!target){setWorldState(name==="duel"?"请面向要决斗的玩家。":"请面向正在战斗的玩家。","error");return;}
+      if(name==="join-battle"&&Number(target.charType)===32){
+        fieldSend("PR",[x,y,1]).catch(reportError);return;
+      }
       if(name==="join-battle"&&!Boolean(target.inBattle||target.watching)){setWorldState("前方玩家当前不在战斗或观战。","error");return;}
       if(name==="duel"&&target.inBattle){setWorldState("对方正在战斗中。","error");return;}
       fieldSend(name==="join-battle"?(Number(app.floor)===9000?"LB":"JB"):"DU",[x,y]).catch(reportError);return;
