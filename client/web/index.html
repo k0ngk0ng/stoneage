@@ -1847,6 +1847,10 @@
     40:4,41:3,42:7,43:8,44:9,45:10,46:11,
     47:15,48:16,49:21,50:17,51:18,52:19,53:20
   });
+  /* BGM slot 0 is sabgm_s0.wav, the short battle-result jingle.  Native
+     GameProc keeps a looping map track while a room has no visible marker;
+     use the normal field track (slot 2) for that initial/marker-less state. */
+  const DEFAULT_MAP_BGM_NO=2;
   const soundState={unlocked:false,bgm:null,bgmNo:-1,pendingBgm:null,pendingSE:[],activeSE:new Set(),context:null,seLast:new Map()};
   function audioURL(kind,file){return `/audio/${kind}/${encodeURIComponent(String(file||""))}`;}
   function clampAudio(value){return Math.max(0,Math.min(1,Number(value)||0));}
@@ -2024,8 +2028,9 @@
        client and deliberately survives a room/floor change until drawMap()
        encounters another marker. */
     if(tone===null&&app.music.mapBgmNo>=0)return;
-    const selectedTone=tone===null?0:tone,changed=app.music.mapTone!==selectedTone||app.music.mapBgmNo<0;
-    app.music.mapTone=selectedTone;app.music.mapBgmNo=MAP_BGM_NO[selectedTone]??0;
+    const selectedTone=tone===null?null:tone,selectedBgm=tone===null?DEFAULT_MAP_BGM_NO:(MAP_BGM_NO[selectedTone]??DEFAULT_MAP_BGM_NO);
+    const changed=app.music.mapTone!==selectedTone||app.music.mapBgmNo<0;
+    app.music.mapTone=selectedTone;app.music.mapBgmNo=selectedBgm;
     if(changed&&!app.battle){app.music.mode="map";setMusicMode("map",app.music.mapBgmNo);}
   }
   function beginBattleMusic(type=app.battleState?.type||1,field=app.battleState?.field||0){
@@ -2037,7 +2042,7 @@
     const battleNo=(battleType===2||battleType===4||battleType===6)?6:5;
     app.music.battleBgmNo=battleNo;app.music.mode="battle";setMusicMode("battle",battleNo);
   }
-  function restoreMapMusic(){app.music.battleBgmNo=-1;app.music.mode="map";if(app.music.mapBgmNo>=0)setMusicMode("map",app.music.mapBgmNo);else setMusicMode("map",0);}
+  function restoreMapMusic(){app.music.battleBgmNo=-1;app.music.mode="map";if(app.music.mapBgmNo<0){app.music.mapTone=null;app.music.mapBgmNo=DEFAULT_MAP_BGM_NO;}setMusicMode("map",app.music.mapBgmNo);}
   app.mapLayerCache=null;
   const $=id=>document.getElementById(id);
   const advancedStyle=document.createElement("style");

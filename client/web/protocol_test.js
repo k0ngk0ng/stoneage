@@ -298,6 +298,47 @@ for (const [tone, bgm] of nativeMapBgmPairs) {
     throw new Error(`native map BGM mapping drifted: ${tone} -> ${bgm}`);
   }
 }
+/* Slot 0 is sabgm_s0.wav, the short non-looping result jingle.  A marker-less
+   first map/room must therefore initialize the persistent map track to the
+   normal looping slot 2, while later partial M windows keep the current
+   native track.  Exercise the extracted mapper so a source-only regex cannot
+   accidentally reintroduce the victory sound. */
+const mapMusicStart = script.indexOf("  function mapMusicFromWindow(map){");
+const mapMusicEnd = script.indexOf("  function beginBattleMusic", mapMusicStart);
+if (mapMusicStart < 0 || mapMusicEnd <= mapMusicStart ||
+    !/const DEFAULT_MAP_BGM_NO=2/.test(script)) {
+  throw new Error("marker-less map music default must be the looping BGM 2 track");
+}
+const mapMusicMapper = new Function("app", "MAP_BGM_NO", "DEFAULT_MAP_BGM_NO", "setMusicMode",
+  `${script.slice(mapMusicStart, mapMusicEnd)}; return mapMusicFromWindow;`);
+const mapMusicApp = {battle:false,music:{mapTone:null,mapBgmNo:-1,mode:"map"}};
+const mapMusicCalls = [];
+const mapMusicFromWindow = mapMusicMapper(mapMusicApp, {40:4}, 2, (mode,no)=>mapMusicCalls.push([mode,no]));
+mapMusicFromWindow({width:2,height:2,tiles:[1,1,1,1],objects:[0,0,0,0]});
+if (mapMusicApp.music.mapBgmNo !== 2 || mapMusicApp.music.mapTone !== null ||
+    mapMusicCalls.length !== 1 || mapMusicCalls[0][1] !== 2) {
+  throw new Error(`marker-less map selected a non-default BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
+}
+mapMusicFromWindow({width:2,height:2,tiles:[1,1,1,1],objects:[0,0,0,0]});
+if (mapMusicCalls.length !== 1) throw new Error("partial marker-less M window restarted map music");
+mapMusicFromWindow({width:2,height:2,tiles:[40,1,1,1],objects:[0,0,0,0]});
+if (mapMusicApp.music.mapBgmNo !== 4 || mapMusicApp.music.mapTone !== 40 ||
+    mapMusicCalls.length !== 2 || mapMusicCalls[1][1] !== 4) {
+  throw new Error(`map marker did not replace the persistent BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
+}
+const restoreMusicStart = script.indexOf("  function restoreMapMusic(){", mapMusicEnd);
+const restoreMusicEnd = script.indexOf("  app.mapLayerCache", restoreMusicStart);
+if (restoreMusicStart < 0 || restoreMusicEnd <= restoreMusicStart ||
+    /setMusicMode\("map",0\)/.test(script.slice(restoreMusicStart, restoreMusicEnd))) {
+  throw new Error("battle result must not restore the non-looping BGM 0 jingle");
+}
+const restoreMapMusic = new Function("app", "DEFAULT_MAP_BGM_NO", "setMusicMode",
+  `${script.slice(restoreMusicStart, restoreMusicEnd)}; return restoreMapMusic;`)(mapMusicApp, 2, (mode,no)=>mapMusicCalls.push([mode,no]));
+mapMusicApp.music.mapBgmNo = -1;
+restoreMapMusic();
+if (mapMusicApp.music.mapBgmNo !== 2 || mapMusicCalls.at(-1)?.[1] !== 2) {
+  throw new Error(`battle result restored an invalid map BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
+}
 const guardedRegionalMusic = nativeMapMusicSource.lastIndexOf("#ifdef _NEWMUSICFILE6_0");
 if (guardedRegionalMusic < 0 || nativeMapMusicSource.indexOf("case 53:") >= guardedRegionalMusic ||
     !/#ifdef\s+_NEWMUSICFILE6_0[\s\S]{0,220}case\s+54:[\s\S]{0,160}case\s+55:/.test(nativeMapMusicSource.slice(guardedRegionalMusic))) {
