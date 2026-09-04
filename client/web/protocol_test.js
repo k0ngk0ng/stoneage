@@ -349,6 +349,34 @@ for (const [tone, bgm] of nativeMapBgmPairs) {
     throw new Error(`native map BGM mapping drifted: ${tone} -> ${bgm}`);
   }
 }
+/* GameProc stops the character-selection track before the first drawMap(),
+   then starts the BGM selected by that draw.  Keep the field silent while
+   mapBgmNo is unknown instead of leaking title/selection slot 2 into the
+   beginning of every character login. */
+const nativeProcessSource = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/process.cpp", "latin1");
+const nativeGameProcStart = nativeProcessSource.indexOf("void GameProc(");
+const nativeFieldEntryStart = nativeProcessSource.indexOf("case 102:", nativeGameProcStart);
+const nativeFieldEntryEnd = nativeProcessSource.indexOf("case 103:", nativeFieldEntryStart);
+const nativeFieldEntry = nativeProcessSource.slice(nativeFieldEntryStart, nativeFieldEntryEnd);
+const nativeStopBgm = nativeFieldEntry.indexOf("stop_bgm();");
+const nativeDrawMap = nativeFieldEntry.indexOf("drawMap();");
+const nativePlayMapBgm = nativeFieldEntry.indexOf("play_bgm( map_bgm_no );");
+if (nativeGameProcStart < 0 || nativeFieldEntryStart < 0 || nativeFieldEntryEnd <= nativeFieldEntryStart ||
+    nativeStopBgm < 0 || nativeDrawMap <= nativeStopBgm || nativePlayMapBgm <= nativeDrawMap) {
+  throw new Error("switch-compatible GameProc field-entry BGM order drifted");
+}
+const musicIntentStart = script.indexOf("  function musicIntentBgm(){");
+const musicIntentEnd = script.indexOf("  function bgmPitchTrack", musicIntentStart);
+if (musicIntentStart < 0 || musicIntentEnd <= musicIntentStart) throw new Error("music intent boundary missing");
+const musicIntentApp = {music:{mode:"map",mapBgmNo:-1,battleBgmNo:-1}};
+const musicIntentBgm = new Function("app", `${script.slice(musicIntentStart,musicIntentEnd)};return musicIntentBgm;`)(musicIntentApp);
+if (musicIntentBgm() !== -1) throw new Error("fresh field must remain silent until its destination map BGM is known");
+musicIntentApp.music.mapBgmNo=4;
+if (musicIntentBgm() !== 4) throw new Error("known destination map BGM intent was lost");
+musicIntentApp.music.mode="title";
+if (musicIntentBgm() !== 2) throw new Error("title/character-selection BGM intent was lost");
+musicIntentApp.music.mode="battle";musicIntentApp.music.battleBgmNo=6;
+if (musicIntentBgm() !== 6) throw new Error("battle BGM intent was lost");
 /* Slot 0 is sabgm_s0.wav, the short non-looping result jingle.  A marker-less
    first map/room must therefore initialize the persistent map track to the
    normal looping slot 2, while later partial M windows keep the current

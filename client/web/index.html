@@ -1877,7 +1877,14 @@
   function musicIntentBgm(){
     const music=app.music||{};
     if(music.mode==="battle"&&Number(music.battleBgmNo)>=0)return Number(music.battleBgmNo);
-    if((music.mode==="map"||music.mode==="battle-result")&&Number(music.mapBgmNo)>=0)return Number(music.mapBgmNo);
+    /* PROCESS.CPP case 102 stops the character-list song before drawMap()
+       chooses the destination marker.  A fresh field therefore has no BGM
+       intent until its first map window arrives; falling through to slot 2
+       here leaked the character-selection song across that scene boundary. */
+    if(music.mode==="map"||music.mode==="battle-result"){
+      const mapBgmNo=Number(music.mapBgmNo);
+      return mapBgmNo>=0?mapBgmNo:-1;
+    }
     if(music.mode==="off")return -1;
     return 2;
   }
