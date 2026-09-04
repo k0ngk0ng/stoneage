@@ -630,7 +630,7 @@
     #battle-actors-layer .battle-projectile.firecracker{width:10px;height:10px;background:#ed5d40;border:2px solid #ffd261;border-radius:2px}
     #battle-actors-layer .battle-projectile.model{width:10px;height:10px;background:#f4d37d;border:2px solid #7e4d2b;border-radius:50%;box-shadow:0 0 8px #ffd76a;transform-origin:50% 50%;}
     #battle-actors-layer .battle-projectile.model:has(.battle-projectile-sprite){background:transparent;border:0;box-shadow:none;width:1px;height:1px}
-    #battle-actors-layer .battle-projectile-sprite{position:absolute;left:0;top:0;display:block;max-width:none;image-rendering:pixelated;transform:translate(-50%,-50%);pointer-events:none}
+    #battle-actors-layer .battle-projectile-sprite{position:absolute;left:0;top:0;display:block;max-width:none;image-rendering:pixelated;pointer-events:none}
     #battle-actors-layer .battle-projectile.boomerang{width:24px;height:24px;background:transparent;border:4px solid #d6a54e;border-left-color:transparent;border-bottom-color:#7b4a1f;border-radius:50%;filter:drop-shadow(1px 1px 0 #24170e)}
     #battle-actors-layer .battle-projectile.boomerang::after{content:"";position:absolute;left:-4px;top:7px;width:10px;height:4px;background:#d6a54e;transform:rotate(-32deg);transform-origin:right center}
     #battle-actors-layer .battle-projectile.has-native-art{width:1px;height:1px;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;filter:none!important;transform-origin:0 0}
@@ -10610,7 +10610,7 @@
   function battlePushProjectile(state,projectile){
     if(!state||!projectile)return;
     const from=Array.isArray(projectile.from)?projectile.from:[0,0],to=Array.isArray(projectile.to)?projectile.to:from;
-    const now=Date.now(),startAt=Math.max(now,Number(projectile.startAt)||now),duration=Math.max(100,Number(projectile.duration)||260),endAt=Math.max(startAt+duration,Number(projectile.endAt)||startAt+duration);
+    const now=Date.now(),requestedStart=Number(projectile.startAt),hasRequestedStart=Number.isFinite(requestedStart)&&requestedStart>0,preserveSharedTimeline=String(projectile.kind||"")==="model",startAt=hasRequestedStart?(preserveSharedTimeline?requestedStart:Math.max(now,requestedStart)):now,duration=Math.max(100,Number(projectile.duration)||260),endAt=Math.max(startAt+duration,Number(projectile.endAt)||startAt+duration);
     /* BATTLE_BattleModel() uses the `a` tuple value as ATR_CHR_NO: it is the
        graphic number of the temporary T_PRIO_BOW action, not a character
        animation action.  Keep both spellings on the queued projectile so a
@@ -10827,7 +10827,7 @@
       else{x=tx-dx*returnProgress;y=ty-dy*returnProgress;angle=Math.atan2(-dy,-dx)*180/Math.PI;}
       x+=(-dy/length)*arc;y+=(dx/length)*arc;
     }
-    return {x,y,angle,progress,opacity:Math.max(.15,1-Math.max(0,progress-.92)/.08),...(nativeSample||{})};
+    return {x,y,angle,progress,opacity:kind==="model"?1:Math.max(.15,1-Math.max(0,progress-.92)/.08),...(nativeSample||{})};
   }
   /* radar() expresses a missile course as 0=up, 8=right, 16=down and
      24=left.  ATT_BOW uses course/2 to select one of the sixteen pre-drawn
@@ -10981,6 +10981,75 @@
       held+=duration;
     }
     return Math.max(0,value-held);
+  }
+  /* BATTLE_BattleModel() owns a small set of temporary T_PRIO_BOW actors.
+     Every distinct i<object-index> begins its first VCT1 approach at the same
+     time, but VCT2 attacks are released in tuple order.  Repeated tuples for
+     one i reuse the same actor and start their next approach as soon as that
+     actor finishes attacking, even while another object owns the attack
+     turn.  Keep this as a pure plan so the renderer and packet effects share
+     one native 60 Hz timeline instead of independently guessing durations. */
+  function battleModelPlan(attacker,tuples,startAt=Date.now(),timingResolver=battleGraphicAnimationTiming,reactionResolver=null){
+    const actor=Number(attacker),base=Number(startAt)||Date.now(),side=battleSide(actor),records=(Array.isArray(tuples)?tuples:[]).map((tuple,tupleIndex)=>({...tuple,tupleIndex,target:Number(tuple?.target),objectIndex:Math.max(0,Math.min(9,Math.trunc(Number(tuple?.objectIndex)||0)))})).filter(tuple=>Number.isInteger(tuple.target)&&tuple.target>=0&&tuple.target<20),objectsByIndex=new Map(),hits=[],sounds=[],targetReadyAt=new Map();
+    if(side<0)return {startAt:base,endAt:base,duration:0,objects:[],hits,sounds};
+    /* The parser has populated all ACTION fields before monster() runs.  A
+       repeated i overwrites ATR_CHR_NO, so the last graphic for that object
+       is the one used for every one of its attacks. */
+    for(const tuple of records){
+      let object=objectsByIndex.get(tuple.objectIndex);
+      if(!object){
+        const sourceBid=side===1?10+tuple.objectIndex:tuple.objectIndex,source=battleSlotPoint(sourceBid),initial=side===1?[Number(source[0])-300,Number(source[1])-300]:[Number(source[0])+300,Number(source[1])+300];
+        object={objectIndex:tuple.objectIndex,graphic:tuple.graphic,initial,pointQ:[Math.trunc(initial[0]*256),Math.trunc(initial[1]*256)],availableOffset:0,started:false,samples:[],phases:[],firstTarget:tuple.target,lastTarget:tuple.target};objectsByIndex.set(tuple.objectIndex,object);
+      }
+      object.graphic=tuple.graphic;object.lastTarget=tuple.target;
+    }
+    const sample=(object,offset,phase,direction,course,phaseStartOffset,options={})=>{
+      const point=battleBoomerangPixel(object.pointQ);
+      object.samples.push({offset,x:point[0],y:point[1],phase,direction,course,angle:((Number(course)||0)&31)*11.25-90,phaseStartOffset,action:Number(options.action??4),animationLoop:options.animationLoop!==false,animationHolds:options.animationHolds||[]});
+    };
+    const travel=(object,target,startOffset,speed=32,stopDistance=64)=>{
+      const destination=battleSlotPoint(target),begin=battleBoomerangPixel(object.pointQ),phaseStartOffset=Math.max(0,Number(startOffset)||0);let tick=0,course=battleProjectileCourse({angle:Math.atan2(Number(destination[1])-begin[1],Number(destination[0])-begin[0])*180/Math.PI}),direction=battleProjectileDirection(course);
+      sample(object,phaseStartOffset,"approach",direction,course,phaseStartOffset);
+      while(tick<2048){
+        const point=battleBoomerangPixel(object.pointQ),dx=Number(destination[0])-point[0],dy=Number(destination[1])-point[1];
+        if(Math.hypot(dx,dy)<=stopDistance)break;
+        course=battleProjectileCourse({angle:Math.atan2(dy,dx)*180/Math.PI});direction=battleProjectileDirection(course);object.pointQ=battleBoomerangAdvance(object.pointQ,course,speed);tick++;
+        sample(object,phaseStartOffset+tick*BATTLE_PROC_TICK_MS,"approach",direction,course,phaseStartOffset);
+      }
+      const endOffset=phaseStartOffset+tick*BATTLE_PROC_TICK_MS,to=battleBoomerangPixel(object.pointQ);
+      object.phases.push({phase:"approach",target,startOffset:phaseStartOffset,endOffset,from:begin,to,direction,speed,stopDistance});
+      return {startOffset:phaseStartOffset,endOffset,point:to,direction,course};
+    };
+    let sequenceReadyOffset=0;
+    for(const tuple of records){
+      const object=objectsByIndex.get(tuple.objectIndex);if(!object)continue;
+      /* Initial VCT1 actors all run from offset zero.  A reused actor departs
+         its previous stop point immediately after its own VCT2 completes. */
+      const approach=travel(object,tuple.target,object.started?object.availableOffset:0,32,64);object.started=true;
+      const readyForTarget=Math.max(0,Number(targetReadyAt.get(tuple.target))||0),attackStartOffset=Math.max(approach.endOffset,sequenceReadyOffset,readyForTarget),attackPoint=battleBoomerangPixel(object.pointQ),direction=approach.direction;
+      if(attackStartOffset>approach.endOffset){
+        object.phases.push({phase:"wait-order",target:tuple.target,startOffset:approach.endOffset,endOffset:attackStartOffset,from:attackPoint,to:attackPoint,direction});
+        sample(object,approach.endOffset,"wait-order",direction,approach.course,approach.endOffset);
+      }
+      const native=typeof timingResolver==="function"?timingResolver(object.graphic,direction,0):null,nativeAttackDuration=Math.max(BATTLE_PROC_TICK_MS,Number(native?.duration)||240),contactFrameOffset=Math.max(0,Math.min(nativeAttackDuration,Number(native?.contactOffset)||Math.floor(nativeAttackDuration/2))),contactHold=battleContactHoldDuration(tuple.flags,tuple.amount,tuple.petAmount),animationHolds=contactHold?[{frameOffset:contactFrameOffset,timelineOffset:contactFrameOffset,duration:contactHold}]:[],attackDuration=nativeAttackDuration+contactHold,contactOffset=attackStartOffset+contactFrameOffset,attackEndOffset=attackStartOffset+attackDuration;
+      object.phases.push({phase:"attack",target:tuple.target,startOffset:attackStartOffset,endOffset:attackEndOffset,from:attackPoint,to:attackPoint,direction,action:0,nativeAttackDuration,contactOffset,animationHolds});
+      sample(object,attackStartOffset,"attack",direction,approach.course,attackStartOffset,{action:0,animationLoop:false,animationHolds});
+      const timing={tupleIndex:tuple.tupleIndex,objectIndex:tuple.objectIndex,target:tuple.target,graphic:object.graphic,direction,startAt:base+attackStartOffset,attackStartAt:base+attackStartOffset,contactAt:base+contactOffset,endAt:base+attackEndOffset,duration:attackDuration,nativeContact:Boolean(native?.nativeContact),contactHoldDuration:contactHold};hits[tuple.tupleIndex]=timing;
+      for(const event of native?.soundEvents||[])if(Number(event?.sound)>0&&Number(event.sound)<10000)sounds.push({sound:Number(event.sound),at:base+attackStartOffset+battleTimelineOffsetForFrame(Number(event.offset)||0,animationHolds),objectIndex:tuple.objectIndex,target:tuple.target});
+      const resolvedReaction=tuple.reactionDuration??(typeof reactionResolver==="function"?reactionResolver(tuple,direction):0),reactionDuration=Math.max(0,Number(resolvedReaction)||0);if(reactionDuration>0)targetReadyAt.set(tuple.target,Math.max(readyForTarget,contactOffset+reactionDuration));
+      object.availableOffset=attackEndOffset;sequenceReadyOffset=attackEndOffset;
+    }
+    /* VCT3 lets every finished model leave independently at SPD16.  It is
+       destroyed only after crossing the native horizontal SCREEN_OUT bound;
+       fading or clipping it at the last target is visibly incorrect. */
+    let duration=0;
+    for(const object of objectsByIndex.values()){
+      const exitStartOffset=object.availableOffset,exitDirection=side===0?3:7,exitCourse=BATTLE_COURSE_FOR_DIRECTION[exitDirection],from=battleBoomerangPixel(object.pointQ);let tick=0;
+      sample(object,exitStartOffset,"exit",exitDirection,exitCourse,exitStartOffset);
+      while(tick<2048){const point=battleBoomerangPixel(object.pointQ);if(point[0]<-106||point[0]>746)break;object.pointQ=battleBoomerangAdvance(object.pointQ,exitCourse,16);tick++;sample(object,exitStartOffset+tick*BATTLE_PROC_TICK_MS,"exit",exitDirection,exitCourse,exitStartOffset);}
+      const endOffset=exitStartOffset+tick*BATTLE_PROC_TICK_MS,to=battleBoomerangPixel(object.pointQ);object.phases.push({phase:"exit",startOffset:exitStartOffset,endOffset,from,to,direction:exitDirection,speed:16});object.endOffset=endOffset;object.from=object.initial;object.to=to;duration=Math.max(duration,endOffset);
+    }
+    return {startAt:base,endAt:base+duration,duration,objects:[...objectsByIndex.values()],hits,sounds};
   }
   function battleAttackMotionSpec(attacker,target,kind="attack",attackAction=0,flags=0){
     const actor=Number(attacker),victim=Number(target),from=battleSlotPoint(actor),to=battleSlotPoint(victim),hasTarget=Number.isFinite(victim)&&victim>=0;
@@ -11626,11 +11695,6 @@
     const effects=[],segments=parseBattleCommandSegments(command),state=app.battleState;
     if(!state.motions)state.motions=[];
     if(!state.projectiles)state.projectiles=[];
-    /* Native BATTLE_BattleModel reuses one T_PRIO_BOW object when the same
-       `i<object-index>` appears for multiple targets.  Keep its last contact
-       point so the next tuple continues from that target instead of
-       respawning at the off-screen formation slot. */
-    const modelObjectCursors=new Map();
     /* battle.c::EntrySort() serializes the movie in descending dex/sequence
        order.  Preserve that wire order in the browser by assigning each
        action a start slot on one visual timeline.  The old renderer used one
@@ -11725,34 +11789,6 @@
     const scheduleAttackSequence=(attacker,targets,attackAction=0,flags=[],damageValues=[],petValues=[])=>{
       if(Number(attacker)<0)return null;
       return scheduleAttackSequenceSpec(battleAttackSequenceSpec(Number(attacker),targets,attackAction,flags,damageValues,petValues));
-    };
-    /* BATTLE_BattleModel() does not animate the attacking pet itself.  The
-       native parser creates a temporary T_PRIO_BOW action whose
-       ATR_CHR_NO is the tuple's `a` value (a bitmap/graphic id), moves that
-       action to the target, lets it play its attack frames, then removes it.
-       Keep that object separate from the actor layer.  Treating the value as
-       a character action (the old web path) made an id such as 1015A select a
-       non-existent pose on the pet and produced a mostly static/incorrect
-       battle movie. */
-    const scheduleBattleModelProjectile=(attacker,target,graphic,flags=0,objectIndex=0)=>{
-      const actor=Number(attacker),victim=Number(target);if(actor<0||victim<0)return null;
-      /* oft.cpp allocates one T_PRIO_BOW action per object index.  It does
-         not spawn that action on the attacking pet: `monster_start_pos[]`
-         is the corresponding formation slot displaced by ±300 pixels (the
-         side-0 row enters from lower-right, side-1 from upper-left).  The
-         `i` field in Bb is that object index, so pass it through the graphic
-         argument's optional metadata when the caller has it; otherwise the
-         target order is the same object order used by BATTLE_BattleModel(). */
-      const objectSlot=Number.isFinite(Number(objectIndex))?Math.max(0,Math.min(9,Number(objectIndex))):0,side=battleSide(actor),sourceBid=side===1?10+objectSlot:objectSlot,sourceBase=battleSlotPoint(sourceBid),initialPoint=side===1?[Number(sourceBase[0])-300,Number(sourceBase[1])-300]:[Number(sourceBase[0])+300,Number(sourceBase[1])+300],cursorKey=`${side}:${objectSlot}`,fromPoint=modelObjectCursors.get(cursorKey)||initialPoint,toPoint=battleSlotPoint(victim),dx=Number(toPoint[0])-Number(fromPoint[0]),dy=Number(toPoint[1])-Number(fromPoint[1]),distance=Math.hypot(dx,dy),start=Math.max(Date.now(),Number(state.motionQueueAt)||Date.now());
-      /* monster() VCT1 uses SPD=32 and stops when radar() reports <=64px;
-         only then does VCT2 play the model's attack sprite.  Keep the
-         missile at that exact stop point for its attack/contact tail instead
-         of flying through the defender's feet. */
-      const direction=battleFacingDirection(actor,victim),modelTiming=battleGraphicAnimationTiming(graphic,direction,0),stopDistance=Math.min(64,distance),stopScale=distance>0?Math.max(0,(distance-stopDistance)/distance):0,stopPoint=[Number(fromPoint[0])+dx*stopScale,Number(fromPoint[1])+dy*stopScale],approach=Math.max(120,battleLegacyTravelDuration(distance,32,stopDistance)),attackFrames=Math.max(180,Math.min(520,Number(modelTiming?.duration)||260)),contactOffset=Math.max(0,Number(modelTiming?.contactOffset)||Math.floor(attackFrames/2)),contactAt=start+approach+contactOffset,endAt=contactAt+Math.max(220,Math.min(520,Math.max(1,attackFrames-contactOffset)+120));
-      modelObjectCursors.set(cursorKey,stopPoint);
-      battlePushProjectile(state,{kind:"model",graphic:Number(graphic)>0?Number(graphic):0,graphicKey:graphic===undefined||graphic===null?"":String(graphic),from:[Number(fromPoint[0]),Number(fromPoint[1])-34],to:[Number(stopPoint[0]),Number(stopPoint[1])-34],startAt:start,endAt,actor,target:victim,direction,flags,stopDistance,objectIndex:objectSlot,contactAt,modelContactOffset:contactOffset});
-      state.motionQueueAt=endAt;
-      return {startAt:start,endAt, duration:endAt-start, contactAt, direction, nativeContact:Boolean(modelTiming?.nativeContact)};
     };
     const timingContactAt=(timing,fallbackDelay=300)=>{
       if(Number.isFinite(Number(timing?.contactAt)))return Number(timing.contactAt);
@@ -12152,9 +12188,23 @@
                index and is not a bitmap or an animation id.  The old port
                read `i` as a graphic and then scheduled action 0, which made
                model attacks use the wrong pose and hid the model object. */
-            flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),guardianValues=segmentValues(segment,"g").map(battleNumber),objectValues=segmentValues(segment,"i").map(battleNumber);
+            flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),guardianValues=segmentValues(segment,"g").map(battleNumber),objectValues=segmentValues(segment,"i").map(battleNumber),modelTuples=targets.map((target,index)=>({target,flags:flagValues[index]??0,amount:damageValues[index]??0,petAmount:petValues[index]??0,graphic:modelGraphics[index]??modelGraphics[modelGraphics.length-1]??0,objectIndex:objectValues[index]??index})),planStart=Math.max(Date.now(),Number(state.motionQueueAt)||Date.now()),modelPlan=battleModelPlan(attacker,modelTuples,planStart,battleGraphicAnimationTiming,(tuple,direction)=>{
+              if(Number(tuple?.flags)&BATTLE_FLAG.dodge)return 50*BATTLE_PROC_TICK_MS;
+              if(Number(tuple?.flags)&(BATTLE_FLAG.death|BATTLE_FLAG.ultimate1|BATTLE_FLAG.ultimate2))return 0;
+              if(Math.max(0,Number(tuple?.amount)||0)>0||Math.max(0,Number(tuple?.petAmount)||0)>0||(Number(tuple?.flags)&BATTLE_FLAG.guard))return battleHitMotionSpec(Number(tuple.target),direction,Number(tuple.flags)||0).duration;
+              return 0;
+            });
+          /* One projectile now represents one native p_missile[i] ACTION.
+             Its samples contain every approach, stationary attack and exit
+             phase, so repeated targets never respawn the same model. */
+          for(const object of modelPlan.objects){
+            const firstHit=modelPlan.hits.find(hit=>hit&&Number(hit.objectIndex)===Number(object.objectIndex));
+            battlePushProjectile(state,{kind:"model",graphic:Number(object.graphic)>0?Number(object.graphic):0,graphicKey:object.graphic===undefined||object.graphic===null?"":String(object.graphic),from:object.from,to:object.to,samples:object.samples,phases:object.phases,startAt:modelPlan.startAt,endAt:modelPlan.startAt+Number(object.endOffset||0),actor:attacker,target:object.firstTarget,direction:firstHit?.direction??battleSlotDirection(attacker),objectIndex:object.objectIndex,contactAt:firstHit?.contactAt||0});
+          }
+          for(const sound of modelPlan.sounds)battleScheduleDamage(state,sound.at,()=>{const point=battleSlotPoint(sound.target);playSoundEffect(sound.sound,Number(point[0])||320,Number(point[1])||240);});
+          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||planStart,Number(modelPlan.endAt)||planStart);
           for(let index=0;index<targets.length;index++){
-            const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1,modelGraphic=modelGraphics[index]??modelGraphics[modelGraphics.length-1]??0,objectIndex=objectValues[index]??index,timing=scheduleBattleModelProjectile(attacker,target,modelGraphic,flags,objectIndex),impactStart=timingContactAt(timing);
+            const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1,timing=modelPlan.hits[index]||null,impactStart=timingContactAt(timing);
             if(target<0)continue;
             battleApplyFlagEffects(effects,target,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
             if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing);}
@@ -17652,17 +17702,19 @@
          paint it at the moving missile position.  If the optional resource
          is unavailable, the `.model` CSS fallback remains visible. */
       if(projectile.graphic||projectile.graphicKey){
-        const modelKey=projectile.graphicKey??projectile.graphic,phaseStart=Number(projectile.contactAt)>0&&now>=Number(projectile.contactAt)?Number(projectile.contactAt):Number(projectile.startedAt)||now,modelActor={battle:true,graphic:Number(projectile.graphic)||0,graphicKey:String(modelKey||""),direction:Number(projectile.direction)||0,action:Number(projectile.contactAt)>0&&now>=Number(projectile.contactAt)?0:4,animationStartedAt:performance.now()-Math.max(0,now-phaseStart),animationLoop:true},frame=actorFrame(modelActor);
+        const modelKey=projectile.graphicKey??projectile.graphic,phaseStart=Number(projectile.startedAt||now)+Math.max(0,Number(value.phaseStartOffset)||0),action=Number.isFinite(Number(value.action))?Number(value.action):(Number(projectile.contactAt)>0&&now>=Number(projectile.contactAt)?0:4),rawElapsed=Math.max(0,now-phaseStart),animationElapsed=action===0?battleAnimationElapsedWithHolds(rawElapsed,value.animationHolds):rawElapsed,modelActor={battle:true,graphic:Number(projectile.graphic)||0,graphicKey:String(modelKey||""),direction:Number.isFinite(Number(value.direction))?Number(value.direction):Number(projectile.direction)||0,action,animationStartedAt:performance.now()-animationElapsed,animationLoop:value.animationLoop!==false},frame=actorFrame(modelActor);
         if(frame?.image?.complete&&frame.image.naturalWidth){
           /* A model bitmap may have a full REALBIN action table.  Use that
              table while moving/attacking and retain the plain bitmap fallback
              for effect ids that only have a single manifest entry. */
+          node.classList.add("has-native-art");node.style.transform="none";
           const sprite=document.createElement("img");sprite.className="battle-projectile-sprite";sprite.src=frame.image.src;sprite.alt="";
           sprite.style.left=`${Number(frame.x)||0}px`;sprite.style.top=`${Number(frame.y)||0}px`;
           sprite.style.width=`${frame.image.naturalWidth}px`;sprite.style.height=`${frame.image.naturalHeight}px`;node.append(sprite);
         }else{
           const info=resolveBitmapInfo(modelKey),image=info?.file?loadAsset(info.file):null;
           if(image?.complete&&image.naturalWidth){
+            node.classList.add("has-native-art");node.style.transform="none";
             const sprite=document.createElement("img");sprite.className="battle-projectile-sprite";sprite.src=image.src;sprite.alt="";
             sprite.style.left=`${Number(info.xoffset)||(-image.naturalWidth/2)}px`;sprite.style.top=`${Number(info.yoffset)||(-image.naturalHeight+4)}px`;
             sprite.style.width=`${image.naturalWidth}px`;sprite.style.height=`${image.naturalHeight}px`;node.append(sprite);

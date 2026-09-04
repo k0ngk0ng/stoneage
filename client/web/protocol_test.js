@@ -2013,10 +2013,10 @@ for (const expected of [
      of mistaking a hexadecimal damage value such as BE for a new marker. */
   /attackMagicResults=\[\][\s\S]{0,1800}targetCount=\(fields\.r===undefined\?0:1\)\+\(repeated\.r\?\.length\|\|0\)[\s\S]{0,1300}expected=targetCount\*4\+1/,
   /const .*magicResults=Array\.isArray\(segment\.attackMagicResults\)\?segment\.attackMagicResults:\[\][\s\S]{0,2600}addDirectDamage\(target,amount,petAmount,0,0,timing\)/,
-  /BATTLE_BattleModel\(\): one attacker followed by[\s\S]{0,900}modelGraphics[\s\S]{0,1500}scheduleBattleModelProjectile/,
+  /BATTLE_BattleModel\(\): one attacker followed by[\s\S]{0,900}modelGraphics[\s\S]{0,1900}battleModelPlan/,
   /* Native BATTLE_BattleModel uses monster_start_pos (the object slot
      displaced by ±300px), then stops at radar()'s 64px approach radius. */
-  /const objectSlot=Number\.isFinite\(Number\(objectIndex\)\)[\s\S]{0,1200}initialPoint=side===1\?\[Number\(sourceBase\[0\]\)-300,Number\(sourceBase\[1\]\)-300\][\s\S]{0,900}stopDistance=Math\.min\(64,distance\)/,
+  /function battleModelPlan[\s\S]{0,1800}sourceBid=side===1\?10\+tuple\.objectIndex:tuple\.objectIndex[\s\S]{0,500}Number\(source\[0\]\)-300[\s\S]{0,3000}travel\(object,tuple\.target,object\.started\?object\.availableOffset:0,32,64\)/,
   /* 2.5 emits B%% for BATTLE_MultiCaptureUp; lowercase Bd is the
      deep-poison terminal hit and BI's EarthRound record carries real
      r/f/d/p tuples after its entry marker. */
@@ -4127,6 +4127,40 @@ const zeroDamageContactHold = battleContactTiming.battleContactHoldDuration(0,0,
 if (!nearlyEqual(normalContactHold, 8 * nativeProcTickMs) || !nearlyEqual(heavyContactHold, 32 * nativeProcTickMs) || !nearlyEqual(reflectContactHold,32*nativeProcTickMs) || !nearlyEqual(akoContactHold,8*nativeProcTickMs) || zeroDamageContactHold !== 0 || !nearlyEqual(battleContactTiming.battleTimelineOffsetForFrame(60,[{frameOffset:30,timelineOffset:30,duration:normalContactHold}]), 30 + 30 + normalContactHold) || !nearlyEqual(battleContactTiming.battleAnimationElapsedWithHolds(54,[{frameOffset:30,timelineOffset:30,duration:normalContactHold}]), 30)) {
   throw new Error(`native contact hold timing failed: ${JSON.stringify({normalContactHold,heavyContactHold,reflectContactHold,akoContactHold,zeroDamageContactHold})}`);
 }
+/* ATT_BATTLE_MODEL is not a normal one-shot projectile.  Exercise two
+   concurrent p_missile[i] actors and reuse i0 for a later target so the
+   approach/attack/exit state machine cannot collapse back into a lerp. */
+const battleModelPlanStart=script.indexOf("  function battleModelPlan");
+const battleModelPlanEnd=script.indexOf("  function battleAttackMotionSpec",battleModelPlanStart);
+if(battleModelPlanStart<0||battleModelPlanEnd<=battleModelPlanStart)throw new Error("battle model planner boundary missing");
+const modelSlotPoints=new Map([[0,[0,0]],[1,[0,100]],[10,[100,300]],[11,[100,400]],[12,[100,100]]]);
+const modelSlotPoint=id=>modelSlotPoints.get(Number(id))||[0,0];
+const modelProjectileCourse=value=>((Math.round(((Number(value?.angle)||0)+90)/11.25)%32)+32)%32;
+const modelProjectileDirection=course=>(Math.floor((((Number(course)||0)+2)%32)/4)+4)&7;
+const modelAdvance=(point,course,speed)=>{const radians=(((Number(course)||0)&31)*Math.PI)/16,value=Math.max(0,Number(speed)||0);return [Math.trunc(Number(point?.[0])||0)+Math.trunc(value*64*Math.sin(radians)),Math.trunc(Number(point?.[1])||0)+Math.trunc(-value*64*Math.cos(radians))];};
+const modelPixel=point=>[Math.floor((Number(point?.[0])||0)/256),Math.floor((Number(point?.[1])||0)/256)];
+const modelTiming=()=>({duration:1000,contactOffset:333,nativeContact:true,soundEvents:[{sound:51,offset:200}]});
+const battleModelPlan=new Function("battleSide","battleSlotPoint","battleProjectileCourse","battleProjectileDirection","battleBoomerangAdvance","battleBoomerangPixel","battleContactHoldDuration","battleTimelineOffsetForFrame","BATTLE_PROC_TICK_MS","BATTLE_COURSE_FOR_DIRECTION","battleGraphicAnimationTiming",`${script.slice(battleModelPlanStart,battleModelPlanEnd)};return battleModelPlan;`)(
+  id=>Number(id)<10?0:1,modelSlotPoint,modelProjectileCourse,modelProjectileDirection,modelAdvance,modelPixel,battleContactTiming.battleContactHoldDuration,battleContactTiming.battleTimelineOffsetForFrame,nativeProcTickMs,[16,20,24,28,0,4,8,12],modelTiming
+);
+const modelBase=1_000_000,modelPlan=battleModelPlan(0,[
+  {target:10,objectIndex:0,graphic:101500,flags:0,amount:10,petAmount:0},
+  {target:11,objectIndex:1,graphic:101501,flags:0,amount:10,petAmount:0},
+  {target:12,objectIndex:0,graphic:101500,flags:0,amount:10,petAmount:0},
+],modelBase,modelTiming);
+const modelObject0=modelPlan.objects.find(object=>object.objectIndex===0),modelObject1=modelPlan.objects.find(object=>object.objectIndex===1),modelHit0=modelPlan.hits[0],modelHit1=modelPlan.hits[1],modelHit2=modelPlan.hits[2],modelObject0Approaches=modelObject0?.phases.filter(phase=>phase.phase==="approach")||[],modelObject0Attacks=modelObject0?.phases.filter(phase=>phase.phase==="attack")||[],modelObject0Exit=modelObject0?.phases.find(phase=>phase.phase==="exit"),modelObject0ExitSamples=modelObject0?.samples.filter(sample=>sample.phase==="exit")||[];
+const modelFirstTick=modelObject0?.samples.find(sample=>sample.phase==="approach"&&nearlyEqual(sample.offset,nativeProcTickMs)),modelAttackStartSample=modelObject0?.samples.find(sample=>sample.phase==="attack"&&nearlyEqual(sample.offset,modelObject0Attacks[0]?.startOffset)),modelExitFirst=modelObject0ExitSamples[0],modelExitSecond=modelObject0ExitSamples[1],modelExitPenultimate=modelObject0ExitSamples.at(-2),modelExitLast=modelObject0ExitSamples.at(-1);
+if(!modelObject0||!modelObject1||modelObject0Approaches.length!==2||modelObject0Attacks.length!==2||
+   modelObject0Approaches[0].startOffset!==0||modelObject1.phases.find(phase=>phase.phase==="approach")?.startOffset!==0||
+   !modelFirstTick||Math.hypot(modelFirstTick.x-modelObject0.initial[0],modelFirstTick.y-modelObject0.initial[1])!==8||
+   Math.hypot(modelObject0Attacks[0].to[0]-modelSlotPoint(10)[0],modelObject0Attacks[0].to[1]-modelSlotPoint(10)[1])>64||
+   modelObject0Attacks.some(phase=>phase.from[0]!==phase.to[0]||phase.from[1]!==phase.to[1])||modelAttackStartSample?.action!==0||modelAttackStartSample?.animationLoop!==false||
+   !nearlyEqual(modelHit0.contactAt-modelHit0.attackStartAt,333)||modelHit0.endAt-modelHit0.attackStartAt<1000||modelHit1.attackStartAt<modelHit0.endAt||modelHit2.attackStartAt<modelHit1.endAt||
+   modelObject0Approaches[1].from[0]!==modelObject0Attacks[0].to[0]||modelObject0Approaches[1].from[1]!==modelObject0Attacks[0].to[1]||!nearlyEqual(modelObject0Approaches[1].startOffset,modelHit0.endAt-modelBase)||
+   modelObject0Exit?.speed!==16||!modelExitFirst||!modelExitSecond||Math.hypot(modelExitSecond.x-modelExitFirst.x,modelExitSecond.y-modelExitFirst.y)<2.5||Math.hypot(modelExitSecond.x-modelExitFirst.x,modelExitSecond.y-modelExitFirst.y)>4.5||
+   !modelExitPenultimate||!modelExitLast||modelExitPenultimate.x< -106||modelExitLast.x>=-106||!nearlyEqual(modelPlan.endAt-modelBase,Math.max(...modelPlan.objects.map(object=>object.endOffset)),1e-6)){
+  throw new Error(`native battle model state machine failed: ${JSON.stringify({hits:modelPlan.hits,objects:modelPlan.objects.map(object=>({objectIndex:object.objectIndex,initial:object.initial,phases:object.phases,endOffset:object.endOffset,last:object.samples.at(-1)}))})}`);
+}
 const terminalHoldStart = script.indexOf("  function battleTerminalHoldUntil");
 const terminalHoldEnd = script.indexOf("  function battleMoviePending", terminalHoldStart);
 const battleTerminalHoldUntil = new Function(`${script.slice(terminalHoldStart, terminalHoldEnd)}; return battleTerminalHoldUntil;`)();
@@ -4343,7 +4377,7 @@ if (!/const timedMotion=[\s\S]{0,1600}const scheduleBDMotion=/.test(battleMovieS
 }
 for (const expected of [
   /marker==="BP"[\s\S]{0,500}scheduleAttack\(segment,target,"attack",0,flags\)/,
-  /String\(segment\.rawMarker\|\|""\)==="Bb"[\s\S]{0,1700}scheduleBattleModelProjectile\(attacker,target,modelGraphic,flags,objectIndex\)/,
+  /String\(segment\.rawMarker\|\|""\)==="Bb"[\s\S]{0,3000}modelPlan=battleModelPlan\(attacker,modelTuples[\s\S]{0,2200}timing=modelPlan\.hits\[index\]/,
   /String\(segment\.rawMarker\|\|""\)==="Bd"[\s\S]{0,900}scheduleAttack\(segment,target,"attack",0,flags\|BATTLE_FLAG\.death\)/,
   /marker==="B\+"[\s\S]{0,500}scheduleAttack\(segment,target,"attack",0,flags\)/,
   /marker==="BY"[\s\S]{0,1800}scheduleAttackPair\(attacker,target,"attack",0,flags\)/,
@@ -4703,6 +4737,16 @@ if (futureMotions.length !== 141 || futureMotions.some(item=>item.actor===-1) ||
 }
 const projectileFns = new Function("BATTLE_PROC_TICK_MS", `${script.slice(projectilePushStart, projectileEnd)}; return {battlePushProjectile,battleProjectileValue};`)(nativeProcTickMs);
 const projectileState = {}, projectileNow = Date.now();
+const pastProjectileStart=projectileNow-500,pastModelState={},pastArrowState={};
+projectileFns.battlePushProjectile(pastModelState,{kind:"model",from:[0,0],to:[1,1],startAt:pastProjectileStart,duration:100});
+projectileFns.battlePushProjectile(pastArrowState,{kind:"arrow",from:[0,0],to:[1,1],startAt:pastProjectileStart,duration:100});
+if(pastModelState.projectiles?.[0]?.startedAt!==pastProjectileStart||pastArrowState.projectiles?.[0]?.startedAt<=pastProjectileStart){
+  throw new Error(`projectile shared timeline scoping failed: ${JSON.stringify({model:pastModelState.projectiles?.[0],arrow:pastArrowState.projectiles?.[0]})}`);
+}
+const modelRuntimeProjectile={kind:"model",from:modelObject0.from,to:modelObject0.to,samples:modelObject0.samples,startedAt:modelBase,until:modelBase+modelObject0.endOffset,duration:modelObject0.endOffset},modelRuntimeAttack=projectileFns.battleProjectileValue(modelRuntimeProjectile,modelHit0.attackStartAt+500),modelRuntimeExit=projectileFns.battleProjectileValue(modelRuntimeProjectile,modelBase+modelObject0Exit.startOffset+nativeProcTickMs);
+if(modelRuntimeAttack.phase!=="attack"||modelRuntimeAttack.action!==0||modelRuntimeAttack.x!==modelObject0Attacks[0].to[0]||modelRuntimeAttack.y!==modelObject0Attacks[0].to[1]||modelRuntimeExit.phase!=="exit"||modelRuntimeExit.action!==4||modelRuntimeExit.opacity!==1){
+  throw new Error(`battle model sampled phase drifted: ${JSON.stringify({modelRuntimeAttack,modelRuntimeExit})}`);
+}
 projectileFns.battlePushProjectile(projectileState, {kind:"arrow", from:[0, 0], to:[100, 0], startAt:projectileNow + 120, endAt:projectileNow + 420});
 const arrow = projectileState.projectiles?.[0], arrowMid = projectileFns.battleProjectileValue(arrow, Number(arrow?.startedAt) + Number(arrow?.duration) / 2);
 if (!arrow || Math.abs(arrowMid.x - 50) > 2 || Math.abs(arrowMid.y) > 2) throw new Error(`arrow projectile geometry failed: ${JSON.stringify(arrowMid)}`);
