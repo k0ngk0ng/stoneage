@@ -16639,10 +16639,16 @@
   }
   function touchPointerNearWorldTaskbar(event){
     /* Pointer Events report `touch` on phones/tablets.  The maxTouchPoints
-       fallback covers embedded WebViews that incorrectly report `mouse` for
-       a finger, while leaving ordinary desktop mouse hover behaviour alone. */
-    if(event?.pointerType!=="touch"&&event?.pointerType!=="pen"&&!(typeof navigator!=="undefined"&&Number(navigator.maxTouchPoints)>0))return false;
+       fallback covers embedded WebViews that omit pointerType for a finger.
+       Do not use maxTouchPoints as a blanket fallback: touchscreen laptops
+       still send real mouse events with an explicit `pointerType:"mouse"`,
+       and treating those as reveal-only gestures swallows the first click on
+       a hidden task bar.  `firesTouchEvents` is the WebView compatibility
+       signal when an implementation mislabels a finger as `mouse`. */
     if(app.phase!=="world"||app.battle||app.taskbarVisible)return false;
+    const pointerType=String(event?.pointerType||"").toLowerCase();
+    if(pointerType!=="touch"&&pointerType!=="pen"&&pointerType!==""&&!event?.sourceCapabilities?.firesTouchEvents)return false;
+    if(!(pointerType==="touch"||pointerType==="pen"||(!pointerType&&typeof navigator!=="undefined"&&Number(navigator.maxTouchPoints)>0)||Boolean(event?.sourceCapabilities?.firesTouchEvents)))return false;
     const rect=worldScreen?.getBoundingClientRect?.();
     if(!rect||rect.width<=0||rect.height<=0)return false;
     const sx=(Number(event.clientX)-rect.left)*640/rect.width;
