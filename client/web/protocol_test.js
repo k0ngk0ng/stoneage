@@ -4161,6 +4161,34 @@ if(!modelObject0||!modelObject1||modelObject0Approaches.length!==2||modelObject0
    !modelExitPenultimate||!modelExitLast||modelExitPenultimate.x< -106||modelExitLast.x>=-106||!nearlyEqual(modelPlan.endAt-modelBase,Math.max(...modelPlan.objects.map(object=>object.endOffset)),1e-6)){
   throw new Error(`native battle model state machine failed: ${JSON.stringify({hits:modelPlan.hits,objects:modelPlan.objects.map(object=>({objectIndex:object.objectIndex,initial:object.initial,phases:object.phases,endOffset:object.endOffset,last:object.samples.at(-1)}))})}`);
 }
+/* ATT_BOW is a second native action, not the actor's contact timestamp.  The
+   planner must launch after the three initial SPD32 steps, recompute radar/
+   course each tick, commit only inside the 20px arrival radius, then retain
+   the attached arrow through HIT_STOP before hiding for the release timer. */
+const bowPlanStart=script.indexOf("  function battleBowPlan");
+const bowPlanEnd=script.indexOf("  function battleProjectileValue",bowPlanStart);
+if(bowPlanStart<0||bowPlanEnd<=bowPlanStart)throw new Error("bow/axe planner boundary missing");
+const bowAndAxePlan=new Function("battleSlotPoint","battleFacingDirection","battleProjectileCourse","battleProjectileDirection","battleBoomerangAdvance","battleBoomerangPixel","battleBoomerangHitStopTicks","BATTLE_COURSE_FOR_DIRECTION","BATTLE_FLAG","BATTLE_PROC_TICK_MS",`${script.slice(bowPlanStart,bowPlanEnd)};return {battleBowPlan,battleAxePlan};`)(
+  id=>({0:[0,0],10:[320,160],11:[360,200]}[Number(id)]||[0,0]),
+  (a,b)=>a===0&&b===10?6:3,
+  modelProjectileCourse,modelProjectileDirection,modelAdvance,modelPixel,
+  (flags,amount,petAmount)=>Number(flags)&4?8:2,
+  [16,20,24,28,0,4,8,12],
+  {death:1,critical:4,guard:8,dodge:32,absorb:2048,vanish:4096},
+  nativeProcTickMs,
+);
+const bowPlan=bowAndAxePlan.battleBowPlan(0,10,0,10,0,100,false),bowContact=bowPlan.samples.find(sample=>sample.contact===true),bowStick=bowPlan.samples.find(sample=>sample.phase==="stick"),bowHidden=bowPlan.samples.find(sample=>sample.phase==="hidden"),bowContactIndex=bowPlan.samples.indexOf(bowContact);
+if(!bowPlan||bowPlan.flightTicks<1||!bowContact||bowPlan.contactOffset<=0||bowContactIndex<=0||bowContact.x!==320||bowContact.y!==160||!bowStick||bowStick.shadowVisible!==false||bowStick.bodyVisible!==true||!bowHidden||bowPlan.endOffset<=bowPlan.contactOffset||bowPlan.samples.slice(0,bowContactIndex).some(sample=>sample.phase!=="flight"&&sample.phase!=="contact")){
+  throw new Error(`native bow projectile state machine failed: ${JSON.stringify({flightTicks:bowPlan.flightTicks,contactOffset:bowPlan.contactOffset,endOffset:bowPlan.endOffset,contact:bowContact,stick:bowStick,hidden:bowHidden})}`);
+}
+const axePlan=bowAndAxePlan.battleAxePlan(0,10,0,10,0,100,false);
+if(!axePlan||axePlan.flightCounter<1||axePlan.contactOffset<=0||axePlan.landingOffset<=axePlan.contactOffset||!axePlan.samples.some(sample=>sample.phase==="tail")||axePlan.endOffset<=axePlan.landingOffset){
+  throw new Error(`native axe planner is not producing flight/contact/tail/landing phases: ${JSON.stringify({flightCounter:axePlan.flightCounter,contactOffset:axePlan.contactOffset,landingOffset:axePlan.landingOffset,endOffset:axePlan.endOffset,phases:[...new Set(axePlan.samples.map(sample=>sample.phase))]})}`);
+}
+const rangedMovieSource=script.slice(script.indexOf('          const castSpec=attacker>=0&&marker==="BB"'),script.indexOf('              if(flags&BATTLE_FLAG.dodge)',script.indexOf('          const castSpec=attacker>=0&&marker==="BB"')));
+if(!/battleBowPlan|battleAxePlan/.test(rangedMovieSource)||/launchAt=/.test(rangedMovieSource)||!/state\.motionQueueAt=Math\.max\(Number\(state\.motionQueueAt\)\|\|releaseAt,endAt\)/.test(rangedMovieSource)){
+  throw new Error("BB movie is still using the guessed projectile launch timeline");
+}
 const terminalHoldStart = script.indexOf("  function battleTerminalHoldUntil");
 const terminalHoldEnd = script.indexOf("  function battleMoviePending", terminalHoldStart);
 const battleTerminalHoldUntil = new Function(`${script.slice(terminalHoldStart, terminalHoldEnd)}; return battleTerminalHoldUntil;`)();

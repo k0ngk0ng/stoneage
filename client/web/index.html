@@ -10744,6 +10744,57 @@
     const duration=samples.length?Number(samples[samples.length-1].offset)||0:0;
     return {samples,actorSamples,contacts,contactOffsets:contacts.map(event=>event.offset),duration,catchOffset:catchOffset<0?duration:catchOffset,catchDirection,targetDistance,returnDistance};
   }
+  /* ATT_BOW/stone_shadow() creates its missile at the SoundNo frame, runs
+     three SPD32 GEMINI steps before the first paint, then lets radar() choose
+     a new 32-way course on every process tick.  Damage is committed only when
+     the missile is within the native 20px arrival radius.  The old browser
+     path used the actor's contact frame as the hit and a fixed 220ms lerp,
+     which made distant arrows arrive instantly and left no attached arrow.
+     Keep this planner deterministic (and independent of DOM time) so the
+     packet movie, renderer and regression tests all consume the same samples.
+  */
+  function battleBowPlan(attacker,target,flags=0,amount=0,petAmount=0,targetHp=null,targetDead=false){
+    const actor=Number(attacker),victim=Number(target),from=battleSlotPoint(actor),to=battleSlotPoint(victim),direction=battleFacingDirection(actor,victim),initialCourse=BATTLE_COURSE_FOR_DIRECTION[((direction%8)+8)%8],samples=[];
+    if(!Number.isInteger(actor)||actor<0||actor>=20||!Number.isInteger(victim)||victim<0||victim>=20)return {samples,contactOffset:0,landingOffset:0,endOffset:0,releaseOffset:0,direction,flightTicks:0,shortPath:true};
+    let point=[Math.trunc(Number(from[0])*256),Math.trunc(Number(from[1])*256)];
+    /* The native ATT_BOW allocation immediately advances both the shadow and
+       body actions three times at SPD=32 before EntrySort paints them. */
+    for(let index=0;index<3;index++)point=battleBoomerangAdvance(point,initialCourse,32);
+    const distanceToTarget=()=>{const pixel=battleBoomerangPixel(point);return Math.hypot(Number(to[0])-pixel[0],Number(to[1])-pixel[1]);};
+    const courseToTarget=()=>{const pixel=battleBoomerangPixel(point);return battleProjectileCourse({angle:Math.atan2(Number(to[1])-pixel[1],Number(to[0])-pixel[0])*180/Math.PI});};
+    let tick=0,course=initialCourse,phase="flight";
+    const push=(options={})=>{
+      const pixel=battleBoomerangPixel(point),sampleCourse=Number.isFinite(Number(options.course))?Number(options.course):course;
+      samples.push({offset:tick*BATTLE_PROC_TICK_MS,x:pixel[0],y:pixel[1],qx:point[0],qy:point[1],course:sampleCourse,angle:sampleCourse*11.25-90,direction:battleProjectileDirection(sampleCourse),shadowVisible:options.shadowVisible!==false,bodyVisible:options.bodyVisible!==false,phase:String(options.phase||phase),action:Number(options.action)||0});
+    };
+    push();
+    let flightTicks=0;
+    /* A close target still consumes one native process tick because bow()
+       decrements ATR_GROUP_FLG before entering its contact branch. */
+    while(distanceToTarget()>20&&flightTicks<1024){
+      tick++;flightTicks++;course=courseToTarget();point=battleBoomerangAdvance(point,course,32);
+      if(distanceToTarget()<=20)break;
+      push();
+    }
+    if(flightTicks===0){tick++;flightTicks=1;}
+    phase="contact";push({phase:"contact"});
+    const contactOffset=tick*BATTLE_PROC_TICK_MS,value=Number(flags)||0,hp=Number(targetHp),lethal=Boolean(value&BATTLE_FLAG.death)||(!Boolean(value&BATTLE_FLAG.absorb)&&!Boolean(value&(BATTLE_FLAG.dodge|BATTLE_FLAG.vanish))&&Number.isFinite(hp)&&hp>0&&Math.max(0,Number(amount)||0)>=hp),zeroPower=Math.max(0,Number(amount)||0)<=0&&Math.max(0,Number(petAmount)||0)<=0,shortPath=Boolean(targetDead)||Boolean(value&BATTLE_FLAG.dodge)||(zeroPower&&!Boolean(value&(BATTLE_FLAG.absorb|BATTLE_FLAG.vanish)));
+    /* bow() changes to stick_bow at contact.  The arrow stays attached for
+       HIT_STOP (8, or 32 for a dodge/critical), then remains hidden while the
+       native 64/32 tick release timer drains. */
+    const stopTicks=(value&BATTLE_FLAG.dodge)?32:((value&BATTLE_FLAG.critical)||lethal?32:8),waitTicks=(value&BATTLE_FLAG.dodge)?32:64;
+    const contactPixel=battleBoomerangPixel(point),stickDirection=(direction+4)&7,stickCourse=((([8,10,12,14,0,2,4,6][stickDirection]||0)*2)%32+32)%32;
+    point=[Math.trunc(Number(to[0])*256),Math.trunc(Number(to[1])*256)];course=stickCourse;phase=shortPath?"short-stop":"hit-stop";
+    /* Primary bow action becomes stick_bow; the shadow child is destroyed.
+       Render this as the body layer only at the target, 28px above its feet. */
+    const targetX=Number.isFinite(Number(to[0]))?Number(to[0]):contactPixel[0],targetY=Number.isFinite(Number(to[1]))?Number(to[1]):contactPixel[1];
+    samples[samples.length-1]={...samples[samples.length-1],x:targetX,y:targetY,qx:point[0],qy:point[1],course,angle:course*11.25-90,direction:stickDirection,shadowVisible:false,bodyVisible:true,phase:"stick",contact:true,action:1};
+    for(let index=1;index<stopTicks;index++){tick++;push({phase:"stick",shadowVisible:false,bodyVisible:true,action:1});}
+    tick++;push({phase:"hidden",shadowVisible:false,bodyVisible:false,action:1});
+    for(let index=0;index<waitTicks;index++)tick++;
+    const endOffset=tick*BATTLE_PROC_TICK_MS;
+    return {samples,contactOffset,landingOffset:contactOffset,endOffset,releaseOffset:endOffset,direction,flightTicks,shortPath,lethal};
+  }
   function battleAxePlan(attacker,target,flags=0,amount=0,petAmount=0,targetHp=null,targetDead=false){
     const actor=Number(attacker),victim=Number(target),from=battleSlotPoint(actor),to=battleSlotPoint(victim),direction=battleFacingDirection(actor,victim),fixedCourse=BATTLE_COURSE_FOR_DIRECTION[((direction%8)+8)%8],samples=[];
     if(!Number.isInteger(actor)||actor<0||actor>=20||!Number.isInteger(victim)||victim<0||victim>=20)return {samples,contactOffset:0,landingOffset:0,soundOffset:0,endOffset:0,releaseOffset:0,direction};
@@ -10865,18 +10916,23 @@
     const kind=String(projectile?.kind||"arrow"),course=battleProjectileCourse(value),direction=kind==="axe"&&Number.isFinite(Number(projectile?.direction))?Number(projectile.direction):battleProjectileDirection(course),frames=[];
     const add=frame=>{if(frame)frames.push(frame);};
     if(kind==="arrow"){
-      add(battleProjectileBitmapFrame(25650+Math.floor(course/2),0));
-      add(battleProjectileBitmapFrame(25630+Math.floor(course/2),-28));
+      /* Before contact ATT_BOW paints a shadow plus a body 28px above it.
+         Once bow() changes to stick_bow the shadow child is destroyed and
+         only the body remains attached to the target.  The sampled visibility
+         flags preserve that two-action lifetime instead of drawing a second
+         arrow through the defender after every hit. */
+      if(value?.shadowVisible!==false)add(battleProjectileBitmapFrame(25650+Math.floor(course/2),0));
+      if(value?.bodyVisible!==false)add(battleProjectileBitmapFrame(25630+Math.floor(course/2),-28));
     }else if(kind==="axe"){
       const originX=Number(value?.x)||0,originY=Number(value?.y)||0,shadowX=Number.isFinite(Number(value?.shadowX))?Number(value.shadowX):originX,shadowY=Number.isFinite(Number(value?.shadowY))?Number(value.shadowY):originY,bodyX=Number.isFinite(Number(value?.bodyX))?Number(value.bodyX):originX,bodyY=Number.isFinite(Number(value?.bodyY))?Number(value.bodyY):originY-28;
       if(value?.shadowVisible!==false){const shadow=battleProjectileSpriteFrame(100505,direction,projectile,now,0,Number(value?.shadowAction)||0);if(shadow){shadow.x+=shadowX-originX;shadow.y+=shadowY-originY;add(shadow);}}
       if(value?.bodyVisible!==false){const body=battleProjectileSpriteFrame(100504,direction,projectile,now,0,Number(value?.bodyAction)||0);if(body){body.x+=bodyX-originX;body.y+=bodyY-originY;add(body);}}
     }else if(kind==="stone"){
-      add(battleProjectileBitmapFrame(25786,0));
-      add(battleProjectileBitmapFrame(25785,-28));
+      if(value?.shadowVisible!==false)add(battleProjectileBitmapFrame(25786,0));
+      if(value?.bodyVisible!==false)add(battleProjectileBitmapFrame(25785,-28));
     }else if(kind==="firecracker"){
-      add(battleProjectileBitmapFrame(25786,0));
-      add(battleProjectileBitmapFrame(24350,-28));
+      if(value?.shadowVisible!==false)add(battleProjectileBitmapFrame(25786,0));
+      if(value?.bodyVisible!==false)add(battleProjectileBitmapFrame(24350,-28));
     }else if(kind==="boomerang"){
       add(battleProjectileSpriteFrame(100502,direction,projectile,now,0));
     }
@@ -12265,20 +12321,23 @@
                   ? queueMotion(castSpec,castSpec.duration)
                   : scheduleAttack(segment,target,"attack",0,flags))
                 : null;
-              const impactStart=timingContactAt(timing);
-              battleApplyFlagEffects(effects,target,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
+              let impactTiming=timing;
               if(marker==="BB"&&attacker>=0&&timing){
-                /* ATT_BOW launches its T_PRIO_BOW child at the attack frame;
-                   the hit/BD contact follows shortly after.  The original
-                   w0..w3 values select arrow, axe, stone or firecracker. */
-                const visualTarget=guardianTarget>=0?guardianTarget:target,from=battleSlotPoint(attacker),to=battleSlotPoint(visualTarget),contactAt=timingContactAt(timing),kind=weaponType===1?"axe":weaponType===2?"stone":weaponType===3?"firecracker":"arrow",launchAt=Math.max(Number(timing.startAt)+100,contactAt-220);
-                /* Native p_missile coordinates are feet/ground coordinates.
-                   The visible weapon is a second action exactly 28 pixels
-                   above its shadow; keep that separation in rendering, not
-                   by shifting both trajectory endpoints upward. */
-                battlePushProjectile(state,{kind,from:[Number(from[0]),Number(from[1])],to:[Number(to[0]),Number(to[1])],startAt:launchAt,endAt:contactAt+35,actor:attacker,target:visualTarget});
+                /* ATT_BOW launches its T_PRIO_BOW child at the attack
+                   SoundNo frame, not 220ms before it.  The child owns the
+                   damage/contact timeline and remains in the queue through
+                   the native hit-stop/release tail. */
+                const visualTarget=guardianTarget>=0?guardianTarget:target,from=battleSlotPoint(attacker),to=battleSlotPoint(visualTarget),releaseAt=timingContactAt(timing),targetItem=battleFindParticipant(visualTarget),targetHp=targetItem?.hp??null,targetDead=Boolean(targetItem?.dead),kind=weaponType===1?"axe":weaponType===2?"stone":weaponType===3?"firecracker":"arrow",plan=weaponType===1?battleAxePlan(attacker,visualTarget,flags,amount,petAmount,targetHp,targetDead):battleBowPlan(attacker,visualTarget,flags,amount,petAmount,targetHp,targetDead),endAt=releaseAt+Math.max(BATTLE_PROC_TICK_MS,Number(plan.endOffset)||BATTLE_PROC_TICK_MS),contactAt=releaseAt+Math.max(0,Number(plan.contactOffset)||0);
+                impactTiming={...timing,startAt:releaseAt,endAt,duration:endAt-releaseAt,contactAt,direction:Number(plan.direction),nativeContact:true};
+                battlePushProjectile(state,{kind,from:[Number(from[0]),Number(from[1])],to:[Number(to[0]),Number(to[1])],samples:plan.samples,startAt:releaseAt,endAt,actor:attacker,target:visualTarget,direction:Number(plan.direction),contactAt});
+                /* The native master action waits for p_missile to finish
+                   before the next EntrySort record.  Do not expose the next
+                   command/action while the arrow/axe is still in its tail. */
+                state.motionQueueAt=Math.max(Number(state.motionQueueAt)||releaseAt,endAt);
               }
-              if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing);}
+              const impactStart=timingContactAt(impactTiming);
+              battleApplyFlagEffects(effects,target,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
+              if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,impactTiming);}
               else if(flags&BATTLE_FLAG.vanish)battlePushEffect(effects,target,"消失","miss",{startsAt:impactStart});
               else if(flags&BATTLE_FLAG.absorb)battlePushEffect(effects,target,"吸收","guard",{startsAt:impactStart});
               else if(flags&BATTLE_FLAG.guard)battlePushEffect(effects,target,"防御","guard",{startsAt:impactStart});
@@ -12288,7 +12347,7 @@
               if(flags&BATTLE_FLAG.crush)battlePushEffect(effects,target,"破防","status",{duration:850,startsAt:impactStart});
               if(!(flags&(BATTLE_FLAG.dodge|BATTLE_FLAG.vanish))){
                 const damageTarget=(flags&BATTLE_FLAG.reflect)&&attacker>=0?attacker:(guardianTarget>=0?guardianTarget:target);
-                addDirectDamage(damageTarget,amount,petAmount,flags,0,timing,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
+                addDirectDamage(damageTarget,amount,petAmount,flags,0,impactTiming,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
               }
             }
           }
@@ -18891,7 +18950,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
+    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);
