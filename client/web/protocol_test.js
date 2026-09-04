@@ -1351,6 +1351,12 @@ if (!/if\(name==="party"\)[\s\S]{0,500}fieldFacingPartyTarget\(\)[\s\S]{0,500}fi
     !/fieldFacingJoinTarget\(\)[\s\S]{0,700}if\(name==="join-battle"&&Number\(target\.charType\)===32\)\{\s*fieldSend\("PR",\[x,y,1\]\)/.test(fieldActionSource)) {
   throw new Error("field party button must send PR for a facing player or mammoth bus");
 }
+const fieldFacingJoinTargetFactory = new Function("facingActor", `${script.slice(fieldPartyTargetStart, script.indexOf("  function fieldAction(name){", fieldPartyTargetStart))};return fieldFacingJoinTarget;`);
+const facingBus = fieldFacingJoinTargetFactory((filter) => [{charType:32}].find(filter) || null);
+const facingPlayer = fieldFacingJoinTargetFactory((filter) => [{charType:1}].find(filter) || null);
+if (facingBus()?.charType !== 32 || facingPlayer()?.charType !== 1) {
+  throw new Error("field join target picker must resolve both mammoth buses and players");
+}
 /* FIELD.CPP sets drawFieldButtonFlag=0 while any native menu/WN/action
    surface is open.  Keep that rule strict: a later convenience override that
    re-shows #field-ui above the settings/action window causes the HUD bitmaps
