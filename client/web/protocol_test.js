@@ -349,6 +349,38 @@ for (const [tone, bgm] of nativeMapBgmPairs) {
     throw new Error(`native map BGM mapping drifted: ${tone} -> ${bgm}`);
   }
 }
+/* The native client persists the last marker by character-card side and
+   reloads it before entering the field.  Keep this source evidence beside a
+   functional localStorage check so a future refactor cannot silently turn
+   marker-less rooms back into the character-selection song. */
+const nativePcSource = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/pc.cpp", "latin1");
+if (!/sprintf_s\(filename,\s*"map\\\\bgm%d\.dat",\s*sCharSide\)[\s\S]{0,240}fMapBgm\s*=\s*atoi\(vTemp\)/.test(nativePcSource) ||
+    !/sprintf_s\(\s*filename,\s*"map\\\\bgm%d\.dat",\s*sCharSide\)[\s\S]{0,520}fwrite\(\s*vTemp,\s*sizeof\(char\),\s*2,\s*fp\s*\)/.test(nativeMapMusicSource)) {
+  throw new Error("switch-compatible BGM1.DAT/BGM2.DAT persistence evidence drifted");
+}
+const mapMusicPersistenceStart = script.indexOf('  const MAP_BGM_TONE_STORAGE_PREFIX=');
+const mapMusicPersistenceEnd = script.indexOf('  const soundState=', mapMusicPersistenceStart);
+if (mapMusicPersistenceStart < 0 || mapMusicPersistenceEnd <= mapMusicPersistenceStart) {
+  throw new Error("map music persistence helper boundary missing");
+}
+const fakeMapMusicStorage = new Map();
+const fakeLocalStorage = {
+  getItem:key=>fakeMapMusicStorage.has(key)?fakeMapMusicStorage.get(key):null,
+  setItem:(key,value)=>fakeMapMusicStorage.set(key,String(value))
+};
+const persistenceApp = {selectedServer:"local-line",account:"Probe",character:"ProbeHero",characterSlot:0,music:{}};
+const persistenceHelpers = new Function("app", "MAP_BGM_NO", "localStorage", "fetch",
+  `${script.slice(mapMusicPersistenceStart,mapMusicPersistenceEnd)};return {mapMusicIdentity,rememberedMapMusicTone,rememberMapMusicTone,validMapMusicTone};`
+)(persistenceApp, {40:4,41:3}, fakeLocalStorage, ()=>Promise.reject(new Error("unexpected seed fetch")));
+if (persistenceHelpers.rememberedMapMusicTone() !== null || persistenceHelpers.rememberMapMusicTone(40) !== 40 ||
+    persistenceHelpers.rememberedMapMusicTone() !== 40 || fakeMapMusicStorage.size !== 1) {
+  throw new Error("recognized map tone was not mirrored to browser storage");
+}
+persistenceApp.character="OtherHero";
+if (persistenceHelpers.rememberedMapMusicTone() !== null) throw new Error("map tone leaked across characters");
+persistenceApp.character="probehero";
+if (persistenceHelpers.rememberedMapMusicTone() !== 40) throw new Error("case-folded character identity lost its map tone");
+if (persistenceHelpers.validMapMusicTone(54) !== null) throw new Error("unsupported post-2.5 map tone entered persistence");
 /* GameProc stops the character-selection track before the first drawMap(),
    then starts the BGM selected by that draw.  Keep the field silent while
    mapBgmNo is unknown instead of leaking title/selection slot 2 into the
@@ -377,32 +409,46 @@ musicIntentApp.music.mode="title";
 if (musicIntentBgm() !== 2) throw new Error("title/character-selection BGM intent was lost");
 musicIntentApp.music.mode="battle";musicIntentApp.music.battleBgmNo=6;
 if (musicIntentBgm() !== 6) throw new Error("battle BGM intent was lost");
-/* Slot 0 is sabgm_s0.wav, the short non-looping result jingle.  A marker-less
-   first map/room must therefore initialize the persistent map track to the
-   normal looping slot 2, while later partial M windows keep the current
-   native track.  Exercise the extracted mapper so a source-only regex cannot
-   accidentally reintroduce the victory sound. */
+/* A marker-less room inherits the last tone stored by play_map_bgm() in the
+   native BGM1.DAT/BGM2.DAT files.  When neither a live marker nor that saved
+   tone exists, the web field must stay silent: choosing slot 2 here leaks the
+   character-selection/victory-like recording into arbitrary interiors. */
 const mapMusicStart = script.indexOf("  function mapMusicFromWindow(map){");
 const mapMusicEnd = script.indexOf("  function beginBattleMusic", mapMusicStart);
 if (mapMusicStart < 0 || mapMusicEnd <= mapMusicStart ||
-    !/const DEFAULT_MAP_BGM_NO=2/.test(script)) {
-  throw new Error("marker-less map music default must be the looping BGM 2 track");
+    /const DEFAULT_MAP_BGM_NO=2/.test(script)) {
+  throw new Error("marker-less map music must not hard-code BGM slot 2");
 }
-const mapMusicMapper = new Function("app", "MAP_BGM_NO", "DEFAULT_MAP_BGM_NO", "setMusicMode",
+let rememberedMapTone = null, primeMapToneCalls = 0;
+const persistedMapTones = [];
+const mapMusicMapper = new Function("app", "MAP_BGM_NO", "setMusicMode", "rememberedMapMusicTone", "rememberMapMusicTone", "primeRememberedMapMusicTone",
   `${script.slice(mapMusicStart, mapMusicEnd)}; return mapMusicFromWindow;`);
 const mapMusicApp = {battle:false,music:{mapTone:null,mapBgmNo:-1,mode:"map"}};
 const mapMusicCalls = [];
-const mapMusicFromWindow = mapMusicMapper(mapMusicApp, {40:4}, 2, (mode,no)=>mapMusicCalls.push([mode,no]));
+const mapMusicFromWindow = mapMusicMapper(mapMusicApp, {40:4,41:3}, (mode,no)=>mapMusicCalls.push([mode,no]),
+  ()=>rememberedMapTone,
+  tone=>{rememberedMapTone=tone;persistedMapTones.push(tone);return tone;},
+  ()=>{primeMapToneCalls++;return Promise.resolve(null);});
 mapMusicFromWindow({width:2,height:2,tiles:[1,1,1,1],objects:[0,0,0,0]});
-if (mapMusicApp.music.mapBgmNo !== 2 || mapMusicApp.music.mapTone !== null ||
-    mapMusicCalls.length !== 1 || mapMusicCalls[0][1] !== 2) {
-  throw new Error(`marker-less map selected a non-default BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
+if (mapMusicApp.music.mapBgmNo !== -1 || mapMusicApp.music.mapTone !== null ||
+    mapMusicCalls.length !== 0 || primeMapToneCalls !== 1) {
+  throw new Error(`fresh marker-less map did not remain silent: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls,primeMapToneCalls})}`);
+}
+rememberedMapTone=40;
+mapMusicFromWindow({width:2,height:2,tiles:[1,1,1,1],objects:[0,0,0,0]});
+if (mapMusicApp.music.mapBgmNo !== 4 || mapMusicApp.music.mapTone !== 40 || mapMusicCalls.length !== 1 || mapMusicCalls[0][1] !== 4) {
+  throw new Error(`saved native map tone was not restored: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
 }
 mapMusicFromWindow({width:2,height:2,tiles:[1,1,1,1],objects:[0,0,0,0]});
 if (mapMusicCalls.length !== 1) throw new Error("partial marker-less M window restarted map music");
+mapMusicFromWindow({width:2,height:2,tile:new Uint16Array([41,1,1,1]),parts:new Uint16Array(4)});
+if (mapMusicApp.music.mapBgmNo !== 3 || mapMusicApp.music.mapTone !== 41 ||
+    mapMusicCalls.length !== 2 || mapMusicCalls[1][1] !== 3 || persistedMapTones.at(-1) !== 41) {
+  throw new Error(`full DAT marker did not replace and persist the map BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls,persistedMapTones})}`);
+}
 mapMusicFromWindow({width:2,height:2,tiles:[40,1,1,1],objects:[0,0,0,0]});
 if (mapMusicApp.music.mapBgmNo !== 4 || mapMusicApp.music.mapTone !== 40 ||
-    mapMusicCalls.length !== 2 || mapMusicCalls[1][1] !== 4) {
+    mapMusicCalls.length !== 3 || mapMusicCalls[2][1] !== 4 || persistedMapTones.at(-1) !== 40) {
   throw new Error(`map marker did not replace the persistent BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
 }
 const restoreMusicStart = script.indexOf("  function restoreMapMusic(){", mapMusicEnd);
@@ -411,12 +457,13 @@ if (restoreMusicStart < 0 || restoreMusicEnd <= restoreMusicStart ||
     /setMusicMode\("map",0\)/.test(script.slice(restoreMusicStart, restoreMusicEnd))) {
   throw new Error("battle result must not restore the non-looping BGM 0 jingle");
 }
-const restoreMapMusic = new Function("app", "DEFAULT_MAP_BGM_NO", "setMusicMode",
-  `${script.slice(restoreMusicStart, restoreMusicEnd)}; return restoreMapMusic;`)(mapMusicApp, 2, (mode,no)=>mapMusicCalls.push([mode,no]));
+const restoreMapMusic = new Function("app", "MAP_BGM_NO", "rememberedMapMusicTone", "setMusicMode",
+  `${script.slice(restoreMusicStart, restoreMusicEnd)}; return restoreMapMusic;`)(mapMusicApp, {40:4}, ()=>rememberedMapTone, (mode,no)=>mapMusicCalls.push([mode,no]));
 mapMusicApp.music.mapBgmNo = -1;
+rememberedMapTone=null;
 restoreMapMusic();
-if (mapMusicApp.music.mapBgmNo !== 2 || mapMusicCalls.at(-1)?.[1] !== 2) {
-  throw new Error(`battle result restored an invalid map BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
+if (mapMusicApp.music.mapBgmNo !== -1 || mapMusicCalls.at(-1)?.[1] !== -1) {
+  throw new Error(`battle result invented an unknown map BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
 }
 const guardedRegionalMusic = nativeMapMusicSource.lastIndexOf("#ifdef _NEWMUSICFILE6_0");
 if (guardedRegionalMusic < 0 || nativeMapMusicSource.indexOf("case 53:") >= guardedRegionalMusic ||
@@ -1979,7 +2026,7 @@ for (const expected of [
      transparent so the browser never turns the fish into a click shield. */
   /#world-overlay\s*\{[^}]*z-index:1100;[^}]*pointer-events:none/,
   /#world-tools button\s*\{[^}]*pointer-events:auto/,
-  /#world-tools\s*\{[^}]*transform:translateY\(24px\)[^}]*transition:transform/,
+  /#world-tools\s*\{[^}]*transform:translateY\(24px\)[^}]*transition:transform 400ms steps\(24,end\)/,
   /#world-tools\.taskbar-visible\s*\{[^}]*transform:translateY\(0\)/,
   /function updateWorldTaskbarPointer\(clientX,clientY,target\)[\s\S]{0,900}sy>=456&&sy<=480/,
   /function touchPointerNearWorldTaskbar\(event\)[\s\S]{0,1100}pointerType!=="touch"[\s\S]{0,900}sy<448[\s\S]{0,500}setWorldTaskbarVisible\(true\)[\s\S]{0,300}taskbarRevealPointerId/,
@@ -1991,6 +2038,8 @@ for (const expected of [
   /* play_map_bgm() keeps regional markers 47..53 outside the 6.0 music
      switch.  The deployed 2.5 map set uses them, while 54/55 remain gated. */
   /const MAP_BGM_NO=Object\.freeze\(\{\s*40:4,41:3,42:7,43:8,44:9,45:10,46:11,\s*47:15,48:16,49:21,50:17,51:18,52:19,53:20\s*\}\);/,
+  /function primeRememberedMapMusicTone\(\)[\s\S]{0,1100}side=slot===1\?2:1;[\s\S]{0,180}fetch\(`\/maps\/BGM\$\{side\}\.DAT`,\{cache:"force-cache"\}\)/,
+  /function loginCharacter\(name,slot=-1\)[\s\S]{0,260}app\.characterSlot=Math\.max\(-1,Math\.min\(1,[\s\S]{0,120}primeRememberedMapMusicTone\(\)/,
   /* webdriver sessions stay quiet unless a deliberate BGM audit opts in;
      this is required to test the real HTMLAudio lifecycle in agent-browser. */
   /if\(explicit==="0"\)return false;[\s\S]{0,180}Boolean\(navigator\.webdriver\)\|\|explicit==="1"/,

@@ -315,7 +315,11 @@
     #world-actions [data-dir="7"] { left:288px; top:288px; }
     #world-actions [data-dir="1"] { left:224px; top:224px; }
     #world-actions .wide { left:242px; top:230px; width:156px; height:55px; }
-    #world-tools { position:absolute; left:0; bottom:0; z-index:12; width:640px; max-width:none; height:24px; margin:0; padding:0; display:block; border:0; background:transparent url('/assets/bitmaps/bitmap_9147.png') center/100% 24px no-repeat; transform:translateY(24px); transition:transform 180ms steps(12,end); }
+    /* MENU.CPP changes taskBarY by exactly one logical pixel on each 60 Hz
+       Process tick, from 492 to 468 (and back again).  Keep all 24 native
+       steps: the former 180 ms/12-step shortcut made the bar snap halfway
+       through the original slide and visibly outrun the fish cursor. */
+    #world-tools { position:absolute; left:0; bottom:0; z-index:12; width:640px; max-width:none; height:24px; margin:0; padding:0; display:block; border:0; background:transparent url('/assets/bitmaps/bitmap_9147.png') center/100% 24px no-repeat; transform:translateY(24px); transition:transform 400ms steps(24,end); }
     #world-tools.taskbar-visible { transform:translateY(0); }
     #world-tools:not(.taskbar-visible) button { pointer-events:none; }
     /* The toolbar is a transparent hit layer over the native task bitmap.
@@ -1589,7 +1593,7 @@
      so MyChatBuffer.color is never reduced to a browser-only four-colour
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* partyMoveProc() keeps a private movement buffer for every party member.
      Keep the browser equivalent outside the wire/status object so N updates
      can replace party slots without discarding an in-flight follower step. */
@@ -1832,10 +1836,52 @@
     40:4,41:3,42:7,43:8,44:9,45:10,46:11,
     47:15,48:16,49:21,50:17,51:18,52:19,53:20
   });
-  /* BGM slot 0 is sabgm_s0.wav, the short battle-result jingle.  Native
-     GameProc keeps a looping map track while a room has no visible marker;
-     use the normal field track (slot 2) for that initial/marker-less state. */
-  const DEFAULT_MAP_BGM_NO=2;
+  /* play_map_bgm() also writes the last marker to map/BGM1.DAT or BGM2.DAT,
+     and initPcAll() reads it before the first drawMap().  This is why the PC
+     client can be launched directly inside a marker-less shop and still use
+     the surrounding village music.  Mirror that tiny per-character file in
+     localStorage; the shipped BGM*.DAT is only the first-run seed. */
+  const MAP_BGM_TONE_STORAGE_PREFIX="stoneage25.v1.map-bgm-tone.";
+  function mapMusicIdentity(){
+    return [app.selectedServer||"local-line",String(app.account||"").toLowerCase(),String(app.character||"").toLowerCase(),Math.max(-1,Math.trunc(Number(app.characterSlot)))].map(value=>encodeURIComponent(String(value))).join("|");
+  }
+  function validMapMusicTone(value){const tone=Math.trunc(Number(value));return Object.prototype.hasOwnProperty.call(MAP_BGM_NO,tone)?tone:null;}
+  function rememberedMapMusicTone(){
+    const identity=mapMusicIdentity(),music=app.music||{};
+    if(music.rememberedMapToneIdentity===identity)return validMapMusicTone(music.rememberedMapTone);
+    music.rememberedMapToneIdentity=identity;music.rememberedMapTone=null;
+    if(typeof localStorage!=="undefined"){
+      try{music.rememberedMapTone=validMapMusicTone(localStorage.getItem(`${MAP_BGM_TONE_STORAGE_PREFIX}${identity}`));}catch(_){/* optional native-state mirror */}
+    }
+    return validMapMusicTone(music.rememberedMapTone);
+  }
+  function rememberMapMusicTone(value){
+    const tone=validMapMusicTone(value);if(tone===null)return null;
+    const identity=mapMusicIdentity(),music=app.music||{};music.rememberedMapToneIdentity=identity;music.rememberedMapTone=tone;
+    if(typeof localStorage!=="undefined")try{localStorage.setItem(`${MAP_BGM_TONE_STORAGE_PREFIX}${identity}`,String(tone));}catch(_){/* optional native-state mirror */}
+    return tone;
+  }
+  function primeRememberedMapMusicTone(){
+    const remembered=rememberedMapMusicTone();if(remembered!==null)return Promise.resolve(remembered);
+    const music=app.music||{},identity=mapMusicIdentity();
+    if(music.rememberedMapToneLoading?.identity===identity)return music.rememberedMapToneLoading.promise;
+    /* LOGIN.CPP maps the left and right character cards to sCharSide 1/2.
+       Preserve that exact file selection; an unknown slot safely uses side 1
+       because the stock 2.5 UI always fills the left card first. */
+    const slot=Math.trunc(Number(app.characterSlot)),side=slot===1?2:1;
+    const promise=fetch(`/maps/BGM${side}.DAT`,{cache:"force-cache"}).then(response=>{
+      if(!response.ok)throw new Error(`BGM${side}.DAT HTTP ${response.status}`);return response.text();
+    }).then(text=>validMapMusicTone(String(text||"").trim().slice(0,2))).then(tone=>{
+      if(mapMusicIdentity()!==identity||tone===null)return null;
+      /* A live map marker always wins if it arrived while the seed request
+         was in flight.  The fallback file exists only for a marker-less
+         first room. */
+      if(rememberedMapMusicTone()===null)rememberMapMusicTone(tone);
+      if((app.phase==="world"||app.phase==="battle")&&Number(app.music.mapBgmNo)<0)mapMusicFromWindow(app.map);
+      return tone;
+    }).catch(()=>null).finally(()=>{if(app.music.rememberedMapToneLoading?.promise===promise)app.music.rememberedMapToneLoading=null;});
+    music.rememberedMapToneLoading={identity,promise};return promise;
+  }
   const soundState={unlocked:false,bgm:null,bgmNo:-1,pendingBgm:null,pendingSE:[],activeSE:new Set(),context:null,seLast:new Map()};
   function audioURL(kind,file){return `/audio/${kind}/${encodeURIComponent(String(file||""))}`;}
   function clampAudio(value){return Math.max(0,Math.min(1,Number(value)||0));}
@@ -2001,13 +2047,13 @@
        A viewport often contains no marker while the player walks; the native
        client leaves the previous map track playing in that case instead of
        restarting the default song on every M refresh. */
-    let tone=null;const width=Math.max(0,Math.trunc(Number(map.width)||0)),height=Math.max(0,Math.trunc(Number(map.height)||0));
+    let tone=null;const width=Math.max(0,Math.trunc(Number(map.width)||0)),height=Math.max(0,Math.trunc(Number(map.height)||0)),tiles=map.tiles||map.tile,objects=map.objects||map.parts;
     let ti=height-1,tj=0;
     while(ti>=0){
       let row=ti,column=tj;
       while(row>=0&&column>=0){
         const index=row*width+column;
-        for(const value of [map.tiles?.[index],map.objects?.[index]]){
+        for(const value of [tiles?.[index],objects?.[index]]){
           const candidate=Math.trunc(Number(value)||0);
           if(Object.prototype.hasOwnProperty.call(MAP_BGM_NO,candidate))tone=candidate;
         }
@@ -2016,11 +2062,14 @@
       if(tj<width-1)tj++;else ti--;
     }
     /* No marker is a normal partial-window condition, not an instruction to
-       switch to the title/default track.  map_bgm_no is global in the native
-       client and deliberately survives a room/floor change until drawMap()
-       encounters another marker. */
+       switch to the title/default track.  map_bgm_no survives ordinary room
+       changes; on a fresh browser field, initPcAll()'s BGM*.DAT mirror is the
+       only faithful source.  If neither exists, remain silent instead of
+       guessing slot 2 (the bug that sounded like a victory/title track). */
     if(tone===null&&app.music.mapBgmNo>=0)return;
-    const selectedTone=tone===null?null:tone,selectedBgm=tone===null?DEFAULT_MAP_BGM_NO:(MAP_BGM_NO[selectedTone]??DEFAULT_MAP_BGM_NO);
+    if(tone===null)tone=rememberedMapMusicTone();else rememberMapMusicTone(tone);
+    if(tone===null){primeRememberedMapMusicTone();return;}
+    const selectedTone=tone,selectedBgm=MAP_BGM_NO[selectedTone];
     const changed=app.music.mapTone!==selectedTone||app.music.mapBgmNo<0;
     app.music.mapTone=selectedTone;app.music.mapBgmNo=selectedBgm;
     if(changed&&!app.battle){app.music.mode="map";setMusicMode("map",app.music.mapBgmNo);}
@@ -2034,7 +2083,11 @@
     const battleNo=(battleType===2||battleType===4||battleType===6)?6:5;
     app.music.battleBgmNo=battleNo;app.music.mode="battle";setMusicMode("battle",battleNo);
   }
-  function restoreMapMusic(){app.music.battleBgmNo=-1;app.music.mode="map";if(app.music.mapBgmNo<0){app.music.mapTone=null;app.music.mapBgmNo=DEFAULT_MAP_BGM_NO;}setMusicMode("map",app.music.mapBgmNo);}
+  function restoreMapMusic(){
+    app.music.battleBgmNo=-1;app.music.mode="map";
+    if(app.music.mapBgmNo<0){const tone=rememberedMapMusicTone();if(tone!==null){app.music.mapTone=tone;app.music.mapBgmNo=MAP_BGM_NO[tone];}}
+    setMusicMode("map",app.music.mapBgmNo);
+  }
   app.mapLayerCache=null;
   const $=id=>document.getElementById(id);
   const advancedStyle=document.createElement("style");
@@ -14663,7 +14716,7 @@
     appendCharacterValue(values,"level",data.level);appendCharacterValue(values,"hp",data.hp);appendCharacterValue(values,"attack",data.attack);appendCharacterValue(values,"defence",data.defence);appendCharacterValue(values,"dex",data.dex);appendCharacterValue(values,"charm",data.charm);appendCharacterValue(values,"login-count",data.loginCount);appendCharacterValue(values,"dp",data.dp);
     wrapper.append(values);
     const attributes=document.createElement("div");attributes.className="character-attributes";appendCharacterAttribute(attributes,"earth",data.earth);appendCharacterAttribute(attributes,"water",data.water);appendCharacterAttribute(attributes,"fire",data.fire);appendCharacterAttribute(attributes,"wind",data.wind);wrapper.append(attributes);
-    const loginHit=button("",()=>loginCharacter(name));loginHit.setAttribute("aria-label","登入人物");loginHit.className=`character-button-hit character-login-hit slot-${slot}`;loginHit.dataset.slot=String(slot);loginHit.dataset.action="login";
+    const loginHit=button("",()=>loginCharacter(name,slot));loginHit.setAttribute("aria-label","登入人物");loginHit.className=`character-button-hit character-login-hit slot-${slot}`;loginHit.dataset.slot=String(slot);loginHit.dataset.action="login";
     const hitLayer=$("character-hit-layer");if(hitLayer)hitLayer.append(loginHit);else wrapper.append(loginHit);
     const deleteHit=button("",()=>openLocalDialog("删除人物",`确定要删除 ${name} 吗？`,[{label:"确定",kind:"yes",handler:()=>{closeLocalDialog();send("CharDelete",[name]).catch(reportError);}},{label:"取消",kind:"no",handler:closeLocalDialog}]));deleteHit.setAttribute("aria-label","删除人物");deleteHit.className=`character-button-hit character-delete-hit slot-${slot}`;deleteHit.dataset.slot=String(slot);deleteHit.dataset.action="delete";
     if(hitLayer)hitLayer.append(deleteHit);else wrapper.append(deleteHit);
@@ -14730,8 +14783,8 @@
     if(!assetState.manifestReady&&!assetState.loading)loadAssetManifest();
   }
   function escapeHTML(value) { return String(value).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
-  async function loginCharacter(name) {
-    unlockAudio();playSoundEffect(217);app.character=name;
+  async function loginCharacter(name,slot=-1) {
+    unlockAudio();playSoundEffect(217);app.character=name;app.characterSlot=Math.max(-1,Math.min(1,Math.trunc(Number(slot))));primeRememberedMapMusicTone();
     /* LOGIN.CPP keeps the character-list face number separately from the
        in-world base image.  Preserve that value so MENU.CPP's status window
        can paint the same face bitmap after the P1 packet arrives. */
@@ -18475,7 +18528,7 @@
     }finally{
       characterLogoutPending=false;
       if(button)button.disabled=false;
-      app.character="";
+      app.character="";app.characterSlot=-1;
       openServerSelection("group");
     }
   });
