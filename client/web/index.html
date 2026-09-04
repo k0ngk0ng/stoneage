@@ -3334,7 +3334,14 @@
      this predicate tolerant of legacy test/fallback objects that do not have
      the new flag, but never accept an explicitly incomplete raster. */
   function mapLayerCacheUsable(cache){
-    return Boolean(cache?.ready&&cache.rasterComplete!==false&&!cache.rasterFailed);
+    /* A map window can arrive before the bitmap manifest on a slow/mobile
+       connection.  In that ordering resolveBitmapInfo() returns null for
+       every cell and the freshly-created canvas would otherwise look
+       "ready" even though it is empty; when the manifest later arrives the
+       same structural key would be reused and the field would stay black.
+       Caches created before an older build had this marker, so only an
+       explicit false value is rejected for backwards compatibility. */
+    return Boolean(cache?.ready&&cache.manifestReady!==false&&cache.rasterComplete!==false&&!cache.rasterFailed);
   }
   /* A cache created by an older page build can survive a Service Worker
      navigation with `ready=true` even though its chunked ground pass was
@@ -16038,7 +16045,7 @@
     /* Keep ground and parts separate. The native drawMap() queues parts with
        setPartsPrio() and interleaves them with characters; baking both layers
        into one bitmap forces every actor above every tree/roof. */
-    const cache={key,canvas,minX,minY,parts:[],dirty:false,ready:false,required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map(),context:null,rasterScheduled:false,rasterComplete:false,rasterFailed:false,rasterIndex:0,groundCells:null};
+    const cache={key,canvas,minX,minY,parts:[],dirty:false,ready:false,manifestReady:Boolean(assetState.manifestReady),required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map(),context:null,rasterScheduled:false,rasterComplete:false,rasterFailed:false,rasterIndex:0,groundCells:null};
     /* While a same-floor M window is downloading, the last completed cache is
        exposed by renderWorld() as a fallback.  Never alias its Canvas here:
        image onload callbacks rasterise the new window asynchronously, and

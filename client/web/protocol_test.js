@@ -5172,10 +5172,14 @@ if(mapLayerUsableStart<0||mapLayerUsableEnd<=mapLayerUsableStart){
 const mapLayerCacheUsable=new Function(`${script.slice(mapLayerUsableStart,mapLayerUsableEnd)};return mapLayerCacheUsable;`)();
 if(mapLayerCacheUsable({ready:true,rasterComplete:false})||
    mapLayerCacheUsable({ready:true,rasterFailed:true})||
+   mapLayerCacheUsable({ready:true,manifestReady:false,rasterComplete:true})||
    !mapLayerCacheUsable({ready:true,rasterComplete:true})||
    !mapLayerCacheUsable({ready:true})||
    mapLayerCacheUsable({ready:false,rasterComplete:true})){
   throw new Error("map layer must be publishable only after a complete raster");
+}
+if(!script.includes("manifestReady:Boolean(assetState.manifestReady)")){
+  throw new Error("map cache must remember whether its bitmap manifest was ready at raster time");
 }
 const mapLayerRepairStart=script.indexOf("  function mapLayerCacheNeedsRepair(cache){");
 const mapLayerRepairEnd=script.indexOf("  /* A same-floor M refresh",mapLayerRepairStart);
@@ -5193,7 +5197,7 @@ if(!mapLayerCacheNeedsRepair({ready:true,rasterComplete:false,rasterScheduled:fa
 if(!/current&&current\.key===key&&mapLayerCacheNeedsRepair\(current\)[\s\S]{0,180}current\.ready=false;current\.dirty=true;current\.rasterFailed=true/.test(script)){
   throw new Error("ensureMapLayerCache must invalidate stale incomplete caches");
 }
-if(!/function mapLayerCacheUsable\(cache\)\{[\s\S]{0,260}cache\.rasterComplete!==false[\s\S]{0,120}cache\.rasterFailed/.test(script)||
+if(!/function mapLayerCacheUsable\(cache\)\{[\s\S]{0,900}cache\.rasterComplete!==false[\s\S]{0,120}cache\.rasterFailed/.test(script)||
    !/const waitingForDynamicCache=Boolean\(dynamicReady&&center&&\(!mapLayerCacheUsable\(layerCache\)&&!mapLayerCacheUsable\(app\.mapLayerFallback\)\)\)/.test(renderWorldGuardSource)||
    !/const groundCache=mapLayerCacheUsable\(layerCache\)\?layerCache:\(mapLayerCacheUsable\(app\.mapLayerFallback\)\?app\.mapLayerFallback:null\)/.test(renderWorldGuardSource)||
    !/cache\.rasterComplete=true;/.test(script)||
