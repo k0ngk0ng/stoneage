@@ -1830,8 +1830,8 @@ for (const expected of [
   /function renderWorld\(force=false\)[\s\S]{0,260}updateMapEffects\(now\)[\s\S]{0,5200}renderSceneActorsAndParts\(domActors,parts,canvas\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
   /function renderSceneActorsAndParts\([\s\S]{0,2600}drawMapEffects\(ctx\)[\s\S]{0,420}StockFontBuffer|DISP_PRIO_RESERVE is emitted[\s\S]{0,260}drawMapEffects\(ctx\)/,
   /* map.cpp's held-left-button mode samples a new moveStack point every
-     250 ms; the browser must keep the gesture separate from ordinary UI
-     clicks and hide the fish-bone until the physical button is released. */
+     250 ms.  Once MOVE_MODE_CHANGE_TIME elapses it keeps the fish pointer,
+     but suppresses the orange CG_GRID_CURSOR until button release. */
   /const LEGACY_MOVE_SPEED=4;[\s\S]{0,420}const LEGACY_PROC_TICK_MS=8;[\s\S]{0,260}const MOVE_CARDINAL_DURATION=LEGACY_GRID_SIZE\/LEGACY_MOVE_SPEED\*LEGACY_PROC_TICK_MS;/,
   /const BATTLE_PROC_TICK_MS=1000\/60;/,
   /function moveStepDuration\(from,target\)[\s\S]{0,360}const distance=Math\.hypot\(dx,dy\)[\s\S]{0,120}distance\|\|1/,
@@ -1846,7 +1846,7 @@ for (const expected of [
   /const POINTER_MOVE_ROUTE_INTERVAL_MS=250;/,
   /const POINTER_MOVE_MODE_DELAY_MS=1000;/,
   /function sampleHeldWorldPointer\(now=Date\.now\(\)\)[\s\S]{0,900}worldTileFromPointerPosition\(clientX,clientY\)[\s\S]{0,260}setHeldMoveDestination\(tile,now,false\)/,
-  /function scheduleHeldWorldPointerSample\(delay=POINTER_MOVE_MODE_DELAY_MS\)[\s\S]{0,900}sampleHeldWorldPointer\(Date\.now\(\)\)[\s\S]{0,260}scheduleHeldWorldPointerSample\(POINTER_MOVE_ROUTE_INTERVAL_MS\)/,
+  /function scheduleHeldWorldPointerSample\(delay=POINTER_MOVE_MODE_DELAY_MS\)[\s\S]{0,900}sampleHeldWorldPointer\(Date\.now\(\)\)[\s\S]{0,360}renderWorldOverlay\(\)[\s\S]{0,260}scheduleHeldWorldPointerSample\(POINTER_MOVE_ROUTE_INTERVAL_MS\)/,
   /function updateWorldPointer\(event\)[\s\S]{0,3000}if\(!app\.pointerMoveHeld\)app\.cursor\.visible=true/,
   /* The fish-bone remains the topmost field cursor during the native held
      walk gesture; only the route sampler is continuous. */
@@ -1912,7 +1912,8 @@ for (const expected of [
   /* MAP.CPP::drawGrid() paints CG_GRID_CURSOR from the current mouse tile
      every frame.  It must not be tied to the last left-click move target. */
   /const pointerOnScene=hasPointerSample&&sceneRect&&pointerClientX>=sceneRect\.left&&pointerClientX<=sceneRect\.right&&pointerClientY>=sceneRect\.top&&pointerClientY<=sceneRect\.bottom;/,
-  /const hoverTile=app\.phase==="world"&&!app\.battle&&pointerOnScene&&!pointerOverUi&&!advancedOpen&&!mapTransitionState\.active\?nearestTileAt\(Number\(app\.cursor\.x\),Number\(app\.cursor\.y\)\):null;/,
+  /const heldMoveMode=app\.pointerMoveHeld&&Date\.now\(\)-Number\(app\.pointerMoveStartedAt\|\|0\)>=POINTER_MOVE_MODE_DELAY_MS;/,
+  /const hoverTile=app\.phase==="world"&&!app\.battle&&pointerOnScene&&!pointerOverUi&&!advancedOpen&&!mapTransitionState\.active&&!heldMoveMode\?nearestTileAt\(Number\(app\.cursor\.x\),Number\(app\.cursor\.y\)\):null;/,
   /const targetPoint=hoverTile\?tilePoint\(hoverTile\[0\],hoverTile\[1\]\):null;/,
   /#world-move-target\s*\{[^}]*opacity:1;[^}]*\}/,
   /* A native right click first turns, then runs getItem() with a separate

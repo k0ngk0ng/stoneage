@@ -16590,7 +16590,11 @@
     const pointerOnScene=hasPointerSample&&sceneRect&&pointerClientX>=sceneRect.left&&pointerClientX<=sceneRect.right&&pointerClientY>=sceneRect.top&&pointerClientY<=sceneRect.bottom;
     const pointerHit=pointerOnScene?document.elementFromPoint?.(pointerClientX,pointerClientY):null;
     const pointerOverUi=Boolean(pointerHit&&isWorldUiTarget(pointerHit));
-    const hoverTile=app.phase==="world"&&!app.battle&&pointerOnScene&&!pointerOverUi&&!advancedOpen&&!mapTransitionState.active?nearestTileAt(Number(app.cursor.x),Number(app.cursor.y)):null;
+    /* map.cpp switches mouseCursorMode to MOVE after a one-second hold.  In
+       that mode it keeps drawing CG_MOUSE_CURSOR (the fish) but deliberately
+       stops stocking CG_GRID_CURSOR until the button is released. */
+    const heldMoveMode=app.pointerMoveHeld&&Date.now()-Number(app.pointerMoveStartedAt||0)>=POINTER_MOVE_MODE_DELAY_MS;
+    const hoverTile=app.phase==="world"&&!app.battle&&pointerOnScene&&!pointerOverUi&&!advancedOpen&&!mapTransitionState.active&&!heldMoveMode?nearestTileAt(Number(app.cursor.x),Number(app.cursor.y)):null;
     if(hoverTile){app.cursor.tile=[Number(hoverTile[0]),Number(hoverTile[1])];app.cursor.updatedAt=Date.now();}
     const targetPoint=hoverTile?tilePoint(hoverTile[0],hoverTile[1]):null;
     if(targetPoint){target.style.left=`${targetPoint[0]}px`;target.style.top=`${targetPoint[1]}px`;target.style.display="block";}else target.style.display="none";
@@ -18150,6 +18154,10 @@
       app.pointerMoveSampleTimer=0;
       if(!app.pointerMoveHeld)return;
       sampleHeldWorldPointer(Date.now());
+      /* Entering MOUSE_CURSOR_MODE_MOVE also removes the orange grid cursor
+         even when the stationary physical pointer still resolves to the same
+         tile, so repaint independently of whether the route sample changed. */
+      renderWorldOverlay();
       scheduleHeldWorldPointerSample(POINTER_MOVE_ROUTE_INTERVAL_MS);
     },Math.max(0,Number(delay)||0));
   }
