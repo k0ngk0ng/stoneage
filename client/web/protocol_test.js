@@ -4857,6 +4857,31 @@ const repeatedBh = repeatedBhSegments[0];
 if (repeatedBhSegments.length !== 1 || repeatedBh.fields.a !== "0" || repeatedBh.repeated.r?.length !== 3 || repeatedBh.fields.r !== "0" || repeatedBh.fields.counter !== "3") {
   throw new Error(`repeated BH tuple parse failed: ${JSON.stringify(repeatedBhSegments)}`);
 }
+/* BATTLE_COM_COMBO keeps the target once and appends one a/f/d/p tuple per
+   speed-ordered attacker.  The motion queue already serializes those tuples;
+   every visible result must use the corresponding contact time too, or the
+   later attacker announces dodge/guard/critical feedback before moving. */
+const comboSegments = parseBattleCommandSegments("BY|rA|a0|f20|d0|p0|a1|f4|d5|p0|FF|");
+const combo = comboSegments[0];
+if (comboSegments.length !== 1 || combo.marker !== "BY" || combo.fields.r !== "A" || combo.repeated.a?.join(",") !== "0" || combo.fields.a !== "1" || combo.repeated.f?.join(",") !== "20" || combo.fields.f !== "4") {
+  throw new Error(`speed-ordered BY tuple parse failed: ${JSON.stringify(comboSegments)}`);
+}
+const comboMovieStart = script.indexOf('      }else if(marker==="BY")');
+const comboMovieEnd = script.indexOf('      }else if(marker==="BQ")', comboMovieStart);
+const comboMovieSource = script.slice(comboMovieStart, comboMovieEnd);
+if (comboMovieStart < 0 || comboMovieEnd <= comboMovieStart ||
+    !/scheduleAttackPair\(attacker,target,"attack",0,flags\)[\s\S]{0,180}const impactStart=timingContactAt\(timing\)/.test(comboMovieSource) ||
+    !/"闪避","dodge",\{startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"消失","miss",\{startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"吸收","guard",\{startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"防御","guard",\{startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"暴击","critical",\{duration:900,offsetY:-72,startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"反击","critical",\{duration:900,offsetY:-88,startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"忠犬","guard",\{duration:850,startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"破防","status",\{duration:850,startsAt:impactStart\}/.test(comboMovieSource) ||
+    !/"反射","critical",\{duration:900,offsetY:-72,startsAt:impactStart\}/.test(comboMovieSource)) {
+  throw new Error("BY speed-order feedback is not anchored to each attacker's contact frame");
+}
 /* BATTLE_COM_S_FIREKILL writes one ordinary BATTLE_Attack tuple, then
    BATTLE_MultiAttMagic_Fire() writes n<count> followed by its range tuples.
    `n` must stay keyed; otherwise the renderer cannot tell a magic 0/0 dodge

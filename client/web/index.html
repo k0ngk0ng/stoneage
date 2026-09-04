@@ -12762,15 +12762,20 @@
             const timing=scheduleAttackPair(attacker,target,"attack",0,flags);
             const impactStart=timingContactAt(timing);
             battleApplyFlagEffects(effects,target,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
-            if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge");queueDodge(target,timing);}
-            else if(flags&BATTLE_FLAG.vanish)battlePushEffect(effects,target,"消失","miss");
-            else if(flags&BATTLE_FLAG.absorb)battlePushEffect(effects,target,"吸收","guard");
-            else if(flags&BATTLE_FLAG.guard)battlePushEffect(effects,target,"防御","guard");
-            if(flags&BATTLE_FLAG.critical)battlePushEffect(effects,target,"暴击","critical",{duration:900,offsetY:-72});
-            if(flags&BATTLE_FLAG.counter)battlePushEffect(effects,target,"反击","critical",{duration:900,offsetY:-88});
-            if(flags&BATTLE_FLAG.guardian)battlePushEffect(effects,target,"忠犬","guard",{duration:850});
-            if(flags&BATTLE_FLAG.crush)battlePushEffect(effects,target,"破防","status",{duration:850});
-            if(flags&BATTLE_FLAG.reflect)battlePushEffect(effects,target,"反射","critical",{duration:900,offsetY:-72});
+            /* BY keeps every attacker in one wire segment, but native
+               monster() still reaches each result on that attacker's own
+               contact frame.  Anchor all feedback to that frame: creating
+               it at parse time makes the later speed slots announce their
+               dodge/guard/critical result before those actors have moved. */
+            if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing);}
+            else if(flags&BATTLE_FLAG.vanish)battlePushEffect(effects,target,"消失","miss",{startsAt:impactStart});
+            else if(flags&BATTLE_FLAG.absorb)battlePushEffect(effects,target,"吸收","guard",{startsAt:impactStart});
+            else if(flags&BATTLE_FLAG.guard)battlePushEffect(effects,target,"防御","guard",{startsAt:impactStart});
+            if(flags&BATTLE_FLAG.critical)battlePushEffect(effects,target,"暴击","critical",{duration:900,offsetY:-72,startsAt:impactStart});
+            if(flags&BATTLE_FLAG.counter)battlePushEffect(effects,target,"反击","critical",{duration:900,offsetY:-88,startsAt:impactStart});
+            if(flags&BATTLE_FLAG.guardian)battlePushEffect(effects,target,"忠犬","guard",{duration:850,startsAt:impactStart});
+            if(flags&BATTLE_FLAG.crush)battlePushEffect(effects,target,"破防","status",{duration:850,startsAt:impactStart});
+            if(flags&BATTLE_FLAG.reflect)battlePushEffect(effects,target,"反射","critical",{duration:900,offsetY:-72,startsAt:impactStart});
             if(!(flags&(BATTLE_FLAG.dodge|BATTLE_FLAG.vanish))){
               const damageTarget=(flags&BATTLE_FLAG.reflect)&&attacker>=0?attacker:(guardianTarget>=0?guardianTarget:target);
                 addDirectDamage(damageTarget,amount,petAmount,flags,0,timing,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
