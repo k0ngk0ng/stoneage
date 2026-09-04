@@ -14174,29 +14174,30 @@
         setWorldState("NPC 已离开视野，请重新选择。","error");return false;
       }
     }
-    /* pc.cpp::TalkToNPC() and lookAtAround() both accept an object selected
-       within two map cells.  TALKEDFUNC targets continue with the native
-       face/L/TK pair; LOOKEDFUNC targets use only L and let the server inspect
-       the object in its own facing/radius rules.  A target farther than that
-       is approached through a normal walkable route. */
+    /* The 2.5 server's CHAR_Talk() checks only the player's current tile and
+       the single tile in front of the player.  The native field loop also
+       limits lookAtAround() to one tile.  A target two cells away may be
+       visible under the pointer, but sending TK immediately cannot reach it:
+       the server only echoes the player's own chat and never dispatches the
+       NPC callback.  Approach every target beyond the adjacent tile first,
+       then issue the native face/L/TK pair once the route has landed. */
     const targetDistance=Math.max(Math.abs(Number(current.x)-Number(app.position[0])),Math.abs(Number(current.y)-Number(app.position[1])));
     if(targetDistance===0){if(app.pendingTalk?.id===id)return false;return approachNPC(current);}
     const lookInteraction=npcUsesLookInteraction(current);
-    /* pc.cpp::lookAtAround() accepts CHAROBJ_TYPE_LOOKAT within the same
-       two-cell mouse radius as TalkToNPC().  A LOOKEDFUNC object can sit
-       behind a decorative wall/door tile, so requiring an adjacent walkable
-       cell made valid nurse/door/signboard clicks fail with “附近没有可到达
-       的位置”.  Let the server's L handler perform the native face/object
-       check for both one- and two-cell targets. */
-    if(targetDistance>2){
+    /* A LOOKEDFUNC object can sit behind a decorative wall/door tile, so
+       requiring an adjacent walkable cell made valid nurse/door/signboard
+       clicks fail with “附近没有可到达的位置”.  At this point the target is
+       adjacent; let the server's L handler perform the native face/object
+       check. */
+    if(targetDistance>1){
       if(app.pendingTalk?.id===id)return false;
       return approachNPC(current);
     }
     const now=Date.now();if(now-(app.talkSentAt||0)<LEGACY_TURN_SEND_WAIT_MS)return false;
     const desired=directionFor(Number(current.x)-Number(app.position[0]),Number(current.y)-Number(app.position[1]));
     if(npcUsesLookInteraction(current)){
-      /* lookAtAround() computes the direction from the clicked tile and sends
-         one L packet. CHAR_Look then dispatches CHAR_LOOKEDFUNC. */
+      /* lookAtAround() computes the direction from the clicked adjacent tile
+         and sends one L packet. CHAR_Look then dispatches CHAR_LOOKEDFUNC. */
       const wireDirection=desired>=0?serverDirectionFromClient(desired):serverDirectionFromClient(app.direction);
       app.direction=desired>=0?desired:app.direction;
       const self=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
