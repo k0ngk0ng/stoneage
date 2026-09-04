@@ -10854,6 +10854,35 @@
     const endOffset=tick*BATTLE_PROC_TICK_MS;
     return {samples,contactOffset,landingOffset,soundOffset:landingOffset,endOffset,releaseOffset:releaseOffset??endOffset,direction,flightCounter,shortPath:false,lethal};
   }
+  /* ATT_NIX (BX) is the native pet "No" action (VCT90).  It is not a guard
+     pose and it does not target an opponent: the pet remains standing while
+     the 2.5 client applies this small eight-facing turn table once per
+     60&nbsp;Hz process tick.  Keep the complete table, including the terminal
+     -2 sentinel, so a failed pet command consumes the same 73 ticks as the
+     Windows client instead of releasing the next actor after a guessed
+     420&nbsp;ms delay. */
+  const BATTLE_PET_NIX_TURNS=Object.freeze([
+    1,0,0,0,0,0,0,0,0,0,0,0,0,
+    -1,0,0,0,0,
+    -1,0,0,0,0,0,0,0,0,0,0,0,0,
+    1,0,0,0,0,
+    1,0,0,0,0,0,0,0,0,0,0,0,0,
+    -1,0,0,0,0,
+    -1,0,0,0,0,0,0,0,0,0,0,0,0,
+    1,0,0,0,0,
+    -2,
+  ]);
+  function battlePetNixPlan(actor,direction=null){
+    const id=Number(actor),base=Number.isFinite(Number(direction))?Number(direction):battleSlotDirection(id),samples=[];
+    let facing=((base%8)+8)%8;
+    for(let index=0;index<BATTLE_PET_NIX_TURNS.length;index++){
+      const delta=Number(BATTLE_PET_NIX_TURNS[index])||0;
+      if(delta!==-2)facing=(facing+delta+8)&7;
+      samples.push({offset:index*BATTLE_PROC_TICK_MS,tick:index,delta,direction:facing,action:3,animationLoop:true,phase:"nix",terminal:delta===-2});
+    }
+    const duration=BATTLE_PET_NIX_TURNS.length*BATTLE_PROC_TICK_MS;
+    return {actor:id,direction:facing,duration,endOffset:duration,samples,turns:BATTLE_PET_NIX_TURNS};
+  }
   function battleProjectileValue(projectile,now=Date.now()){
     const start=Number(projectile?.startedAt)||now,end=Number(projectile?.until)||start+Math.max(1,Number(projectile?.duration)||1),progress=battleNativeTickProgress(now-start,end-start),from=projectile?.from||[0,0],to=projectile?.to||from,kind=String(projectile?.kind||"arrow");
     const sx=Number(from[0])||0,sy=Number(from[1])||0,tx=Number(to[0])||sx,ty=Number(to[1])||sy;
@@ -11396,6 +11425,7 @@
     if(kind==="catch"&&actor===value)return 73;
     if(kind==="boomerang-track"&&actor===value)return 72;
     if(kind==="cast"&&actor===value)return 72;
+    if(kind==="nix"&&actor===value)return 75;
     if(kind==="appear"&&actor===value)return 70;
     if(kind==="charge"&&actor===value)return 60;
     return -1;
@@ -11419,6 +11449,17 @@
         /* ATT_LIFE has no hit/heal animation of its own.  It restores the
            participant directly to the looping standing action. */
         value.action=3;value.animationLoop=true;value.hit=false;value.direction=battleSlotDirection(id);value.animationStartedAt=performance.now()-Math.max(0,elapsed);
+      }else if(motion.kind==="nix"&&actor===Number(id)){
+        /* ATT_NIX/VCT90 keeps the pet in ANIM_STAND while applying one
+           direction delta from pet_nix_tbl per native process tick.  The
+           final -2 sentinel returns VCT0; the held last sample is still
+           painted until that 73-tick action expires. */
+        const samples=Array.isArray(motion.samples)?motion.samples:[];let sample=samples[0]||null;
+        for(let index=1;index<samples.length;index++){if(Number(samples[index].offset)>elapsed)break;sample=samples[index];}
+        value.action=3;value.attack=false;value.hit=false;value.animationLoop=true;
+        if(Number.isFinite(Number(sample?.direction)))value.direction=Number(sample.direction);
+        else if(Number.isFinite(Number(motion.direction)))value.direction=Number(motion.direction);
+        value.animationStartedAt=performance.now()-Math.max(0,elapsed);
       }else if(motion.kind==="attack-sequence"&&actor===Number(id)){
         const steps=Array.isArray(motion.steps)?motion.steps:[],step=steps.find(entry=>elapsed<Number(entry.endOffset));
         if(step){
@@ -12746,7 +12787,14 @@
         }
       }else if(marker==="BX"){
         const actor=battleSegmentNumber(segment,"",0,battleSegmentNumber(segment,"a",0,-1));
-        if(actor>=0){queueMotion({kind:"guard",actor,attackAction:10},420);battlePushEffect(effects,actor,"宠物犹豫","status",{duration:900});}
+        if(actor>=0){
+          const plan=battlePetNixPlan(actor),timing=queueMotion({kind:"nix",actor,direction:plan.samples[0]?.direction??battleSlotDirection(actor),samples:plan.samples},plan.duration,plan.duration);
+          /* set_damage_num(a0,18,-64) creates CG_ICON_NO at the first VCT90
+             tick.  `nativeVPos` is an absolute offset from the actor feet;
+             unlike normal rising text this icon remains static for the
+             native damage_num lifetime (12+12+60 process ticks). */
+          battlePushEffect(effects,actor,"","skill",{graphic:26509,graphicKey:"26509",nativeVPos:-64,nativeStatic:true,duration:84*BATTLE_PROC_TICK_MS,startsAt:timing.startAt});
+        }
       }else if(marker==="BR"){
         const target=battleSegmentNumber(segment,"",0,-1),on=battleSegmentNumber(segment,"",1,0);
         if(target>=0){
@@ -17794,7 +17842,8 @@
       const owner=specs.find(spec=>spec.item&&Number(spec.item.battleId)===Number(effect.target)),point=owner?.point||[320,240];
       const kind=String(effect.kind||"").toLowerCase(),node=document.createElement("span");
       node.className=`battle-effect${kind?` ${kind}`:""}${effect.miss?" miss":""}`;
-      node.style.left=`${point[0]}px`;node.style.top=`${point[1]-48+Number(effect.offsetY||0)}px`;
+      node.style.left=`${point[0]}px`;
+      node.style.top=`${Number.isFinite(Number(effect.nativeVPos))?Number(point[1])+Number(effect.nativeVPos):Number(point[1])-48+Number(effect.offsetY||0)}px`;
       /* renderBattleWorld() is also the presentation tick for an active
          movie.  It replaces the transient layer, so leaving the CSS
          battle-effect animation attached would restart it from opacity 0 on
@@ -17805,8 +17854,13 @@
       {
         const effectStart=Math.max(0,Number(effect.startsAt)||now),effectEnd=Math.max(effectStart+1,Number(effect.until)||effectStart+900),effectProgress=Math.max(0,Math.min(1,(now-effectStart)/(effectEnd-effectStart))),rise=Math.max(0,Math.min(1,effectProgress/.2)),fade=Math.max(0,(effectProgress-.2)/.8);
         node.style.animation="none";
-        node.style.opacity=String(effectProgress<.2?rise:1-fade);
-        node.style.transform=`translate(-50%,${-34*effectProgress}px) scale(${.75+.33*effectProgress})`;
+        if(effect.nativeStatic){
+          node.style.opacity="1";
+          node.style.transform="translate(-50%,0)";
+        }else{
+          node.style.opacity=String(effectProgress<.2?rise:1-fade);
+          node.style.transform=`translate(-50%,${-34*effectProgress}px) scale(${.75+.33*effectProgress})`;
+        }
       }
       if(effect.text)node.textContent=String(effect.text);
       if(effect.graphic){
@@ -18950,7 +19004,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-    window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
+  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);

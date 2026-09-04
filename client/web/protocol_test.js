@@ -4168,7 +4168,7 @@ if(!modelObject0||!modelObject1||modelObject0Approaches.length!==2||modelObject0
 const bowPlanStart=script.indexOf("  function battleBowPlan");
 const bowPlanEnd=script.indexOf("  function battleProjectileValue",bowPlanStart);
 if(bowPlanStart<0||bowPlanEnd<=bowPlanStart)throw new Error("bow/axe planner boundary missing");
-const bowAndAxePlan=new Function("battleSlotPoint","battleFacingDirection","battleProjectileCourse","battleProjectileDirection","battleBoomerangAdvance","battleBoomerangPixel","battleBoomerangHitStopTicks","BATTLE_COURSE_FOR_DIRECTION","BATTLE_FLAG","BATTLE_PROC_TICK_MS",`${script.slice(bowPlanStart,bowPlanEnd)};return {battleBowPlan,battleAxePlan};`)(
+const bowAndAxePlan=new Function("battleSlotPoint","battleFacingDirection","battleProjectileCourse","battleProjectileDirection","battleBoomerangAdvance","battleBoomerangPixel","battleBoomerangHitStopTicks","BATTLE_COURSE_FOR_DIRECTION","BATTLE_FLAG","BATTLE_PROC_TICK_MS","battleSlotDirection",`${script.slice(bowPlanStart,bowPlanEnd)};return {battleBowPlan,battleAxePlan,battlePetNixPlan};`)(
   id=>({0:[0,0],10:[320,160],11:[360,200]}[Number(id)]||[0,0]),
   (a,b)=>a===0&&b===10?6:3,
   modelProjectileCourse,modelProjectileDirection,modelAdvance,modelPixel,
@@ -4176,6 +4176,7 @@ const bowAndAxePlan=new Function("battleSlotPoint","battleFacingDirection","batt
   [16,20,24,28,0,4,8,12],
   {death:1,critical:4,guard:8,dodge:32,absorb:2048,vanish:4096},
   nativeProcTickMs,
+  id=>Number(id)<10?3:7,
 );
 const bowPlan=bowAndAxePlan.battleBowPlan(0,10,0,10,0,100,false),bowContact=bowPlan.samples.find(sample=>sample.contact===true),bowStick=bowPlan.samples.find(sample=>sample.phase==="stick"),bowHidden=bowPlan.samples.find(sample=>sample.phase==="hidden"),bowContactIndex=bowPlan.samples.indexOf(bowContact);
 if(!bowPlan||bowPlan.flightTicks<1||!bowContact||bowPlan.contactOffset<=0||bowContactIndex<=0||bowContact.x!==320||bowContact.y!==160||!bowStick||bowStick.shadowVisible!==false||bowStick.bodyVisible!==true||!bowHidden||bowPlan.endOffset<=bowPlan.contactOffset||bowPlan.samples.slice(0,bowContactIndex).some(sample=>sample.phase!=="flight"&&sample.phase!=="contact")){
@@ -4185,9 +4186,22 @@ const axePlan=bowAndAxePlan.battleAxePlan(0,10,0,10,0,100,false);
 if(!axePlan||axePlan.flightCounter<1||axePlan.contactOffset<=0||axePlan.landingOffset<=axePlan.contactOffset||!axePlan.samples.some(sample=>sample.phase==="tail")||axePlan.endOffset<=axePlan.landingOffset){
   throw new Error(`native axe planner is not producing flight/contact/tail/landing phases: ${JSON.stringify({flightCounter:axePlan.flightCounter,contactOffset:axePlan.contactOffset,landingOffset:axePlan.landingOffset,endOffset:axePlan.endOffset,phases:[...new Set(axePlan.samples.map(sample=>sample.phase))]})}`);
 }
+const nixPlan=bowAndAxePlan.battlePetNixPlan(5,3),nixTurns=nixPlan.turns,nixChanges=nixPlan.samples.filter(sample=>sample.delta!==0&&sample.delta!==-2);
+if(!nixPlan||nixTurns.length!==73||nixTurns[0]!==1||nixTurns[13]!==-1||nixTurns[18]!==-1||nixTurns[31]!==1||nixTurns[36]!==1||nixTurns[49]!==-1||nixTurns[54]!==-1||nixTurns[67]!==1||nixTurns[72]!==-2||nixPlan.samples.length!==73||nixPlan.samples.at(-1)?.terminal!==true||!nearlyEqual(nixPlan.duration,73*nativeProcTickMs)||nixChanges.map(sample=>sample.tick).join(",")!=="0,13,18,31,36,49,54,67"){
+  throw new Error(`native ATT_NIX direction table failed: ${JSON.stringify({length:nixTurns.length,changes:nixChanges.map(sample=>[sample.tick,sample.delta,sample.direction]),duration:nixPlan.duration})}`);
+}
 const rangedMovieSource=script.slice(script.indexOf('          const castSpec=attacker>=0&&marker==="BB"'),script.indexOf('              if(flags&BATTLE_FLAG.dodge)',script.indexOf('          const castSpec=attacker>=0&&marker==="BB"')));
 if(!/battleBowPlan|battleAxePlan/.test(rangedMovieSource)||/launchAt=/.test(rangedMovieSource)||!/state\.motionQueueAt=Math\.max\(Number\(state\.motionQueueAt\)\|\|releaseAt,endAt\)/.test(rangedMovieSource)){
   throw new Error("BB movie is still using the guessed projectile launch timeline");
+}
+const nixMovieSource=script.slice(script.indexOf('      }else if(marker==="BX")'),script.indexOf('      }else if(marker==="BR")',script.indexOf('      }else if(marker==="BX")')));
+if(!/battlePetNixPlan\(actor\)/.test(nixMovieSource)||!/kind:"nix"/.test(nixMovieSource)||!/graphic:26509/.test(nixMovieSource)||!/nativeVPos:-64/.test(nixMovieSource)||/kind:"guard"/.test(nixMovieSource)||/宠物犹豫/.test(nixMovieSource)){
+  throw new Error("BX ATT_NIX still uses the placeholder guard/text feedback");
+}
+const nixMotionPrioritySource=script.slice(script.indexOf("  function battleMotionRenderPriority"),script.indexOf("  function battleMotionValue"));
+const nixMotionValueSource=script.slice(script.indexOf("  function battleMotionValue"),script.indexOf("  function battleNamesVisible"));
+if(!/kind==="nix"&&actor===value/.test(nixMotionPrioritySource)||!/motion\.kind==="nix"&&actor===Number\(id\)/.test(nixMotionValueSource)){
+  throw new Error("battle renderer has no native ATT_NIX standing/direction state");
 }
 const terminalHoldStart = script.indexOf("  function battleTerminalHoldUntil");
 const terminalHoldEnd = script.indexOf("  function battleMoviePending", terminalHoldStart);
