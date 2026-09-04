@@ -2299,21 +2299,19 @@ for (const expected of [
   /function enterBattle\(field,type=1\)[\s\S]{0,760}clearBattleChoiceTimer\(app\.battleState\);[\s\S]{0,520}cancelMapFloorTransition\(\);/,
   /* ProduceCenterPress() clears one black back-buffer and vertically
      compresses the complete field surface into the y=240 fold.  The black
-     halves sit above the animated surface so a compositor-retained one-pixel
-     canvas row can never leak through the centre. */
-  /#map-transition\s*\{[^}]*width:640px; height:480px;[^}]*z-index:1050;[^}]*background:transparent/,
-  /#map-transition \.map-transition-half\s*\{[^}]*height:50%;[^}]*background:#000/,
-  /#map-transition \.map-transition-half\.top\s*\{[^}]*transform-origin:center bottom/,
-  /#map-transition \.map-transition-half\.bottom\s*\{[^}]*transform-origin:center top/,
-  /map-transition-cover-in[\s\S]{0,180}map-transition-cover-out/,
+     surface stays below that field so the centre strip remains visible while
+     the newly exposed rows are opaque black, never the page backdrop. */
+  /#map-transition\s*\{[^}]*width:640px; height:480px;[^}]*z-index:1000;[^}]*background:#000/,
+  /main\.map-transition-active #world-screen\s*\{[^}]*z-index:1001/,
+  /main\.map-transition-active #chat-screen\s*\{[^}]*z-index:1002/,
   /main\.map-transition-press-in #world-screen,[\s\S]{0,140}#chat-screen\s*\{[^}]*map-transition-field-press-in/,
   /main\.map-transition-press-out #world-screen,[\s\S]{0,140}#chat-screen\s*\{[^}]*map-transition-field-press-out/,
-  /* ProduceCenterPress() clips the captured field surface to a narrowing
-     centre band; scaling the entire DOM scene would squeeze every sprite
-     into one line and does not match the native back-buffer producer. */
-  /main\.map-transition-pressed #world-screen,[\s\S]{0,100}#chat-screen\s*\{[^}]*clip-path:inset\(50% 0 50% 0\)/,
-  /@keyframes map-transition-field-press-in\s*\{[\s\S]{0,240}clip-path:inset\(0 0 0 0\)[\s\S]{0,180}clip-path:inset\(50% 0 50% 0\)/,
-  /@keyframes map-transition-field-press-out\s*\{[\s\S]{0,240}clip-path:inset\(50% 0 50% 0\)[\s\S]{0,180}clip-path:inset\(0 0 0 0\)/,
+  /* ProduceCenterPress() samples the entire captured field into a narrowing
+     destination band; it does not crop source rows or cover the live centre
+     with two black panels. */
+  /main\.map-transition-pressed #world-screen,[\s\S]{0,180}#chat-screen\s*\{[^}]*scaleY\(0\)/,
+  /@keyframes map-transition-field-press-in\s*\{[\s\S]{0,300}scaleY\(1\)[\s\S]{0,220}scaleY\(0\)/,
+  /@keyframes map-transition-field-press-out\s*\{[\s\S]{0,300}scaleY\(0\)[\s\S]{0,220}scaleY\(1\)/,
   /function presentWorldBackBuffer\(buffer\)[\s\S]{0,420}if\(app\.mapBackBufferHold\)return;/,
   /function startMapFloorTransition\(targetFloor=null,eventSeq=0\)[\s\S]{0,3000}mapTransitionState\.targetFloor=floor/,
   /function deferMapTransitionPacket\(packet,sourceTransport,sourceToken\)[\s\S]{0,900}mapTransitionState\.pendingPackets\.push/,
@@ -3829,6 +3827,9 @@ if (depthEntries.map(entry => entry.name).join(",") !== "far actor,missile,near 
 }
 if (/#map-transition::after\s*\{/.test(html)) {
   throw new Error("map transition regressed: the artificial center seam must not be drawn");
+}
+if (/map-transition-half|map-transition-cover-(?:in|out)/.test(html)) {
+  throw new Error("map transition regressed: black panels must not cover the compressed field");
 }
 /* A floor-fold curtain blocks gameplay routing through worldRouteInputBlocked,
    but must not become a pointer/cursor layer: the painted fish is deliberately

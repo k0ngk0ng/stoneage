@@ -693,16 +693,11 @@
     #scene-transition-loading .scene-loading-progress.is-indeterminate .scene-loading-progress-bar { width:34%; animation:world-loading-scan 1.05s steps(8,end) infinite; }
     #scene-transition-loading .scene-loading-detail { display:block; min-height:13px; color:#cdb987; font-size:9px; }
     /* MAP.CPP's warp path does not use the encounter HAGARE tile producer.
-       PRODUCE_CENTER_PRESSIN/OUT copies the old/new 640x480 back-buffer in
-       two horizontal halves that collapse to (or open from) y=240.  Keep a
-       separate curtain so a floor change is one large black rectangle with
-       a single horizontal fold, never an 8x8 field of small squares. */
-    /* ProduceCenterPress() does not grow two black panels over a live field.
-       It keeps one finished 640x480 field surface, clears the back-buffer to
-       black, and progressively clips the captured surface to the y=240 fold.
-       Use a centre clip-path rather than scaling the whole DOM scene: source
-       rows outside the narrowing band disappear just like the native surface
-       copy, while every sprite keeps its original size until it is hidden. */
+       ProduceCenterPress() first clears the 640x480 back-buffer to black,
+       then copies progressively sampled rows from lpBattleSurface into a
+       shrinking band around y=240.  In other words the complete old field is
+       vertically compressed onto one horizontal fold; only after the black
+       hand-off is the destination surface installed and expanded. */
     /* The curtain owns the gameplay lock, not the physical pointer.  Keeping
        it pointer-transparent lets the document-level pointer sampler update
        the painted fish while a floor fold is in progress; the cursor portal
@@ -710,41 +705,31 @@
        pointer-active curtain used to swallow those samples and made the fish
        appear frozen or disappear exactly when changing rooms.
 
-       Keep the two black halves above the clipped field surface.  Chromium
-       can retain a one-pixel raster row at a clip boundary; the halves meet
-       at exactly y=240 and cover that compositor residue without adding a
-       visible seam of their own. */
-    #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1050; display:none; overflow:hidden; pointer-events:none; background:transparent; }
+       The one opaque surface is a backing layer below the field, not two
+       panels above it.  This preserves the compressed centre strip and makes
+       the newly exposed top/bottom rows black instead of leaking the page's
+       blurred green backdrop. */
+    #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1000; display:none; overflow:hidden; pointer-events:none; background:#000; }
     #map-transition.active { display:block; }
-    #map-transition .map-transition-half { position:absolute; left:0; display:block; width:100%; height:50%; margin:0; padding:0; background:#000; pointer-events:none; transform:scaleY(0); will-change:transform; }
-    #map-transition .map-transition-half.top { top:0; transform-origin:center bottom; }
-    #map-transition .map-transition-half.bottom { bottom:0; transform-origin:center top; }
-    main.map-transition-press-in #map-transition .map-transition-half { animation:map-transition-cover-in .50s steps(30,end) forwards; }
-    main.map-transition-pressed #map-transition .map-transition-half { transform:scaleY(1); }
-    main.map-transition-press-out #map-transition .map-transition-half { animation:map-transition-cover-out .50s steps(30,end) forwards; }
     main.map-transition-active #world-screen { z-index:1001; transform-origin:center center; }
     main.map-transition-active #chat-screen { z-index:1002; transform-origin:center center; }
     main.map-transition-press-in #world-screen,
     main.map-transition-press-in #chat-screen { animation:map-transition-field-press-in .50s steps(30,end) forwards; }
     main.map-transition-pressed #world-screen,
-    main.map-transition-pressed #chat-screen { clip-path:inset(50% 0 50% 0); }
+    main.map-transition-pressed #chat-screen { transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0); }
     main.map-transition-press-out #world-screen,
     main.map-transition-press-out #chat-screen { animation:map-transition-field-press-out .50s steps(30,end) forwards; }
     @keyframes map-transition-field-press-in {
-      from{clip-path:inset(0 0 0 0)}
-      to{clip-path:inset(50% 0 50% 0)}
+      from{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(1)}
+      to{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0)}
     }
     @keyframes map-transition-field-press-out {
-      from{clip-path:inset(50% 0 50% 0)}
-      to{clip-path:inset(0 0 0 0)}
+      from{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0)}
+      to{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(1)}
     }
-    @keyframes map-transition-cover-in { from{transform:scaleY(0)} to{transform:scaleY(1)} }
-    @keyframes map-transition-cover-out { from{transform:scaleY(1)} to{transform:scaleY(0)} }
     @media (prefers-reduced-motion:reduce) {
       main.map-transition-press-in #world-screen,main.map-transition-press-in #chat-screen,
       main.map-transition-press-out #world-screen,main.map-transition-press-out #chat-screen { animation-duration:.01ms !important; animation-delay:0ms !important; }
-      main.map-transition-press-in #map-transition .map-transition-half,
-      main.map-transition-press-out #map-transition .map-transition-half { animation-duration:.01ms !important; animation-delay:0ms !important; }
     }
     /* FIELD.CPP's toolbar belongs only to the field back-buffer.  BattleProc
        calls fieldProc2() for hotkeys, but never calls drawField(), so this
@@ -1021,7 +1006,7 @@
   <main>
     <div id="orientation-lock" role="dialog" aria-modal="true" aria-labelledby="orientation-title" aria-describedby="orientation-message" hidden><div class="orientation-card"><strong id="orientation-title">调整显示方向</strong><span id="orientation-message">页面会自动适配横屏和竖屏。</span><button id="orientation-enter" type="button" aria-label="关闭提示">确定</button></div></div>
     <div id="scene-transition" aria-hidden="true"></div>
-    <div id="map-transition" aria-hidden="true"><i class="map-transition-half top"></i><i class="map-transition-half bottom"></i></div>
+    <div id="map-transition" aria-hidden="true"></div>
     <div id="scene-transition-loading" aria-hidden="true" aria-live="polite">
       <strong>NOW LOADING</strong>
       <span class="scene-loading-text">正在加载地图…</span>
@@ -17961,7 +17946,7 @@
     clearBattleChoiceTimer(app.battleState);
     /* EN may be released from the map-fold packet queue.  The native client
        hands the back-buffer to BattleProc at that exact boundary; leaving the
-       old #map-transition curtain active would keep its z-index 1050 surface
+       old #map-transition backing active would keep its transition surface
        above the battle scene until the five-second warp watchdog fires. */
     cancelMapFloorTransition();
     window.clearTimeout(app.battleState?.initializationTimer);window.clearTimeout(app.battleState?.turnApplyTimer);window.clearTimeout(app.battleState?.battleExitTimer);clearBattleEntryTimer(app.battleState);battleCancelPendingDamage(app.battleState);battleClearCommandPending(app.battleState);
@@ -18587,10 +18572,9 @@
     if(panel&&!panel.classList.contains("hidden")&&panel.classList.contains("actor-target-prompt"))renderBattleTargets();
   },{passive:true});
   document.addEventListener("pointermove",event=>{
-    /* The event target becomes #map-transition while a floor fold is on top
-       of the field.  Cursor painting must not depend on that target being a
-       child of #world-screen: the fish follows the real pointer even while
-       gameplay routing is blocked by worldRouteInputBlocked(). */
+    /* Cursor painting must not depend on the event target being a child of
+       #world-screen: the fish follows the real pointer even while the field
+       is compressed and gameplay routing is blocked. */
     if(app.phase!=="world")return;
     updateWorldPointer(event);
     updateHeldWorldPointer(event);
