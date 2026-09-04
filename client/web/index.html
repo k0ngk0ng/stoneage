@@ -12410,8 +12410,22 @@
           }
         }else{
           /* Counter/chain attacks carry both attacker and defender. */
-          const target=battleSegmentNumber(segment,"r",0,-1),flags=battleSegmentNumber(segment,"f",0,0),success=(flags&1)!==0,timing=scheduleAttack(segment,target,"attack",0);
+          const attacker=battleSegmentNumber(segment,"a",0,-1),target=battleSegmentNumber(segment,"r",0,-1),flags=battleSegmentNumber(segment,"f",0,0),success=(flags&1)!==0,timing=scheduleAttack(segment,target,"attack",0);
           if(target>=0){
+            /* ATT_TAKE (VCT35..44) uses damage_num() color 5 while the
+               capture swing is in progress, then replaces it with color 7
+               (CG_ICON_GET) or color 8 (CG_ICON_FAIL) after the result is
+               known.  These are the native 2.5 bitmap ids 26512/26514/26513;
+               keeping them on the attacker is important because the original
+               set_damage_num(a0, ..., -64) is anchored to the capture action,
+               not the monster being captured.  The old web path put only a
+               translated text label over the target, so capture looked like a
+               generic attack and the result feedback was misplaced. */
+            if(attacker>=0){
+              const captureStart=timing?.startAt||Date.now(),captureEnd=Math.max(captureStart+1,Number(timing?.endAt)||captureStart+420),resultAt=Math.max(captureStart,Number(timing?.endAt)||captureStart+420);
+              battlePushEffect(effects,attacker,"","capture",{graphic:26512,graphicKey:"26512",nativeVPos:-64,duration:Math.max(700,captureEnd-captureStart),startsAt:captureStart});
+              battlePushEffect(effects,attacker,success?"捕捉成功":"捕捉失败",success?"capture-success":"capture-fail",{graphic:success?26514:26513,graphicKey:success?"26514":"26513",nativeVPos:-64,duration:success?60*BATTLE_PROC_TICK_MS:900,startsAt:resultAt});
+            }
             if(success){
               /* BATTLE_Capture() removes the captured enemy from the server
                  roster immediately after emitting BT|...|f1|.  The native
@@ -12420,9 +12434,6 @@
               const item=battleFindParticipant(target);if(item)item.flags=Number(item.flags||0)|BATTLE_BC_FADE_OUT;
               const side=battleSide(target),toX=side===1?-300:300,toY=side===1?-300:300;
               queueMotion({kind:"fade",target,toX,toY},820);
-              battlePushEffect(effects,target,"捕捉成功","capture",{duration:1200,offsetY:-74});
-            }else{
-              battlePushEffect(effects,target,"捕捉失败","status",{duration:1050,offsetY:-74});
             }
           }
         }
