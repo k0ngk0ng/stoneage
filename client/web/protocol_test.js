@@ -4097,18 +4097,30 @@ if (!nativeAttackTiming || !nearlyEqual(nativeAttackTiming.duration, 5 * 4 * nat
 const contactTimingStart = script.indexOf("  const BATTLE_CONTACT_HOLD_NORMAL_TICKS");
 const contactTimingEnd = script.indexOf("  function battleAttackMotionSpec", contactTimingStart);
 if (contactTimingStart < 0 || contactTimingEnd <= contactTimingStart) throw new Error("contact hold helper boundary missing");
-const battleContactTiming = new Function("BATTLE_FLAG","BATTLE_PROC_TICK_MS",`${script.slice(contactTimingStart,contactTimingEnd)}; return {battleLegacyTravelDuration,battleNativeTickProgress,battleNativeSpeedProgress,battleLegacyHitProfile,battleContactHoldDuration,battleTimelineOffsetForFrame,battleAnimationElapsedWithHolds};`)(
+const battleContactTiming = new Function("BATTLE_FLAG","BATTLE_PROC_TICK_MS","BATTLE_RADAR_DIRECTIONS",`${script.slice(contactTimingStart,contactTimingEnd)}; return {battleLegacyTravelDuration,battleNativeTickProgress,battleNativeSpeedProgress,battleNativeAlternatingOffset,battleDodgeVector,battleLegacyHitProfile,battleContactHoldDuration,battleTimelineOffsetForFrame,battleAnimationElapsedWithHolds};`)(
   {death:1,critical:4,ultimate1:64,ultimate2:128,reflect:1024},
   nativeProcTickMs,
+  [6,7,0,1,2,3,4,5],
 );
-if (!nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,0), 24 * nativeProcTickMs) || !nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,64), 16 * nativeProcTickMs) || !nearlyEqual(battleContactTiming.battleLegacyHitProfile(0).knockbackDuration, 8 * nativeProcTickMs) || !nearlyEqual(battleContactTiming.battleLegacyHitProfile(1).knockbackDuration, 32 * nativeProcTickMs)) {
-  throw new Error(`native movement profile failed: ${JSON.stringify({travel:battleContactTiming.battleLegacyTravelDuration(192,32,0),normal:battleContactTiming.battleLegacyHitProfile(0),heavy:battleContactTiming.battleLegacyHitProfile(1)})}`);
+const nativeNormalHitProfile=battleContactTiming.battleLegacyHitProfile(0),nativeFatalHitProfile=battleContactTiming.battleLegacyHitProfile(1),nativeReflectHitProfile=battleContactTiming.battleLegacyHitProfile(1024),nativeAkoHitProfile=battleContactTiming.battleLegacyHitProfile(64);
+const nativeDodgeVectors=new Map([[0,[0,80]],[1,[-Math.SQRT1_2*80,Math.SQRT1_2*80]],[2,[-80,0]],[3,[-Math.SQRT1_2*80,-Math.SQRT1_2*80]],[4,[0,-80]],[5,[Math.SQRT1_2*80,-Math.SQRT1_2*80]],[6,[80,0]],[7,[Math.SQRT1_2*80,Math.SQRT1_2*80]]]);
+if (!nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,0), 24 * nativeProcTickMs) || !nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,64), 16 * nativeProcTickMs) ||
+    !nearlyEqual(nativeNormalHitProfile.knockbackDuration, 8 * nativeProcTickMs) || !nearlyEqual(nativeFatalHitProfile.knockbackDuration, 32 * nativeProcTickMs) ||
+    nativeNormalHitProfile.decelSpeeds.length!==15 || nativeNormalHitProfile.decelSpeeds[0]!==28 || nativeNormalHitProfile.decelSpeeds[14]!==0 || nativeNormalHitProfile.knockbackDistance!==0 ||
+    !nativeFatalHitProfile.kaishin || !nativeFatalHitProfile.longHitStop || nativeFatalHitProfile.decelSpeeds[0]!==35 || nativeFatalHitProfile.decelSpeeds.at(-1)!==1 ||
+    nativeReflectHitProfile.kaishin || !nativeReflectHitProfile.longHitStop || nativeReflectHitProfile.hitStopTicks!==32 || nativeReflectHitProfile.decelSpeeds[0]!==28 || nativeReflectHitProfile.decelSpeeds.at(-1)!==0 ||
+    nativeAkoHitProfile.kaishin || nativeAkoHitProfile.longHitStop || nativeAkoHitProfile.hitStopTicks!==8 || nativeAkoHitProfile.decelSpeeds[0]!==28 ||
+    !nearlyEqual(battleContactTiming.battleNativeAlternatingOffset(nativeProcTickMs,8*nativeProcTickMs),4) || battleContactTiming.battleNativeAlternatingOffset(2*nativeProcTickMs,8*nativeProcTickMs)!==0 || battleContactTiming.battleNativeAlternatingOffset(8*nativeProcTickMs,8*nativeProcTickMs)!==0 ||
+    [...nativeDodgeVectors].some(([direction,expected])=>{const actual=battleContactTiming.battleDodgeVector(direction,80);return !nearlyEqual(actual[0],expected[0],1e-9)||!nearlyEqual(actual[1],expected[1],1e-9);})) {
+  throw new Error(`native movement profile failed: ${JSON.stringify({travel:battleContactTiming.battleLegacyTravelDuration(192,32,0),normal:nativeNormalHitProfile,fatal:nativeFatalHitProfile,reflect:nativeReflectHitProfile,ako:nativeAkoHitProfile,dodges:[...nativeDodgeVectors].map(([direction])=>[direction,battleContactTiming.battleDodgeVector(direction,80)])})}`);
 }
 const normalContactHold = battleContactTiming.battleContactHoldDuration(0);
 const heavyContactHold = battleContactTiming.battleContactHoldDuration(1);
+const reflectContactHold = battleContactTiming.battleContactHoldDuration(1024);
+const akoContactHold = battleContactTiming.battleContactHoldDuration(64);
 const zeroDamageContactHold = battleContactTiming.battleContactHoldDuration(0,0,0);
-if (!nearlyEqual(normalContactHold, 8 * nativeProcTickMs) || !nearlyEqual(heavyContactHold, 32 * nativeProcTickMs) || zeroDamageContactHold !== 0 || !nearlyEqual(battleContactTiming.battleTimelineOffsetForFrame(60,[{frameOffset:30,timelineOffset:30,duration:normalContactHold}]), 30 + 30 + normalContactHold) || !nearlyEqual(battleContactTiming.battleAnimationElapsedWithHolds(54,[{frameOffset:30,timelineOffset:30,duration:normalContactHold}]), 30)) {
-  throw new Error(`native contact hold timing failed: ${JSON.stringify({normalContactHold,heavyContactHold,zeroDamageContactHold})}`);
+if (!nearlyEqual(normalContactHold, 8 * nativeProcTickMs) || !nearlyEqual(heavyContactHold, 32 * nativeProcTickMs) || !nearlyEqual(reflectContactHold,32*nativeProcTickMs) || !nearlyEqual(akoContactHold,8*nativeProcTickMs) || zeroDamageContactHold !== 0 || !nearlyEqual(battleContactTiming.battleTimelineOffsetForFrame(60,[{frameOffset:30,timelineOffset:30,duration:normalContactHold}]), 30 + 30 + normalContactHold) || !nearlyEqual(battleContactTiming.battleAnimationElapsedWithHolds(54,[{frameOffset:30,timelineOffset:30,duration:normalContactHold}]), 30)) {
+  throw new Error(`native contact hold timing failed: ${JSON.stringify({normalContactHold,heavyContactHold,reflectContactHold,akoContactHold,zeroDamageContactHold})}`);
 }
 const terminalHoldStart = script.indexOf("  function battleTerminalHoldUntil");
 const terminalHoldEnd = script.indexOf("  function battleMoviePending", terminalHoldStart);
@@ -4158,15 +4170,16 @@ if (!counterPlan ||
 }
 /* A plain f2 hit followed by f10 is the canonical 2.5 counter example.  The
    defender leaves DAMAGE at the end of VCT11, so its reverse attack must begin
-   before the first attack's ordinary return boundary and from the short
-   HIT_STOP displacement, while the master remains parked at contact. */
+   before the first attack's ordinary return boundary.  VCT11 flips course on
+   every one of its eight ticks and therefore hands the counter back at the
+   defender's original point while the master remains parked at contact. */
 const plainCounterExchange=battleCounterExchangeSpec(0,[10],[{wireIndex:1,attacker:10,target:0,flags:16,amount:16,petAmount:0,reactionDuration:900,reactionBeforeReturnDuration:400,reactionOffsetX:-18,reactionOffsetY:-9}],0,[2],[32],[0]);
 const plainCounterPlan=plainCounterExchange.counters[0],plainPrimaryHit=plainCounterExchange.normal.hits[0];
 if (!plainCounterPlan || !plainPrimaryHit.counterTakeover ||
     !nearlyEqual(plainCounterExchange.counterStartOffset,plainPrimaryHit.contactOffset+nativeProcTickMs+normalContactHold) ||
     plainCounterExchange.counterStartOffset >= plainCounterExchange.normalAttackEndOffset ||
-    !nearlyEqual(Math.hypot(plainCounterPlan.actorOrigin.x,plainCounterPlan.actorOrigin.y),32,0.01) ||
-    !nearlyEqual(plainCounterPlan.motion.contactDistance,96,0.02) ||
+    !nearlyEqual(Math.hypot(plainCounterPlan.actorOrigin.x,plainCounterPlan.actorOrigin.y),0,0.01) ||
+    !nearlyEqual(plainCounterPlan.motion.contactDistance,64,0.02) ||
     plainCounterPlan.motion.approachDuration !== 0 || !plainCounterPlan.masterReturn ||
     plainCounterExchange.normal.returnStartOffset < plainCounterPlan.contactOffset+400 ||
     nearlyEqual(plainCounterExchange.normal.returnFromX,plainCounterPlan.targetOrigin.x) ||
@@ -4190,10 +4203,10 @@ if (!/battleCounterExchangeSpec\(attacker,normalTargets,counterEntries/.test(bat
   throw new Error("BH ATT_COUNTER tuples are not using the native VCT11/dodge contact chain");
 }
 const battleMotionSource=script.slice(script.indexOf("  function battleMotionValue"),script.indexOf("  function battleNamesVisible"));
-if (!/if\(elapsed<returnStart\)\{[\s\S]{0,650}value\.action=3/.test(battleMotionSource) ||
+if (!/if\(elapsed<returnStart\)\{[\s\S]{0,900}finalFrameElapsed[\s\S]{0,500}value\.animationLoop=false/.test(battleMotionSource) ||
     !/motion\.kind===\"attack\"\|\|motion\.kind===\"counter-attack\"/.test(battleMotionSource) ||
     !/const outDuration=Math\.max\(BATTLE_PROC_TICK_MS[\s\S]{0,500}backStart=outDuration\+waitDuration/.test(battleMotionSource) ||
-    !/toX:vector\[0\]\*80,toY:vector\[1\]\*80/.test(battleMovieSource) ||
+    !/const vector=battleDodgeVector\(dir,80\)/.test(battleMovieSource) ||
     /Math\.sin\(Math\.min\(1,progress\)\*Math\.PI\)/.test(battleMotionSource)) {
   throw new Error("battle renderer lost the parked attacker or discrete VCT16/VCT18 dodge phases");
 }
@@ -4225,12 +4238,13 @@ if (guardMotion.kind !== "guard" || hurtMotion.kind !== "hit" || hurtMotion.knoc
 const counterMotionRuntimeStart = script.indexOf("  function battleMotionRenderPriority");
 const counterMotionRuntimeEnd = script.indexOf("  function battleNamesVisible", counterMotionRuntimeStart);
 if (counterMotionRuntimeStart < 0 || counterMotionRuntimeEnd <= counterMotionRuntimeStart) throw new Error("battle counter runtime helper boundary missing");
-const counterMotionRuntime = new Function("BATTLE_PROC_TICK_MS","battleSlotDirection","battleNativeTickProgress","battleAnimationElapsedWithHolds","battleNativeSpeedProgress",`${script.slice(counterMotionRuntimeStart,counterMotionRuntimeEnd)}; return {battleMotionRenderPriority,battleMotionValue};`)(
+const counterMotionRuntime = new Function("BATTLE_PROC_TICK_MS","battleSlotDirection","battleNativeTickProgress","battleAnimationElapsedWithHolds","battleNativeSpeedProgress","battleNativeAlternatingOffset",`${script.slice(counterMotionRuntimeStart,counterMotionRuntimeEnd)}; return {battleMotionRenderPriority,battleMotionValue};`)(
   nativeProcTickMs,
   id=>Number(id)<10?3:7,
   battleContactTiming.battleNativeTickProgress,
   battleContactTiming.battleAnimationElapsedWithHolds,
   battleContactTiming.battleNativeSpeedProgress,
+  battleContactTiming.battleNativeAlternatingOffset,
 );
 const counterRuntimeBase = 1_000_000;
 function counterRuntimeMotion(motion,startOffset,duration=motion?.duration){
@@ -4255,16 +4269,20 @@ function sampleCounterExchange(exchange,{dodge=false,primaryFlags=0}={}){
   const plan=exchange.counters[0],hit=exchange.normal.hits[0],motions=[counterRuntimeMotion(exchange.normal,0,exchange.normal.duration),counterRuntimeMotion(plan.motion,plan.startOffset,plan.motion.duration)];
   if(dodge){
     const out=20*nativeProcTickMs,back=20*nativeProcTickMs,wait=Math.max(0,exchange.counterStartOffset-hit.contactOffset-out-back);
-    motions.push(counterRuntimeMotion({kind:"dodge",target:hit.target,direction:hit.direction,toX:-80,toY:0,originX:0,originY:0,outDuration:out,waitDuration:wait,backDuration:back},hit.contactOffset,out+wait+back));
+    const vector=battleContactTiming.battleDodgeVector(hit.direction,80);
+    motions.push(counterRuntimeMotion({kind:"dodge",target:hit.target,direction:hit.direction,toX:vector[0],toY:vector[1],originX:0,originY:0,outDuration:out,waitDuration:wait,backDuration:back},hit.contactOffset,out+wait+back));
   }else motions.push(counterRuntimeMotion(counterTakeoverReaction(exchange,primaryFlags),hit.contactOffset,exchange.counterStartOffset-hit.contactOffset));
   const reaction=counterMasterReaction(plan);motions.push(counterRuntimeMotion(reaction,plan.contactOffset,reaction.duration));
   return {state:{motions},plan,hit,reaction,value:(id,offset)=>counterMotionRuntime.battleMotionValue({motions},id,counterRuntimeBase+offset)};
 }
 const runtimeCounterReaction=battleHitMotionSpec(0,6,16),runtimeReactionBeforeReturn=Number(runtimeCounterReaction.vct10Duration||0)+Number(runtimeCounterReaction.knockbackDuration||0)+Number(runtimeCounterReaction.decelDuration||0)+Number(runtimeCounterReaction.pauseDuration||0),runtimeCounterEntry={wireIndex:1,attacker:10,target:0,flags:16,amount:16,petAmount:0,reactionDuration:runtimeCounterReaction.duration,reactionBeforeReturnDuration:runtimeReactionBeforeReturn,reactionOffsetX:Number(runtimeCounterReaction.knockbackX||0)+Number(runtimeCounterReaction.decelX||0),reactionOffsetY:Number(runtimeCounterReaction.knockbackY||0)+Number(runtimeCounterReaction.decelY||0)},runtimePlainCounterExchange=battleCounterExchangeSpec(0,[10],[runtimeCounterEntry],0,[2],[32],[0]),runtimeDodgeCounterExchange=battleCounterExchangeSpec(0,[10],[runtimeCounterEntry],0,[32],[0],[0]);
+if(!nearlyEqual(runtimeReactionBeforeReturn,40*nativeProcTickMs)||[runtimePlainCounterExchange,runtimeDodgeCounterExchange].some(exchange=>!nearlyEqual(exchange.returnStartOffset-exchange.counters[0].contactOffset,40*nativeProcTickMs))){
+  throw new Error(`ordinary counter contact must hold exactly 40 native ticks before VCT4: ${JSON.stringify({runtimeReactionBeforeReturn,plain:{contactOffset:runtimePlainCounterExchange.counters[0].contactOffset,returnStartOffset:runtimePlainCounterExchange.returnStartOffset},dodge:{contactOffset:runtimeDodgeCounterExchange.counters[0].contactOffset,returnStartOffset:runtimeDodgeCounterExchange.returnStartOffset}})}`);
+}
 for(const [label,exchange,options] of [["plain",runtimePlainCounterExchange,{primaryFlags:2}],["dodge",runtimeDodgeCounterExchange,{dodge:true,primaryFlags:32}]]){
   const runtime=sampleCounterExchange(exchange,options),park=runtime.plan.targetOrigin;
   const beforeImpactOffset=Math.max(runtime.plan.startOffset,runtime.plan.contactOffset-nativeProcTickMs/2),beforeImpact=runtime.value(0,beforeImpactOffset),counterActor=runtime.value(runtime.plan.attacker,beforeImpactOffset);
-  if(!nearlyEqual(beforeImpact.dx,park.x,0.02)||!nearlyEqual(beforeImpact.dy,park.y,0.02)||!nearlyEqual(counterActor.dx,runtime.plan.actorOrigin.x,0.02)||!nearlyEqual(counterActor.dy,runtime.plan.actorOrigin.y,0.02)){
+  if(!nearlyEqual(beforeImpact.dx,park.x,0.02)||!nearlyEqual(beforeImpact.dy,park.y,0.02)||beforeImpact.action!==0||beforeImpact.animationLoop!==false||!beforeImpact.attack||!nearlyEqual(counterActor.dx,runtime.plan.actorOrigin.x,0.02)||!nearlyEqual(counterActor.dy,runtime.plan.actorOrigin.y,0.02)){
     throw new Error(`${label} counter moved an actor before reverse contact: ${JSON.stringify({beforeImpact,counterActor,park,plan:runtime.plan})}`);
   }
   const beforeReturn=runtime.value(0,exchange.returnStartOffset-nativeProcTickMs/2),expectedReturnX=Number(park.x)+Number(runtime.reaction.knockbackX||0)+Number(runtime.reaction.decelX||0),expectedReturnY=Number(park.y)+Number(runtime.reaction.knockbackY||0)+Number(runtime.reaction.decelY||0);
