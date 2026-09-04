@@ -5619,6 +5619,28 @@ if (!/function setActivePanelButton\(name=""\)\{[\s\S]{0,500}node\.dataset\.fiel
     !/function openFieldWindow\(name\)\{[\s\S]{0,700}setActivePanelButton\(name==="actions"\?"action":"settings"\)/.test(script)) {
   throw new Error("field MENU/Action pressed artwork is not synchronized");
 }
+/* FIELD.CPP disables all task-bar hits while a server WN owns the input
+   loop.  Keep the same guard in the web panel dispatcher so a stale hidden
+   DOM hit cannot orphan app.activeWindow behind another panel. */
+if (!/function openPanel\(name\)\{[\s\S]{0,700}if\(app\.activeWindow&&name!=="server-window"\)return;/.test(script)) {
+  throw new Error("server WN must remain the sole active panel while it owns input");
+}
+if (!/function toggleWorldPanel\(name\)\{[\s\S]{0,650}if\(app\.trade\?\.active\|\|app\.activeWindow\)return;/.test(script) ||
+    !/function fieldAction\(name\)\{[\s\S]{0,700}app\.activeWindow\)return;/.test(script) ||
+    !/function toggleFieldSetting\(key\)\{[\s\S]{0,300}app\.activeWindow\)return;/.test(script) ||
+    !/function closeFieldWindow\(\)\{[\s\S]{0,260}if\(app\.activeWindow\)return;/.test(script) ||
+    !/function closeWorldPanelFromUi\(\)\{[\s\S]{0,260}if\(app\.activeWindow\)return;/.test(script)) {
+  throw new Error("all stale field/task-bar hits must respect server WN ownership");
+}
+/* MAP.CPP::_sendWarpEvent() closes local field windows before the destination
+   back-buffer is installed.  Keep the browser's DOM panels from surviving a
+   floor change and make modal WN/dialog/trade state a route owner so a click
+   through a transparent area cannot start a second map transition. */
+if (!/function closeLocalPanelsForMapTransition\(\)\{[\s\S]{0,1800}app\.activeWindow=null[\s\S]{0,600}syncFieldOverlayVisibility\(\);/.test(script) ||
+    !/function startMapFloorTransition\(targetFloor=null,eventSeq=0\)\{[\s\S]{0,260}closeLocalPanelsForMapTransition\(\);/.test(script) ||
+    !/return Boolean\([\s\S]{0,320}app\.activeWindow\|\|app\.localDialog\|\|app\.trade\?\.active/.test(script)) {
+  throw new Error("map transitions must clear local panels and respect modal input ownership");
+}
 
 /* Returning from the character list must drain the old 2.5 socket before
    reopening the title server list.  Otherwise SAAC can still hold the

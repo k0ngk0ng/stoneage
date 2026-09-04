@@ -3367,7 +3367,34 @@
        ground click here would emit an independent W and split a passenger
        from a moving bus.  Field buttons remain outside this route gate so
        the same party button can still be used to leave the vehicle. */
-    return Boolean(mapTransitionState.active||main?.classList.contains("scene-transition-active")||partyFollowOwnSlotIndex()>0);
+    /* A server-owned WN, local confirmation dialog, or trade window owns
+       the native input loop.  Letting a ground click fall through their
+       transparent/back-buffer area could start a warp and leave the modal
+       state orphaned on the destination floor. */
+    return Boolean(mapTransitionState.active||main?.classList.contains("scene-transition-active")||partyFollowOwnSlotIndex()>0||app.activeWindow||app.localDialog||app.trade?.active);
+  }
+  /* FIELD.CPP::_sendWarpEvent() tears down local field windows before it
+     hands the back-buffer to the destination floor (closeEtcSwitch,
+     closeJoinChannelWN and the menu's transient hit records).  Browser
+     panels are DOM siblings rather than DirectDraw records, so they would
+     otherwise survive a warp and remain painted over the new map.  Clear
+     only presentation state here; an active server WN/trade is blocked by
+     worldRouteInputBlocked() and is not silently acknowledged. */
+  function closeLocalPanelsForMapTransition(){
+    for(const screen of advancedScreens||[])screen.classList.add("hidden");
+    if(app.localDialog){app.localDialog=null;$("local-dialog-screen")?.classList.add("hidden");}
+    app.systemPage="menu";
+    app.inventoryTargetPanel=false;
+    app.mailCompose.open=false;
+    app.mailCompose.mode="normal";
+    app.mailCompose.recipients=new Set();
+    app.mailCompose.text="";
+    app.mailCompose.petIndex=-1;
+    app.mailCompose.itemIndex=-1;
+    app.activeWindow=null;
+    clearItemShopFrame();
+    setActivePanelButton("");
+    syncFieldOverlayVisibility();
   }
   /* A map layer is only presentable after both its resource dependency set
      and its ground raster have completed.  `ready` predates the chunked
@@ -3618,6 +3645,7 @@
   }
   function startMapFloorTransition(targetFloor=null,eventSeq=0){
     if(!mapTransition||app.phase!=="world"||app.battle)return;
+    closeLocalPanelsForMapTransition();
     /* A held pointer is a continuous movement command in the field.  The
        native client cancels that sampling loop when warpEffectProc() takes
        ownership of the back-buffer.  Cancel only the route sampler; the
@@ -3975,7 +4003,13 @@
       });
     }
   }
-  function closeFieldWindow(){if(app.phase==="world")show(worldScreen);}
+  function closeFieldWindow(){
+    /* A server-owned WN window temporarily replaces the field task bar in
+       FIELD.CPP.  Its transparent close hit region can still receive a stale
+       click from an embedded WebView; never hide that protocol window here. */
+    if(app.activeWindow)return;
+    if(app.phase==="world")show(worldScreen);
+  }
   function renderFieldSettings(){
     const flags=Number(app.status.etcFlag)||0;
     document.querySelectorAll("#field-settings-list [data-field-setting]").forEach(row=>{
@@ -3999,7 +4033,9 @@
     return send(functionName,values).then(()=>true);
   }
   function toggleFieldSetting(key){
-    if(app.phase!=="world"||app.battle)return;
+    /* The WN surface owns the field input loop until its native response is
+       dismissed.  Ignore stale task-bar/settings hits while it is active. */
+    if(app.phase!=="world"||app.battle||app.activeWindow)return;
     const bit=FIELD_SETTING_BITS[key];if(!bit)return;
     const old=Number(app.status.etcFlag)||0;app.status.etcFlag=old^bit;renderFieldSettings();
     fieldSend("FS",[app.status.etcFlag]).catch(reportError);
@@ -4024,7 +4060,10 @@
   function fieldFacingPartyTarget(){return facingActor(fieldPartyTargetActor,1);}
   function fieldFacingPlayer(){return facingActor(actor=>Number(actor.charType)===1,1);}
   function fieldAction(name){
-    if(app.phase!=="world"||app.battle||mapMovementBlocked())return;
+    /* Keep all field/action shortcuts behind the same WN ownership gate as
+       openPanel().  Hidden DOM controls remain addressable to WebViews even
+       when the native task bar is visually suppressed. */
+    if(app.phase!=="world"||app.battle||mapMovementBlocked()||app.activeWindow)return;
     /* MENU.CPP treats the two right/left field windows as toggles: clicking
        the button which owns the currently visible window closes it, while a
        click on another field control replaces the window.  Re-opening the
@@ -4121,6 +4160,14 @@
   function openPanel(name){
     const battleSystem=name==="system"&&app.phase==="battle"&&app.battle;
     if(app.trade?.active||(!battleSystem&&app.phase!=="world"&&name!=="journal"))return;
+    /* FIELD.CPP keeps the task-bar/menu surface disabled while a server WN
+       owns the input loop (windowTypeWN > -1).  The visual task bar is
+       hidden in that state, but keyboard automation and an embedded WebView
+       can still dispatch a stale click to one of its DOM hit regions.  Do
+       not replace the WN screen without first closing its protocol owner;
+       otherwise Esc would later dismiss an invisible old sequence/object and
+       the next server response could be applied to the wrong window. */
+    if(app.activeWindow&&name!=="server-window")return;
     if(name!=="inventory"){stopInventoryGoldHold();cancelInventoryDrag();}
     advancedScreens.forEach(s=>s.classList.toggle("hidden",s.id!==`${name}-screen`));
     hydratePanelImages(name);
@@ -18905,7 +18952,11 @@
   function toggleWorldPanel(name){
     /* MENU.CPP treats every task-bar button as a toggle.  Re-clicking the
        active button closes that window; clicking another button replaces it. */
-    if(app.trade?.active)return;
+    /* WN is a server-owned input loop.  The visual task bar is hidden, but
+       stale transparent DOM hit targets can still be clicked by automation
+       or an embedded WebView.  Do not replace the WN screen with a local
+       panel; only its own response controls/ESC may dismiss it. */
+    if(app.trade?.active||app.activeWindow)return;
     const target=$(`${name}-screen`);
     if(app.phase==="world"&&target&&!target.classList.contains("hidden")){show(worldScreen);return;}
     openPanel(name);
@@ -18920,7 +18971,7 @@
      clicks from neighbouring controls. */
   document.querySelectorAll("#field-settings-list [data-field-setting]").forEach(item=>item.addEventListener("click",()=>toggleFieldSetting(item.dataset.fieldSetting)));
   document.querySelectorAll("#field-actions-list [data-action-no]").forEach(item=>item.addEventListener("click",()=>{
-    if(app.phase!=="world"||app.battle||mapMovementBlocked())return;
+    if(app.phase!=="world"||app.battle||mapMovementBlocked()||app.activeWindow)return;
     const actionNo=Number(item.dataset.actionNo);if(!Number.isFinite(actionNo))return;
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     const actor=ensureOwnFieldActor();
@@ -18997,7 +19048,14 @@
     state.motions=[];state.projectiles=[];state.effects=[];app.ignoreBattlePacketsUntil=0;
     restoreMapMusic();show(worldScreen);setWorldState("战斗结束","good");
   });
-  ["inventory-close","pets-close","status-close","party-close","map-close","social-close","titles-close","album-close","protocol-close","events-close","journal-close","help-exit"].forEach(id=>$(id)?.addEventListener("click",()=>show(worldScreen)));
+  function closeWorldPanelFromUi(){
+    /* Do not let a hidden local close button steal ownership from a visible
+       server WN window.  WN dismissal must go through its protocol response
+       (or ESC), otherwise app.activeWindow would remain stale. */
+    if(app.activeWindow)return;
+    if(app.phase==="world")show(worldScreen);
+  }
+  ["inventory-close","pets-close","status-close","party-close","map-close","social-close","titles-close","album-close","protocol-close","events-close","journal-close","help-exit"].forEach(id=>$(id)?.addEventListener("click",closeWorldPanelFromUi));
   $("help-prev")?.addEventListener("click",()=>{if(Number(app.helpPage)>0){app.helpPage--;renderHelp();}});
   $("help-next")?.addEventListener("click",()=>{const max=Math.max(0,Math.ceil((app.taskLog?.length||0)/10)-1);if(Number(app.helpPage)<max){app.helpPage++;renderHelp();}});
   $("request-inventory").addEventListener("click",()=>send("C",[0]).catch(reportError));
