@@ -226,16 +226,67 @@ if (!/LOCAL_CHAT_CLEAR_COMMANDS\.has\(command\)/.test(clearHandlerSource) ||
   throw new Error("chat-clear aliases must be consumed locally and Delete must remain wired");
 }
 /* The native chat line is painted into the field back-buffer and never owns
-   a right-button hit region.  Keep the transparent web editor from swallowing
-   right-click turns or PI pickup when an item/money pile is under the lower
-   chat strip. */
-const chatInputMapHitStart = script.indexOf("function chatInputMapHit(event)");
+   a mouse hit region.  Keep the transparent web editor from swallowing any
+   desktop ground click (including right-click turns/PI pickup) under the
+   lower strip; touch remains focusable so a phone can open its IME. */
+const chatInputMapHitStart = script.indexOf("function chatInputMapHit(event,target=null)");
 const chatInputMapHitEnd = script.indexOf("function isWorldUiTarget", chatInputMapHitStart);
 if (chatInputMapHitStart < 0 || chatInputMapHitEnd <= chatInputMapHitStart ||
     !/Number\(event\?\.button\)===2\)return true/.test(script.slice(chatInputMapHitStart, chatInputMapHitEnd)) ||
+    !/const touchLike=[\s\S]{0,520}if\(!touchLike\)return true/.test(script.slice(chatInputMapHitStart, chatInputMapHitEnd)) ||
+    !/isWorldUiTarget\(event\?\.target,event\)/.test(script) ||
     !/if\(mapMovementBlocked\(\)\|\|isWorldUiTarget\(event\.target,event\)\)return/.test(script)) {
-  throw new Error("chat input must pass native right-click field gestures through");
+  throw new Error("chat input must pass native desktop field gestures through");
 }
+const chatMapInput = {value:"",closest(selector){return selector==="#chat-input"?this:null;}};
+const chatMapDocument = {activeElement:null};
+const chatMapApp = {
+  phase:"world",battle:false,cursorClientX:320,cursorClientY:440,
+  cursorPointerType:"",cursorTouchLike:false,
+};
+const chatMapState = {eventCode:0,talkable:false,lastPoint:null};
+const chatMapHit = new Function(
+  "app", "document", "navigator", "worldTileFromPointerPosition", "mapCellAt",
+  "isMapWarpEvent", "isMapEnemyEvent", "actorAtTile", "actorAtPointer",
+  "isTalkableActor", "MAP_EVENT_MASK",
+  `${script.slice(chatInputMapHitStart, chatInputMapHitEnd)}; return chatInputMapHit;`,
+)(
+  chatMapApp,chatMapDocument,{maxTouchPoints:0},
+  (x,y)=>{chatMapState.lastPoint=[x,y];return [10,11];},
+  ()=>({event:chatMapState.eventCode}),
+  code=>code===1,code=>code===2,
+  ()=>chatMapState.talkable,()=>false,()=>true,0xffff,
+);
+const chatPointer = (pointerType="mouse",button=0)=>({
+  target:chatMapInput,clientX:123,clientY:438,pointerType,button,
+});
+if (!chatMapHit(chatPointer("mouse")) || chatMapState.lastPoint?.join(",") !== "123,438") {
+  throw new Error("empty desktop chat strip must pass an ordinary ground click through");
+}
+if (chatMapHit(chatPointer("touch"))) {
+  throw new Error("empty mobile chat strip must remain tappable for the virtual keyboard");
+}
+chatMapState.eventCode=1;
+if (!chatMapHit(chatPointer("touch"))) {
+  throw new Error("a touch on a lower-row warp must reach the map instead of the chat editor");
+}
+chatMapState.eventCode=0;chatMapState.talkable=true;
+if (!chatMapHit(chatPointer("touch"))) {
+  throw new Error("a touch on a lower-row NPC must reach the map instead of the chat editor");
+}
+chatMapState.talkable=false;
+if (!chatMapHit(chatPointer("touch",2))) {
+  throw new Error("lower-row right-click turn/pickup must always reach the map");
+}
+chatMapDocument.activeElement=chatMapInput;
+if (chatMapHit(chatPointer("mouse"))) {
+  throw new Error("a focused chat editor must retain its native mouse selection gestures");
+}
+chatMapDocument.activeElement=null;chatMapInput.value="hello";
+if (chatMapHit(chatPointer("mouse"))) {
+  throw new Error("a non-empty chat editor must retain its native mouse selection gestures");
+}
+chatMapInput.value="";
 /* The switch-compatible 8.5 `_SA_VERSION_25` main loop adds one harmless
    local edit shortcut: Shift+Backspace clears the focused STR_BUFFER.  Keep
    that behavior in the web editor without turning it into a server command. */
@@ -1796,7 +1847,7 @@ for (const expected of [
   /const POINTER_MOVE_MODE_DELAY_MS=1000;/,
   /function sampleHeldWorldPointer\(now=Date\.now\(\)\)[\s\S]{0,900}worldTileFromPointerPosition\(clientX,clientY\)[\s\S]{0,260}setHeldMoveDestination\(tile,now,false\)/,
   /function scheduleHeldWorldPointerSample\(delay=POINTER_MOVE_MODE_DELAY_MS\)[\s\S]{0,900}sampleHeldWorldPointer\(Date\.now\(\)\)[\s\S]{0,260}scheduleHeldWorldPointerSample\(POINTER_MOVE_ROUTE_INTERVAL_MS\)/,
-  /function updateWorldPointer\(event\)[\s\S]{0,2400}if\(!app\.pointerMoveHeld\)app\.cursor\.visible=true/,
+  /function updateWorldPointer\(event\)[\s\S]{0,3000}if\(!app\.pointerMoveHeld\)app\.cursor\.visible=true/,
   /* The fish-bone remains the topmost field cursor during the native held
      walk gesture; only the route sampler is continuous. */
   /function beginHeldWorldPointer\(event\)[\s\S]{0,1200}app\.cursor\.visible=true/,

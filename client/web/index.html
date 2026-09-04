@@ -1604,7 +1604,7 @@
      so MyChatBuffer.color is never reduced to a browser-only four-colour
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   /* partyMoveProc() keeps a private movement buffer for every party member.
      Keep the browser equivalent outside the wire/status object so N updates
      can replace party slots without discarding an in-flight follower step. */
@@ -16704,6 +16704,8 @@
        stable 640×480 pointer surface. */
     const scene=$("world-overlay")?.getBoundingClientRect()||worldScreen?.getBoundingClientRect(); if(!scene||!scene.width||!scene.height)return;
     app.cursorClientX=clientX;app.cursorClientY=clientY;
+    app.cursorPointerType=String(event?.pointerType||"").toLowerCase();
+    app.cursorTouchLike=app.cursorPointerType==="touch"||app.cursorPointerType==="pen"||Boolean(event?.sourceCapabilities?.firesTouchEvents)||(!app.cursorPointerType&&typeof navigator!=="undefined"&&Number(navigator.maxTouchPoints)>0);
     if(Number.isFinite(screenX)&&Number.isFinite(screenY)){app.cursorScreenX=screenX;app.cursorScreenY=screenY;}
     app.cursor.x=Math.max(0,Math.min(640,(clientX-scene.left)*640/scene.width));
     app.cursor.y=Math.max(0,Math.min(480,(clientY-scene.top)*480/scene.height));
@@ -16718,7 +16720,7 @@
        the remaining lower field pixels is still a valid map sample.  The old
        <456 guard silently discarded those samples, so a scene rim below the
        chat line could only be reached by clicking several tiles farther in. */
-    if(app.cursor.y<480&&!isWorldUiTarget(event?.target)){
+    if(app.cursor.y<480&&!isWorldUiTarget(event?.target,event)){
       app.cursor.tile=nearestTileAt(app.cursor.x,app.cursor.y);app.cursor.updatedAt=Date.now();
     }
     renderWorldOverlay();
@@ -18035,14 +18037,15 @@
      and can swallow a doorway click.  Let only a definite map interaction
      (warp/enemy event or a talkable object) pass through that editor.  A tap
      on any other part of the chat line still focuses the input normally. */
-  function chatInputMapHit(event){
-    const input=event?.target?.closest?.("#chat-input");
+  function chatInputMapHit(event,target=null){
+    const input=(event?.target||target)?.closest?.("#chat-input");
     if(!input||app.phase!=="world"||app.battle)return false;
     /* Once the user is editing, preserve the browser's native selection and
        caret gestures; the pass-through path is for an unfocused transparent
        overlay only. */
     if(document.activeElement===input||String(input.value||""))return false;
-    const tile=worldTileFromPointer(event);
+    const clientX=Number(event?.clientX??app.cursorClientX),clientY=Number(event?.clientY??app.cursorClientY);
+    const tile=worldTileFromPointerPosition(clientX,clientY);
     if(!tile)return false;
     const cell=mapCellAt(tile[0],tile[1]);
     if(!cell)return false;
@@ -18054,13 +18057,21 @@
        focused/non-empty editor remains an ordinary text control above, so a
        user editing chat does not lose selection/context behaviour. */
     if(Number(event?.button)===2)return true;
+    /* moveProc() never tests MyChatBuffer as a mouse rectangle: a real PC
+       mouse click at y=432 still belongs to the field.  Let every empty,
+       unfocused desktop chat-row click reach that map cell, not only doors.
+       Touch remains the one browser-specific exception because a phone has
+       no physical keyboard and must be able to tap the line to open its IME. */
+    const pointerType=String((event?.pointerType??app.cursorPointerType)||"").toLowerCase();
+    const touchLike=event?(pointerType==="touch"||pointerType==="pen"||Boolean(event?.sourceCapabilities?.firesTouchEvents)||(!pointerType&&typeof navigator!=="undefined"&&Number(navigator.maxTouchPoints)>0)):Boolean(app.cursorTouchLike);
+    if(!touchLike)return true;
     const eventCode=(Number(cell.event)||0)&MAP_EVENT_MASK;
     if(isMapWarpEvent(eventCode)||isMapEnemyEvent(eventCode))return true;
     return Boolean(actorAtTile(tile,isTalkableActor)||actorAtPointer(event,isTalkableActor));
   }
   function isWorldUiTarget(target,event=null){
     if(!(target instanceof Element))return false;
-    if(target.closest("#chat-input")&&chatInputMapHit(event))return false;
+    if(target.closest("#chat-input")&&chatInputMapHit(event,target))return false;
     return Boolean(target.closest("#world-loading,#field-ui,#world-tools,button,input,textarea,select,[contenteditable=true]"));
   }
   function worldPointerIsUiTarget(event){
