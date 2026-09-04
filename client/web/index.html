@@ -2470,7 +2470,10 @@
     #social-screen #mail-compose-clear-recipients:hover,#social-screen #mail-compose-clear-recipients:focus,#social-screen #mail-compose-clear:hover,#social-screen #mail-compose-clear:focus{background-image:url('/assets/bitmaps/bitmap_9266.png');outline:0}
     #social-screen #mail-compose-send:hover,#social-screen #mail-compose-send:focus{background-image:url('/assets/bitmaps/bitmap_9267.png');filter:none;outline:0}
     #social-screen #mail-compose-return:hover,#social-screen #mail-compose-return:focus{filter:brightness(1.14);outline:0}
-    #social-screen #social-close{left:96px;top:420px}
+    /* The close button is laid out inside the shared toolbar.  Do not apply
+       the old absolute offset here: on narrow/mobile viewports it pushes the
+       button outside the screen. */
+    #social-screen #social-close{left:auto;top:auto}
     /* GROUP_WND is two fixed blocks (player/pets, then party members). */
     #party-screen #party-status{display:none}
     #party-screen #party-list{left:0!important;top:0!important;width:256px!important;height:456px!important;overflow:visible!important;pointer-events:none}
