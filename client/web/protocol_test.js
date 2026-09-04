@@ -632,11 +632,12 @@ const delayedCAState = {
 };
 delayedCAState.actors.set(1, {id: 1, kind: "character", objectType: 1, name: "Hero",
   x: 18, y: 23, action: 3, caAction: 3, wireDirection: 0, direction: 3});
-let delayedCAPoint = null;
+let delayedCAPoint = null, requestedActorDetail = null;
 const delayedCAHelpers = new Function(
   "app", "Protocol", "stateNumber", "isInsideFloor", "localMovePredictionActive",
   "recordServerPosition", "maybeReleaseMovePrediction", "clientDirectionFromServer",
   "serverDirectionFromClient", "clearMovePrediction", "cancelPendingMove",
+  "observePartyLeaderAction", "partyFollowLeaderMember", "clearPartyFollow", "syncPartyFollowMembership", "requestActorDetails",
   "triggerMapEvent", "updateHUD", "renderWorld", "renderWorldOverlay",
   "scheduleWorldAnimation", "setLocalActorAction", "CA_TO_SPRITE_ACTION",
   "fieldActionLoops", "performance",
@@ -653,6 +654,7 @@ const delayedCAHelpers = new Function(
   value => Number(value),
   () => { delayedCAState.movePredictionActive = false; },
   () => { throw new Error("delayed same-route CA must not cancel movement"); },
+  () => false, () => null, () => {}, () => null, id => { requestedActorDetail = Number(id); return true; },
   () => false,
   () => {}, () => {}, () => {}, () => {},
   () => {}, {}, () => false, performance,
@@ -673,6 +675,85 @@ delayedCAActor.walking = true;
 delayedCAHelpers("1|18|23|20|0|0|0|0");
 if (delayedCAActor.walking !== false || delayedCAActor.action !== 20) {
   throw new Error(`non-walk CA action must clear walking state: ${JSON.stringify({walking: delayedCAActor.walking, action: delayedCAActor.action})}`);
+}
+delayedCAHelpers("Z|19|24|1|0");
+if (requestedActorDetail !== 35 || delayedCAState.actors.has(35)) {
+  throw new Error(`unknown CA must request C(id) without creating an invisible actor: ${JSON.stringify({requestedActorDetail, actor: delayedCAState.actors.get(35)})}`);
+}
+const nativeUnknownCAReference = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/NETPROC.CPP", "latin1");
+if (!/ptAct = getCharObjAct\( charindex \);[\s\S]{0,900}ptAct == NULL[\s\S]{0,1200}lssproto_C_send\(sockfd, charindex \)/.test(nativeUnknownCAReference) ||
+    !/function requestActorDetails\(id\)[\s\S]{0,900}send\("C",\[actorId\]\)/.test(script)) {
+  throw new Error("web unknown-CA recovery drifted from the native C(id) request");
+}
+/* A 2.5 party member never emits W on their own.  changeCharAct() buffers
+   the leader's CA path, then MAP.CPP::partyMoveProc() hands each vacated grid
+   to the following member and moves the local camera through _mapMove(). */
+const nativePartyMapSource = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/MAP.CPP", "latin1");
+if (!/void partyMoveProc\(void\)[\s\S]{0,3000}_setMapMovePoint\(ptAct->bufGx\[0\], ptAct->bufGy\[0\]\)[\s\S]{0,1200}_mapMove\(\)/.test(nativePartyMapSource) ||
+    !/stockCharMovePoint\(ptActNext, ptAct->gx, ptAct->gy\)/.test(nativePartyMapSource)) {
+  throw new Error("native 2.5 passive party movement reference drifted");
+}
+const partyFollowStart = script.indexOf("  function partyFollowOwnSlotIndex(){");
+const partyFollowEnd = script.indexOf("  function requestActorDetails(id){", partyFollowStart);
+if (partyFollowStart < 0 || partyFollowEnd <= partyFollowStart) {
+  throw new Error("passive party follow helper boundary missing");
+}
+const partyFollowSource = script.slice(partyFollowStart, partyFollowEnd);
+if (/\bsend\s*\(|fieldSend\s*\(/.test(partyFollowSource) ||
+    !/const vacated=\[previous,\.\.\.leaderPath\.slice\(0,-1\)\]/.test(partyFollowSource) ||
+    !/moveStepDuration\(from,target\)\/speedRate/.test(partyFollowSource)) {
+  throw new Error("party follower must consume vacated leader grids at native speed without sending W");
+}
+const partyFollowState = {
+  phase: "world", battle: false, floor: 100, character: "ProbeHero",
+  pc: {id: 22, name: "ProbeHero"}, playerActorId: 22,
+  position: [10, 9], serverPosition: [10, 9], direction: 7, walkAnimation: null,
+  party: [{id: 11, name: "長毛象公車"}, {id: 22, name: "ProbeHero"}, null, null, null],
+  partyFollowLeaderId: null, partyFollowLastLeaderPoint: null,
+  partyFollowQueue: [], partyFollowAnimation: null,
+  actors: new Map([
+    [11, {id: 11, name: "長毛象公車", x: 10, y: 10, walking: false}],
+    [22, {id: 22, name: "ProbeHero", x: 10, y: 9, walking: false}],
+  ]),
+};
+let partyFollowScheduled = 0;
+const partyFollowHelpers = new Function(
+  "app", "sameMovePoint", "isInsideFloor", "actorIsOwn", "setLocalActorAction",
+  "moveStepDuration", "directionFor", "serverDirectionFromClient", "performance",
+  "scheduleWorldAnimation", "installValidatedLocalMapWindow", "updateHUD", "renderWorld", "renderWorldOverlay",
+  `${partyFollowSource};return {partyFollowOwnSlotIndex,syncPartyFollowMembership,observePartyLeaderAction,finalizePartyFollowMove};`,
+)(
+  partyFollowState,
+  (left, right) => Array.isArray(left) && Array.isArray(right) && Number(left[0]) === Number(right[0]) && Number(left[1]) === Number(right[1]),
+  () => true,
+  actor => Number(actor?.id) === 22,
+  (actor, action) => { actor.action = action; actor.localActionNo = action; },
+  (from, target) => Math.max(1, Math.hypot(Number(target[0]) - Number(from[0]), Number(target[1]) - Number(from[1])) * 96),
+  (dx, dy) => [[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1],[1,0],[1,1],[0,1]].findIndex(([x,y]) => x === Math.sign(dx) && y === Math.sign(dy)),
+  direction => (Number(direction) + 5) % 8,
+  {now: () => 1000},
+  () => { partyFollowScheduled++; },
+  () => {}, () => {}, () => {}, () => {},
+);
+if (partyFollowHelpers.partyFollowOwnSlotIndex() !== 1 || !partyFollowHelpers.syncPartyFollowMembership() ||
+    partyFollowState.partyFollowLeaderId !== 11 || partyFollowState.partyFollowLastLeaderPoint?.join(",") !== "10,10") {
+  throw new Error(`party membership did not select the non-self leader: ${JSON.stringify(partyFollowState)}`);
+}
+if (!partyFollowHelpers.observePartyLeaderAction(11, 1, [10,10], [10,12]) ||
+    partyFollowState.partyFollowAnimation?.to?.join(",") !== "10,10" ||
+    partyFollowState.partyFollowQueue.map(point => point.join(",")).join("|") !== "10,11" ||
+    partyFollowScheduled !== 1) {
+  throw new Error(`leader CA did not produce the one-cell-behind path: ${JSON.stringify(partyFollowState)}`);
+}
+partyFollowHelpers.finalizePartyFollowMove();
+partyFollowHelpers.finalizePartyFollowMove();
+if (partyFollowState.position.join(",") !== "10,11" || partyFollowState.serverPosition.join(",") !== "10,11" || partyFollowState.actors.get(22)?.x !== 10 ||
+    partyFollowState.actors.get(22)?.y !== 11 || partyFollowState.partyFollowAnimation !== null || partyFollowState.partyFollowQueue.length !== 0) {
+  throw new Error(`passive party path did not move the player/camera behind the leader: ${JSON.stringify(partyFollowState)}`);
+}
+partyFollowState.party[1] = null;
+if (partyFollowHelpers.syncPartyFollowMembership() !== null || partyFollowState.partyFollowLeaderId !== null || partyFollowState.partyFollowQueue.length) {
+  throw new Error("leaving a party must clear the passive follower state");
 }
 /* The fish-bone is a painted legacy sprite.  A browser Pointer Lock would
    move/recapture the user's real mouse during a map fold, which is the
@@ -1051,6 +1132,30 @@ if ((fieldUiMarkup.match(/class="click"/g) || []).length !== 7 ||
     !/id="field-right-action" class="click"/.test(fieldUiMarkup)) {
   throw new Error("2.5 field HUD must contain four left and three right controls");
 }
+/* FIELD.CPP's party button accepts CHAROBJ_TYPE_USER_NPC as well as
+   CHAROBJ_TYPE_PARTY_OK. character.cpp assigns PARTY_OK to CHAR_TYPEBUS,
+   whose 2.5 C-record type is 32. The web preflight must therefore let the
+   mammoth bus reach the authoritative PR handler instead of treating it as
+   an ordinary, non-party NPC. */
+const nativeReferenceCharacterSource = fs.readFileSync(__dirname + "/../../reference/anson1788-stoneage/石器时代8.5客户端最新源代码/石器源码/system/character.cpp", "latin1");
+if (!/case CHAR_TYPEBUS:[\s\S]{0,120}CHAROBJ_TYPE_NPC \| CHAROBJ_TYPE_PARTY_OK/.test(nativeReferenceCharacterSource) ||
+    !/checkCharObjPointNotStatus\([^;]{0,240}CHAROBJ_TYPE_USER_NPC \| CHAROBJ_TYPE_PARTY_OK/.test(nativeField85)) {
+  throw new Error("native 2.5 party/bus reference boundary drifted");
+}
+const fieldPartyTargetStart = script.indexOf("  function fieldPartyTargetActor(actor){");
+const fieldPartyTargetEnd = script.indexOf("  function fieldFacingPlayer()", fieldPartyTargetStart);
+if (fieldPartyTargetStart < 0 || fieldPartyTargetEnd <= fieldPartyTargetStart) {
+  throw new Error("field party target helper missing");
+}
+const fieldPartyTargetActor = new Function(`${script.slice(fieldPartyTargetStart, fieldPartyTargetEnd)};return fieldPartyTargetActor;`)();
+if (!fieldPartyTargetActor({charType:1}) || !fieldPartyTargetActor({charType:32}) ||
+    fieldPartyTargetActor({charType:12}) || fieldPartyTargetActor({charType:20})) {
+  throw new Error("field party target must accept players and 2.5 buses only");
+}
+const fieldActionSource = script.slice(script.indexOf("  function fieldAction(name){"), script.indexOf("  function canonicalAccount", script.indexOf("  function fieldAction(name){")));
+if (!/if\(name==="party"\)[\s\S]{0,500}fieldFacingPartyTarget\(\)[\s\S]{0,500}fieldSend\("PR",\[x,y,1\]\)/.test(fieldActionSource)) {
+  throw new Error("field party button must send PR for a facing player or mammoth bus");
+}
 /* FIELD.CPP sets drawFieldButtonFlag=0 while any native menu/WN/action
    surface is open.  Keep that rule strict: a later convenience override that
    re-shows #field-ui above the settings/action window causes the HUD bitmaps
@@ -1161,7 +1266,7 @@ if(!/const useRAF=false/.test(script) ||
 }
 if(!/app\._worldAnimationTicking\|\|app\._worldAnimationFrame\|\|app\._worldAnimationTimer/.test(script) ||
    !/app\._worldAnimationTicking=true;\s*try\{renderWorld\(walking\);\}finally\{app\._worldAnimationTicking=false;\}/.test(script) ||
-   !/app\._worldAnimationTicking=true;\s*try\{finalizePendingMove\(\);\}finally\{app\._worldAnimationTicking=false;\}/.test(script)) {
+   !/app\._worldAnimationTicking=true;\s*try\{[\s\S]{0,180}finalizePartyFollowMove\(\);[\s\S]{0,100}finalizePendingMove\(\);[\s\S]{0,80}\}finally\{app\._worldAnimationTicking=false;\}/.test(script)) {
   throw new Error("field Action scheduler must not recursively register duplicate timers during a paint tick");
 }
 if(!/function ensureOwnFieldActor\(\)[\s\S]{0,1200}app\.actors\.set\(id,actor\)/.test(script) ||
@@ -1684,7 +1789,7 @@ for (const expected of [
   /* A map/scene fold gates gameplay routing only.  The painted fish continues
      to follow trusted physical pointer samples; no synthetic recenter,
      capture, or cursor movement is allowed. */
-  /function worldRouteInputBlocked\(\)[\s\S]{0,420}mapTransitionState\.active[\s\S]{0,220}scene-transition-active/,
+  /function worldRouteInputBlocked\(\)[\s\S]{0,1200}mapTransitionState\.active[\s\S]{0,220}scene-transition-active[\s\S]{0,180}partyFollowOwnSlotIndex\(\)>0/,
   /if\(event\?\.isTrusted===false\)return;/,
   /* A physical pointer move during the curtain updates the painted fish in
      the untransformed portal; the compressed scene never drives its position. */

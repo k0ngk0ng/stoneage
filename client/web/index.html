@@ -1550,6 +1550,17 @@
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
   const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  /* partyMoveProc() keeps a private movement buffer for every party member.
+     Keep the browser equivalent outside the wire/status object so N updates
+     can replace party slots without discarding an in-flight follower step. */
+  app.partyFollowLeaderId=null;
+  app.partyFollowLastLeaderPoint=null;
+  app.partyFollowQueue=[];
+  app.partyFollowAnimation=null;
+  /* NETPROC.CPP keeps an `alreadytellC` list for CA ids whose character
+     object has not arrived yet.  A Set gives the web bridge the same one-shot
+     detail request without fabricating an invisible actor shell. */
+  app.actorDetailRequests=new Set();
   /* Every W write owns a monotonically increasing generation.  Battle/warp/
      logout cancellation invalidates late HTTP completions, so an old field
      write can never repaint “行走中…” after the battle surface has returned. */
@@ -3253,7 +3264,12 @@
        while it is active.  Cursor samples are handled separately below so a
        physical mouse move is never mistaken for a gameplay click. */
     const main=document.querySelector("main");
-    return Boolean(mapTransitionState.active||main?.classList.contains("scene-transition-active"));
+    /* MAP.CPP sends directional input only for the party leader.  A member
+       consumes partyMoveProc()'s private path buffer instead; accepting a
+       ground click here would emit an independent W and split a passenger
+       from a moving bus.  Field buttons remain outside this route gate so
+       the same party button can still be used to leave the vehicle. */
+    return Boolean(mapTransitionState.active||main?.classList.contains("scene-transition-active")||partyFollowOwnSlotIndex()>0);
   }
   /* A map layer is only presentable after both its resource dependency set
      and its ground raster have completed.  `ready` predates the chunked
@@ -3890,6 +3906,17 @@
     const own=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
     return Boolean(own?.leader);
   }
+  function fieldPartyTargetActor(actor){
+    /* character.cpp::getAtrCharObjType() maps a normal player to
+       CHAROBJ_TYPE_USER_NPC and CHAR_TYPEBUS (32 in the 2.5 wire enum) to
+       CHAROBJ_TYPE_NPC|CHAROBJ_TYPE_PARTY_OK. FIELD.CPP deliberately accepts
+       both masks before sending PR. Restricting this picker to charType 1
+       made the client reject a mammoth bus locally, so the real GMSV never
+       received the join request advertised by the station sign. */
+    const charType=Number(actor?.charType);
+    return charType===1||charType===32;
+  }
+  function fieldFacingPartyTarget(){return facingActor(fieldPartyTargetActor,1);}
   function fieldFacingPlayer(){return facingActor(actor=>Number(actor.charType)===1,1);}
   function fieldAction(name){
     if(app.phase!=="world"||app.battle||mapMovementBlocked())return;
@@ -3906,8 +3933,8 @@
     const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     if(name==="party"){
       if(fieldOwnParty()){fieldSend("PR",[x,y,0]).catch(reportError);return;}
-      const target=fieldFacingPlayer();
-      if(!target){setWorldState("请面向要组队的玩家。","error");return;}
+      const target=fieldFacingPartyTarget();
+      if(!target){setWorldState("请面向要组队的玩家或客运。","error");return;}
       if(target.inBattle){setWorldState("对方正在战斗中。","error");return;}
       fieldSend("PR",[x,y,1]).catch(reportError);return;
     }
@@ -7495,6 +7522,12 @@
            sent waypoints; only a floor change or an off-route coordinate is
            authoritative enough to interrupt the animation. */
         const prediction=localMovePredictionActive(),sameFloor=app.floor<0||floor===app.floor,onRoute=prediction&&predictedMoveContains(point),keepLocal=prediction&&sameFloor&&onRoute&&Boolean(app.map);
+        /* S:C is an authoritative owner coordinate.  Rebase a passenger's
+           local follower buffer on same-floor status samples as well as real
+           map changes; otherwise an in-flight interpolation could later
+           overwrite the newer server tile.  The N slots remain intact and
+           are re-seeded below. */
+        if(!sameFloor||partyFollowLeaderMember())clearPartyFollow();
         /* S("c") is a status sample, not a visibility-table reset.  The
            2.5 server's C/CA/CD stream is incremental: CHAR_sendCSpecifiedObjindex
            only sends objects that changed since the server's last view.  If a
@@ -7518,8 +7551,8 @@
         recordServerPosition(point,floor);
         if(!prediction||!sameFloor||!onRoute)cancelPendingMove("服务器已校正位置。",point);
         else maybeReleaseMovePrediction(point);
-        app.floor=floor;
-        if(!sameFloor){clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear();app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.localMapValidatedFloor=-1;app.mapWindowHeaderWire="";app.npcMetadataByKey.clear();}
+        app.floor=floor;syncPartyFollowMembership();
+        if(!sameFloor){if(app.actorDetailRequests instanceof Set)app.actorDetailRequests.clear();clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear();app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.localMapValidatedFloor=-1;app.mapWindowHeaderWire="";app.npcMetadataByKey.clear();}
         /* Fixed NPC metadata is a read-only companion to the live C stream.
            Request it as soon as the server announces a floor so the first
            map frame can show stationary town/event NPCs even when their C
@@ -7631,7 +7664,7 @@
         app.status.encounterMin=stateNumber(parts[1]);app.status.encounterMax=stateNumber(parts[2]);break;
       }
       case "J": { const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:unescapeCharacterOption(parts[5]||""),memo:unescapeCharacterOption(parts[6]||"")};app.magic[slot]=entry;break; }
-      case "N": { const slot=decimal(kind.slice(1),0),target=app.party[slot]||{slot};if(Protocol.base62(parts[1]||"0")===0){app.party[slot]=null;}else{applyMaskedFields(parts,target,PARTY_FIELDS);target.slot=slot;app.party[slot]=target;}break; }
+      case "N": { const slot=decimal(kind.slice(1),0),target=app.party[slot]||{slot};if(Protocol.base62(parts[1]||"0")===0){app.party[slot]=null;}else{applyMaskedFields(parts,target,PARTY_FIELDS);target.slot=slot;app.party[slot]=target;}syncPartyFollowMembership();break; }
       case "I": receiveInventory([kind.slice(1),...parts.slice(1)].join("|"),false);break;
       case "W": { const slot=decimal(kind.slice(1),0);app.petSkills[slot]=parsePetSkillStatusTokens(parts.slice(1));break; }
       case "S": { const tokens=[kind.slice(1),...parts.slice(1)],skills=[];for(let offset=0;offset+2<=tokens.length;offset+=2){const id=stateNumber(tokens[offset],-1);if(id<0)continue;skills.push({id,level:stateNumber(tokens[offset+1])});}app.skills=skills;break; }
@@ -13906,7 +13939,7 @@
   window.addEventListener("pagehide",logoutBeforePageUnload,{capture:true});
   window.addEventListener("beforeunload",confirmPageUnload,{capture:true});
   function returnToLogin(message="已返回标题。"){
-    closeLocalDialog();closeTransport();app.logoutPending="";app.battle=false;app.mapLoading=false;returnToAccountLogin(message);status("离线");loginStatus(message,"error");
+    clearPartyFollow();if(app.actorDetailRequests instanceof Set)app.actorDetailRequests.clear();closeLocalDialog();closeTransport();app.logoutPending="";app.battle=false;app.mapLoading=false;returnToAccountLogin(message);status("离线");loginStatus(message,"error");
     setMusicMode("title",2);
   }
   function retryAfterDisconnect(){
@@ -14041,6 +14074,7 @@
           if(Number.isFinite(id))ids.push(id);
         }
         ids.forEach(id=>{
+          if(app.actorDetailRequests instanceof Set)app.actorDetailRequests.delete(id);
           const actor=app.actors.get(id);
           /* A live C character can temporarily occupy the same tile as a
              floor-wide metadata NPC.  Once NETPROC.CPP removes that live
@@ -14114,7 +14148,7 @@
       case "B": receiveBattlePacket(values[0]); $("battle-log").textContent+=`\n服务器：${values[0]||""}`; $("battle-log").scrollTop=$("battle-log").scrollHeight; break;
       case "FS": { const flags=Number(values[0])||0;setStatus("etcFlag",flags);setStatus("partyAllowed",Boolean(flags&1));setStatus("duelAllowed",Boolean(flags&4));renderFieldSettings();break; }
       case "HL": { const help=Number(values[0])?1:0;setStatus("helpFlag",help);addChat("战斗",help?"队伍求助已开启":"队伍求助已关闭");break; }
-      case "PR": { const request=Number(values[0])||0,result=Number(values[1])||0,ok=result===1;const message=ok?(request===1?"组队成功":"已离开队伍"):(request===1?"组队请求失败":"离队失败");setStatus("partyResult",`${request}:${result}`);addChat("队伍",message);if(ok&&request===0)app.party.fill(null);renderPartyFixed();break; }
+      case "PR": { const request=Number(values[0])||0,result=Number(values[1])||0,ok=result===1;const message=ok?(request===1?"组队成功":"已离开队伍"):(request===1?"组队请求失败":"离队失败");setStatus("partyResult",`${request}:${result}`);addChat("队伍",message);if(ok&&request===0){app.party.fill(null);clearPartyFollow();}renderPartyFixed();break; }
       case "KS": { const petarray=Number(values[0]),ok=Number(values[1])===1;setStatus("battlePet",`${petarray}:${ok?1:0}`);if(ok){app.selectedPet=petarray>=0?petarray:-1;addChat("宠物",petarray>=0?`已切换到宠物 ${petarray+1}`:"已收回出战宠物");}else addChat("宠物","出战/切换失败，服务器拒绝了这只宠物。");renderPets();renderBattle();break; }
       case "PS": { const ok=Number(values[0])===1,petindex=Number(values[1])||0,skillindex=Number(values[2])||0,toindex=Number(values[3]);setStatus("petSkill",`${ok?1:0}:${petindex}:${skillindex}:${toindex}`);addChat("宠物技能",ok?`宠物 ${petindex+1} 使用技能 ${skillindex}`:"宠物技能使用失败");renderPets();break; }
       case "SKUP": setStatus("skillPoints",values[0]); break;
@@ -14411,6 +14445,8 @@
   /* A fresh field session must never inherit a pending warp curtain. */
   cancelMapFloorTransition();
   enterWorld=function(){clearBattlePlayerChoiceTimer(app.battleState);clearBattlePetChoiceTimer(app.battleState);battleClearCommandPending(app.battleState);window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;app.movePredictionSyncRequested=false;app.movePredictionSyncAttempts=0;app.autoMapData=null;app.autoMapFloor=-1;app.autoMapLoading=null;app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;app.localMapValidatedFloor=-1;app.mapWindowHeaderWire="";app.talkConversation=null;app.trade=null;app.serverPositionVersion=0;app.serverPositionReceivedAt=0;app.movePredictionServerVersion=0;app.serverPositionSampleVersion=0;app.serverPositionSampleFloor=-1;app.serverPositionSample=[0,0];app.worldBackBufferHasFrame=false;const result=enterWorldWithoutBattleTimers.apply(this,arguments);Object.assign(app.battleState,{myMp:0,turn:0,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0});return result;};
+  const enterWorldWithPartyFollowReset=enterWorld;
+  enterWorld=function(){clearPartyFollow();if(app.actorDetailRequests instanceof Set)app.actorDetailRequests.clear();return enterWorldWithPartyFollowReset.apply(this,arguments);};
   /* Re-entry can happen after logout/reconnect without rebuilding the page;
      make the map transition lifecycle independent of the battle/field reset
      wrapper above. */
@@ -14836,6 +14872,7 @@
      scene.  This is intentionally separate from cancelPendingMove(), which
      is user-visible and rewrites the position to a server correction. */
   function interruptWorldMovementForBattle(){
+    clearPartyFollow();
     app.moveWireGeneration=Number(app.moveWireGeneration||0)+1;
     window.clearTimeout(app._movePredictionTimer);app._movePredictionTimer=0;
     window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0;
@@ -15011,6 +15048,7 @@
       const actor=parseLegacyActorRecord(record);if(!actor)continue;
       ensureFieldActorAnimation(actor);
       const id=Number(actor.id);if(!Number.isFinite(id))continue;
+      if(app.actorDetailRequests instanceof Set)app.actorDetailRequests.delete(id);
       /* C is an incremental visibility packet.  Keep a malformed/out-of-floor
          object from becoming a visual escape route or from being used as a
          false collision target. */
@@ -15081,7 +15119,7 @@
        next tile boundary, which is why walking near an NPC made it vanish.
        Floor changes clear the table in receiveSystemState(S:C), and CD is the
        authoritative removal path, so retain all records not mentioned here. */
-    updateHUD();renderPets();renderWorld();scheduleWorldAnimation();
+    syncPartyFollowMembership();updateHUD();renderPets();renderWorld();scheduleWorldAnimation();
   }
   function finalizePendingMove(){
     if(!app.pendingMove)return;
@@ -15202,12 +15240,145 @@
     app.pendingMove=false;app.pendingMoveAt=0;app.pendingMoveFrom=null;app.pendingMoveTarget=null;app.moveQueue=[];app.moveSentSteps=0;window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0;app.moveWirePending=false;app.moveWireTarget=null;app.moveWireRoute="";app.moveLastWireSentAt=0;app.moveLastWireSteps=0;app.moveTarget=null;app.walkAnimation=null;app._walkNextStartAt=0;app.walkCycleStartedAt=0;clearMovePrediction();clearMapEventRetry();
     if(message)setWorldState(message,"error");updateHUD();renderWorld(true);renderWorldOverlay();
   }
+  function partyFollowOwnSlotIndex(){
+    const members=Array.isArray(app.party)?app.party:[],pcId=Number(app.pc?.id),actorId=Number(app.playerActorId);
+    const ownId=Number.isFinite(pcId)&&pcId!==0?pcId:Number.isFinite(actorId)?actorId:NaN;
+    if(Number.isFinite(ownId)){
+      const index=members.findIndex(member=>member&&Number(member.id)===ownId);
+      if(index>=0)return index;
+    }
+    const ownName=String(app.character||app.pc?.name||"").trim();
+    return ownName?members.findIndex(member=>member&&String(member.name||"").trim()===ownName):-1;
+  }
+  function partyFollowLeaderMember(){
+    const ownSlot=partyFollowOwnSlotIndex(),leader=Array.isArray(app.party)?app.party[0]:null;
+    return ownSlot>0&&leader&&Number.isFinite(Number(leader.id))?leader:null;
+  }
+  function currentWorldWalkAnimation(){return app.walkAnimation||app.partyFollowAnimation||null;}
+  function clearPartyFollow(){
+    const wasMoving=Boolean(app.partyFollowAnimation);
+    app.partyFollowLeaderId=null;app.partyFollowLastLeaderPoint=null;app.partyFollowQueue=[];app.partyFollowAnimation=null;
+    if(wasMoving){
+      const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
+      if(actor){actor.x=app.position[0];actor.y=app.position[1];actor.walking=false;setLocalActorAction(actor,3);}
+    }
+  }
+  function syncPartyFollowMembership(seedPoint=null){
+    const leader=partyFollowLeaderMember();
+    if(!leader){
+      if(app.partyFollowLeaderId!==null||app.partyFollowAnimation||app.partyFollowQueue?.length)clearPartyFollow();
+      return null;
+    }
+    const leaderId=Number(leader.id);
+    if(Number(app.partyFollowLeaderId)!==leaderId){clearPartyFollow();app.partyFollowLeaderId=leaderId;}
+    if(!Array.isArray(app.partyFollowLastLeaderPoint)){
+      const actor=app.actors.get(leaderId),point=Array.isArray(seedPoint)?seedPoint:actor?[actor.x,actor.y]:null;
+      if(Array.isArray(point)&&point.length>=2)app.partyFollowLastLeaderPoint=[Number(point[0])||0,Number(point[1])||0];
+    }
+    return leader;
+  }
+  function partyFollowGridPath(from,target){
+    if(!Array.isArray(from)||!Array.isArray(target))return [];
+    let x=Number(from[0])||0,y=Number(from[1])||0;
+    const tx=Number(target[0])||0,ty=Number(target[1])||0,path=[];
+    /* correctCharMovePoint() repairs a dropped two-cell CA sample before it
+       enters ACTION::bufGx/bufGy.  Walk the same eight-direction grid here;
+       the generous guard only protects the page from malformed coordinates. */
+    for(let guard=0;guard<512&&(x!==tx||y!==ty);guard++){
+      x+=Math.sign(tx-x);y+=Math.sign(ty-y);path.push([x,y]);
+    }
+    return x===tx&&y===ty?path:[];
+  }
+  function queuePartyFollowPoint(point){
+    if(!Array.isArray(point)||isInsideFloor(point[0],point[1],app.floor)===false)return false;
+    const queue=Array.isArray(app.partyFollowQueue)?app.partyFollowQueue:(app.partyFollowQueue=[]);
+    const anchor=queue.length?queue[queue.length-1]:app.partyFollowAnimation?.to||app.position;
+    for(const step of partyFollowGridPath(anchor,point)){
+      const tail=queue.length?queue[queue.length-1]:app.partyFollowAnimation?.to||app.position;
+      if(!sameMovePoint(tail,step))queue.push(step);
+    }
+    return true;
+  }
+  function partyFollowSpeedRate(){
+    const buffered=(Array.isArray(app.partyFollowQueue)?app.partyFollowQueue.length:0)+(app.partyFollowAnimation?1:0);
+    /* partyMoveProc() accelerates the map camera with this exact backlog
+       ladder so a delayed CA batch catches up without teleporting. */
+    return buffered>5?2:buffered>=4?1.6:buffered>=2?1.2:1;
+  }
+  function startNextPartyFollowMove(scheduledAt=0){
+    if(app.phase!=="world"||app.battle||app.walkAnimation||app.partyFollowAnimation||!partyFollowLeaderMember())return false;
+    const queue=Array.isArray(app.partyFollowQueue)?app.partyFollowQueue:[];
+    while(queue.length&&sameMovePoint(queue[0],app.position))queue.shift();
+    if(!queue.length)return false;
+    const speedRate=partyFollowSpeedRate(),from=[Number(app.position[0])||0,Number(app.position[1])||0],target=queue.shift();
+    if(isInsideFloor(target[0],target[1],app.floor)===false){clearPartyFollow();return false;}
+    const direction=directionFor(target[0]-from[0],target[1]-from[1]);
+    if(direction<0)return startNextPartyFollowMove(scheduledAt);
+    const duration=Math.max(1,moveStepDuration(from,target)/speedRate),wallNow=performance.now();
+    const startedAt=Number(scheduledAt)>0?Math.max(Number(scheduledAt),wallNow-duration):wallNow;
+    app.partyFollowAnimation={kind:"party-follow",from,to:[target[0],target[1]],direction,startedAt,duration};
+    app.direction=direction;app.mapEffectMoveDir=direction;
+    const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
+    if(actor){actor.walking=true;actor.direction=direction;actor.wireDirection=serverDirectionFromClient(direction);setLocalActorAction(actor,4);}
+    scheduleWorldAnimation();return true;
+  }
+  function finalizePartyFollowMove(){
+    const animation=app.partyFollowAnimation;if(!animation)return;
+    const point=[Number(animation.to[0])||0,Number(animation.to[1])||0],nextAt=Number(animation.startedAt||0)+Number(animation.duration||0);
+    app.position=point;
+    /* NPC_Bus_walk() calls CHAR_walk() for every passenger in the same
+       successful leader step, so this locally propagated grid is also the
+       server's authoritative owner grid even though 2.5 suppresses the
+       passenger's own CA echo.  Keep the interaction anchor aligned without
+       pretending that a fresh packet was received (ReceivedAt/version stay
+       untouched and an old sample still gets refreshed before NPC talk). */
+    app.serverPosition=[...point];app.partyFollowAnimation=null;
+    installValidatedLocalMapWindow(point[0],point[1]);
+    const actor=app.playerActorId!==null?app.actors.get(app.playerActorId):[...app.actors.values()].find(actorIsOwn);
+    if(actor){actor.x=point[0];actor.y=point[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);}
+    const continued=startNextPartyFollowMove(nextAt);
+    if(!continued&&actor){actor.walking=false;setLocalActorAction(actor,3);}
+    updateHUD();if(!continued)renderWorld(true);renderWorldOverlay();
+  }
+  function observePartyLeaderAction(id,action,from,target){
+    if(Number(action)!==1||!Array.isArray(target))return false;
+    const leader=partyFollowLeaderMember();if(!leader||Number(leader.id)!==Number(id))return false;
+    const leaderId=Number(leader.id);
+    if(Number(app.partyFollowLeaderId)!==leaderId){clearPartyFollow();app.partyFollowLeaderId=leaderId;}
+    const previous=Array.isArray(app.partyFollowLastLeaderPoint)?app.partyFollowLastLeaderPoint:Array.isArray(from)?from:null;
+    if(!previous){app.partyFollowLastLeaderPoint=[Number(target[0])||0,Number(target[1])||0];return false;}
+    if(sameMovePoint(previous,target))return false;
+    const leaderPath=partyFollowGridPath(previous,target);
+    /* The next party member receives every grid the leader has just vacated,
+       never the leader's new endpoint.  That one-cell delay is the defining
+       behavior of MAP.CPP::partyMoveProc(). */
+    const vacated=[previous,...leaderPath.slice(0,-1)];
+    for(const point of vacated)queuePartyFollowPoint(point);
+    app.partyFollowLastLeaderPoint=[Number(target[0])||0,Number(target[1])||0];
+    startNextPartyFollowMove();return true;
+  }
+  function requestActorDetails(id){
+    const actorId=Number(id);if(!Number.isFinite(actorId)||actorId<0)return false;
+    const pending=app.actorDetailRequests instanceof Set?app.actorDetailRequests:(app.actorDetailRequests=new Set());
+    if(pending.has(actorId))return false;
+    pending.add(actorId);
+    /* lssproto_CA_recv() cannot apply a movement/action record without the
+       corresponding character ACTION.  The native 2.5 client sends C(id)
+       once and deliberately skips that CA; the following C record supplies
+       charType, graphic, name and the initial grid before later CA updates. */
+    send("C",[actorId]).catch(error=>{pending.delete(actorId);reportError(error);});
+    return true;
+  }
   function receiveActions(text) {
     for(const record of String(text||"").split(",")){
       const parts=record.split("|");if(parts.length<5)continue;
-      const id=Protocol.base62(parts[0]||"0"),wireDirection=stateNumber(parts[4]),existing=app.actors.get(id),actor=existing||{id,kind:"character",objectType:1};
+      const id=Protocol.base62(parts[0]||"0"),wireDirection=stateNumber(parts[4]),existing=app.actors.get(id);
+      if(!existing){requestActorDetails(id);continue;}
+      const actor=existing;
       const action=stateNumber(parts[3]),x=stateNumber(parts[1]),y=stateNumber(parts[2]);
       if(isInsideFloor(x,y,app.floor)===false)continue;
+      const previousPoint=existing?[Number(existing.x)||0,Number(existing.y)||0]:null;
+      observePartyLeaderAction(id,action,previousPoint,[x,y]);
       /* PATTERN.CPP resets ATR_CHR_TIM/ATR_CHR_CNT only when the action,
          facing, or graphic changes.  GMSV may repeat an unchanged CA record
          while the character remains visible; restarting the browser clock on
@@ -15254,7 +15425,13 @@
         /* CHAR_AFTERWALK emits CHAR_ACTWARP (31) at the old coordinate when
            a queued route hits an obstacle.  Unlike a stale action-1 snapshot
            this is authoritative and must cancel the optimistic route. */
-        if(action===31){cancelPendingMove("此方向无法通行。",[x,y]);}
+        if(partyFollowLeaderMember()){
+          /* Some 2.5 server builds additionally publish the passenger's own
+             CA coordinate.  It is newer than the locally propagated leader
+             path, so rebase instead of letting the old animation snap the
+             player back when it completes. */
+          clearPartyFollow();app.position=[x,y];app.direction=clientDirectionFromServer(wireDirection);actor.x=x;actor.y=y;actor.direction=app.direction;actor.wireDirection=wireDirection;actor.walking=action===1;syncPartyFollowMembership();
+        }else if(action===31){cancelPendingMove("此方向无法通行。",[x,y]);}
         else if(!localMovePredictionActive()){app.position=[x,y];app.direction=clientDirectionFromServer(wireDirection);clearMovePrediction();}
         else {maybeReleaseMovePrediction([x,y]);if(localMovePredictionActive()){actor.x=app.position[0];actor.y=app.position[1];actor.direction=app.direction;actor.wireDirection=serverDirectionFromClient(app.direction);}else{app.position=[x,y];app.direction=clientDirectionFromServer(wireDirection);}}
       }
@@ -15292,8 +15469,8 @@
     const lx=Number(x)-Number(origin[0]||0),ly=Number(y)-Number(origin[1]||0);
     return [Number(render.origin_x??fallback.render.origin_x)+(lx+ly)*Number(step[0]??32),Number(render.origin_y??fallback.render.origin_y)+(ly-lx)*Number(step[1]??24)];
   }
-  function walkProgress(now=performance.now()){const animation=app.walkAnimation;if(!animation)return 0;return Math.max(0,Math.min(1,(now-animation.startedAt)/animation.duration));}
-  function viewPosition(){const animation=app.walkAnimation;if(!animation)return app.position;const progress=walkProgress();return [animation.from[0]+(animation.to[0]-animation.from[0])*progress,animation.from[1]+(animation.to[1]-animation.from[1])*progress];}
+  function walkProgress(now=performance.now(),animation=currentWorldWalkAnimation()){if(!animation)return 0;return Math.max(0,Math.min(1,(now-animation.startedAt)/animation.duration));}
+  function viewPosition(){const animation=currentWorldWalkAnimation();if(!animation)return app.position;const progress=walkProgress(performance.now(),animation);return [animation.from[0]+(animation.to[0]-animation.from[0])*progress,animation.from[1]+(animation.to[1]-animation.from[1])*progress];}
   function tilePoint(x,y){const canvas=$("world"),view=viewPosition(),px=view[0],py=view[1],center=mapPixel(px,py),point=mapPixel(x,y);if(center&&point)return [canvas.width/2+point[0]-center[0],canvas.height/2+point[1]-center[1]];return [canvas.width/2+(x-px+y-py)*32,canvas.height/2+(y-py-x+px)*24];}
   function drawBitmapAt(ctx,image,info,anchor,scale=1){if(!image?.complete||!image.naturalWidth)return false;const x=anchor[0]+Number(info?.xoffset??info?.x??0)*scale,y=anchor[1]+Number(info?.yoffset??info?.y??0)*scale;ctx.drawImage(image,x,y,image.naturalWidth*scale,image.naturalHeight*scale);return true;}
   function drawActorSpeech(ctx,actor,point){
@@ -15353,7 +15530,7 @@
      keep the same contract here and paint actors into the world canvas. */
   function renderActorLayer(actors,canvas=$("world")){
     const ctx=getWorld2DContext(canvas);if(!canvas||!ctx)return;
-    const animation=app.walkAnimation,now=performance.now(),progress=animation?walkProgress(now):1;
+    const animation=currentWorldWalkAnimation(),now=performance.now(),progress=animation?walkProgress(now,animation):1;
     for(const actor of actors){
       const isSelf=actor.name===app.character||actor.id===app.playerActorId;
       const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:4}):actor;
@@ -15413,7 +15590,7 @@
   }
   function renderSceneActorsAndParts(actors,parts,canvas=$("world")){
     const ctx=getWorld2DContext(canvas);if(!canvas||!ctx)return;
-    const animation=app.walkAnimation,now=performance.now(),progress=animation?walkProgress(now):1,actorItems=[];
+    const animation=currentWorldWalkAnimation(),now=performance.now(),progress=animation?walkProgress(now,animation):1,actorItems=[];
     for(const actor of actors){
       const isSelf=actor.name===app.character||actor.id===app.playerActorId;
       const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:4}):actor;
@@ -15933,15 +16110,18 @@
       app._worldAnimationFrame=0;
       app._worldAnimationTimer=0;
       const now=Number.isFinite(timestamp)?timestamp:performance.now();
-      const walking=Boolean(app.walkAnimation),actionActive=!walking&&fieldActorAnimationActive(now);
+      const animation=currentWorldWalkAnimation(),walking=Boolean(animation),actionActive=!walking&&fieldActorAnimationActive(now);
       if(app.phase!=="world"||(!walking&&!actionActive)){renderWorldOverlay();return;}
-      if(app.walkAnimation&&walkProgress(now)>=1){
-        /* finalizePendingMove() may install the next tile immediately.  Let
-           that new animation own its handle; do not schedule a second one
-           from this boundary callback. */
+      if(animation&&walkProgress(now,animation)>=1){
+        /* Either local W prediction or partyMoveProc() may install the next
+           tile immediately.  Let that new animation own its handle; do not
+           schedule a second one from this boundary callback. */
         app._worldAnimationTicking=true;
-        try{finalizePendingMove();}finally{app._worldAnimationTicking=false;}
-        if(app.phase==="world"&&!app.walkAnimation&&fieldActorAnimationActive(now))scheduleWorldAnimation();
+        try{
+          if(animation===app.partyFollowAnimation)finalizePartyFollowMove();
+          else finalizePendingMove();
+        }finally{app._worldAnimationTicking=false;}
+        if(app.phase==="world"&&!currentWorldWalkAnimation()&&fieldActorAnimationActive(now))scheduleWorldAnimation();
         return;
       }
       /* Walking needs every presentation sample for its fractional tile
@@ -15956,7 +16136,7 @@
         app._worldAnimationTicking=true;
         try{renderWorld(walking);}finally{app._worldAnimationTicking=false;}
       }
-      if(app.phase!=="world"||(!app.walkAnimation&&!fieldActorAnimationActive(now)))return;
+      if(app.phase!=="world"||(!currentWorldWalkAnimation()&&!fieldActorAnimationActive(now)))return;
       if(useRAF){
         app._worldAnimationFrame=window.requestAnimationFrame(tick);
       }else{
@@ -18508,7 +18688,7 @@
        31 Hz during that idle window starves input and makes the next walk
        appear slower (especially on a phone).  The RAF owns interpolation;
        keep this watchdog limited to an actually moving/pending tile. */
-    if(app.phase==="world"&&(app.walkAnimation||app.pendingMove))renderWorld();
+    if(app.phase==="world"&&(currentWorldWalkAnimation()||app.pendingMove))renderWorld();
     if(app.battle){
       const state=app.battleState||{},now=Date.now();
       /* Retire a completed B movie before deciding whether this watchdog
