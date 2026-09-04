@@ -10889,6 +10889,10 @@
      the hold while the damage callback still lands at the first contact. */
   const BATTLE_CONTACT_HOLD_NORMAL_TICKS=8;
   const BATTLE_CONTACT_HOLD_HEAVY_TICKS=32;
+  /* Exact ATR_CHR_NO branches from oft.cpp::damage() VCT12/VCT14. */
+  const BATTLE_DAMAGE_FIXED_GRAPHICS=new Set([100466,100467,100468,100469,100470,100471,15323,10812,15527,15543,15575,15607]);
+  const BATTLE_DAMAGE_SLOW_SLIDE_GRAPHICS=new Set([100275,100276,100277,100278]);
+  const BATTLE_DAMAGE_SLOW_SLIDE_ALWAYS_GRAPHIC=100393;
   /* GEMINI.CPP indexes DELTA_TBL in fixed point: ATR_SPD=32 advances a
      cardinal direction by 0x800/0x100 = 8 pixels per process tick.  The
      preserved 2.5 battle loop runs once every BATTLE_PROC_TICK_MS, so
@@ -10937,18 +10941,21 @@
     const octant=BATTLE_RADAR_DIRECTIONS.indexOf((((Number(direction)||0)%8)+8)%8),angle=(octant<0?0:octant)*Math.PI/4,length=Math.max(0,Number(distance)||0);
     return [Math.cos(angle)*length,Math.sin(angle)*length];
   }
-  function battleLegacyHitProfile(flags=0){
-    const value=Number(flags)||0,kaishin=Boolean(value&(BATTLE_FLAG.critical|BATTLE_FLAG.death)),longHitStop=kaishin||Boolean(value&BATTLE_FLAG.reflect),hitStopTicks=longHitStop?BATTLE_CONTACT_HOLD_HEAVY_TICKS:BATTLE_CONTACT_HOLD_NORMAL_TICKS;
+  function battleLegacyHitProfile(flags=0,graphic=0,damageAction=true){
+    const value=Number(flags)||0,sprite=Number(graphic)||0,kaishin=Boolean(value&(BATTLE_FLAG.critical|BATTLE_FLAG.death)),longHitStop=kaishin||Boolean(value&BATTLE_FLAG.reflect),hitStopTicks=longHitStop?BATTLE_CONTACT_HOLD_HEAVY_TICKS:BATTLE_CONTACT_HOLD_NORMAL_TICKS,fixedPosition=BATTLE_DAMAGE_FIXED_GRAPHICS.has(sprite),slowSlide=!fixedPosition&&(sprite===BATTLE_DAMAGE_SLOW_SLIDE_ALWAYS_GRAPHIC||(damageAction&&BATTLE_DAMAGE_SLOW_SLIDE_GRAPHICS.has(sprite)));
     /* VCT11 alternates one SPD=16 step around the contact point.  VCT12 then
        starts at SPD=28 for an ordinary hit (35 for a critical/lethal hit)
        and subtracts two after every process tick.  ATT_REFLEX independently
        forces the long VCT11 stop, but does not set ATR_KAISHIN and therefore
        still starts VCT12 at 28.  ATT_AKO1/2 are not KAISHIN either. */
-    const decelStart=kaishin?35:28,speeds=[];
-    for(let speed=decelStart;speed>=0;speed-=2)speeds.push(speed);
+    const decelStart=kaishin?35:28,decelStep=slowSlide?1:2,speeds=[];
+    for(let speed=decelStart;speed>=0;speed-=decelStep)speeds.push(speed);
     const speedToPixels=speed=>Math.max(0,Number(speed)||0)/4;
-    const knockbackStepDistance=speedToPixels(16),knockbackDistance=0,decelDistance=speeds.reduce((total,speed)=>total+speedToPixels(speed),0);
-    return {kaishin,longHitStop,hitStopTicks,knockbackDuration:hitStopTicks*BATTLE_PROC_TICK_MS,decelSpeeds:speeds,decelDuration:speeds.length*BATTLE_PROC_TICK_MS,knockbackAlternates:true,knockbackStepDistance,knockbackDistance,decelDistance,totalDistance:decelDistance,returnSpeed:10,returnStopDistance:2};
+    /* Wood/stone props burn down SPD without gemini(), while pet061..064 in
+       ANIM_DAMAGE and pet065 use the old backward-animation branch: they do
+       move, keep the current action looping, and decrement SPD by one. */
+    const knockbackStepDistance=speedToPixels(16),knockbackDistance=0,decelDistance=fixedPosition?0:speeds.reduce((total,speed)=>total+speedToPixels(speed),0);
+    return {kaishin,longHitStop,fixedPosition,slowSlide,decelAnimationLoop:slowSlide,hitStopTicks,knockbackDuration:hitStopTicks*BATTLE_PROC_TICK_MS,decelStep,decelSpeeds:speeds,decelDuration:speeds.length*BATTLE_PROC_TICK_MS,knockbackAlternates:true,knockbackStepDistance,knockbackDistance,decelDistance,totalDistance:decelDistance,returnSpeed:10,returnStopDistance:2};
   }
   function battleContactHoldDuration(flags=0,amount=null,petAmount=null){
     const value=Number(flags)||0,hasDamageInfo=amount!==null&&amount!==undefined||petAmount!==null&&petAmount!==undefined;
@@ -11123,19 +11130,21 @@
     return {normal,counters,counterStartOffset,counterEndOffset:cursor,returnStartOffset,normalAttackEndOffset};
   }
   function battleHitMotionSpec(target,direction,flags=0){
-    const id=Number(target),incoming=Number.isFinite(Number(direction))?Number(direction):battleSlotDirection(id),hurtDirection=(incoming+4)&7;
-    const profile=battleLegacyHitProfile(flags),vct10Duration=BATTLE_PROC_TICK_MS,pauseDuration=16*BATTLE_PROC_TICK_MS;
-    const returnDuration=battleLegacyTravelDuration(profile.totalDistance,profile.returnSpeed,profile.returnStopDistance),duration=vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration+returnDuration;
+    const id=Number(target),incoming=Number.isFinite(Number(direction))?Number(direction):battleSlotDirection(id),hurtDirection=(incoming+4)&7,isGuard=Boolean(Number(flags)&BATTLE_FLAG.guard),graphic=Number(battleFindParticipant(id)?.graphic)||0;
+    const profile=battleLegacyHitProfile(flags,graphic,!isGuard),vct10Duration=BATTLE_PROC_TICK_MS,pauseDuration=16*BATTLE_PROC_TICK_MS;
+    /* Even an immobile wood/stone actor executes one VCT14 process call at
+       its formation point before returning to VCT0. */
+    const returnDuration=profile.fixedPosition?BATTLE_PROC_TICK_MS:battleLegacyTravelDuration(profile.totalDistance,profile.returnSpeed,profile.returnStopDistance),duration=vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration+returnDuration;
     const octant=BATTLE_RADAR_DIRECTIONS.indexOf(((incoming%8)+8)%8),angle=(octant<0?0:octant)*Math.PI/4,knockbackX=Math.cos(angle)*profile.knockbackDistance,knockbackY=Math.sin(angle)*profile.knockbackDistance,knockbackStepX=Math.cos(angle)*profile.knockbackStepDistance,knockbackStepY=Math.sin(angle)*profile.knockbackStepDistance,decelX=Math.cos(angle)*profile.decelDistance,decelY=Math.sin(angle)*profile.decelDistance;
     if(Number(flags)&BATTLE_FLAG.guard){
       const guardTiming=battleActorAnimationTiming(id,hurtDirection,10),duration=Math.max(180,Number(guardTiming?.duration)||240);
       /* Guard still enters VCT11..13 in the native client when a damage
          tuple accompanies the guard flag.  Keep the existing `kind` for
          callers while carrying the same explicit movement phases. */
-      return {kind:"guard",actor:id,target:id,direction:incoming,hurtDirection,guard:true,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX,knockbackStepY,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,Number(guardTiming?.duration)||0)};
+      return {kind:"guard",actor:id,target:id,direction:incoming,hurtDirection,guard:true,fixedPosition:profile.fixedPosition,slowSlide:profile.slowSlide,decelAnimationLoop:profile.decelAnimationLoop,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX,knockbackStepY,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,Number(guardTiming?.duration)||0)};
     }
     const hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),hurtAnimationDuration=Math.max(BATTLE_PROC_TICK_MS,Number(hurtTiming?.duration)||240);
-    return {kind:"hit",target:id,direction:incoming,hurtDirection,hurtAnimationDuration,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX,knockbackStepY,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,hurtAnimationDuration)};
+    return {kind:"hit",target:id,direction:incoming,hurtDirection,hurtAnimationDuration,fixedPosition:profile.fixedPosition,slowSlide:profile.slowSlide,decelAnimationLoop:profile.decelAnimationLoop,vct10Duration,knockbackDuration:profile.knockbackDuration,decelDuration:profile.decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX,knockbackStepY,pauseDuration,returnDuration,knockbackX,knockbackY,decelX,decelY,knockbackDistance:profile.knockbackDistance,decelDistance:profile.decelDistance,deathStartOffset:vct10Duration+profile.knockbackDuration+profile.decelDuration+pauseDuration,duration:Math.max(duration,hurtAnimationDuration)};
   }
   function battleCommitRevive(state,target,hp){
     if(!state||!Number.isFinite(Number(target))||Number(target)<0)return;
@@ -11178,7 +11187,7 @@
        it.  Do not enqueue a second lethal movie from a late duplicate BC. */
     if(state.deathStartedAt instanceof Map&&state.deathStartedAt.has(id))return;
     const incoming=Number.isFinite(Number(directionHint))?Number(directionHint):list.slice().reverse().find(item=>item.kind==="hit"&&Number(item.target)===id&&Math.abs((Number(item.startedAt)||now)+(Number(item.delay)||0)-startAt)<360)?.direction;
-    const direction=Number.isFinite(Number(incoming))?Number(incoming):battleSlotDirection(id),hurtDirection=(direction+4)&7,profile=battleLegacyHitProfile(BATTLE_FLAG.death),hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),deadTiming=battleActorAnimationTiming(id,battleSlotDirection(id),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240),vct10Duration=BATTLE_PROC_TICK_MS,pauseDuration=16*BATTLE_PROC_TICK_MS,knockbackDuration=profile.knockbackDuration,decelDuration=profile.decelDuration,deathStartOffset=vct10Duration+knockbackDuration+decelDuration+pauseDuration;
+    const direction=Number.isFinite(Number(incoming))?Number(incoming):battleSlotDirection(id),hurtDirection=(direction+4)&7,graphic=Number(battleFindParticipant(id)?.graphic)||0,profile=battleLegacyHitProfile(BATTLE_FLAG.death,graphic,true),hurtTiming=battleActorAnimationTiming(id,hurtDirection,1),deadTiming=battleActorAnimationTiming(id,battleSlotDirection(id),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240),vct10Duration=BATTLE_PROC_TICK_MS,pauseDuration=16*BATTLE_PROC_TICK_MS,knockbackDuration=profile.knockbackDuration,decelDuration=profile.decelDuration,deathStartOffset=vct10Duration+knockbackDuration+decelDuration+pauseDuration;
     /* A lethal DAMAGE movie does not stop at the displaced VCT13 pose.  The
        native actor enters VCT_NO_DIE (250), walks back to its saved formation
        point at SPD=4, then advances to VCT_NO_DIE+1 (251) for the non-looping
@@ -11186,7 +11195,7 @@
        in the back buffer.  Keep `deathStartOffset` as the end of VCT13 for
        compatibility with the hit timeline; the explicit return/dead offsets
        below model the two additional native phases. */
-    const returnSpeed=4,returnStopDistance=1,returnDuration=battleLegacyTravelDuration(profile.totalDistance,returnSpeed,returnStopDistance),deadStartOffset=deathStartOffset+returnDuration;
+    const returnSpeed=4,returnStopDistance=1,returnDuration=profile.fixedPosition?BATTLE_PROC_TICK_MS:battleLegacyTravelDuration(profile.totalDistance,returnSpeed,returnStopDistance),deadStartOffset=deathStartOffset+returnDuration;
     const requested=Math.max(820,Number(duration)||1000),totalDuration=Math.max(requested,deadStartOffset+deadDuration);
     const octant=BATTLE_RADAR_DIRECTIONS.indexOf(((direction%8)+8)%8),angle=(octant<0?0:octant)*Math.PI/4,knockbackDistance=profile.knockbackDistance,decelDistance=profile.decelDistance;
     if(!(state.deathStartedAt instanceof Map))state.deathStartedAt=new Map();
@@ -11210,7 +11219,7 @@
        still carry the old `returnDuration:0` shape, so battleMotionValue also
        accepts that fallback; new deaths expose the native return duration in
        both aliases for callers that inspect the motion directly. */
-    battlePushMotion(list,{kind:"death",target:id,direction,hurtDirection,startedAt:now,delay:startAt-now,duration:totalDuration,vct10Duration,knockbackDuration,decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX:Math.cos(angle)*profile.knockbackStepDistance,knockbackStepY:Math.sin(angle)*profile.knockbackStepDistance,pauseDuration,returnDuration,returnToOriginDuration:returnDuration,returnSpeed,returnStopDistance,deathStartOffset,deadStartOffset,deadDuration,knockbackDistance,decelDistance,knockbackX:Math.cos(angle)*knockbackDistance,knockbackY:Math.sin(angle)*knockbackDistance,decelX:Math.cos(angle)*decelDistance,decelY:Math.sin(angle)*decelDistance,displacedOffsetX:displacedOffset.dx,displacedOffsetY:displacedOffset.dy,finalOffsetX:finalOffset.dx,finalOffsetY:finalOffset.dy,blocking:false,presentationTail:true});
+    battlePushMotion(list,{kind:"death",target:id,direction,hurtDirection,startedAt:now,delay:startAt-now,duration:totalDuration,fixedPosition:profile.fixedPosition,slowSlide:profile.slowSlide,decelAnimationLoop:profile.decelAnimationLoop,vct10Duration,knockbackDuration,decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX:Math.cos(angle)*profile.knockbackStepDistance,knockbackStepY:Math.sin(angle)*profile.knockbackStepDistance,pauseDuration,returnDuration,returnToOriginDuration:returnDuration,returnSpeed,returnStopDistance,deathStartOffset,deadStartOffset,deadDuration,knockbackDistance,decelDistance,knockbackX:Math.cos(angle)*knockbackDistance,knockbackY:Math.sin(angle)*knockbackDistance,decelX:Math.cos(angle)*decelDistance,decelY:Math.sin(angle)*decelDistance,displacedOffsetX:displacedOffset.dx,displacedOffsetY:displacedOffset.dy,finalOffsetX:finalOffset.dx,finalOffsetY:finalOffset.dy,blocking:false,presentationTail:true});
     if(state.result)queueBattleResult(state);else if(state.exitPending)queueBattleWorldExit(state);
   }
   /* ATT_DAMAGE (BD) uses VCT78/79 rather than DAMAGE()'s VCT10..14 chain.
@@ -11381,7 +11390,7 @@
             else {const amount=battleNativeTickProgress(phaseElapsed,knockback);value.dx+=knockbackX*amount;value.dy+=knockbackY*amount;}
             value.action=1;value.animationLoop=false;value.animationStartedAt=performance.now()-Math.max(0,phaseElapsed);
           }else if(elapsed<decelEnd&&decel>0){
-            phaseElapsed=elapsed-knockbackEnd;const amount=battleNativeSpeedProgress(phaseElapsed,decel,motion.decelSpeeds);value.dx+=knockbackX+decelX*amount;value.dy+=knockbackY+decelY*amount;value.action=1;value.animationLoop=false;value.animationStartedAt=performance.now()-Math.max(0,vct10+phaseElapsed);
+            phaseElapsed=elapsed-knockbackEnd;const amount=battleNativeSpeedProgress(phaseElapsed,decel,motion.decelSpeeds);value.dx+=knockbackX+decelX*amount;value.dy+=knockbackY+decelY*amount;value.action=1;value.animationLoop=Boolean(motion.decelAnimationLoop);value.animationStartedAt=performance.now()-Math.max(0,vct10+phaseElapsed);
           }else if(elapsed<pauseEnd){
             value.dx+=totalX;value.dy+=totalY;value.action=1;value.animationLoop=false;value.animationStartedAt=performance.now()-Math.max(0,elapsed);
           }else if(returnDuration>0&&elapsed<pauseEnd+returnDuration){

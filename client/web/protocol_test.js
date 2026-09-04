@@ -4103,6 +4103,7 @@ const battleContactTiming = new Function("BATTLE_FLAG","BATTLE_PROC_TICK_MS","BA
   [6,7,0,1,2,3,4,5],
 );
 const nativeNormalHitProfile=battleContactTiming.battleLegacyHitProfile(0),nativeFatalHitProfile=battleContactTiming.battleLegacyHitProfile(1),nativeReflectHitProfile=battleContactTiming.battleLegacyHitProfile(1024),nativeAkoHitProfile=battleContactTiming.battleLegacyHitProfile(64);
+const nativeFixedHitProfile=battleContactTiming.battleLegacyHitProfile(0,100466,true),nativeSlowSlideProfile=battleContactTiming.battleLegacyHitProfile(0,100275,true),nativeSlowSlideGuardProfile=battleContactTiming.battleLegacyHitProfile(8,100275,false),nativeAlwaysSlideGuardProfile=battleContactTiming.battleLegacyHitProfile(8,100393,false),nativeSlowSlideFatalProfile=battleContactTiming.battleLegacyHitProfile(1,100275,true);
 const nativeDodgeVectors=new Map([[0,[0,80]],[1,[-Math.SQRT1_2*80,Math.SQRT1_2*80]],[2,[-80,0]],[3,[-Math.SQRT1_2*80,-Math.SQRT1_2*80]],[4,[0,-80]],[5,[Math.SQRT1_2*80,-Math.SQRT1_2*80]],[6,[80,0]],[7,[Math.SQRT1_2*80,Math.SQRT1_2*80]]]);
 if (!nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,0), 24 * nativeProcTickMs) || !nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,64), 16 * nativeProcTickMs) ||
     !nearlyEqual(nativeNormalHitProfile.knockbackDuration, 8 * nativeProcTickMs) || !nearlyEqual(nativeFatalHitProfile.knockbackDuration, 32 * nativeProcTickMs) ||
@@ -4110,9 +4111,13 @@ if (!nearlyEqual(battleContactTiming.battleLegacyTravelDuration(192,32,0), 24 * 
     !nativeFatalHitProfile.kaishin || !nativeFatalHitProfile.longHitStop || nativeFatalHitProfile.decelSpeeds[0]!==35 || nativeFatalHitProfile.decelSpeeds.at(-1)!==1 ||
     nativeReflectHitProfile.kaishin || !nativeReflectHitProfile.longHitStop || nativeReflectHitProfile.hitStopTicks!==32 || nativeReflectHitProfile.decelSpeeds[0]!==28 || nativeReflectHitProfile.decelSpeeds.at(-1)!==0 ||
     nativeAkoHitProfile.kaishin || nativeAkoHitProfile.longHitStop || nativeAkoHitProfile.hitStopTicks!==8 || nativeAkoHitProfile.decelSpeeds[0]!==28 ||
+    !nativeFixedHitProfile.fixedPosition || nativeFixedHitProfile.decelDuration!==15*nativeProcTickMs || nativeFixedHitProfile.decelDistance!==0 || nativeFixedHitProfile.totalDistance!==0 ||
+    !nativeSlowSlideProfile.slowSlide || !nativeSlowSlideProfile.decelAnimationLoop || nativeSlowSlideProfile.decelStep!==1 || nativeSlowSlideProfile.decelSpeeds.length!==29 || nativeSlowSlideProfile.decelSpeeds[0]!==28 || nativeSlowSlideProfile.decelSpeeds.at(-1)!==0 || !nearlyEqual(nativeSlowSlideProfile.decelDistance,101.5) ||
+    nativeSlowSlideGuardProfile.slowSlide || nativeSlowSlideGuardProfile.decelAnimationLoop || nativeSlowSlideGuardProfile.decelStep!==2 || !nativeAlwaysSlideGuardProfile.slowSlide || nativeAlwaysSlideGuardProfile.decelStep!==1 ||
+    nativeSlowSlideFatalProfile.decelSpeeds.length!==36 || nativeSlowSlideFatalProfile.decelSpeeds[0]!==35 || nativeSlowSlideFatalProfile.decelSpeeds.at(-1)!==0 || !nearlyEqual(nativeSlowSlideFatalProfile.decelDistance,157.5) ||
     !nearlyEqual(battleContactTiming.battleNativeAlternatingOffset(nativeProcTickMs,8*nativeProcTickMs),4) || battleContactTiming.battleNativeAlternatingOffset(2*nativeProcTickMs,8*nativeProcTickMs)!==0 || battleContactTiming.battleNativeAlternatingOffset(8*nativeProcTickMs,8*nativeProcTickMs)!==0 ||
     [...nativeDodgeVectors].some(([direction,expected])=>{const actual=battleContactTiming.battleDodgeVector(direction,80);return !nearlyEqual(actual[0],expected[0],1e-9)||!nearlyEqual(actual[1],expected[1],1e-9);})) {
-  throw new Error(`native movement profile failed: ${JSON.stringify({travel:battleContactTiming.battleLegacyTravelDuration(192,32,0),normal:nativeNormalHitProfile,fatal:nativeFatalHitProfile,reflect:nativeReflectHitProfile,ako:nativeAkoHitProfile,dodges:[...nativeDodgeVectors].map(([direction])=>[direction,battleContactTiming.battleDodgeVector(direction,80)])})}`);
+  throw new Error(`native movement profile failed: ${JSON.stringify({travel:battleContactTiming.battleLegacyTravelDuration(192,32,0),normal:nativeNormalHitProfile,fatal:nativeFatalHitProfile,reflect:nativeReflectHitProfile,ako:nativeAkoHitProfile,fixed:nativeFixedHitProfile,slow:nativeSlowSlideProfile,slowGuard:nativeSlowSlideGuardProfile,alwaysSlideGuard:nativeAlwaysSlideGuardProfile,slowFatal:nativeSlowSlideFatalProfile,dodges:[...nativeDodgeVectors].map(([direction])=>[direction,battleContactTiming.battleDodgeVector(direction,80)])})}`);
 }
 const normalContactHold = battleContactTiming.battleContactHoldDuration(0);
 const heavyContactHold = battleContactTiming.battleContactHoldDuration(1);
@@ -4217,18 +4222,20 @@ if (!/if\(!animation\)animation=spriteAnimationForAction\(actor,direction,3\)/.t
 const hitMotionStart = script.indexOf("  function battleHitMotionSpec");
 const hitMotionEnd = script.indexOf("  function battleQueueDeath", hitMotionStart);
 if (hitMotionStart < 0 || hitMotionEnd <= hitMotionStart) throw new Error("hit motion helper boundary missing");
-const battleHitMotionSpec = new Function("battleSlotDirection","battleActorAnimationTiming","battleLegacyHitProfile","battleLegacyTravelDuration","BATTLE_FLAG","BATTLE_PROC_TICK_MS","BATTLE_RADAR_DIRECTIONS",`${script.slice(hitMotionStart,hitMotionEnd)}; return battleHitMotionSpec;`)(
+const hitMotionParticipants=new Map([[10,{graphic:100000}],[11,{graphic:100466}],[12,{graphic:100275}],[13,{graphic:100393}]]);
+const battleHitMotionSpec = new Function("battleSlotDirection","battleActorAnimationTiming","battleFindParticipant","battleLegacyHitProfile","battleLegacyTravelDuration","BATTLE_FLAG","BATTLE_PROC_TICK_MS","BATTLE_RADAR_DIRECTIONS",`${script.slice(hitMotionStart,hitMotionEnd)}; return battleHitMotionSpec;`)(
   ()=>3,
   (_id,_direction,action)=>({duration:action===10?210:240}),
+  id=>hitMotionParticipants.get(Number(id)),
   battleContactTiming.battleLegacyHitProfile,
   battleContactTiming.battleLegacyTravelDuration,
   {guard:8},
   nativeProcTickMs,
   [6,7,0,1,2,3,4,5],
 );
-const guardMotion = battleHitMotionSpec(10,3,8),hurtMotion = battleHitMotionSpec(10,3,0);
-if (guardMotion.kind !== "guard" || hurtMotion.kind !== "hit" || hurtMotion.knockbackDuration <= 0 || hurtMotion.returnDuration <= 0) {
-  throw new Error(`native guard/hurt motion failed: ${JSON.stringify({guardMotion,hurtMotion})}`);
+const guardMotion = battleHitMotionSpec(10,3,8),hurtMotion = battleHitMotionSpec(10,3,0),fixedHurtMotion=battleHitMotionSpec(11,3,0),slowHurtMotion=battleHitMotionSpec(12,3,0),slowGuardMotion=battleHitMotionSpec(12,3,8),alwaysSlideGuardMotion=battleHitMotionSpec(13,3,8);
+if (guardMotion.kind !== "guard" || hurtMotion.kind !== "hit" || hurtMotion.knockbackDuration <= 0 || hurtMotion.returnDuration <= 0 || !fixedHurtMotion.fixedPosition || fixedHurtMotion.decelDistance!==0 || fixedHurtMotion.returnDuration!==nativeProcTickMs || !slowHurtMotion.slowSlide || !slowHurtMotion.decelAnimationLoop || slowHurtMotion.decelSpeeds.length!==29 || slowHurtMotion.returnDuration<=hurtMotion.returnDuration || slowGuardMotion.slowSlide || !alwaysSlideGuardMotion.slowSlide) {
+  throw new Error(`native guard/hurt motion failed: ${JSON.stringify({guardMotion,hurtMotion,fixedHurtMotion,slowHurtMotion,slowGuardMotion,alwaysSlideGuardMotion})}`);
 }
 /* Exercise the compositor's runtime positions, not only its planning
    offsets.  A counter has two positions for the original attacker: the
@@ -4246,6 +4253,10 @@ const counterMotionRuntime = new Function("BATTLE_PROC_TICK_MS","battleSlotDirec
   battleContactTiming.battleNativeSpeedProgress,
   battleContactTiming.battleNativeAlternatingOffset,
 );
+const slowRuntimeStart=1_500_000,slowRuntimeMotion={...slowHurtMotion,startedAt:slowRuntimeStart,delay:0,until:slowRuntimeStart+slowHurtMotion.duration},slowDecelStart=slowRuntimeStart+slowHurtMotion.vct10Duration+slowHurtMotion.knockbackDuration,slowDecelValue=counterMotionRuntime.battleMotionValue({motions:[slowRuntimeMotion]},12,slowDecelStart+1.5*nativeProcTickMs),fixedRuntimeMotion={...fixedHurtMotion,startedAt:slowRuntimeStart,delay:0,until:slowRuntimeStart+fixedHurtMotion.duration},fixedDecelValue=counterMotionRuntime.battleMotionValue({motions:[fixedRuntimeMotion]},11,slowRuntimeStart+fixedHurtMotion.vct10Duration+fixedHurtMotion.knockbackDuration+7.5*nativeProcTickMs);
+if(!slowDecelValue.hit||slowDecelValue.action!==1||slowDecelValue.animationLoop!==true||!nearlyEqual(Math.hypot(slowDecelValue.dx,slowDecelValue.dy),7,.02)||Math.hypot(fixedDecelValue.dx,fixedDecelValue.dy)>.001){
+  throw new Error(`special VCT12 runtime mismatch: ${JSON.stringify({slowDecelValue,fixedDecelValue})}`);
+}
 const counterRuntimeBase = 1_000_000;
 function counterRuntimeMotion(motion,startOffset,duration=motion?.duration){
   const length=Math.max(1,Number(duration)||1),start=Math.max(0,Number(startOffset)||0);
