@@ -1494,7 +1494,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("关闭",closeGameplayOverlay,172\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,172\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -1638,10 +1638,10 @@ for(const event of [{key:"s",ctrlKey:true},{key:"Escape",ctrlKey:false},{key:"F1
 }
 if(!/\$\("chat-input"\)\.addEventListener\("keydown",handleChatInputKeydown\)/.test(script)||
    !/function isChatClearKey\(event\)[\s\S]{0,500}event\.key==="Delete"\|\|event\.code==="Delete"[\s\S]{0,300}event\.metaKey/.test(script)||
-   !/const color=chatSettingNumber\(app\.systemSettings\?\.chatColor,0,0,9\),range=chatSettingNumber\(app\.systemSettings\?\.chatRange,3,1,5\);[\s\S]{0,120}await send\("TK",\[x,y,`P\|\$\{encodeNativeChatText\(rawText\)\}`,color,range\]\);rememberChatInputHistory\(rawText\);input\.value=""/.test(script)||
+   !/const color=chatSettingNumber\(app\.systemSettings\?\.chatColor,0,0,9\),range=chatSettingNumber\(app\.systemSettings\?\.chatRange,3,1,10\);[\s\S]{0,120}await send\("TK",\[x,y,`P\|\$\{encodeNativeChatText\(rawText\)\}`,color,range\]\);rememberChatInputHistory\(rawText\);input\.value=""/.test(script)||
    !/const visibleLines=chatSettingNumber\(app\.systemSettings\?\.chatLines,20,0,20\),entries=visibleLines\?app\.chat\.slice\(-visibleLines\):\[\]/.test(script)||
    !/updateChatSetting\("chatColor",\(currentColor\+1\)%10\)/.test(script)||
-   !/updateChatSetting\("chatRange",Math\.min\(5,currentRange\+1\)\)[\s\S]{0,220}updateChatSetting\("chatRange",Math\.max\(1,currentRange-1\)\)/.test(script)||
+   !/updateChatSetting\("chatRange",Math\.min\(10,currentRange\+1\)\)[\s\S]{0,220}updateChatSetting\("chatRange",Math\.max\(1,currentRange-1\)\)/.test(script)||
    !/systemAction\("\s*记录文字\s*",\(\)=>\{app\.systemPage="registry";renderSystem\(\);\},128\)/.test(script)){
   throw new Error("chat shortcuts/settings are not connected to the real TK submit/input/render path");
 }
@@ -1994,15 +1994,15 @@ for (const expected of [
   /* webdriver sessions stay quiet unless a deliberate BGM audit opts in;
      this is required to test the real HTMLAudio lifecycle in agent-browser. */
   /if\(explicit==="0"\)return false;[\s\S]{0,180}Boolean\(navigator\.webdriver\)\|\|explicit==="1"/,
-  /* Native MENU.CPP volume is 0..15 (zero is valid), and pitch belongs to
+  /* Native MENU.CPP's interactive BGM/SE controls clamp to 1..15, and pitch belongs to
      the current BGM slot rather than one global browser setting. */
-  /function audioSettingLevel\(value,legacyValue=15\)[\s\S]{0,360}Math\.max\(0,Math\.min\(15/,
+  /function audioSettingLevel\(value,legacyValue=15\)[\s\S]{0,360}Math\.max\(1,Math\.min\(15/,
   /function bgmPitchFor\(number=musicIntentBgm\(\)\)[\s\S]{0,620}bgmPitchByTrack[\s\S]{0,300}Math\.max\(-8,Math\.min\(8/,
   /* MENU.CPP case 4 paints fixed rows at 0/40/80/128/168/208/260.  Generic
      flow buttons were visibly overlaid at the top of the original frame. */
-  /if\(page==="bgm"\)[\s\S]{0,1600}systemValue\([^\n]+,0,-8\)[\s\S]{0,260}systemAction\("增加音量"[^\n]+,40\)[\s\S]{0,260}systemAction\("减少音量"[^\n]+,80\)[\s\S]{0,260}systemValue\([^\n]+,128,-8\)[\s\S]{0,360}systemAction\("加快节奏"[^\n]+,168\)[\s\S]{0,360}systemAction\("减慢节奏"[^\n]+,208\)[\s\S]{0,160}systemReturn\(sub,260\)/,
-  /* MENU.CPP case 3 uses 0/40/80/120/172 and the same zero-volume floor. */
-  /if\(page==="se"\)[\s\S]{0,1200}systemValue\([^\n]+,0,-8\)[\s\S]{0,240}systemAction\("增加音量"[^\n]+,40\)[\s\S]{0,240}systemAction\("减少音量"[^\n]+,80\)[\s\S]{0,260}systemAction\(`立体声[^\n]+,120\)[\s\S]{0,140}systemReturn\(sub,172\)/,
+  /if\(page==="bgm"\)[\s\S]{0,1900}systemValue\([^\n]+,0,-8\)[\s\S]{0,300}systemAction\("\s+增\s+加\s+"[^\n]+,40\)[\s\S]{0,300}systemAction\("\s+减\s+少\s+"[^\n]+Math\.max\(1,[^\n]+,80\)[\s\S]{0,300}systemValue\(pitchText,128,-8\)[\s\S]{0,420}systemAction\("\s+加\s+快\s+"[^\n]+,168\)[\s\S]{0,420}systemAction\("\s+减\s+慢\s+"[^\n]+,208\)[\s\S]{0,160}systemReturn\(sub,260\)/,
+  /* MENU.CPP case 3 uses 0/40/80/120/172 and the same 1-volume floor. */
+  /if\(page==="se"\)[\s\S]{0,1400}systemValue\([^\n]+,0,-8\)[\s\S]{0,280}systemAction\("\s+增\s+加\s+"[^\n]+,40\)[\s\S]{0,280}systemAction\("\s+减\s+少\s+"[^\n]+Math\.max\(1,[^\n]+,80\)[\s\S]{0,340}systemAction\(settings\.seStereo\?"\s+立体声\s+":"\s+单声道\s+"[^\n]+,120\)[\s\S]{0,160}systemReturn\(sub,172\)/,
   /* MAP.CPP keeps the last recognized marker in diagonal tile→part order
      and retains the active track when a partial M window has no marker. */
   /function mapMusicFromWindow\(map\)[\s\S]{0,2200}let ti=height-1,tj=0;[\s\S]{0,1400}if\(tone===null&&app\.music\.mapBgmNo>=0\)return;/,
@@ -2091,9 +2091,9 @@ for (const expected of [
      actor outside BattleMyNo's five-slot row, then send the clicked actor id
      unchanged so the 2.5 server can perform its bid/5 row conversion. */
   /const BATTLE_BP_BOOMERANG=1<<2;/,
-  /* Ordinary H uses the web 2.5 gameplay contract: only the opponent
-     formation is selectable; boomerang keeps its row rule. */
-  /if\(action\?\.kind==="attack"\)\{[\s\S]{0,1500}if\(boomerang\)return id!==myNo&&battleBoomerangTargetAllowed\(item,state\);[\s\S]{0,420}id!==myNo&&id!==myPetNo&&battleIsEnemy\(item\)/,
+  /* With _CANT_ATK disabled, BattleButtonAttack() marks every living slot
+     except BattleMyNo; allies and the active pet remain valid H targets. */
+  /if\(action\?\.kind==="attack"\)\{[\s\S]{0,1500}if\(boomerang\)return id!==myNo&&battleBoomerangTargetAllowed\(item,state\);[\s\S]{0,420}return id!==myNo;/,
   /function battleBoomerangTargetAllowed\(item,state=app\.battleState\)[\s\S]{0,600}Math\.floor\(battleId\/5\)!==Math\.floor\(myNo\/5\)/,
   /* MOUSE.CPP excludes ACT_ATR_TRAVEL actors from every ordinary target
      pass.  BC does not carry that local action bit, so the web renderer must
@@ -2957,12 +2957,12 @@ const petAttackTargetHarness=new Function("targetCore","actionCommand","popupSou
   script.slice(battleTargetCoreStart,battleTargetCoreEnd),script.slice(battleActionCommandStart,battleActionCommandEnd),
   script.slice(battlePopupRowStart,battlePopupRowEnd),script.slice(beginBattleActionStart,beginBattleActionEnd),sendBattleTargetSource
 );
-if(petAttackTargetHarness.playerAttackIds.join(",")!=="10"||
+if(petAttackTargetHarness.playerAttackIds.join(",")!=="5,10"||
    petAttackTargetHarness.popupRows[0]?.title!=="攻击"||petAttackTargetHarness.proxyIds.join(",")!=="0,10"||
    petAttackTargetHarness.sends.length!==1||petAttackTargetHarness.sends[0][0]!=="B"||petAttackTargetHarness.sends[0][1][0]!=="W|0|A"||
    !petAttackTargetHarness.state.petCommandLocked||!petAttackTargetHarness.state.commandLocked||
    petAttackTargetHarness.state.choiceDeadline!==987654321||petAttackTargetHarness.state.lastPlayerActionCommand!=="H|A"){
-  throw new Error(`pet ordinary attack popup/actor-target/W path drifted: ${JSON.stringify({rows:petAttackTargetHarness.popupRows.map(row=>row.title),proxyIds:petAttackTargetHarness.proxyIds,sends:petAttackTargetHarness.sends,state:petAttackTargetHarness.state})}`);
+  throw new Error(`native player/pet ordinary attack target path drifted: ${JSON.stringify({rows:petAttackTargetHarness.popupRows.map(row=>row.title),proxyIds:petAttackTargetHarness.proxyIds,sends:petAttackTargetHarness.sends,state:petAttackTargetHarness.state})}`);
 }
 /* The pre-bitmap Web prototype still has legacy raw command controls because
    a few harnesses use their bindings.  They must never become a second user
@@ -3987,26 +3987,32 @@ for (const label of ["官方主页","我的邮箱","原地遇敌","取消原地"
   if (systemMenuSource.includes(`"${label}"`)) throw new Error(`8.5-only system menu entry leaked: ${label}`);
 }
 for (const expected of [
-  /add\("退出游戏",openLogoutChoice,0\)/,
-  /add\("聊天设定",[\s\S]{0,120}systemPage="chat"/,
-  /add\("背景音乐",[\s\S]{0,120}systemPage="bgm"/,
-  /add\("音效设定",[\s\S]{0,120}systemPage="se"/,
-  /const close=systemChoice\("关闭",closeGameplayOverlay,172\);list\.append\(close\)/,
-  /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("回记录点",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("原地登出",\(\)=>openLogoutConfirm\("in-place"\)/,
+  /add\("\s+退出游戏\s+",openLogoutChoice,0\)/,
+  /add\("\s+聊天设定\s+",[\s\S]{0,120}systemPage="chat"/,
+  /add\("\s+背景音乐\s+",[\s\S]{0,120}systemPage="bgm"/,
+  /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,172\);list\.append\(close\)/,
+  /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
 }
 for (const expected of [
-  /const specs=\{menu:\{x:4,y:4,w:192,h:288,title:9145\}/,
-  /"logout-choice":\{x:4,y:4,w:192,h:144,title:9146\}/,
-  /chat:\{x:4,y:4,w:256,h:384,title:9148\}/,
-  /bgm:\{x:4,y:4,w:256,h:384,title:9149\}/,
-  /se:\{x:4,y:4,w:256,h:288,title:9150\}/,
+  /const specs=\{menu:\{x:4,y:4,w:192,h:336,title:9145\}/,
+  /"logout-choice":\{x:224,y:144,w:192,h:192,title:9146\}/,
+  /"logout-record":\{x:224,y:168,w:192,h:144,title:9146\}/,
+  /chat:\{x:192,y:48,w:256,h:384,title:9148\}/,
+  /bgm:\{x:192,y:48,w:256,h:384,title:9149\}/,
+  /se:\{x:192,y:96,w:256,h:288,title:9150\}/,
+  /registry:\{x:184,y:25,w:272,h:430,title:0\}/,
 ]) {
   if (!expected.test(script)) throw new Error(`2.5 system window geometry regression: ${expected}`);
 }
-if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:288px/.test(html)){
-  throw new Error("2.5 system root menu must retain the native 3x6 (192x288) frame");
+if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:336px/.test(html)){
+  throw new Error("2.5 system root menu must retain the native 3x7 (192x336) frame");
+}
+if(!/#system-screen #system-list \.system-choice\{[^}]*white-space:pre/.test(html) ||
+   !/function systemReturn\(page,top,label="\s+回上一页\s+",left=0\)[\s\S]{0,300}systemAction\(label/.test(script)){
+  throw new Error("system menu must preserve native padded text and text-based return rows");
 }
 if (systemMenuSource.includes("sendLegacySystemMenu") || systemMenuSource.includes("systemPage=\"auto\"")) {
   throw new Error("system menu still contains an unsupported server-extension path");

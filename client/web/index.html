@@ -1847,9 +1847,9 @@
   }
   function audioSettingLevel(value,legacyValue=15){
     const level=Number(value);
-    if(Number.isFinite(level))return Math.max(0,Math.min(15,Math.trunc(level)));
+    if(Number.isFinite(level))return Math.max(1,Math.min(15,Math.trunc(level)));
     const legacy=Number(legacyValue);
-    return Math.max(0,Math.min(15,Math.round(Number.isFinite(legacy)?legacy:15)));
+    return Math.max(1,Math.min(15,Math.round(Number.isFinite(legacy)?legacy:15)));
   }
   function bgmVolume(){
     const settings=app.systemSettings||{};
@@ -2197,7 +2197,7 @@
     #social-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:440px;--content-x:12px;--content-y:42px;--content-w:248px;--content-h:380px;--toolbar-x:16px;--toolbar-y:418px}
     #album-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:448px;--content-x:14px;--content-y:38px;--content-w:244px;--content-h:390px;--toolbar-x:80px;--toolbar-y:438px}
     #titles-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:332px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:260px;--toolbar-x:96px;--toolbar-y:310px}
-    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:288px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:212px;--toolbar-x:56px;--toolbar-y:300px}
+    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:260px;--toolbar-x:56px;--toolbar-y:300px}
     #actions-screen,#events-screen,#journal-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:112px;--content-y:144px;--content-w:416px;--content-h:150px;--toolbar-x:184px;--toolbar-y:338px}
     #server-window-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:140px;--content-y:136px;--content-w:360px;--content-h:160px;--toolbar-x:212px;--toolbar-y:248px}
     #system-screen .toolbar-row{display:none}
@@ -2600,7 +2600,7 @@
        boxes are transparent; the only visible chrome is the original native
        window art prepared by prepareLegacyPanels(). */
     #system-screen #system-list{left:var(--system-list-x,124px);top:var(--system-list-y,102px);width:420px;height:340px;overflow:visible}
-    #system-screen #system-list .system-choice{position:absolute;left:0;width:132px;height:34px;margin:0;padding:0;color:#f0e5c6;background:transparent;border:0;box-shadow:none;font:12px/34px Tahoma,"Microsoft YaHei",sans-serif;text-align:left;text-shadow:1px 1px #080706;white-space:nowrap}
+    #system-screen #system-list .system-choice{position:absolute;left:0;width:160px;height:34px;margin:0;padding:0;color:#f0e5c6;background:transparent;border:0;box-shadow:none;font:12px/34px Tahoma,"Microsoft YaHei",sans-serif;text-align:left;text-shadow:1px 1px #080706;white-space:pre}
     #system-screen #system-list .system-choice:hover,#system-screen #system-list .system-choice:focus{filter:none;color:#ffe88b;outline:1px solid #ffe88b44;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
     #system-screen #system-list .system-caption{display:block;position:absolute;left:-2px;width:164px;margin:0;color:#ffe28a;font:12px/24px Tahoma,"Microsoft YaHei",sans-serif;text-align:center;text-shadow:1px 1px #080706;white-space:nowrap}
     /* MENU.CPP does not flow these settings as HTML rows.  Each page writes
@@ -2618,33 +2618,26 @@
     #system-screen .system-subpage .system-action{color:#f0e5c6;background:transparent;border:0;box-shadow:none;font:11px/32px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #080706}
     #system-screen .system-subpage .system-action:hover,#system-screen .system-subpage .system-action:focus{filter:none;color:#ffe88b;outline:1px solid #ffe88b44;text-shadow:0 0 3px #ffe88b,1px 1px #080706}
     #system-screen .system-subpage .system-return{color:#8ed0d4}
-    /* MENU.CPP passes padded strings to StockFontBuffer (for example
-       "    回记录点    ").  The web labels contain only the visible text.
-       Four native spaces are about 28px at the executable's bitmap font; the
-       transparent hit boxes remain full-width while labels use the exact
-       StockFontBuffer origin below. */
-    #system-screen.system-page-menu #system-list .system-choice{padding-left:0}
-    #system-screen.system-page-logout-record #system-list .system-choice,
-    #system-screen.system-page-logout-place #system-list .system-choice{padding-left:0}
-    #system-screen.system-page-chat #system-list .system-subpage button,
-    #system-screen.system-page-bgm #system-list .system-subpage button,
-    #system-screen.system-page-se #system-list .system-subpage button{padding-left:0!important}
-    /* These are the pActMenuWnd coordinates from the stock 2.5 MENU.CPP. The
-       list is moved to the first StockFontBuffer origin; child rows then use
-       the native 40/32/44/52 pixel cadence without a browser card offset. */
-    /* Stock 2.5 MENU.CPP uses 64x48 logical window tiles.  The previous
-       7x8 geometry belonged to the optional 8.5 _NEW_SYSTEM_MENU branch and
-       made the browser system panel visibly oversized and detached from the
-       field UI.  Keep each page at the exact native origin/size. */
-    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:288px;--system-list-x:32px;--system-list-y:60px}
-    #system-screen.system-page-logout-choice,#system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:144px;--system-list-x:24px;--system-list-y:60px}
-    #system-screen.system-page-chat{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:60px}
-    #system-screen.system-page-bgm{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:384px;--system-list-x:47px;--system-list-y:68px}
-    #system-screen.system-page-se{--legacy-x:4px;--legacy-y:4px;--legacy-w:256px;--legacy-h:288px;--system-list-x:47px;--system-list-y:68px}
+    /* MENU.CPP passes its leading, internal and trailing spaces straight to
+       StockFontBuffer.  Preserve those strings with white-space:pre instead
+       of stripping the leading cells and shifting every label to the left. */
+    /* These are the actual pActMenuWnd and first StockFontBuffer coordinates
+       from MENU.CPP.  Only the compact root is pinned to (4,4); logout and
+       all setting pages are centred in the 640x480 back buffer.  Treating
+       their origins as root-relative put every subpage in the upper-left. */
+    /* The classic root is MakeWindowDisp(4,4,3,7).  The optional 8.5
+       _NEW_SYSTEM_MENU is the separate centred 7x8 surface; its unsupported
+       SaMenu entries remain intentionally absent from the 2.5 web client. */
+    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--system-list-x:32px;--system-list-y:58px}
+    #system-screen.system-page-logout-choice{--legacy-x:224px;--legacy-y:144px;--legacy-w:192px;--legacy-h:192px;--system-list-x:262px;--system-list-y:200px}
+    #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:224px;--legacy-y:168px;--legacy-w:192px;--legacy-h:144px;--system-list-x:262px;--system-list-y:224px}
+    #system-screen.system-page-chat{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:104px}
+    #system-screen.system-page-bgm{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:112px}
+    #system-screen.system-page-se{--legacy-x:192px;--legacy-y:96px;--legacy-w:256px;--legacy-h:288px;--system-list-x:248px;--system-list-y:160px}
     #system-screen.system-page-chat .system-subpage,
     #system-screen.system-page-bgm .system-subpage,
     #system-screen.system-page-se .system-subpage{left:0;top:0;width:220px}
-    #system-screen.system-page-registry{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:430px}
+    #system-screen.system-page-registry{--legacy-x:184px;--legacy-y:25px;--legacy-w:272px;--legacy-h:430px}
     #system-screen.system-page-registry .system-registry{position:absolute;left:var(--legacy-x,184px);top:var(--legacy-y,25px);width:272px;height:430px;padding:54px 14px 8px;z-index:2}
     #system-screen .system-registry input{display:block;width:244px;height:22px;margin:0 0 21px;padding:1px 5px;color:#1d1710;background:#b8b8b8cc;border:1px solid #6f634d;box-shadow:inset 1px 1px #fff,inset -1px -1px #4b4337;font:11px/18px Tahoma,"Microsoft YaHei",sans-serif}
     #system-screen .system-registry .system-registry-return{position:absolute;left:96px;top:382px;width:80px;height:16px;padding:0;color:transparent;background:url('/assets/bitmaps/bitmap_9135.png') center/100% 100% no-repeat;border:0;box-shadow:none;font-size:0}
@@ -3226,10 +3219,10 @@
       titles:{bitmap:9140,x:4,y:4,w:272,h:332,generic:true},
       /* System pages use the native MakeWindowDisp nine-tile surface.  The
        centre bitmap (9140) is not a complete window and must not be
-       stretched over the menu.  The stock root is 3x6 tiles (192x288);
-       in-place logout lives in the 3x3 logout-choice subpage.  Subpage
-       geometry is set by configureSystemWindow(). */
-      system:{x:4,y:4,w:192,h:288,native:true,title:9145},
+       stretched over the menu.  MENU.CPP's classic root is 3x7 tiles
+       (192x336); in-place logout lives in the centred 3x3 choice subpage.
+       Per-page geometry is set by configureSystemWindow(). */
+      system:{x:4,y:4,w:192,h:336,native:true,title:9145},
       /* The protocol/event panes are local wrappers around native message
          windows.  Keep their diagnostics in the same 7x5 CG_WND_G frame as
          LOGIN.CPP instead of presenting a generic web card. */
@@ -4158,7 +4151,7 @@
       if(app.systemSettings){
         app.systemSettings.chatLines=chatSettingNumber(value.settings?.chatLines,app.systemSettings.chatLines??20,0,20);
         app.systemSettings.chatColor=chatSettingNumber(value.settings?.chatColor,app.systemSettings.chatColor??0,0,9);
-        app.systemSettings.chatRange=chatSettingNumber(value.settings?.chatRange,app.systemSettings.chatRange??3,1,5);
+        app.systemSettings.chatRange=chatSettingNumber(value.settings?.chatRange,app.systemSettings.chatRange??3,1,10);
       }
       app.chatInputHistoryIndex=-1;app.chatInputHistoryDraft="";
       return true;
@@ -4168,7 +4161,7 @@
     if(!storage)return false;
     try{
       const value={version:1,registry:Array.from({length:8},(_,index)=>String(app.chatRegistry[index]||"").slice(0,26)),history:app.chatInputHistory.slice(-CHAT_INPUT_HISTORY_LIMIT)};
-      if(app.systemSettings)value.settings={chatLines:chatSettingNumber(app.systemSettings.chatLines,20,0,20),chatColor:chatSettingNumber(app.systemSettings.chatColor,0,0,9),chatRange:chatSettingNumber(app.systemSettings.chatRange,3,1,5)};
+      if(app.systemSettings)value.settings={chatLines:chatSettingNumber(app.systemSettings.chatLines,20,0,20),chatColor:chatSettingNumber(app.systemSettings.chatColor,0,0,9),chatRange:chatSettingNumber(app.systemSettings.chatRange,3,1,10)};
       storage.setItem("stoneage:web:chat:v1",JSON.stringify(value));
       return true;
     }catch(_){return false;}
@@ -7228,12 +7221,12 @@
   function systemValue(text,top=0,left=0){const item=document.createElement("span");item.className="system-value";item.textContent=text;return systemPlace(item,top,left);}
   function systemAction(label,handler,top,left=0){const item=button(label,handler);item.className="system-action";return systemPlace(item,top,left);}
   function systemSubpage(caption="",left=-8){const page=document.createElement("div");page.className="system-subpage";if(String(caption)){const title=document.createElement("span");title.className="system-caption";title.textContent=caption;systemPlace(title,0,left);page.append(title);}return page;}
-  function systemReturn(page,top,left=0){const back=imageButton("返回",9135,()=>{app.systemPage="menu";renderSystem();},80,16);back.className="system-return system-action";systemPlace(back,top,left);page.append(back);}
+  function systemReturn(page,top,label="      回上一页      ",left=0){const back=systemAction(label,()=>{app.systemPage="menu";renderSystem();},top,left);back.classList.add("system-return");page.append(back);}
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
     ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:288,title:9145},"logout-choice":{x:4,y:4,w:192,h:144,title:9146},"logout-record":{x:4,y:4,w:192,h:144,title:9146},"logout-place":{x:4,y:4,w:192,h:144,title:9146},chat:{x:4,y:4,w:256,h:384,title:9148},bgm:{x:4,y:4,w:256,h:384,title:9149},se:{x:4,y:4,w:256,h:288,title:9150},registry:{x:4,y:4,w:272,h:430,title:0}};
+    const specs={menu:{x:4,y:4,w:192,h:336,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -7363,67 +7356,68 @@
     const page=app.systemPage||"menu";const settings=app.systemSettings;configureSystemWindow(page);
     $("system-summary").textContent="StoneAge 2.5 系统菜单";
     if(page==="menu"){
-      /* MENU.CPP's stock root is exactly five rows in a 3x6 (192x288)
-         window.  Keep the web-only in-place logout behind the first native
-         logout row so the root geometry and the 40/40/40/52 cadence remain
-         identical to 2.5. */
+      /* Keep the five implemented client-side choices inside MENU.CPP's
+         classic 3x7 (192x336) frame.  The web-only split between record-point
+         and in-place logout stays behind the first row, while unsupported
+         8.5 SaMenu server extensions remain absent. */
       const add=(label,handler,top)=>list.append(systemChoice(label,handler,top));
       /* MENU.CPP labels the root entry “退出游戏”; the following page is
          where the 2.5-compatible record-point logout and the web client's
          in-place logout are kept distinct.  Showing “回记录点” at the root
          made the two paths look identical even though they save different
          coordinates. */
-      add("退出游戏",openLogoutChoice,0);
-      add("聊天设定",()=>{app.systemPage="chat";renderSystem();},40);
-      add("背景音乐",()=>{app.systemPage="bgm";renderSystem();},80);
-      add("音效设定",()=>{app.systemPage="se";renderSystem();},120);
-      const close=systemChoice("关闭",closeGameplayOverlay,172);list.append(close);
+      add("    退出游戏    ",openLogoutChoice,0);
+      add("    聊天设定    ",()=>{app.systemPage="chat";renderSystem();},40);
+      add("    背景音乐    ",()=>{app.systemPage="bgm";renderSystem();},80);
+      add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
+      const close=systemChoice("    关    闭    ",closeGameplayOverlay,172);list.append(close);
       return;
     }
     if(page==="logout-choice"){
-      list.append(systemChoice("回记录点",()=>openLogoutConfirm("record"),0));
-      list.append(systemChoice("原地登出",()=>openLogoutConfirm("in-place"),40));
-      list.append(systemChoice("返回",()=>{app.systemPage="menu";renderSystem();},80));
+      list.append(systemChoice("    回记录点    ",()=>openLogoutConfirm("record"),0));
+      list.append(systemChoice("    原地登出    ",()=>openLogoutConfirm("in-place"),40));
+      list.append(systemChoice("    返    回    ",()=>{app.systemPage="menu";renderSystem();},80));
       return;
     }
     if(page==="logout-record"||page==="logout-place"){
       const inPlace=page==="logout-place";
-      list.append(systemChoice("确定",inPlace?performInPlaceLogout:performNormalLogout,0));
-      list.append(systemChoice("不要",()=>{app.systemPage="menu";renderSystem();},40));
+      list.append(systemChoice("     确  定     ",inPlace?performInPlaceLogout:performNormalLogout,0));
+      list.append(systemChoice("     不  要     ",()=>{app.systemPage="menu";renderSystem();},40));
       return;
     }
     if(page==="chat"){
-      const currentLines=chatSettingNumber(settings.chatLines,20,0,20),currentColor=chatSettingNumber(settings.chatColor,0,0,9),currentRange=chatSettingNumber(settings.chatRange,3,1,5);
+      const currentLines=chatSettingNumber(settings.chatLines,20,0,20),currentColor=chatSettingNumber(settings.chatColor,0,0,9),currentRange=chatSettingNumber(settings.chatRange,3,1,10);
       const updateChatSetting=(name,value,rerenderLog=false)=>{settings[name]=value;saveLocalChatState();if(rerenderLog)renderChatLog();renderSystem();};
       const sub=systemSubpage(`◆目前显示的行数${String(currentLines).padStart(3," ")} 行◆`,-16);
       sub.append(systemAction("      增    加      ",()=>updateChatSetting("chatLines",Math.min(20,currentLines+1),true),32));
       sub.append(systemAction("      减    少      ",()=>updateChatSetting("chatLines",Math.max(0,currentLines-1),true),64));
       const colorAction=systemAction("    改变文字颜色    ",()=>updateChatSetting("chatColor",(currentColor+1)%10),96);colorAction.style.color=CHAT_FONT_COLORS[currentColor];sub.append(colorAction);
       sub.append(systemAction("      记录文字      ",()=>{app.systemPage="registry";renderSystem();},128));
-      sub.append(systemValue(`◆目前的发言范围${String(currentRange).padStart(3," ")} 格◆`,172,-16));
-      sub.append(systemAction("     增    加     ",()=>updateChatSetting("chatRange",Math.min(5,currentRange+1)),204));
+      sub.append(systemValue(`◆目前的音量${String(currentRange).padStart(3," ")} ◆`,172,-16));
+      sub.append(systemAction("     增    加     ",()=>updateChatSetting("chatRange",Math.min(10,currentRange+1)),204));
       sub.append(systemAction("     减    少     ",()=>updateChatSetting("chatRange",Math.max(1,currentRange-1)),236));
-      systemReturn(sub,280);list.append(sub);return;
+      systemReturn(sub,280,"     回上一页     ");list.append(sub);return;
     }
     if(page==="bgm"){
       /* MENU.CPP case 4 advances y by 40/40/48/40/40/52.  These are
          StockFontBuffer hit rows, not browser-flow buttons. */
       const sub=systemSubpage(""),track=musicIntentBgm(),level=audioSettingLevel(settings.bgmVolumeLevel,15),pitch=bgmPitchFor(track);
-      sub.append(systemValue(`◆目前的音量 ${String(level).padStart(3," ")} ◆`,0,-8));
-      sub.append(systemAction("增加音量",()=>{settings.bgmVolumeLevel=Math.min(15,audioSettingLevel(settings.bgmVolumeLevel)+1);setBgmVolume();renderSystem();},40));
-      sub.append(systemAction("减少音量",()=>{settings.bgmVolumeLevel=Math.max(0,audioSettingLevel(settings.bgmVolumeLevel)-1);setBgmVolume();renderSystem();},80));
-      sub.append(systemValue(`◆目前的节奏 ${pitch>=0?"+":""}${String(pitch).padStart(3," ")} ◆`,128,-8));
-      sub.append(systemAction("加快节奏",()=>{const target=musicIntentBgm();setBgmPitchFor(target,bgmPitchFor(target)+1);setBackgroundMusic(target,{force:true});renderSystem();},168));
-      sub.append(systemAction("减慢节奏",()=>{const target=musicIntentBgm();setBgmPitchFor(target,bgmPitchFor(target)-1);setBackgroundMusic(target,{force:true});renderSystem();},208));
+      const pitchText=pitch===0?"◆ 目前的节奏   0 ◆":`◆ 目前的节奏 ${String(pitch>0?`+${pitch}`:pitch).padStart(3," ")} ◆`;
+      sub.append(systemValue(`◆  目前的音量 ${String(level).padStart(3," ")}  ◆`,0,-8));
+      sub.append(systemAction("     增      加     ",()=>{settings.bgmVolumeLevel=Math.min(15,audioSettingLevel(settings.bgmVolumeLevel)+1);setBgmVolume();renderSystem();},40));
+      sub.append(systemAction("     减      少     ",()=>{settings.bgmVolumeLevel=Math.max(1,audioSettingLevel(settings.bgmVolumeLevel)-1);setBgmVolume();renderSystem();},80));
+      sub.append(systemValue(pitchText,128,-8));
+      sub.append(systemAction("      加    快      ",()=>{const target=musicIntentBgm();setBgmPitchFor(target,bgmPitchFor(target)+1);setBackgroundMusic(target,{force:true});renderSystem();},168));
+      sub.append(systemAction("      减    慢      ",()=>{const target=musicIntentBgm();setBgmPitchFor(target,bgmPitchFor(target)-1);setBackgroundMusic(target,{force:true});renderSystem();},208));
       systemReturn(sub,260);list.append(sub);return;
     }
     if(page==="se"){
       /* MENU.CPP case 3 uses four 40px rows, then a 52px return gap. */
       const sub=systemSubpage(""),level=audioSettingLevel(settings.seVolumeLevel,15);
-      sub.append(systemValue(`◆目前的音量 ${String(level).padStart(3," ")} ◆`,0,-8));
-      sub.append(systemAction("增加音量",()=>{settings.seVolumeLevel=Math.min(15,audioSettingLevel(settings.seVolumeLevel)+1);renderSystem();},40));
-      sub.append(systemAction("减少音量",()=>{settings.seVolumeLevel=Math.max(0,audioSettingLevel(settings.seVolumeLevel)-1);renderSystem();},80));
-      sub.append(systemAction(`立体声：${settings.seStereo?"开启":"关闭"}`,()=>{settings.seStereo=!settings.seStereo;renderSystem();},120));
+      sub.append(systemValue(`◆  目前的音量${String(level).padStart(3," ")}   ◆`,0,-8));
+      sub.append(systemAction("     增     加     ",()=>{settings.seVolumeLevel=Math.min(15,audioSettingLevel(settings.seVolumeLevel)+1);renderSystem();},40));
+      sub.append(systemAction("     减     少     ",()=>{settings.seVolumeLevel=Math.max(1,audioSettingLevel(settings.seVolumeLevel)-1);renderSystem();},80));
+      sub.append(systemAction(settings.seStereo?"       立体声       ":"       单声道       ",()=>{settings.seStereo=!settings.seStereo;renderSystem();},120));
       systemReturn(sub,172);list.append(sub);return;
     }
     if(page==="registry"){
@@ -7929,23 +7923,20 @@
        which is the opposite of BATTLEMENU.CPP's hit-box loop. */
     const casterNo=action?.kind==="pet"?myPetNo:myNo;
     /* BattleButtonAttack() paints ACT_ATR_HIT_BOX on every living actor
-       except the command owner's own slot (the 2.5 client does the same;
-       attack is not limited to the opposing formation).  BP_FLG_BOOMERANG
-       instead paints grouped row boxes outside the attacker's five-slot row.
-       The 2.5 server receives the clicked actor id and performs the same
-       `bid / 5` row conversion in BATTLE_COM_BOOMERANG, so do not send a
-       synthetic row id here. */
+       except BattleMyNo; this deliberately includes allies and the active
+       pet.  BP_FLG_BOOMERANG instead paints grouped row boxes outside the
+       attacker's five-slot row.  The 2.5 server receives the clicked actor
+       id and performs the same `bid / 5` row conversion in
+       BATTLE_COM_BOOMERANG, so do not send a synthetic row id here. */
     if(action?.kind==="attack"){
       const boomerang=Boolean(Number(state.bpFlags)&BATTLE_BP_BOOMERANG);
-      /* Keep ordinary H on the opponent formation.  The native button paints
-         a broad hit-box pass (and the reference build's optional _CANT_ATK
-         switch is disabled), but the 2.5 web gameplay contract is that a
-         normal attack chooses an opponent, never the local player/party.
-         Boomerang keeps its native row-based exception below. */
+      /* The selected reference build leaves _CANT_ATK disabled.  Match its
+         broad hit-box pass instead of imposing a browser-only enemy filter:
+         every live slot except BattleMyNo is a valid ordinary H target. */
       return participants.filter(item=>{
         const id=Number(item.battleId);
         if(boomerang)return id!==myNo&&battleBoomerangTargetAllowed(item,state);
-        return id!==myNo&&id!==myPetNo&&battleIsEnemy(item);
+        return id!==myNo;
       });
     }
     if(action?.kind==="capture")return participants.filter(item=>Number(item.battleId)!==myNo&&battleIsEnemy(item));
@@ -8013,9 +8004,10 @@
     if(action.kind==="attack"){
       const boomerang=Boolean(Number(state.bpFlags)&BATTLE_BP_BOOMERANG);
       if(boomerang)return id!==myNo&&battleBoomerangTargetAllowed(item,state);
-      /* Keep this in lock-step with CheckBattelTarget(): own player and own
-         active pet are never valid ordinary attack targets. */
-      return id!==myNo&&id!==myNo+5&&itemSide>=0&&itemSide!==mySide;
+      /* BattleButtonAttack() assigns ACT_ATR_HIT_BOX to every live p_party
+         record except BattleMyNo.  CheckBattelTarget() then returns that
+         exact clicked id; it does not exclude allies or the active pet. */
+      return id!==myNo;
     }
     if(action.kind==="capture")return id!==myNo&&itemSide>=0&&itemSide!==mySide;
     if(type===5)return (action.kind==="item"&&id===myNo)||(action.kind==="pet"&&id===myNo+5);
@@ -18503,7 +18495,7 @@
        as well makes every message appear twice when the normal 2.5 echo
        arrives (and leaves a phantom line when the write is rejected). */
     if(consumeLocalChatCommand(rawText)){input.value="";syncChatInputAppearance();return;}
-    const color=chatSettingNumber(app.systemSettings?.chatColor,0,0,9),range=chatSettingNumber(app.systemSettings?.chatRange,3,1,5);
+    const color=chatSettingNumber(app.systemSettings?.chatColor,0,0,9),range=chatSettingNumber(app.systemSettings?.chatRange,3,1,10);
     await send("TK",[x,y,`P|${encodeNativeChatText(rawText)}`,color,range]);rememberChatInputHistory(rawText);input.value="";
   }catch(error){reportError(error);}});
   /* Keep chat keystrokes inside the form.  Explicitly submit on Enter instead
