@@ -16379,15 +16379,12 @@
       if(seen.has(key))continue;
       seen.add(key);merged.push(part);
     }
-    /* drawMap() feeds PARTS in increasing map diagonal order (and decreasing
-       row within a diagonal).  Sorting the merged overlap by that same key
-       avoids a fallback part being painted after a newly decoded neighbour
-       merely because it came from the older cache object.
-    */
-    if(merged.length>1)merged.sort((left,right)=>{
-      const diagonal=(item)=>Number(item.x)+Number(item.y),row=(item)=>Number(item.y);
-      return diagonal(left)-diagonal(right)||row(right)-row(left);
-    });
+    /* MAP.CPP starts at the bottom-left cell, visits diagonals in decreasing
+       (y-x), and walks each row right-to-left (x--, y--). The chain is
+       reversed later by renderSceneActorsAndParts, just like SortDispBuffer.
+       Sorting by x+y here changes occlusion only while a window is loading. */
+    if(merged.length>1)merged.sort((left,right)=>
+      (Number(right.y)-Number(right.x))-(Number(left.y)-Number(left.x))||Number(right.x)-Number(left.x));
     return merged;
   }
   /* ----------------------------------------------------------------------

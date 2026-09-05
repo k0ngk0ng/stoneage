@@ -3847,6 +3847,29 @@ for (const [part, actor, expected] of [
     throw new Error(`map depth predicate drifted for ${part.x},${part.y} vs ${actor.actor.x},${actor.actor.y}`);
   }
 }
+/* Native drawMap's 3x3 traversal, nearest diagonal first. Split it across
+   two overlapping decoded windows: the hand-off must have the same paint
+   order as a completed window, including when characters are interleaved. */
+{
+  const start=script.indexOf("  function mergeMapLayerParts(");
+  const end=script.indexOf("  /* ----------------------------------------------------------------------",start);
+  const merge=new Function(`${script.slice(start,end)}; return mergeMapLayerParts;`)();
+  const nativeCells=[[0,2],[1,2],[0,1],[2,2],[1,1],[0,0],[2,1],[1,0],[2,0]];
+  const nativeParts=nativeCells.map(([x,y],index)=>({...depthPart(x,y),value:100+index,image:{complete:true,naturalWidth:64,naturalHeight:120},info:{file:`part-${index}`,hit_x:1,hit_y:1}}));
+  const merged=merge({parts:nativeParts.filter((_,i)=>i%2===0)},{parts:nativeParts.filter((_,i)=>i%2!==0).concat(nativeParts[0])});
+  if(merged.map(p=>p.value).join()!==nativeParts.map(p=>p.value).join())throw new Error("sliding map hand-off changes native PARTS traversal");
+  const paint=[];
+  const renderSource=script.slice(worldActorPaintStart,script.indexOf("  /* A large M window",worldActorPaintStart));
+  const render=new Function("getWorld2DContext","currentWorldWalkAnimation","mapPixel","actorFrame","fieldActorFrameVisualKey","app","tilePoint","mapPartDepth","mapPartBeforeActor","drawActor","drawBitmapAt","drawMapEffects","drawActorLabels","drawActorSpeech",`${renderSource};return renderSceneActorsAndParts;`)(
+    ()=>({}),()=>null,depthAnchor,()=>null,()=>"",{character:"self",playerActorId:1},
+    (x,y)=>[320+(x+y)*32,240+(y-x)*24],p=>p.anchor[1],mapPartBeforeActor,
+    (_,actor)=>paint.push(`actor-${actor.id}`),(_,image,info)=>paint.push(info.file),()=>{},()=>{},()=>{}
+  );
+  const actors=[{id:1,name:"self",x:1,y:1},{id:2,x:0,y:2}];
+  render(actors,nativeParts,{width:640,height:480});const expected=paint.join();paint.length=0;
+  render(actors,merged,{width:640,height:480});
+  if(paint.join()!==expected)throw new Error("sliding map hand-off changes actor/tree draw order");
+}
 if (/requestPointerLock|exitPointerLock/.test(script)) {
   throw new Error("field cursor must never lock or move the browser's real pointer");
 }
