@@ -2712,7 +2712,7 @@
     #server-window-screen #server-window-form input{flex:1;min-width:0}
     #server-window-screen.server-window-message #server-window-form{left:var(--wnd-message-x);width:var(--wnd-message-input-w);height:20px;gap:0}
     #server-window-screen.server-window-message #server-window-input{height:20px;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;outline:none;background:transparent;color:#fff;caret-color:#fff;font:14px/20px SimSun,"Songti SC",serif}
-    #server-window-screen.server-window-message #server-window-options{left:0;width:640px}
+    #server-window-screen.server-window-message #server-window-options{left:0;width:640px;margin:0}
     #server-window-screen.server-window-message .server-window-controls{position:relative;min-height:14px;height:14px;pointer-events:none}
     #server-window-screen.server-window-message .native-message-response{position:absolute;top:0;width:42px;height:14px;min-height:0;margin:0;padding:2px;box-sizing:content-box;transform:translate(-2px,-2px);border:0;border-radius:0;box-shadow:none;background:transparent;color:#ffff00;font:14px/14px SimSun,"Songti SC",serif;white-space:pre;pointer-events:auto}
     #server-window-screen.server-window-message .native-message-response .native-message-glyph{height:14px;line-height:14px}
@@ -13964,6 +13964,7 @@
     if(hasInput&&!screen.classList.contains("hidden"))input.focus?.({preventScroll:true});
   }
   function closeServerWindow(){
+    const restoreChatFocus=[1,11].includes(Number(app.activeWindow?.windowType));
     app.activeWindow=null;
     $("server-window-screen").classList.add("hidden");
     syncFieldOverlayVisibility();
@@ -13971,6 +13972,10 @@
        Paint once with the latest actor frame, then let the normal scheduler
        resume looping NPC/player actions after the window is gone. */
     if(app.phase==="world"&&!app.battle){renderWorld(true);scheduleWorldAnimation();}
+    /* serverWindowType0(1) returns GetKeyInputFocus to MyChatBuffer when
+       its STR_BUFFER is destroyed. Never leave the hidden HTML input (or
+       body fallback) owning subsequent chat keystrokes. */
+    if(restoreChatFocus&&app.phase==="world"&&!app.battle)$("chat-input")?.focus({preventScroll:true});
   }
   function dismissServerWindow(){
     const wnd=app.activeWindow;

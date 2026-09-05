@@ -4044,6 +4044,17 @@ for(const windowType of [0,1,2,3,4,5,10,11])for(const select of [16,32]){
   if(closes!==0||app.activeWindow!==replacement)throw new Error("queueing an old response must never close a replacement WN");
 }
 const dismissFactory = new Function("app", "send", "closeServerWindow", `${script.slice(dismissStart, dismissEnd)};return dismissServerWindow;`);
+{
+  const start=script.indexOf("  function closeServerWindow(){"),end=script.indexOf("  function dismissServerWindow(){",start);
+  for(const type of [0,1,2,10,11])for(const phase of ["world","battle"]){
+    let focus=0,hidden=false;
+    const app={activeWindow:{windowType:type},phase,battle:phase==="battle"};
+    const $=id=>id==="chat-input"?{focus:()=>focus++}:{classList:{add:()=>hidden=true}};
+    const close=new Function("app","$","syncFieldOverlayVisibility","renderWorld","scheduleWorldAnimation",`${script.slice(start,end)};return closeServerWindow;`)(app,$,()=>{},()=>{},()=>{});
+    close();
+    if(app.activeWindow!==null||!hidden||focus!==Number(phase==="world"&&[1,11].includes(type)))throw new Error("closing native input must restore chat focus only in the field");
+  }
+}
 /* Exercise production SELECT rendering with long explanatory text and more
    than ten rows. The native visible-row cap must also cap clickable rows,
    without losing blank-row offsets in the response payload. */
@@ -4131,6 +4142,7 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
     if([1,11].includes(type)&&!test.nodes["server-window-input"].focused)throw new Error("MESSAGE input must receive focus when its window opens");
   }
   if(!/#server-window-screen\.server-window-message #server-window-input\{[^}]*padding:0[^}]*border:0[^}]*background:transparent/.test(html))throw new Error("native input must not retain an HTML editor plate");
+  if(!/#server-window-screen\.server-window-message #server-window-options\{[^}]*margin:0/.test(html))throw new Error("native response row must reset the generic 8px options margin");
   for(const type of [0,1,10,11])for(const mask of [0,1,33,49,63]){
     test.open([type,mask,104,202,"message"]);
     const expectedBits=[1,2,4,8,16,32].filter(bit=>mask&bit).slice(0,4);
