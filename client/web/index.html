@@ -13498,8 +13498,41 @@
     select.value=names.includes("W")?"W":names[0]||"";[...list.querySelectorAll(".protocol-option")].find(node=>node.dataset.value===select.value)?.classList.add("selected");renderProtocolFields();
   }
   function parseProtocolFields(){return [...$("protocol-fields").querySelectorAll("[name^=field-]")].map(input=>input.dataset.kind==="int"?decimal(input.value):input.value);}
+  function serverWindowInputByteLimit(wnd=app.activeWindow){
+    return Number(wnd?.windowType)===1?40:Number(wnd?.windowType)===11?58:0;
+  }
+  function blockServerWindowImeSubmit(wnd=app.activeWindow){
+    if(!serverWindowInputByteLimit(wnd))return;
+    const sequence=(wnd.inputImeSubmitSequence||0)+1;
+    wnd.inputImeSubmitSequence=sequence;wnd.inputImeSubmitBlocked=true;
+    window.setTimeout(()=>{if(wnd.inputImeSubmitSequence===sequence)wnd.inputImeSubmitBlocked=false;},0);
+  }
+  function guardServerWindowImeKey(event){
+    const wnd=app.activeWindow;
+    if(!serverWindowInputByteLimit(wnd)||!(wnd.inputComposing||event.isComposing||event.keyCode===229||event.key==="Process"||event.key==="Dead"))return false;
+    /* Let the IME consume Enter/Escape, not the gameplay handler. Some
+       engines emit compositionend before the same key's implicit submit;
+       keep a one-task guard without cancelling native candidate selection. */
+    if(event.key==="Enter"||event.keyCode===229||event.key==="Process"||event.key==="Dead"){
+      blockServerWindowImeSubmit(wnd);
+    }
+    return true;
+  }
+  function normalizeServerWindowInput(input=$("server-window-input")){
+    const limit=serverWindowInputByteLimit();
+    if(!input||!limit||app.activeWindow?.inputComposing)return input?.value||"";
+    const value=String(input.value||""),trimmed=trimChatInputToBytes(value,limit);
+    if(trimmed!==value){
+      const start=input.selectionStart??value.length,end=input.selectionEnd??start;
+      input.value=trimmed;input.setSelectionRange?.(Math.min(start,trimmed.length),Math.min(end,trimmed.length));
+    }
+    return trimmed;
+  }
   function windowResponse(select,data=""){
     const wnd=app.activeWindow;if(!wnd)return Promise.reject(new Error("服务器窗口已关闭"));
+    const inputLimit=serverWindowInputByteLimit(wnd);
+    if(inputLimit&&(wnd.inputComposing||wnd.inputImeSubmitBlocked))return Promise.resolve(false);
+    if(inputLimit)data=trimChatInputToBytes(data,inputLimit);
     /* LOGIN.CPP destroys server response windows as soon as a response is
        accepted by its send queue, including PREV/NEXT. HTTP completion is
        deliberately not part of that visual decision: a slow/failing POST
@@ -13850,6 +13883,7 @@
        no HTML form at all; its OK/YES/NO/PREV/NEXT controls are the bitmap
        buttons generated below from buttonTypeWN. */
     const hasInput=[1,11].includes(type);
+    input.maxLength=type===1?40:type===11?58:240;
     input.classList.toggle("hidden",!hasInput);form?.classList.toggle("hidden",!hasInput);
     /* Keep the generic close control only as a no-button fallback.  Whenever
        buttonTypeWN already supplies OK/CANCEL/YES/NO/PREV/NEXT, LOGIN.CPP
@@ -19217,6 +19251,7 @@
   }
   document.addEventListener("keydown",event=>{
     const activeEditor=event.target?.closest?.("input,textarea,select,[contenteditable=true]")||document.activeElement?.closest?.("input,textarea,select,[contenteditable=true]");
+    if(activeEditor?.id==="server-window-input"&&guardServerWindowImeKey(event))return;
     const gameplayChat=(app.phase==="world"&&!app.battle)||(app.phase==="battle"&&app.battle);
     /* MAIN.CPP receives Alt+Return as WM_SYSKEYDOWN rather than an ordinary
        text-buffer Return and toggles window/full-screen presentation. */
@@ -19456,10 +19491,18 @@
   $("social-close")?.addEventListener("click",closeMailCompose);
   $("protocol-form").addEventListener("submit",event=>{event.preventDefault();const name=$("protocol-function").value;send(name,parseProtocolFields()).catch(reportError);});
   document.querySelectorAll("[data-event-fn]").forEach(item=>item.addEventListener("click",()=>triggerEvent(item.dataset.eventFn)));
+  $("server-window-input").addEventListener("input",event=>{if(!event.isComposing)normalizeServerWindowInput(event.currentTarget);});
+  $("server-window-input").addEventListener("compositionstart",()=>{if(app.activeWindow)app.activeWindow.inputComposing=true;});
+  $("server-window-input").addEventListener("compositionend",event=>{
+    if(app.activeWindow)app.activeWindow.inputComposing=false;
+    /* Mobile IMEs may commit without any keydown (including keyCode 229).
+       Guard their implicit submit and response-button path for this task. */
+    blockServerWindowImeSubmit();normalizeServerWindowInput(event.currentTarget);
+  });
   $("server-window-form").addEventListener("submit",event=>{
     event.preventDefault();
     const wnd=app.activeWindow;
-    if(!wnd)return;
+    if(!wnd||wnd.inputComposing||wnd.inputImeSubmitBlocked)return;
     /* LOGIN.CPP's line-input windows submit through the OK button path.  The
        select field is a bit mask, not a zero-based form index; sending 0
        made NPC_Quiz/NPC_Alldoman ignore an otherwise valid answer.  Reuse

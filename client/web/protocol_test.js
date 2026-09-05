@@ -4005,7 +4005,88 @@ if (dismissStart < 0 || dismissEnd <= dismissStart) throw new Error("native WN d
 const responseStart = script.indexOf("  function windowResponse(select,data=\"\"){"),
   responseEnd = script.indexOf("  function splitWindowTokens", responseStart);
 if (responseStart < 0 || responseEnd <= responseStart) throw new Error("native WN response helper boundary missing");
-const responseFactory = new Function("app", "send", "closeServerWindow", `${script.slice(responseStart, responseEnd)};return windowResponse;`);
+const inputHelpersStart=script.indexOf("  function serverWindowInputByteLimit(");
+const byteHelpersStart=script.indexOf("  function chatInputByteLength("),byteHelpersEnd=script.indexOf("  function normalizeChatInputValue(",byteHelpersStart);
+// Known CP936 vectors below contain only ASCII and Chinese characters.
+const trimNpcInput=new Function("encodeLegacyText",`${script.slice(byteHelpersStart,byteHelpersEnd)};return trimChatInputToBytes;`)(text=>({length:[...text].reduce((n,ch)=>n+(ch.codePointAt(0)>127?2:1),0)}));
+const responseFactoryRaw=new Function("app","send","closeServerWindow","trimChatInputToBytes",`${script.slice(inputHelpersStart,responseEnd)};return windowResponse;`);
+const responseFactory=(app,send,close)=>responseFactoryRaw(app,send,close,trimNpcInput);
+/* Exercise production composition/input/form listeners together, including
+   engines that emit compositionend before the Enter key's implicit submit.
+   These are synthetic event-order vectors, not an OS IME integration test. */
+{
+  const start=script.indexOf('  $("server-window-input").addEventListener("input",');
+  const end=script.indexOf('  $("server-window-close").addEventListener(',start);
+  if(start<0||end<=start)throw new Error("NPC input listener boundaries missing");
+  for(const type of [1,11])for(const emitsKeydown of [true,false]){
+    const listeners={},timers=[],sent=[],app={position:[1,2],activeWindow:{windowType:type,seqno:3,objindex:4}};
+    let closes=0;
+    const input={value:"中".repeat(40),selectionStart:40,selectionEnd:40,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+    const nodes={"server-window-input":input,"server-window-form":{}};
+    for(const [id,node] of Object.entries(nodes))node.addEventListener=(event,fn)=>{listeners[`${id}:${event}`]=fn;};
+    const $=id=>nodes[id];
+    const api=new Function("app","window","$","trimChatInputToBytes","send","closeServerWindow","reportError",`
+      ${script.slice(inputHelpersStart,responseEnd)}
+      ${script.slice(start,end)}
+      return {guardServerWindowImeKey,windowResponse};
+    `)(app,{setTimeout:fn=>timers.push(fn)},$,trimNpcInput,(_,fields)=>{sent.push(fields);return Promise.resolve();},()=>{closes++;app.activeWindow=null;},error=>{throw error;});
+    const dispatch=(id,event,extra={})=>listeners[`${id}:${event}`]({currentTarget:input,preventDefault(){},...extra});
+    dispatch("server-window-input","compositionstart");
+    dispatch("server-window-input","input",{isComposing:true});
+    if(input.value.length!==40)throw new Error("composition preview must remain untouched");
+    if(emitsKeydown)api.guardServerWindowImeKey({key:"Enter",isComposing:true});
+    dispatch("server-window-input","compositionend");
+    const expected="中".repeat(type===1?20:29);
+    if(input.value!==expected)throw new Error("compositionend must apply the native byte ceiling");
+    dispatch("server-window-form","submit");
+    api.windowResponse(1,input.value);
+    if(sent.length||closes)throw new Error("IME confirmation must not submit or close the NPC dialog");
+    timers.forEach(fn=>fn());
+    dispatch("server-window-form","submit");
+    if(sent.length!==1||sent[0][4]!==1||sent[0][5]!==expected||closes!==1)throw new Error("next intentional Enter must submit one bounded WN OK response and close");
+    dispatch("server-window-form","submit");
+    if(sent.length!==1)throw new Error("closed input dialog must not duplicate its response");
+  }
+}
+{
+  for(const signal of [{isComposing:true},{keyCode:229},{tracked:true}])for(const key of ["Enter","Escape"]){
+    const wnd={windowType:11,inputComposing:Boolean(signal.tracked)},app={activeWindow:wnd},timers=[];
+    const guard=new Function("app","window",`${script.slice(inputHelpersStart,responseStart)};return guardServerWindowImeKey;`)(app,{setTimeout:fn=>timers.push(fn)});
+    if(!guard({key,...signal}))throw new Error("native NPC IME keys must bypass gameplay Enter/Escape");
+    if((key==="Enter"||signal.keyCode===229)&&!wnd.inputImeSubmitBlocked)throw new Error("composition key must block same-task implicit form submit");
+    timers.forEach(fn=>fn());wnd.inputComposing=false;
+    if(guard({key})||wnd.inputImeSubmitBlocked)throw new Error("normal NPC input keys must work after composition finishes");
+  }
+  for(const key of ["Process","Dead"]){
+    const wnd={windowType:1},app={activeWindow:wnd},timers=[];
+    const guard=new Function("app","window",`${script.slice(inputHelpersStart,responseStart)};return guardServerWindowImeKey;`)(app,{setTimeout:fn=>timers.push(fn)});
+    if(!guard({key})||!wnd.inputImeSubmitBlocked)throw new Error("legacy IME key names must block gameplay and implicit submit without isComposing");
+    timers.forEach(fn=>fn());
+    if(guard({key:"Enter"})||wnd.inputImeSubmitBlocked)throw new Error("legacy IME guard must release for the next intentional Enter");
+    app.activeWindow={windowType:0};
+    if(guard({key}))throw new Error("message-only windows must not acquire an input composition guard");
+    app.activeWindow=null;
+    if(guard({key}))throw new Error("closed windows must not retain the IME guard");
+  }
+  if(!/activeEditor\?\.id==="server-window-input"&&guardServerWindowImeKey\(event\)\)return/.test(script)||
+     !/if\(!wnd\|\|wnd\.inputComposing\|\|wnd\.inputImeSubmitBlocked\)return/.test(script))throw new Error("NPC keyboard and form must both respect composition guards");
+}
+{
+  for(const [type,limit] of [[1,40],[11,58]])for(const text of ["a".repeat(70),"中".repeat(40),"a".repeat(limit-1)+"中"]){
+    const app={position:[1,2],activeWindow:{windowType:type,seqno:1,objindex:2}};let sent;
+    responseFactory(app,(_,fields)=>{sent=fields[5];return Promise.resolve();},()=>{})(1,text);
+    if(sent!==trimNpcInput(text,limit))throw new Error("all native input responses must enforce the CP936 byte limit at send time");
+    const input={value:text,selectionStart:text.length,selectionEnd:text.length,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+    const normalize=new Function("app","trimChatInputToBytes",`${script.slice(inputHelpersStart,responseStart)};return normalizeServerWindowInput;`)(app,trimNpcInput);
+    app.activeWindow.inputComposing=true;normalize(input);
+    if(input.value!==text)throw new Error("native input normalization must not interrupt IME composition");
+    let sentDuringComposition=false;
+    responseFactory(app,()=>{sentDuringComposition=true;return Promise.resolve();},()=>{throw new Error("IME must not close its window");})(1,text);
+    if(sentDuringComposition)throw new Error("NPC response button must not send an uncommitted IME preview");
+    app.activeWindow.inputComposing=false;normalize(input);
+    if(input.value!==trimNpcInput(text,limit)||input.selectionStart>input.value.length||input.selectionEnd>input.value.length)throw new Error("native input must trim complete characters and preserve a valid selection");
+  }
+}
 {
   const calls=[];
   let closes=0;
@@ -4140,6 +4221,7 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
     if(screen.properties["--wnd-message-input-w"]!==`${wide?406:280}px`)throw new Error("MESSAGE input width must follow the native 40/58-byte input buffer");
     if([1,11].includes(type)&&test.nodes["server-window-input"].placeholder!=="")throw new Error("native input must not display an invented placeholder");
     if([1,11].includes(type)&&!test.nodes["server-window-input"].focused)throw new Error("MESSAGE input must receive focus when its window opens");
+    if([1,11].includes(type)&&test.nodes["server-window-input"].maxLength!==(type===1?40:58))throw new Error("native input HTML character ceiling must not exceed its byte limit");
   }
   if(!/#server-window-screen\.server-window-message #server-window-input\{[^}]*padding:0[^}]*border:0[^}]*background:transparent/.test(html))throw new Error("native input must not retain an HTML editor plate");
   if(!/#server-window-screen\.server-window-message #server-window-options\{[^}]*margin:0/.test(html))throw new Error("native response row must reset the generic 8px options margin");
@@ -5390,6 +5472,19 @@ if (futureProjectileState.projectiles.length !== 141 || futureProjectileState.pr
 const context = {window: {}, TextEncoder, TextDecoder, console};
 vm.runInNewContext(script.slice(0, protocolEnd) + "\n})();", context, {filename: "index.html"});
 const P = context.window.StoneAgeProtocol;
+{
+  const trim=new Function("encodeLegacyText",`${script.slice(byteHelpersStart,byteHelpersEnd)};return trimChatInputToBytes;`)(P.encodeLegacyText);
+  for(const [type,limit] of [[1,40],[11,58]])for(const [text,expected] of [
+    ["中".repeat(40),"中".repeat(limit/2)],
+    ["a".repeat(limit-1)+"中","a".repeat(limit-1)],
+    ["€".repeat(limit+1),"€".repeat(limit)],
+    ["a".repeat(limit-3)+"😀","a".repeat(limit-3)],
+  ]){
+    const app={position:[1,2],activeWindow:{windowType:type,seqno:3,objindex:4}};let sent;
+    responseFactoryRaw(app,(_,fields)=>{sent=fields[5];return Promise.resolve();},()=>{},trim)(1,text);
+    if(sent!==expected||P.encodeLegacyText(sent).length>limit)throw new Error("NPC response length must match the real wire encoder, including CP936 euro and UTF-8 fallback");
+  }
+}
 
 function equal(actual, expected, label) {
   const left = Buffer.from(actual);
