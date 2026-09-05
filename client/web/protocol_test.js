@@ -3817,14 +3817,13 @@ const worldActorPaintSource = script.slice(worldActorPaintStart, worldActorPaint
 if (!/if\(renderActor!==actor&&renderActor\?\._lastFrame\)actor\._lastFrame=renderActor\._lastFrame/.test(worldActorPaintSource)) {
   throw new Error("walking actor must retain its last decoded frame");
 }
-/* MAP.CPP::setPartsPrio() calls insertCharPartsPrio(existingChar, part),
-   whose linked-list helper inserts the new part after the existing
-   character.  The web list is kept in the same descending depth order and
-   reversed only at paint time; inserting before the character makes roofs
-   and trees cover an actor on the wrong side of a doorway. */
-if (!/mapPartBeforeActor\(part,candidate\)\)\{items\.splice\(index\+1,0,entry\);inserted=true;break;\}/.test(worldActorPaintSource) ||
-    /mapPartBeforeActor\(part,candidate\)\)\{items\.splice\(index,0,entry\)/.test(worldActorPaintSource)) {
-  throw new Error("map parts must be inserted after the matching character in the native priority chain");
+/* MAP.CPP::setPartsPrio() calls insertCharPartsPrio(existingChar, part).
+   That helper links the new part BEFORE the existing character.  The web
+   list is kept in the same chain order and reversed only at paint time, so
+   a tree/roof that covers an actor must be inserted before that character. */
+if (!/mapPartBeforeActor\(part,candidate\)\)\{items\.splice\(index,0,entry\);inserted=true;break;\}/.test(worldActorPaintSource) ||
+    /mapPartBeforeActor\(part,candidate\)\)\{items\.splice\(index\+1,0,entry\)/.test(worldActorPaintSource)) {
+  throw new Error("map parts must be inserted before the matching character in the native priority chain");
 }
 if (/requestPointerLock|exitPointerLock/.test(script)) {
   throw new Error("field cursor must never lock or move the browser's real pointer");
