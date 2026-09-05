@@ -8605,7 +8605,9 @@
     renderBattleWorld();
     try{
       await send("B",[command]);
-      if(app.battleState!==state||!app.battle)return;
+      /* Polling can install a new turn/selector before this HTTP response.
+         Only the action that owns this write may close or unlock its UI. */
+      if(app.battleState!==state||!app.battle||state.pendingAction!==action)return;
       /* Target selection is scoped to one pending action.  The latch is set
          before the asynchronous bridge write so a touch/pointer click cannot
          submit the same target twice, but it must be released once that write
@@ -8637,6 +8639,10 @@
          looks exactly like a frozen battle. */
       if(kind==="player")maybeOpenBattlePetSkillMenu(state,command);
     }catch(error){
+      if(app.battleState!==state||!app.battle||state.pendingAction!==action)return;
+      /* Keep the still-selected action retryable after a transport failure.
+         Clearing commandPending alone leaves every subsequent click blocked. */
+      state.targetSelectionPending=false;
       if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,false);
       battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattleTargets();renderBattleWorld();reportError(error);
     }
@@ -10171,6 +10177,7 @@
     if(!state)return;
     clearBattlePetChoiceTimer(state);
     state.pendingAction=null;
+    state.targetSelectionPending=false;
     closeBattlePopup({skipDefault:true});
     $("battle-target-panel")?.classList.add("hidden");
   }

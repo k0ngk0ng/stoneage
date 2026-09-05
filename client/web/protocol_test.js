@@ -6216,4 +6216,6 @@ if (!/dirx\[i\+1\] = CHAR_getDX\([\s\S]{0,260}dirx\[0\] = CHAR_getDX[\s\S]{0,180
     !/for\( i = 0 ; i < 9 ; i \+\+ \)[\s\S]{0,3000}CHAR_getInt\(charaindex,CHAR_X\) \+ dirx\[8\]/.test(dropMoneySource)) {
   throw new Error("CHAR_DropMoney must exhaust surrounding cells before the player cell");
 }
+// Keep deferred HTTP/selector races in the normal protocol regression gate.
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_async_test.js"], {stdio:"inherit"});
 console.log("web protocol vectors OK");
