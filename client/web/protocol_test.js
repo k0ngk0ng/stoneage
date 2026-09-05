@@ -2637,6 +2637,14 @@ if (battleTargetRenderStart < 0 || battleTargetRenderEnd <= battleTargetRenderSt
     /if\(action\.kind==="attack"\)[\s\S]*panel\.classList\.add\("hidden"\)/.test(battleTargetRenderSource)) {
   throw new Error("ordinary attack must retain the native BattleTargetSelect prompt window");
 }
+/* Mobile WebViews may omit both the synthetic click and a bubbled pointerup
+   for an opacity:0 target button.  Keep a direct pointerdown fallback on the
+   transparent owner and a body-frame fallback on the battle surface; the
+   one-shot target latch prevents either path from sending twice. */
+if (!/proxyHit\.addEventListener\("pointerdown",event=>\{[\s\S]{0,360}sendBattleTarget\(item\)/.test(script) ||
+    !/battleScreen\.addEventListener\("pointerdown",event=>\{[\s\S]{0,420}battleActorTargetAtPoint\(event\)[\s\S]{0,180}sendBattleTarget\(target\.item\)/.test(script)) {
+  throw new Error("battle target selection must handle mobile pointerdown events");
+}
 /* The selected server/client contract is sa_2903 2.5.  Its PC.H has magic
    targets 0..8 and item/pet targets 0..7; 8.5 adds 9..11 only under
    __ATTACK_MAGIC.  Fail closed instead of emitting synthetic row targets

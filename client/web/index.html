@@ -17990,6 +17990,18 @@
             if(active)paintBattleHoverTarget(Number(current.battleId));
             else if(Number(state.battleHoverTarget)===Number(current.battleId))paintBattleHoverTarget(null);
           };
+          /* A few mobile WebViews do not dispatch a synthetic click (or even
+             bubble pointerup) from an opacity:0 button.  The native client
+             commits BattleTargetSelect() as soon as the target hit box is
+             pressed/released, so accept the primary pointer at the owner
+             itself as a deterministic fallback.  sendBattleTarget() owns a
+             one-shot latch; the later pointerup/click path therefore cannot
+             submit the same W/H packet twice. */
+          proxyHit.addEventListener("pointerdown",event=>{
+            if(event.button!==undefined&&Number(event.button)!==0)return;
+            event.preventDefault();event.stopPropagation();
+            const item=proxyHit._battleItem;if(item)sendBattleTarget(item);
+          },{passive:false});
           proxyHit.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();const item=proxyHit._battleItem;if(item)sendBattleTarget(item);});
           proxyHit.addEventListener("mouseenter",()=>setProxyHover(true));proxyHit.addEventListener("mouseleave",()=>setProxyHover(false));
           proxyHit.addEventListener("pointerenter",()=>setProxyHover(true));proxyHit.addEventListener("pointerleave",()=>setProxyHover(false));proxyHit.addEventListener("focus",()=>setProxyHover(true));proxyHit.addEventListener("blur",()=>setProxyHover(false));
@@ -18797,6 +18809,18 @@
     const target=battleActorTargetAtPoint(event);if(!target)return;
     event.preventDefault();event.stopPropagation();sendBattleTarget(target.item);
   });
+  /* Body clicks are delegated above, but on touch surfaces the browser may
+     never synthesize that click.  Commit on the primary pointer-down when it
+     lands in a painted actor frame; the selection latch makes this compatible
+     with the transparent hit button's own pointerdown and with the existing
+     pointerup fallback. */
+  battleScreen.addEventListener("pointerdown",event=>{
+    if(event.defaultPrevented)return;
+    if(event.button!==undefined&&Number(event.button)!==0)return;
+    if(event.target?.closest?.("#battle-ui,#battle-popup,#battle-target-panel"))return;
+    const target=battleActorTargetAtPoint(event);if(!target)return;
+    event.preventDefault();event.stopPropagation();sendBattleTarget(target.item);
+  },{passive:false});
   /* Some mobile WebViews do not synthesize a DOM `click` after a touch on a
      transparent element (and a long-press can cancel that synthesis).  The
      native client commits BattleTargetSelect() on button release, so use the
