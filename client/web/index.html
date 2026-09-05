@@ -2710,6 +2710,18 @@
     #server-window-screen #server-window-options{left:var(--wnd-content-x,112px);top:var(--wnd-options-y,310px);width:var(--wnd-content-w,416px);display:grid;grid-template-columns:repeat(2,1fr);gap:3px}
     #server-window-screen #server-window-form{left:var(--wnd-content-x,112px);top:var(--wnd-input-y,278px);width:var(--wnd-content-w,416px);display:flex;gap:3px}
     #server-window-screen #server-window-form input{flex:1;min-width:0}
+    #server-window-screen.server-window-message #server-window-form{left:var(--wnd-message-x);width:var(--wnd-message-input-w);height:20px;gap:0}
+    #server-window-screen.server-window-message #server-window-input{height:20px;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;outline:none;background:transparent;color:#fff;caret-color:#fff;font:14px/20px SimSun,"Songti SC",serif}
+    #server-window-screen.server-window-message #server-window-options{left:0;width:640px}
+    #server-window-screen.server-window-message .server-window-controls{position:relative;min-height:14px;height:14px;pointer-events:none}
+    #server-window-screen.server-window-message .native-message-response{position:absolute;top:0;width:42px;height:14px;min-height:0;margin:0;padding:2px;box-sizing:content-box;transform:translate(-2px,-2px);border:0;border-radius:0;box-shadow:none;background:transparent;color:#ffff00;font:14px/14px SimSun,"Songti SC",serif;white-space:pre;pointer-events:auto}
+    #server-window-screen.server-window-message .native-message-response .native-message-glyph{height:14px;line-height:14px}
+    /* HitMouseCursor(hitFlag=2): 2px hit padding and a hover-only hollow
+       frame at text (x-3,y-4)..(x+width+2,y+18). System palette indices
+       250/15/2/15 cycle for 45/5/5/5 native field frames. */
+    #server-window-screen.server-window-message .native-message-response::after{content:"";position:absolute;left:-1px;top:-2px;width:47px;height:22px;box-sizing:border-box;border:2px solid #00ff00;opacity:0;pointer-events:none;animation:native-message-hover 1.92s steps(1,end) infinite}
+    #server-window-screen.server-window-message .native-message-response:hover::after{opacity:1}
+    @keyframes native-message-hover{0%,100%{border-color:#00ff00}75%{border-color:#28e128}83.333333%{border-color:#008000}91.666667%{border-color:#28e128}}
     /* WN message windows draw their response buttons from buttonTypeWN.  The
        browser form is only an input line for types 1/11; leaving its submit
        button visible for a plain type-0 message created a second, stretched
@@ -13868,6 +13880,10 @@
       screen.style.setProperty("--wnd-message-y",`${frameY+(frameH-totalRows*20)/2}px`);
       screen.style.setProperty("--wnd-message-w",`${maxBytes*9}px`);
       screen.style.setProperty("--wnd-message-h",`${visibleRows*20}px`);
+      const textTop=frameY+(frameH-totalRows*20)/2;
+      screen.style.setProperty("--wnd-input-y",`${textTop+(totalRows-2)*20}px`);
+      screen.style.setProperty("--wnd-message-input-w",`${maxBytes*7}px`);
+      screen.style.setProperty("--wnd-options-y",`${textTop+(totalRows-1)*20+8}px`);
       body.replaceChildren();
       const rows=nativeMessageRows(wnd.data,maxBytes,visibleRows);
       for(let row=0;row<rows.length;row++){
@@ -13924,15 +13940,28 @@
     else if(type===9){const shop=parsePetSkillShop(wnd.data);body.textContent=[shop.title,...shop.messages].filter(Boolean).join("\n")||"宠物技能商店";for(const skill of shop.skills){const box=document.createElement("div");box.className="data-card";const line=document.createElement("span");line.textContent=`${skill.name} · ${skill.price}`;box.append(line,windowAssetButton("学习",9211,()=>{const petNo=app.selectedPet>=0?app.selectedPet:0;windowResponse(0,`${skill.index+1}|${petNo}|0|${skill.price}`);}));options.append(box);}}
     else if(type===12||type===13)appendShop(parsePoolShopWindow(wnd.data,type),true);
     else body.textContent=unescapeCharacterOption(wnd.data)||"（服务器窗口）";
-    if(type===1||type===11){input.placeholder="输入原版窗口要求的文字";}
+    if(type===1||type===11){input.placeholder="";input.setAttribute("aria-label","输入原版窗口要求的文字");}
     /* These are the exact CG button records from anim_tbl.h.  In particular
        CANCEL is 26050/bitmap_9170 (not the NO bitmap), and paging uses the
        32×16 PREV/NEXT pair (26180/26182).  Reusing the wrong 80×16 art was
        the visibly hand-drawn/offset fallback in the old MVP window. */
     const windowButtonBitmaps=Object.freeze({1:9211,2:9170,4:9212,8:9213,16:9270,32:9272}),controls=document.createElement("div");controls.className="server-window-controls";
-    let controlCount=0;for(const [bit,label] of WINDOW_BUTTONS)if(wnd.buttonType&bit){const bitmap=windowButtonBitmaps[bit]||9211;const width=bit===16||bit===32?32:80;const item=windowAssetButton(label,bitmap,()=>windowResponse(bit,[2,3,4,5].includes(type)?"0":input.value),width,16);controls.append(item);controlCount++;}
+    let controlCount=0;
+    if([0,1,10,11].includes(type)){
+      /* serverWindowType0 uses StockFontBuffer(hitFlag=2), not CG button
+         art. It displays only the first four enabled response bits. */
+      const visible=WINDOW_BUTTONS.filter(([bit])=>wnd.buttonType&bit).slice(0,4),step=Math.floor(frameW/(visible.length+1));
+      const titles={1:"确  定",2:"取  消",4:"确  定",8:"取  消",16:"上一页",32:"下一页"};
+      visible.forEach(([bit,label],index)=>{
+        const item=button("",()=>windowResponse(bit,input.value));item.className="native-message-response";item.setAttribute("aria-label",label);
+        item.style.left=`${frameX+step*(index+1)-27}px`;
+        for(const ch of titles[bit]){const glyph=document.createElement("span");glyph.className="native-message-glyph";glyph.style.width=`${ch.charCodeAt(0)>0x7f?14:7}px`;glyph.textContent=ch;item.append(glyph);}
+        controls.append(item);controlCount++;
+      });
+    }else for(const [bit,label] of WINDOW_BUTTONS)if(wnd.buttonType&bit){const bitmap=windowButtonBitmaps[bit]||9211;const width=bit===16||bit===32?32:80;const item=windowAssetButton(label,bitmap,()=>windowResponse(bit,[2,3,4,5].includes(type)?"0":input.value),width,16);controls.append(item);controlCount++;}
     if(controlCount)options.append(controls);
     openPanel("server-window");
+    if(hasInput&&!screen.classList.contains("hidden"))input.focus?.({preventScroll:true});
   }
   function closeServerWindow(){
     app.activeWindow=null;

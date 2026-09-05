@@ -4077,11 +4077,12 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
       set textContent(value){this.ownText=String(value);this.children=[];}
       replaceChildren(...nodes){this.ownText="";this.children=nodes;}
       setAttribute(){}
+      focus(){this.focused=true;}
     }
     const nodes=Object.fromEntries(["screen","title","body","options","input","form","close"].map(name=>["server-window-"+name,new Node()]));
     const $=id=>nodes[id],document={createElement:()=>new Node()},responses=[];
     const app={windows:[],activeWindow:null},decimal=Number,textOr=String,unescapeCharacterOption=String;
-    const WINDOW_TYPES={2:"选择"},WINDOW_BUTTONS=[[1,"确定"],[2,"取消"],[16,"上一页"],[32,"下一页"]];
+    const WINDOW_TYPES={2:"选择"},WINDOW_BUTTONS=[[1,"确定"],[2,"取消"],[4,"是"],[8,"否"],[16,"上一页"],[32,"下一页"]];
     function clearItemShopFrame(){nodes["server-window-screen"].classList.remove("server-window-select");}
     function addEvent(){}function openPanel(){}
     function windowResponse(select,data){responses.push({select,data});}
@@ -4111,8 +4112,8 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
     if(screen.properties["--legacy-y"]!==`${y}px`||
        screen.properties["--legacy-h"]!==`${h}px`||
        screen.properties["--wnd-content-y"]!==`${y+16}px`||
-       screen.properties["--wnd-options-y"]!==`${y+h-44}px`||
-       screen.properties["--wnd-input-y"]!==`${y+h-78}px`){
+       screen.properties["--wnd-options-y"]!==`${wide?408:318}px`||
+       screen.properties["--wnd-input-y"]!==`${wide?380:290}px`){
       throw new Error(`MESSAGE/INPUT type ${type} frame and controls must use the full 480px native surface`);
     }
     const visible=wide?(type===11?16:17):(type===1?7:8);
@@ -4125,6 +4126,22 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
        screen.properties["--wnd-message-y"]!==`${wide?60:150}px`||
        screen.properties["--wnd-message-h"]!==`${visible*20}px`||
        !screen.classList.contains("server-window-message"))throw new Error(`MESSAGE ${type} must use native fixed text anchors and 20px rows`);
+    if(screen.properties["--wnd-message-input-w"]!==`${wide?406:280}px`)throw new Error("MESSAGE input width must follow the native 40/58-byte input buffer");
+    if([1,11].includes(type)&&test.nodes["server-window-input"].placeholder!=="")throw new Error("native input must not display an invented placeholder");
+    if([1,11].includes(type)&&!test.nodes["server-window-input"].focused)throw new Error("MESSAGE input must receive focus when its window opens");
+  }
+  if(!/#server-window-screen\.server-window-message #server-window-input\{[^}]*padding:0[^}]*border:0[^}]*background:transparent/.test(html))throw new Error("native input must not retain an HTML editor plate");
+  for(const type of [0,1,10,11])for(const mask of [0,1,33,49,63]){
+    test.open([type,mask,104,202,"message"]);
+    const expectedBits=[1,2,4,8,16,32].filter(bit=>mask&bit).slice(0,4);
+    const row=options.children.find(n=>n.className==="server-window-controls"),buttons=row?.children||[];
+    if(buttons.length!==expectedBits.length)throw new Error("MESSAGE must emit only native response buttons");
+    const width=type>=10?576:448,x=type>=10?32:96;
+    for(let i=0;i<buttons.length;i++){
+      if(buttons[i].className!=="native-message-response"||buttons[i].style.left!==`${x+Math.floor(width/(buttons.length+1))*(i+1)-27}px`)throw new Error("MESSAGE response buttons must use native fixed spacing, not flex layout");
+      const before=test.responses.length;test.nodes["server-window-input"].value="输入";buttons[i].click();
+      if(JSON.stringify(test.responses[before])!==JSON.stringify({select:expectedBits[i],data:"输入"}))throw new Error("MESSAGE text response must retain bit-mask and input payload");
+    }
   }
   test.open([2,1,103,202,"1\nintro\nchoice"]);
   if(screen.classList.contains("server-window-message"))throw new Error("MESSAGE layout must not leak into the next SELECT window");
