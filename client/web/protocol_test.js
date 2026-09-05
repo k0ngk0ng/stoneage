@@ -3776,16 +3776,26 @@ if(highlighted(10,{kind:"attack"})!=="10"||
    highlighted(10,{kind:"magic",targetType:4})!=="0,1,5,10,11,15"){
   throw new Error("native grouped battle target outlines drifted");
 }
-/* MOUSE.CPP only reports a target after the physical pointer enters the
-   48x48 foot box; the complete sprite rectangle is an outline painted after
-   that hit, never a second hover-only selector. */
+/* MOUSE.CPP prefers the physical 48x48 foot box; the browser additionally
+   falls back to the decoded sprite bounds so body aiming still highlights the
+   same actor that the delegated click path will select. */
 const battleHoverStart = script.indexOf("  function updateBattleHoverFromPointer(event)");
 const battleHoverEnd = script.indexOf("  battleScreen.addEventListener(\"pointermove\"", battleHoverStart);
 const battleHoverSource = script.slice(battleHoverStart, battleHoverEnd);
 if (battleHoverStart < 0 || battleHoverEnd <= battleHoverStart ||
     !/querySelectorAll\("#battle-target-overlay \.battle-target-hit"\)/.test(battleHoverSource) ||
-    /querySelectorAll\("#battle-target-overlay \[data-battle-target\] > \.battle-target-frame"\)/.test(battleHoverSource)) {
-  throw new Error("battle hover and click must share the native 48x48 hit box");
+    /querySelectorAll\("#battle-target-overlay \[data-battle-target\] > \.battle-target-frame"\)/.test(battleHoverSource) ||
+    !/const bodyTarget=battleActorTargetAtPoint\(event\)/.test(battleHoverSource)) {
+  throw new Error("battle hover must prefer the native 48x48 hit box and support body fallback");
+}
+/* Keep the native foot hit box for hover, but let a player click the visible
+   body of a tall actor as well.  The delegated path must reuse the existing
+   proxy item and revalidate battleTargetSelectable() before sending, rather
+   than adding a second button that can race the 48x48 owner. */
+if (!/function battleActorTargetAtPoint\(event\)[\s\S]{0,1800}battleTargetSelectable\(state\.pendingAction,item,state\)[\s\S]{0,420}getBoundingClientRect\?\.\(\)/.test(script) ||
+    !/battleScreen\.addEventListener\("click",event=>\{[\s\S]{0,520}battleActorTargetAtPoint\(event\)[\s\S]{0,180}sendBattleTarget\(target\.item\)/.test(script) ||
+    !/event\.target\?\.closest\?\.\("#battle-ui,#battle-popup,#battle-target-panel"\)/.test(script)) {
+  throw new Error("battle actor body clicks must delegate through the native target proxy");
 }
 /* The smooth local walker is a shallow fractional-position copy.  Persist
    its decoded frame back to the real C actor so the next render cannot lose

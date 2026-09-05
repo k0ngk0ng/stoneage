@@ -18740,11 +18740,50 @@
       if(rect.width>0&&rect.height>0&&x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom){hit=button;break;}
     }
     /* Native MOUSE.CPP first requires the pointer to enter the 48×48 foot
-       hit box and only then paints a frame around the complete bitmap.  Do
-       not infer hover from that larger visual frame: it advertises a target
-       in the actor's head/torso area where the native click cannot select it. */
-    paintBattleHoverTarget(hit?Number(hit._battleItem?.battleId):null);
+       hit box and only then paints a frame around the complete bitmap.  On a
+       browser/touch surface, however, users naturally aim at the visible
+       body.  If the native foot check misses, use the same decoded sprite
+       bounds as the delegated click path so the frame still advertises the
+       target that a body click will select. */
+    if(hit){paintBattleHoverTarget(Number(hit._battleItem?.battleId));return;}
+    const bodyTarget=battleActorTargetAtPoint(event);
+    paintBattleHoverTarget(bodyTarget?Number(bodyTarget.item?.battleId):null);
   }
+  /* MOUSE.CPP uses a 48x48 foot rectangle to decide which actor owns the
+     hover feedback.  That is faithful for the orange/green target frame, but
+     it is needlessly difficult on a touch screen (and on a scaled browser
+     surface) to hit the exact feet of a tall sprite.  Keep the native hit
+     rectangle above for hover, and accept a click anywhere inside the
+     already-painted native sprite bounds as a convenience target.  This is a
+     single delegated click path, not a second button/target owner, so the
+     depth order and the `W|0|A` wire command remain unchanged.
+     */
+  function battleActorTargetAtPoint(event){
+    if(!app.battle||app.battleState?.movieActive||!app.battleState?.pendingAction)return null;
+    const x=Number(event?.clientX),y=Number(event?.clientY);
+    if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+    const state=app.battleState,proxies=[...document.querySelectorAll("#battle-target-overlay > [data-battle-target]")];
+    /* Proxies are appended in native back-to-front order.  Walk backwards so
+       an overlapping sprite resolves to the same frontmost actor as the
+       compositor rather than whichever roster row happened to arrive first. */
+    for(let index=proxies.length-1;index>=0;index--){
+      const proxy=proxies[index],frame=proxy.querySelector(":scope > .battle-target-frame"),hit=proxy.querySelector(":scope > .battle-target-hit"),item=hit?._battleItem;
+      if(!frame||!item||!battleTargetSelectable(state.pendingAction,item,state))continue;
+      const rect=frame.getBoundingClientRect?.();
+      if(!rect||rect.width<=0||rect.height<=0)continue;
+      if(x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom)return {item,proxy};
+    }
+    return null;
+  }
+  battleScreen.addEventListener("click",event=>{
+    if(event.defaultPrevented)return;
+    /* Popup rows, command buttons and the cancel/target hint own their click
+       explicitly.  Only a click that fell through the decorative battle
+       surface may use the sprite-bounds convenience target above. */
+    if(event.target?.closest?.("#battle-ui,#battle-popup,#battle-target-panel"))return;
+    const target=battleActorTargetAtPoint(event);if(!target)return;
+    event.preventDefault();event.stopPropagation();sendBattleTarget(target.item);
+  });
   /* BattleTargetSelect() positions its native brown hint from the logical
      mouse y coordinate.  Track the real pointer independently from the field
      cursor (which intentionally remains in the world scene) so an actor
@@ -19292,7 +19331,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
+  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);
