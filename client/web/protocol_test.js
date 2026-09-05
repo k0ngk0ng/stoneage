@@ -1957,6 +1957,14 @@ for (const expected of [
   /worldScreen\.addEventListener\("pointerleave",\(\)=>\{if\(app\.phase==="world"\)\{setWorldTaskbarVisible\(false\);app\.cursor\.visible=true;/,
   /function moveTargetIsSolid\(target\)[\s\S]{0,900}isMapWarpEvent\(event\)\|\|isMapEnemyEvent\(event\)[\s\S]{0,260}localCellWalkable\(target\[0\],target\[1\],false\)===false/,
   /function installMoveRoute\(route,requested\)[\s\S]{0,900}moveTargetIsSolid\(requested\)[\s\S]{0,180}app\.moveTarget=\[Number\(last\[0\]\),Number\(last\[1\]\)\]/,
+  /* A player landing on a multi-cell doorway must be able to leave without
+     walking through the neighbouring warp cell and immediately bouncing
+     back.  Keep the guard in both the greedy route and A* fallback; an
+     explicitly clicked warp remains a legal terminal destination. */
+  /const originEvent=mapEventAt\(origin\[0\],origin\[1\]\),targetEvent=mapEventAt\(target\[0\],target\[1\]\);[\s\S]{0,180}avoidOriginWarpAdjacent=isMapWarpEvent\(originEvent\)&&!isMapWarpEvent\(targetEvent\)/,
+  /const nextNearOrigin=Math\.max\(Math\.abs\(next\[0\]-origin\[0\]\),Math\.abs\(next\[1\]-origin\[1\]\)\)<=1;[\s\S]{0,180}avoidOriginWarpAdjacent&&nextNearOrigin&&isMapWarpEvent\(nextEvent\)&&key!==goal/,
+  /const originEvent=mapEventAt\(origin\[0\],origin\[1\]\),targetEvent=mapEventAt\(to\[0\],to\[1\]\);[\s\S]{0,180}avoidOriginWarpAdjacent=isMapWarpEvent\(originEvent\)&&!isMapWarpEvent\(targetEvent\)/,
+  /const nextNearOrigin=Math\.max\(Math\.abs\(next\[0\]-origin\[0\]\),Math\.abs\(next\[1\]-origin\[1]\)\)<=1;[\s\S]{0,180}avoidOriginWarpAdjacent&&nextNearOrigin&&isMapWarpEvent\(nextEvent\)&&!isGoal\)\{blocked=true;break;\}/,
   /* An in-floor wall/scene-rim click must use the bounded A* nearest-cell
      fallback; returning the straight prefix strands the pointer several
      tiles away from the edge. */

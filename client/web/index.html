@@ -17199,6 +17199,13 @@
   function routeFromCells(origin,target,closestReachable=false){
     const start=`${origin[0]},${origin[1]}`,goal=`${target[0]},${target[1]}`;
     if(start===goal)return [];
+    /* A destination S:C can place the player on one cell of a multi-cell
+       doorway.  If the next click is an ordinary field cell, entering a
+       neighbouring warp cell fires the same EV again and bounces back into
+       the room.  Leave that warp group by routing around it; an explicitly
+       clicked warp remains a valid terminal target. */
+    const originEvent=mapEventAt(origin[0],origin[1]),targetEvent=mapEventAt(target[0],target[1]);
+    const avoidOriginWarpAdjacent=isMapWarpEvent(originEvent)&&!isMapWarpEvent(targetEvent);
     /* A click at a scene rim can ask for a route across a complete DAT.  The
        old port kept this open set in an array and sorted it on every visit;
        a 160×160 floor therefore turned one edge click into thousands of
@@ -17285,6 +17292,11 @@
            every non-goal warp made clicking just outside a building stop one
            cell short with no scene transition. */
         const nextEvent=mapEventAt(next[0],next[1]);
+        /* Only the adjacent cells of the landing doorway are suppressed.
+           A later warp may be the legitimate bridge to another connected
+           room and must remain routable/EV-terminal. */
+        const nextNearOrigin=Math.max(Math.abs(next[0]-origin[0]),Math.abs(next[1]-origin[1]))<=1;
+        if(avoidOriginWarpAdjacent&&nextNearOrigin&&isMapWarpEvent(nextEvent)&&key!==goal)continue;
         if(!localStepWalkable(current,next,isMapWarpEvent(nextEvent)||key===goal))continue;
         const nextCost=(cost.get(currentKey)||0)+1;
         if(!cost.has(key)||nextCost<cost.get(key)){
@@ -17309,12 +17321,16 @@
        The native client rejects the destination as one route, so keep the
        player where it is and let the caller report a blocked direction. */
     if(isInsideFloor(to[0],to[1],app.floor)===false||isInsideFloor(origin[0],origin[1],app.floor)===false)return [];
+    const originEvent=mapEventAt(origin[0],origin[1]),targetEvent=mapEventAt(to[0],to[1]);
+    const avoidOriginWarpAdjacent=isMapWarpEvent(originEvent)&&!isMapWarpEvent(targetEvent);
     let x=origin[0],y=origin[1],blocked=false;
     while((x!==to[0]||y!==to[1])&&queue.length<MOVE_MAX){const dx=Math.sign(to[0]-x),dy=Math.sign(to[1]-y),direction=directionFor(dx,dy);if(direction<0)break;const next=[x+dx,y+dy],isGoal=next[0]===to[0]&&next[1]===to[1],nextEvent=mapEventAt(next[0],next[1]);
       /* The native route is allowed to include a doorway/warp before the
          clicked destination.  _etcEventCheck() will cut the two-step send at
          that tile and dispatch EV; treating only the final cell as a warp
          made clicks just outside a building stop before its entrance. */
+      const nextNearOrigin=Math.max(Math.abs(next[0]-origin[0]),Math.abs(next[1]-origin[1]))<=1;
+      if(avoidOriginWarpAdjacent&&nextNearOrigin&&isMapWarpEvent(nextEvent)&&!isGoal){blocked=true;break;}
       if(!localStepWalkable([x,y],next,isMapWarpEvent(nextEvent)||isGoal)){blocked=true;break;}x=next[0];y=next[1];queue.push({direction,target:next});}
     if(!blocked)return queue;
     /* An outside-floor destination was rejected above and therefore never
