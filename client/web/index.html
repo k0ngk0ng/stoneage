@@ -16250,6 +16250,10 @@
        setPartsPrio() and interleaves them with characters; baking both layers
        into one bitmap forces every actor above every tree/roof. */
     const cache={key,canvas,minX,minY,parts:[],pendingParts:new Map(),dirty:false,ready:false,manifestReady:Boolean(assetState.manifestReady),required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map(),context:null,rasterScheduled:false,rasterComplete:false,rasterFailed:false,rasterIndex:0,groundCells:null};
+    /* PARTS contains only decoded art, not empty/changed cells. Keep the
+       authoritative object window too, so fallback art cannot resurrect an
+       object which the new M data removed while other images are pending. */
+    cache.objectWindow={x1:Number(map.x1),y1:Number(map.y1),width:Number(map.width),height:Number(map.height),objects:Array.isArray(map.objects)?map.objects.slice():[]};
     /* While a same-floor M window is downloading, the last completed cache is
        exposed by renderWorld() as a fallback.  Never alias its Canvas here:
        image onload callbacks rasterise the new window asynchronously, and
@@ -16398,9 +16402,19 @@
     return true;
   }
   function mergeMapLayerParts(primary,fallback){
-    const lists=[primary?.parts||[],fallback?.parts||[]],merged=[],seen=new Set();
-    for(const list of lists)for(const part of list){
+    const lists=[primary?.parts||[],fallback?.parts||[]],merged=[],seen=new Set(),objectWindow=primary?.objectWindow;
+    for(let listIndex=0;listIndex<lists.length;listIndex++)for(const part of lists[listIndex]){
       if(!part||!Number.isFinite(Number(part.x))||!Number.isFinite(Number(part.y)))continue;
+      if(listIndex===1&&Array.isArray(objectWindow?.objects)){
+        const column=Number(part.x)-objectWindow.x1,row=Number(part.y)-objectWindow.y1;
+        if(column>=0&&column<objectWindow.width&&row>=0&&row<objectWindow.height){
+          const value=Number(objectWindow.objects[row*objectWindow.width+column]);
+          /* M updates the cell even for CG_INVISIBLE/environment markers.
+             Unchanged cells may reuse old decoded art; changed cells may
+             not, even when their replacement image is still downloading. */
+          if(Number.isFinite(value)&&value!==Number(part.value))continue;
+        }
+      }
       /* The native object layer has one PARTS value per map cell. Prefer
          the new decoded object even if its graphic or palette changed;
          including the bitmap in this key paints both generations. */

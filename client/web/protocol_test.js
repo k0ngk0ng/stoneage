@@ -3921,6 +3921,16 @@ for (const [part, actor, expected] of [
   if(replaced.length!==nativeParts.length||replaced[0]!==replacement)throw new Error("map hand-off paints old and new objects in the same cell");
   const paletteReplacement={...nativeParts[0],image:{complete:true,naturalWidth:64,naturalHeight:120}};
   if(merge({parts:[paletteReplacement]},{parts:[nativeParts[0]]})[0]!==paletteReplacement)throw new Error("map hand-off must prefer the current decoded bitmap");
+  const oldTree=nativeParts[0],outsideTree=nativeParts[1];
+  for(const value of [0,1,20,80,99,999]){
+    const primary={parts:[],objectWindow:{x1:0,y1:2,width:1,height:1,objects:[value]}};
+    const parts=merge(primary,{parts:[oldTree,outsideTree]});
+    if(parts.length!==1||parts[0]!==outsideTree)throw new Error("new map object data must remove stale fallback trees before all images finish");
+  }
+  const unchanged={parts:[],objectWindow:{x1:0,y1:2,width:1,height:1,objects:[oldTree.value]}};
+  if(merge(unchanged,{parts:[oldTree]})[0]!==oldTree)throw new Error("unchanged pending object must retain its decoded fallback");
+  unchanged.parts=[replacement];unchanged.objectWindow.objects=[replacement.value];
+  if(merge(unchanged,{parts:[oldTree]})[0]!==replacement)throw new Error("decoded replacement must survive authoritative object filtering");
 }
 if (/requestPointerLock|exitPointerLock/.test(script)) {
   throw new Error("field cursor must never lock or move the browser's real pointer");
@@ -5623,6 +5633,11 @@ const mapPartHarness=mapPartEnsureHarness(
   ()=>{}
 );
 const mapPartCache=mapPartHarness.ensureMapLayerCache(mapPartWindow);
+if(mapPartCache.objectWindow?.x1!==10||mapPartCache.objectWindow?.y1!==20||
+   mapPartCache.objectWindow?.width!==3||mapPartCache.objectWindow?.height!==2||
+   mapPartCache.objectWindow?.objects===mapPartWindow.objects||mapPartCache.objectWindow?.objects.join()!==mapPartWindow.objects.join()){
+  throw new Error("map cache must retain an independent authoritative object window for fallback filtering");
+}
 if(!mapPartCache||mapPartCache.pending.size!==3||!mapPartCache.pending.has("ground.png")||
    !mapPartCache.pending.has("tree-a.png")||!mapPartCache.pending.has("tree-b.png")||
    mapPartCache.pendingParts.get("tree-a.png")?.length!==2||mapPartCache.pendingParts.get("tree-b.png")?.length!==2||
