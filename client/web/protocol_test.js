@@ -452,6 +452,21 @@ if (mapMusicApp.music.mapBgmNo !== 4 || mapMusicApp.music.mapTone !== 40 ||
   throw new Error(`map marker did not replace the persistent BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
 }
 const restoreMusicStart = script.indexOf("  function restoreMapMusic(){", mapMusicEnd);
+/* Reference map.cpp processes all cells, tile then parts, without stopping
+   at the first marker. Last diagonal marker wins, including a parts marker
+   which shares its cell with a different tile marker. */
+{
+  const app={battle:false,music:{mapTone:null,mapBgmNo:-1,mode:"map"}};
+  const select=mapMusicMapper(app,{40:4,41:3},()=>{},()=>null,()=>{},()=>Promise.resolve(null));
+  const window={width:3,height:3,tiles:Array(9).fill(100),objects:Array(9).fill(0)};
+  window.tiles[6]=40;window.tiles[2]=41;
+  select(window);
+  if(app.music.mapTone!==41)throw new Error("map music must use the last diagonal marker, not the first marker");
+  window.objects[2]=40;select(window);
+  if(app.music.mapTone!==40)throw new Error("same-cell PARTS music marker must override its tile marker");
+  window.tiles[2]=54;window.objects[2]=55;select(window);
+  if(app.music.mapTone!==40)throw new Error("6.0-only map music markers must not replace 2.5 music");
+}
 const restoreMusicEnd = script.indexOf("  app.mapLayerCache", restoreMusicStart);
 if (restoreMusicStart < 0 || restoreMusicEnd <= restoreMusicStart ||
     /setMusicMode\("map",0\)/.test(script.slice(restoreMusicStart, restoreMusicEnd))) {
@@ -466,6 +481,46 @@ if (mapMusicApp.music.mapBgmNo !== -1 || mapMusicCalls.at(-1)?.[1] !== -1) {
   throw new Error(`battle result invented an unknown map BGM: ${JSON.stringify({music:mapMusicApp.music,calls:mapMusicCalls})}`);
 }
 const guardedRegionalMusic = nativeMapMusicSource.lastIndexOf("#ifdef _NEWMUSICFILE6_0");
+/* Follow the actual audio lifecycle with an inert Audio implementation.
+   No WAV is fetched or played by this test. Verify the resulting filenames
+   and object reuse, not only the numeric tone mapper in isolation. */
+{
+  const start=script.indexOf("  const BGM_FILES=Object.freeze(");
+  const end=script.indexOf("  app.mapLayerCache",start);
+  const created=[];
+  class SilentAudio {
+    constructor(url){this.url=url;this.paused=true;this.currentTime=0;created.push(this);}
+    setAttribute(){}
+    addEventListener(){}
+    play(){this.paused=false;return Promise.resolve();}
+    pause(){this.paused=true;}
+  }
+  const app={account:"music-qa",character:"music-qa",characterSlot:0,selectedServer:"test",phase:"login",battle:false,
+    music:{mode:"title",mapTone:null,mapBgmNo:-1,battleBgmNo:-1},
+    systemSettings:{bgm:true,se:false,soundMuted:false,bgmVolumeLevel:15,bgmPitchByTrack:Array(16).fill(0)}};
+  const storage=new Map();
+  const audio=new Function("app","Audio","window","localStorage","DEBUG_AUDIO_MUTED",`
+    ${script.slice(start,end)}
+    return {setMusicMode,unlockAudio,mapMusicFromWindow,beginBattleMusic,restoreMapMusic,soundState};
+  `)(app,SilentAudio,{}, {getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},false);
+  audio.setMusicMode("title");
+  if(created.length)throw new Error("title music must wait for the browser's audio unlock");
+  audio.unlockAudio();
+  if(created.at(-1)?.url!=="/audio/bgm/sabgm_s1.wav")throw new Error("title audio lifecycle selected the wrong recording");
+  audio.setMusicMode("map");
+  if(audio.soundState.bgm!==null||!created[0].paused)throw new Error("entering an unknown map must stop the title recording");
+  audio.mapMusicFromWindow({width:1,height:1,tiles:[100],objects:[40]});
+  const town=audio.soundState.bgm,countBeforeRoom=created.length;
+  audio.mapMusicFromWindow({width:1,height:1,tiles:[100],objects:[0]});
+  if(town?.url!=="/audio/bgm/sabgm_t0.wav"||audio.soundState.bgm!==town||created.length!==countBeforeRoom)throw new Error("marker-less room must preserve the town audio without restarting it");
+  app.battle=true;audio.beginBattleMusic(1,2);
+  if(audio.soundState.bgm?.url!=="/audio/bgm/sabgm_b0.wav"||!town.paused)throw new Error("ordinary encounter must replace town audio with the battle recording");
+  app.battle=false;audio.restoreMapMusic();
+  if(audio.soundState.bgm?.url!=="/audio/bgm/sabgm_t0.wav")throw new Error("battle exit must resume remembered town audio");
+  audio.setMusicMode("off");
+  if(audio.soundState.bgm!==null||created.some(item=>!item.paused))throw new Error("music-off transition must leave no old scene audio playing");
+  if(created.some(item=>item.url.endsWith("sabgm_s0.wav")))throw new Error("room and battle lifecycle must never select the victory fanfare");
+}
 if (guardedRegionalMusic < 0 || nativeMapMusicSource.indexOf("case 53:") >= guardedRegionalMusic ||
     !/#ifdef\s+_NEWMUSICFILE6_0[\s\S]{0,220}case\s+54:[\s\S]{0,160}case\s+55:/.test(nativeMapMusicSource.slice(guardedRegionalMusic))) {
   throw new Error("map BGM 54/55 must remain behind the 6.0 music switch");
