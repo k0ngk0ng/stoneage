@@ -2467,8 +2467,8 @@ for (const expected of [
      response is queued.  Do not wait for HTTP completion (which can leave an
      OK window stuck during a slow bridge request); a later WN owns its own
      activeWindow and is therefore not affected by the old response. */
-  /const response=send\("WN",\[app\.position\[0\],app\.position\[1\],wnd\.seqno,wnd\.objindex,select,data\]\);[\s\S]{0,260}if\(select!==16&&select!==32&&app\.activeWindow===wnd\)closeServerWindow\(\);[\s\S]{0,80}return response;/,
-  /frameX=\(640-frameW\)\/2,frameY=\(456-frameH\)\/2/,
+  /const response=send\("WN",\[app\.position\[0\],app\.position\[1\],wnd\.seqno,wnd\.objindex,select,data\]\);[\s\S]{0,260}if\(!retainPagingWindow&&app\.activeWindow===wnd\)closeServerWindow\(\);[\s\S]{0,80}return response;/,
+  /frameX=\(640-frameW\)\/2,frameY=\(\(type===2\?480:456\)-frameH\)\/2/,
   /* serverWindowType1 stocks each visible msgWN row once and overlays its
      MakeHitBox at the same 21-pixel row.  Do not duplicate selectable text
      in both the body and a separately flowing choice column. */
@@ -4029,6 +4029,57 @@ const responseFactory = new Function("app", "send", "closeServerWindow", `${scri
   }
 }
 const dismissFactory = new Function("app", "send", "closeServerWindow", `${script.slice(dismissStart, dismissEnd)};return dismissServerWindow;`);
+/* Exercise production SELECT rendering with long explanatory text and more
+   than ten rows. The native visible-row cap must also cap clickable rows,
+   without losing blank-row offsets in the response payload. */
+{
+  const parseStart=script.indexOf("  function windowMessageLines(data){");
+  const parseEnd=script.indexOf("  function parseWindowChoices",parseStart);
+  const parse=new Function("unescapeCharacterOption",`${script.slice(parseStart,parseEnd)};return windowMessageLines;`)(String);
+  const start=script.indexOf("  function openServerWindow(values){");
+  const end=script.indexOf("  function closeServerWindow(){",start);
+  const test=new Function("windowMessageLines",`
+    class Node {
+      constructor(){this.children=[];this.properties={};this.style={setProperty:(key,value)=>{this.properties[key]=value;}};
+        const classes=new Set();this.classList={add:(...names)=>names.forEach(n=>classes.add(n)),remove:(...names)=>names.forEach(n=>classes.delete(n)),
+          toggle:(name,on)=>{if(on)classes.add(name);else classes.delete(name);},contains:name=>classes.has(name)};}
+      append(...nodes){this.children.push(...nodes);}
+      replaceChildren(...nodes){this.children=nodes;}
+      setAttribute(){}
+    }
+    const nodes=Object.fromEntries(["screen","title","body","options","input","form","close"].map(name=>["server-window-"+name,new Node()]));
+    const $=id=>nodes[id],document={createElement:()=>new Node()},responses=[];
+    const app={windows:[],activeWindow:null},decimal=Number,textOr=String,unescapeCharacterOption=String;
+    const WINDOW_TYPES={2:"选择"},WINDOW_BUTTONS=[[1,"确定"],[2,"取消"],[16,"上一页"],[32,"下一页"]];
+    function clearItemShopFrame(){nodes["server-window-screen"].classList.remove("server-window-select");}
+    function addEvent(){}function openPanel(){}
+    function windowResponse(select,data){responses.push({select,data});}
+    function button(label,handler){const node=new Node();node.textContent=label;node.click=handler;return node;}
+    function windowAssetButton(label,bitmap,handler){return button(label,handler);}
+    ${script.slice(start,end)}
+    return {open:openServerWindow,nodes,responses};
+  `)(parse);
+  const lines=[...Array.from({length:7},(_,i)=>"intro "+i),"choice 1","","choice 3","must not be clickable"];
+  test.open([2,1,101,202,"7\n"+lines.join("\n")]);
+  const screen=test.nodes["server-window-screen"],options=test.nodes["server-window-options"];
+  const choices=options.children.filter(node=>node.className!=="server-window-controls");
+  if(choices.length!==2||choices[0].textContent!=="choice 1"||choices[1].textContent!=="choice 3")throw new Error("native SELECT must render and hit-test only its first ten message rows");
+  choices[0].click();choices[1].click();
+  if(JSON.stringify(test.responses)!==JSON.stringify([{select:0,data:"1"},{select:0,data:"3"}]))throw new Error("SELECT blank rows must retain native one-based choice offsets");
+  if(test.nodes["server-window-body"].textContent!==lines.slice(0,7).join("\n")||screen.properties["--wnd-select-text-h"]!=="147px")throw new Error("SELECT must reserve enough height for all explanatory rows");
+  if(screen.properties["--legacy-y"]!=="120px")throw new Error("native SELECT window must be centered on the 640x480 back buffer");
+  if(screen.properties["--wnd-options-y"]!=="316px"||!/#server-window-screen\.server-window-select #server-window-options\.window-choice-list>\.server-window-controls\{top:calc\(var\(--wnd-options-y\) - var\(--wnd-select-choice-y\)\);bottom:auto\}/.test(html))throw new Error("SELECT response row must stay at native winY+196, independent of explanatory lines");
+  if(!test.nodes["server-window-close"].classList.contains("hidden"))throw new Error("SELECT with native OK must not paint a duplicate generic close button");
+}
+for(const select of [16,32]){
+  const calls=[];let closes=0;
+  const app={position:[17,25],activeWindow:{windowType:2,seqno:273,objindex:1604}};
+  const respond=responseFactory(app,(name,fields)=>{calls.push({name,fields});return new Promise(()=>{});},()=>{closes++;app.activeWindow=null;});
+  respond(select,"0");
+  if(closes!==1||app.activeWindow!==null||JSON.stringify(calls)!==JSON.stringify([{name:"WN",fields:[17,25,273,1604,select,"0"]}])){
+    throw new Error("SELECT paging must send its server response and immediately destroy the old window");
+  }
+}
 {
   const calls=[];
   let closes=0;

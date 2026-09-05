@@ -2733,6 +2733,9 @@
        family/task menus appear twice and shifted their wire selection. */
     #server-window-screen.server-window-select #server-window-body{left:var(--wnd-select-text-x,140px);top:var(--wnd-select-text-y,129px);width:var(--wnd-select-row-w,366px);height:var(--wnd-select-text-h,168px);overflow:hidden;color:#fff;font:11px/21px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;text-align:left;white-space:pre;text-shadow:1px 1px #080706}
     #server-window-screen.server-window-select #server-window-options.window-choice-list{left:var(--wnd-select-hit-x,137px);top:var(--wnd-select-choice-y,171px);width:var(--wnd-select-row-w,366px);height:var(--wnd-select-choice-h,126px);display:block;overflow:visible;margin:0;padding:0;pointer-events:none}
+    /* serverWindowType1 fixes response buttons at winY+196 regardless of
+       selStartLine. Do not anchor them to the last selectable text row. */
+    #server-window-screen.server-window-select #server-window-options.window-choice-list>.server-window-controls{top:calc(var(--wnd-options-y) - var(--wnd-select-choice-y));bottom:auto}
     #server-window-screen.server-window-select #server-window-options.window-choice-list>.window-choice{position:absolute;left:0;top:var(--wnd-select-row-y,0);width:var(--wnd-select-row-w,366px);height:20px;min-height:20px;margin:0;padding:0 3px;color:#fff;background:transparent;border:0;box-shadow:none;font:11px/20px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif;text-align:left;text-shadow:1px 1px #080706;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto}
     #server-window-screen.server-window-select #server-window-options.window-choice-list>.window-choice:hover,
     #server-window-screen.server-window-select #server-window-options.window-choice-list>.window-choice:focus-visible{color:#ffe88b;background:transparent;outline:0;filter:none}
@@ -13489,10 +13492,12 @@
        used to leave the OK/YES/NO window stuck on screen until the request
        timeout.  Close this exact window synchronously after queueing the
        packet; a follow-up WN from the server can then install its replacement
-       without being hidden by an old promise callback.  PREV/NEXT retain the
-       window for local paging, matching shopWindow3()/serverWindowType1(). */
+       without being hidden by an old promise callback. SELECT's PREV/NEXT
+       also destroy the window: serverWindowType1 sends the button bit and
+       waits for a replacement WN, rather than paging the old choices. */
     const response=send("WN",[app.position[0],app.position[1],wnd.seqno,wnd.objindex,select,data]);
-    if(select!==16&&select!==32&&app.activeWindow===wnd)closeServerWindow();
+    const retainPagingWindow=Number(wnd.windowType)!==2&&(select===16||select===32);
+    if(!retainPagingWindow&&app.activeWindow===wnd)closeServerWindow();
     return response;
   }
   function splitWindowTokens(data){return String(data||"").split("|").map(token=>unescapeCharacterOption(token));}
@@ -13782,7 +13787,7 @@
       return;
     }
     app.activeWindow=wnd;app.windows.push(wnd);if(app.windows.length>32)app.windows.shift();
-    const screen=$("server-window-screen"),wide=type===10||type===11,shopMenu=[6,12].includes(type),shopMain=[7,8,9,13].includes(type),frameW=wide?576:shopMenu?256:shopMain?432:448,frameH=wide?432:shopMenu?144:shopMain?428:240,frameX=(640-frameW)/2,frameY=(456-frameH)/2;
+    const screen=$("server-window-screen"),wide=type===10||type===11,shopMenu=[6,12].includes(type),shopMain=[7,8,9,13].includes(type),frameW=wide?576:shopMenu?256:shopMain?432:448,frameH=wide?432:shopMenu?144:shopMain?428:240,frameX=(640-frameW)/2,frameY=((type===2?480:456)-frameH)/2;
     clearItemShopFrame();
     /* LOGIN.CPP uses MakeWindowDisp(7,5) for all compact WN selections and
        MakeWindowDisp(9,9) for the two wide message types.  The previous web
@@ -13833,10 +13838,15 @@
          only the following rows are hit-testable, and their wire payload is
          one-based relative to that start (i - selStartLine + 1).  Making the
          prose clickable shifted every family/task choice by two. */
-      const parsed=windowMessageLines(wnd.data),start=Math.max(0,Math.min(parsed.lines.length,Number(parsed.startLine)||0));
+      const parsed=windowMessageLines(wnd.data);
+      /* The switch-compatible serverWindowType1 uses msgLine=10 even in
+         VER25_DEBUG. Extra rows must not create invisible/off-window hits;
+         PREV/NEXT request another WN, not a local slice of these rows. */
+      parsed.lines=parsed.lines.slice(0,10);
+      const start=Math.max(0,Math.min(parsed.lines.length,Number(parsed.startLine)||0));
       screen.classList.add("server-window-select");
-      screen.style.setProperty("--wnd-select-text-x",`${frameX+44}px`);screen.style.setProperty("--wnd-select-text-y",`${frameY+21}px`);screen.style.setProperty("--wnd-select-row-w","366px");screen.style.setProperty("--wnd-select-text-h",`${Math.max(21,(8-start)*21)}px`);
-      screen.style.setProperty("--wnd-select-hit-x",`${frameX+41}px`);screen.style.setProperty("--wnd-select-choice-y",`${frameY+21+start*21}px`);screen.style.setProperty("--wnd-select-choice-h",`${Math.max(20,(8-start)*21)}px`);
+      screen.style.setProperty("--wnd-select-text-x",`${frameX+44}px`);screen.style.setProperty("--wnd-select-text-y",`${frameY+21}px`);screen.style.setProperty("--wnd-select-row-w","366px");screen.style.setProperty("--wnd-select-text-h",`${Math.max(21,start*21)}px`);
+      screen.style.setProperty("--wnd-select-hit-x",`${frameX+41}px`);screen.style.setProperty("--wnd-select-choice-y",`${frameY+21+start*21}px`);screen.style.setProperty("--wnd-select-choice-h",`${Math.max(20,(10-start)*21)}px`);
       body.textContent=parsed.lines.slice(0,start).join("\n");
       parsed.lines.slice(start).forEach((label,index)=>{
         if(!String(label||"").trim())return;
