@@ -2468,7 +2468,7 @@ for (const expected of [
      OK window stuck during a slow bridge request); a later WN owns its own
      activeWindow and is therefore not affected by the old response. */
   /const response=send\("WN",\[app\.position\[0\],app\.position\[1\],wnd\.seqno,wnd\.objindex,select,data\]\);[\s\S]{0,260}if\(app\.activeWindow===wnd\)closeServerWindow\(\);[\s\S]{0,80}return response;/,
-  /frameX=\(640-frameW\)\/2,frameY=\(\(type===2\?480:456\)-frameH\)\/2/,
+  /frameX=\(640-frameW\)\/2,frameY=\(\(\[0,1,2,10,11\]\.includes\(type\)\?480:456\)-frameH\)\/2/,
   /* serverWindowType1 stocks each visible msgWN row once and overlays its
      MakeHitBox at the same 21-pixel row.  Do not duplicate selectable text
      in both the body and a separately flowing choice column. */
@@ -4085,6 +4085,20 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
   if(screen.properties["--legacy-y"]!=="120px")throw new Error("native SELECT window must be centered on the 640x480 back buffer");
   if(screen.properties["--wnd-options-y"]!=="316px"||!/#server-window-screen\.server-window-select #server-window-options\.window-choice-list>\.server-window-controls\{top:calc\(var\(--wnd-options-y\) - var\(--wnd-select-choice-y\)\);bottom:auto\}/.test(html))throw new Error("SELECT response row must stay at native winY+196, independent of explanatory lines");
   if(!test.nodes["server-window-close"].classList.contains("hidden"))throw new Error("SELECT with native OK must not paint a duplicate generic close button");
+  /* serverWindowType0 centers both compact and wide MESSAGE/INPUT windows
+     on lpDraw->ySize (480), not the 456px area above the task bar. Verify
+     the real renderer after a SELECT, including its dependent UI offsets. */
+  for(const type of [0,1,10,11]){
+    test.open([type,1,102,202,"message"]);
+    const wide=type===10||type===11,y=wide?24:120,h=wide?432:240;
+    if(screen.properties["--legacy-y"]!==`${y}px`||
+       screen.properties["--legacy-h"]!==`${h}px`||
+       screen.properties["--wnd-content-y"]!==`${y+16}px`||
+       screen.properties["--wnd-options-y"]!==`${y+h-44}px`||
+       screen.properties["--wnd-input-y"]!==`${y+h-78}px`){
+      throw new Error(`MESSAGE/INPUT type ${type} frame and controls must use the full 480px native surface`);
+    }
+  }
 }
 for(const select of [16,32]){
   const calls=[];let closes=0;

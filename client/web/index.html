@@ -13787,7 +13787,10 @@
       return;
     }
     app.activeWindow=wnd;app.windows.push(wnd);if(app.windows.length>32)app.windows.shift();
-    const screen=$("server-window-screen"),wide=type===10||type===11,shopMenu=[6,12].includes(type),shopMain=[7,8,9,13].includes(type),frameW=wide?576:shopMenu?256:shopMain?432:448,frameH=wide?432:shopMenu?144:shopMain?428:240,frameX=(640-frameW)/2,frameY=((type===2?480:456)-frameH)/2;
+    /* serverWindowType0/1 use lpDraw->ySize, including the bottom 24 pixels.
+       Centering MESSAGE/INPUT above the task bar shifts their frame and all
+       content/response/input anchors upward by 12 pixels. */
+    const screen=$("server-window-screen"),wide=type===10||type===11,shopMenu=[6,12].includes(type),shopMain=[7,8,9,13].includes(type),frameW=wide?576:shopMenu?256:shopMain?432:448,frameH=wide?432:shopMenu?144:shopMain?428:240,frameX=(640-frameW)/2,frameY=(([0,1,2,10,11].includes(type)?480:456)-frameH)/2;
     clearItemShopFrame();
     /* LOGIN.CPP uses MakeWindowDisp(7,5) for all compact WN selections and
        MakeWindowDisp(9,9) for the two wide message types.  The previous web
