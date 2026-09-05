@@ -15197,7 +15197,27 @@
     const header=parseMapWindowHeader(sections[0]||"");
     if(rawWidth>MAX_LIVE_MAP_WINDOW||rawHeight>MAX_LIVE_MAP_WINDOW)addEvent(`M 窗口过大 ${rawWidth}×${rawHeight}，已限制为 ${width}×${height}`);
     const sameFloor=Boolean(previous&&Number(previous.floor)===floor);
-    if(!sameFloor)resetMapEffects();
+    if(!sameFloor){
+      resetMapEffects();
+      /* A destination M can legally arrive before the matching S:C when the
+         bridge returns the two TCP packets in different HTTP polls.  S:C is
+         normally the place where the native client tears down its visible
+         object table, but in this ordering `app.floor` has already been
+         advanced by M and the later S:C looks same-floor.  Clear the old
+         floor here as well, otherwise a stale NPC/pet (or the previous
+         player's body) can be rendered or selected on the new map until a
+         later CD packet happens to remove it.  The destination C refresh
+         repopulates authoritative actors and the metadata request restores
+         fixed NPCs.
+       */
+      app.actors.clear();
+      app.pets=[];
+      app.playerActorId=null;
+      clearPartyFollow();
+      app.pendingTalk=null;
+      app.talkConversation=null;
+      forgetTalkTarget();
+    }
     /* M may be the first destination packet when S:C and M are split across
        bridge polls.  Bind an event-owned same-floor warp before clearing the
        active event below, so the completed layer can reveal immediately. */
