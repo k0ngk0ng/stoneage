@@ -3869,6 +3869,11 @@ for (const [part, actor, expected] of [
   render(actors,nativeParts,{width:640,height:480});const expected=paint.join();paint.length=0;
   render(actors,merged,{width:640,height:480});
   if(paint.join()!==expected)throw new Error("sliding map hand-off changes actor/tree draw order");
+  const replacement={...nativeParts[0],value:999,info:{...nativeParts[0].info,file:"replacement-tree"}};
+  const replaced=merge({parts:[replacement]},{parts:nativeParts});
+  if(replaced.length!==nativeParts.length||replaced[0]!==replacement)throw new Error("map hand-off paints old and new objects in the same cell");
+  const paletteReplacement={...nativeParts[0],image:{complete:true,naturalWidth:64,naturalHeight:120}};
+  if(merge({parts:[paletteReplacement]},{parts:[nativeParts[0]]})[0]!==paletteReplacement)throw new Error("map hand-off must prefer the current decoded bitmap");
 }
 if (/requestPointerLock|exitPointerLock/.test(script)) {
   throw new Error("field cursor must never lock or move the browser's real pointer");

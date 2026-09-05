@@ -16374,8 +16374,10 @@
     const lists=[primary?.parts||[],fallback?.parts||[]],merged=[],seen=new Set();
     for(const list of lists)for(const part of list){
       if(!part||!Number.isFinite(Number(part.x))||!Number.isFinite(Number(part.y)))continue;
-      const file=String(part.info?.file||"");
-      const key=`${Math.trunc(Number(part.x))},${Math.trunc(Number(part.y))},${Number(part.value)||0},${file}`;
+      /* The native object layer has one PARTS value per map cell. Prefer
+         the new decoded object even if its graphic or palette changed;
+         including the bitmap in this key paints both generations. */
+      const key=`${Math.trunc(Number(part.x))},${Math.trunc(Number(part.y))}`;
       if(seen.has(key))continue;
       seen.add(key);merged.push(part);
     }
