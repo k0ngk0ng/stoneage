@@ -2705,6 +2705,7 @@
     #system-screen .system-registry .system-registry-return{position:absolute;left:96px;top:382px;width:80px;height:16px;padding:0;color:transparent;background:url('/assets/bitmaps/bitmap_9135.png') center/100% 100% no-repeat;border:0;box-shadow:none;font-size:0}
     #server-window-screen #server-window-title{display:none;left:var(--wnd-content-x,112px);top:var(--wnd-title-y,132px);width:var(--wnd-content-w,416px);text-align:center;color:#ffe08a;font:bold 13px Tahoma,sans-serif}
     #server-window-screen .window-box{background:transparent;border:0;padding:0;text-align:center;color:#f5ecd4}
+    #server-window-screen.server-window-message #server-window-body{left:var(--wnd-message-x);top:var(--wnd-message-y);width:var(--wnd-message-w);height:var(--wnd-message-h);overflow:hidden;text-align:left;white-space:pre;font:14px/20px SimSun,"Songti SC",serif;line-height:20px;color:#fff}
     #server-window-screen #server-window-options{left:var(--wnd-content-x,112px);top:var(--wnd-options-y,310px);width:var(--wnd-content-w,416px);display:grid;grid-template-columns:repeat(2,1fr);gap:3px}
     #server-window-screen #server-window-form{left:var(--wnd-content-x,112px);top:var(--wnd-input-y,278px);width:var(--wnd-content-w,416px);display:flex;gap:3px}
     #server-window-screen #server-window-form input{flex:1;min-width:0}
@@ -13501,6 +13502,28 @@
     return response;
   }
   function splitWindowTokens(data){return String(data||"").split("|").map(token=>unescapeCharacterOption(token));}
+  function nativeMessageRows(data,maxBytes,maxRows){
+    /* LOGIN.CPP::getStrSplit keeps alignment spaces and explicit empty
+       lines, wraps by CP936 bytes without splitting a two-byte glyph, and
+       leaves extra rows to the server's next WN. Unlike SELECT, a leading
+       digit is ordinary message text. */
+    const rows=[];
+    for(const line of unescapeCharacterOption(data).replace(/\r/g,"").split("\n")){
+      let chunk="",bytes=0,tokenBytes=0,tokenFull=false;
+      for(const ch of line){
+        const width=ch.charCodeAt(0)>0x7f?2:1;
+        /* getStringToken's 255-byte source buffer stops the entire parse
+           when full, even if a later newline exists. Do not expose a
+           dangling CP936 lead byte as a fabricated Unicode character. */
+        if(tokenBytes+width>255){tokenFull=true;break;}
+        if(bytes+width>maxBytes){rows.push(chunk);chunk="";bytes=0;if(rows.length>=maxRows)return rows;}
+        chunk+=ch;bytes+=width;tokenBytes+=width;
+        if(tokenBytes===255){tokenFull=true;break;}
+      }
+      rows.push(chunk);if(rows.length>=maxRows||tokenFull)return rows;
+    }
+    return rows;
+  }
   function windowMessageLines(data){
     let text=unescapeCharacterOption(data).replace(/\r/g,"");
     let startLine=1;
@@ -13792,6 +13815,7 @@
        content/response/input anchors upward by 12 pixels. */
     const screen=$("server-window-screen"),wide=type===10||type===11,shopMenu=[6,12].includes(type),shopMain=[7,8,9,13].includes(type),frameW=wide?576:shopMenu?256:shopMain?432:448,frameH=wide?432:shopMenu?144:shopMain?428:240,frameX=(640-frameW)/2,frameY=(([0,1,2,10,11].includes(type)?480:456)-frameH)/2;
     clearItemShopFrame();
+    screen.classList.remove("server-window-message");
     /* LOGIN.CPP uses MakeWindowDisp(7,5) for all compact WN selections and
        MakeWindowDisp(9,9) for the two wide message types.  The previous web
        layer hard-coded a 288×220 card, which was visibly too small and made
@@ -13834,7 +13858,17 @@
         options.append(box);
       }
     };
-    if(type===0||type===1||type===10||type===11){body.textContent=unescapeCharacterOption(wnd.data)||"（服务器消息）";}
+    if(type===0||type===1||type===10||type===11){
+      /* serverWindowType0: lineSkip=20; totalMsgLine=(height-56)/20.
+         StockFontBuffer uses a fixed left origin, not per-line centering. */
+      const totalRows=Math.floor((frameH-56)/20),visibleRows=totalRows-(hasInput?2:1),maxBytes=wide?58:40;
+      screen.classList.add("server-window-message");
+      screen.style.setProperty("--wnd-message-x",`${frameX+(frameW-maxBytes*9)/2}px`);
+      screen.style.setProperty("--wnd-message-y",`${frameY+(frameH-totalRows*20)/2}px`);
+      screen.style.setProperty("--wnd-message-w",`${maxBytes*9}px`);
+      screen.style.setProperty("--wnd-message-h",`${visibleRows*20}px`);
+      body.textContent=nativeMessageRows(wnd.data,maxBytes,visibleRows).join("\n");
+    }
     else if(type===2){
       /* LOGIN.CPP::initServerWindowType1 stores the leading digit as
          selStartLine.  The first selStartLine lines are explanatory text;

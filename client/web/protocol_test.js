@@ -4051,9 +4051,23 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
   const parseStart=script.indexOf("  function windowMessageLines(data){");
   const parseEnd=script.indexOf("  function parseWindowChoices",parseStart);
   const parse=new Function("unescapeCharacterOption",`${script.slice(parseStart,parseEnd)};return windowMessageLines;`)(String);
+  const messageStart=script.indexOf("  function nativeMessageRows(");
+  const messageRows=new Function("unescapeCharacterOption",`${script.slice(messageStart,parseStart)};return nativeMessageRows;`)(String);
+  if(!/#server-window-screen\.server-window-message #server-window-body\{[^}]*left:var\(--wnd-message-x\)[^}]*top:var\(--wnd-message-y\)[^}]*height:var\(--wnd-message-h\)[^}]*overflow:hidden[^}]*text-align:left[^}]*white-space:pre[^}]*line-height:20px/.test(html))throw new Error("MESSAGE CSS must use fixed native anchors, 20px line spacing and no browser wrapping");
+  for(const [input,width,limit,expected] of [
+    ["3\n  aligned  \n\nlast",40,8,["3","  aligned  ","","last"]],
+    ["a".repeat(39)+"中x",40,8,["a".repeat(39),"中x"]],
+    ["中".repeat(20)+"文",40,8,["中".repeat(20),"文"]],
+    ["a".repeat(58)+"b",58,17,["a".repeat(58),"b"]],
+    ["a".repeat(255)+"\nnot parsed",58,17,[...Array(4).fill("a".repeat(58)),"a".repeat(23)]],
+    ["a".repeat(254)+"中\nnot parsed",58,17,[...Array(4).fill("a".repeat(58)),"a".repeat(22)]],
+    ["first\nsecond\nthird",40,2,["first","second"]],
+    ["",40,8,[""]]
+  ])if(JSON.stringify(messageRows(input,width,limit))!==JSON.stringify(expected))throw new Error("native MESSAGE byte wrapping/whitespace/row limit mismatch");
+  if(!/#server-window-screen\.server-window-message #server-window-body\{[^}]*font:14px\/20px SimSun,"Songti SC",serif/.test(html))throw new Error("MESSAGE uses native FONT_SIZE1=14, not the 9px-per-byte anchor constant as glyph size");
   const start=script.indexOf("  function openServerWindow(values){");
   const end=script.indexOf("  function closeServerWindow(){",start);
-  const test=new Function("windowMessageLines",`
+  const test=new Function("windowMessageLines","nativeMessageRows",`
     class Node {
       constructor(){this.children=[];this.properties={};this.style={setProperty:(key,value)=>{this.properties[key]=value;}};
         const classes=new Set();this.classList={add:(...names)=>names.forEach(n=>classes.add(n)),remove:(...names)=>names.forEach(n=>classes.delete(n)),
@@ -4073,7 +4087,7 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
     function windowAssetButton(label,bitmap,handler){return button(label,handler);}
     ${script.slice(start,end)}
     return {open:openServerWindow,nodes,responses};
-  `)(parse);
+  `)(parse,messageRows);
   const lines=[...Array.from({length:7},(_,i)=>"intro "+i),"choice 1","","choice 3","must not be clickable"];
   test.open([2,1,101,202,"7\n"+lines.join("\n")]);
   const screen=test.nodes["server-window-screen"],options=test.nodes["server-window-options"];
@@ -4089,7 +4103,8 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
      on lpDraw->ySize (480), not the 456px area above the task bar. Verify
      the real renderer after a SELECT, including its dependent UI offsets. */
   for(const type of [0,1,10,11]){
-    test.open([type,1,102,202,"message"]);
+    const sourceLines=Array.from({length:20},(_,i)=>i===0?"  3  ":`  row ${i}  `);
+    test.open([type,1,102,202,sourceLines.join("\n")]);
     const wide=type===10||type===11,y=wide?24:120,h=wide?432:240;
     if(screen.properties["--legacy-y"]!==`${y}px`||
        screen.properties["--legacy-h"]!==`${h}px`||
@@ -4098,7 +4113,17 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
        screen.properties["--wnd-input-y"]!==`${y+h-78}px`){
       throw new Error(`MESSAGE/INPUT type ${type} frame and controls must use the full 480px native surface`);
     }
+    const visible=wide?(type===11?16:17):(type===1?7:8);
+    if(test.nodes["server-window-body"].textContent!==sourceLines.slice(0,visible).join("\n")){
+      throw new Error(`MESSAGE ${type} must retain whitespace and cap native visible rows without SELECT prefix parsing`);
+    }
+    if(screen.properties["--wnd-message-x"]!==`${wide?59:140}px`||
+       screen.properties["--wnd-message-y"]!==`${wide?60:150}px`||
+       screen.properties["--wnd-message-h"]!==`${visible*20}px`||
+       !screen.classList.contains("server-window-message"))throw new Error(`MESSAGE ${type} must use native fixed text anchors and 20px rows`);
   }
+  test.open([2,1,103,202,"1\nintro\nchoice"]);
+  if(screen.classList.contains("server-window-message"))throw new Error("MESSAGE layout must not leak into the next SELECT window");
 }
 for(const select of [16,32]){
   const calls=[];let closes=0;
