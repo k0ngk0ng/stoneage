@@ -2215,8 +2215,8 @@ for (const expected of [
      except BattleMyNo; allies and the active pet remain valid H targets. */
   /if\(action\?\.kind==="attack"\)\{[\s\S]{0,1500}if\(boomerang\)return id!==myNo&&battleBoomerangTargetAllowed\(item,state\);[\s\S]{0,420}return id!==myNo;/,
   /function battleBoomerangTargetAllowed\(item,state=app\.battleState\)[\s\S]{0,600}Math\.floor\(battleId\/5\)!==Math\.floor\(myNo\/5\)/,
-  /* MOUSE.CPP excludes ACT_ATR_TRAVEL actors from every ordinary target
-     pass.  BC does not carry that local action bit, so the web renderer must
+  /* Ordinary attack excludes ACT_ATR_TRAVEL; pet skill targets do not.
+     BC does not carry that local action bit, so the web renderer must
      derive it from active appear/fade/escape/capture motions before creating
      a transparent target proxy. */
   /* Keep this check split into two bounded expressions.  The implementation
@@ -2225,7 +2225,7 @@ for (const expected of [
      grows and can report a false regression even though both functions are
      present and wired correctly. */
   /function battleActorTraveling\(item,state=app\.battleState\)[\s\S]*?kind==="appear"\|\|kind==="fade"\|\|kind==="escape"\|\|kind==="escape-fail"\|\|kind==="capture"/,
-  /function battleAlive\(item,allowDead=false,state=app\.battleState\)[\s\S]*?battleActorTraveling\(item,state\)/,
+  /function battleAlive\(item,allowDead=false,state=app\.battleState,allowTravel=false\)[\s\S]*?if\(!allowTravel&&battleActorTraveling\(item,state\)\)return false;/,
   /if\(battleUsesActorTarget\(pending\)\)\{[\s\S]{0,400}battle-target-panel/,
   /* The actor hit box is one-shot: locking the command must repaint the
      layer immediately so a second click cannot race the same B packet. */
@@ -6218,4 +6218,5 @@ if (!/dirx\[i\+1\] = CHAR_getDX\([\s\S]{0,260}dirx\[0\] = CHAR_getDX[\s\S]{0,180
 }
 // Keep deferred HTTP/selector races in the normal protocol regression gate.
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_async_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_rules_test.js"], {stdio:"inherit"});
 console.log("web protocol vectors OK");

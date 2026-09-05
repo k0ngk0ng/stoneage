@@ -8004,7 +8004,7 @@
   function battleActorTraveling(item,state=app.battleState){
     const id=Number(item?.battleId);if(!Number.isInteger(id)||id<0)return false;
     /* ACT_ATR_TRAVEL is a local action bit and is therefore not serialized in
-       BC.  The native target pass skips a character while its run-off,
+       BC.  The native ordinary-attack pass skips a character while its run-off,
        fade-out, capture, or entrance action owns that bit.  The browser keeps
        those equivalent motions in the battle back-buffer; do the same check
        here so a transparent target proxy cannot select an actor that is
@@ -8019,12 +8019,12 @@
       return Number(motion.actor)===id||Number(motion.target)===id;
     });
   }
-  function battleAlive(item,allowDead=false,state=app.battleState){
+  function battleAlive(item,allowDead=false,state=app.battleState,allowTravel=false){
     if(!item||Number(item.battleId)<0)return false;
-    /* MOUSE.CPP skips ACT_ATR_TRAVEL before checking HP/dead-target flags.
-       Keep that ordering: even a dead-target skill must not click a row whose
-       sprite is currently travelling out of the battle back-buffer. */
-    if(battleActorTraveling(item,state))return false;
+    /* BATTLEMENU.CPP filters ACT_ATR_TRAVEL for ordinary attacks, but
+       BattleSetWazaHitBox's native pet targets 0..7 do not. Keep travel
+       separate from death: a moving pet-skill target is not a dead actor. */
+    if(!allowTravel&&battleActorTraveling(item,state))return false;
     /* BC_FLG_DEAD is the native target/death bit.  During CHAR_IN and on a
        split HTTP poll a sparse/debug row may omit maxhp, so do not reject
        that row solely because its optional hp value is zero.  Full 2.5 BC
@@ -8069,7 +8069,7 @@
     return Number(target?.battleId);
   }
   function battleTargetCandidates(action){
-    const state=app.battleState,participants=state.participants.filter(item=>battleAlive(item,Boolean(action?.allowDead))),myNo=Number(state.myNo),myPetNo=myNo+5;
+    const state=app.battleState,participants=state.participants.filter(item=>battleAlive(item,Boolean(action?.allowDead),state,action?.kind==="pet")),myNo=Number(state.myNo),myPetNo=myNo+5;
     /* PETSKILL_TARGET_* is evaluated from the skill owner's battle slot.
        For a player command that slot is myNo; for a pet command it is the
        active pet at myNo+5.  Using the player slot for both makes target type
@@ -8153,7 +8153,7 @@
     if(item.special){
       return battleTargetCandidates(action).some(candidate=>candidate.special&&Number(candidate.battleId)===Number(item.battleId));
     }
-    if(!battleAlive(item,allowDead,state))return false;
+    if(!battleAlive(item,allowDead,state,action.kind==="pet"))return false;
     const id=Number(item.battleId),myNo=Number(state.myNo),mySide=battleSide(myNo),itemSide=battleSide(id),type=Number(action.targetType);
     if(action.kind==="attack"){
       const boomerang=Boolean(Number(state.bpFlags)&BATTLE_BP_BOOMERANG);
