@@ -8584,6 +8584,14 @@
     try{
       await send("B",[command]);
       if(app.battleState!==state||!app.battle)return;
+      /* Target selection is scoped to one pending action.  The latch is set
+         before the asynchronous bridge write so a touch/pointer click cannot
+         submit the same target twice, but it must be released once that write
+         succeeds: the native client immediately hands the turn to the active
+         pet after a player's H/T command.  Leaving this global latch set made
+         the following pet W target click return at the first guard and the
+         pet silently timed out with W|FF|FF. */
+      state.targetSelectionPending=false;
       /* battleButtonBak belongs to the master's eight-button menu.  The
          active pet's later W selection has its own menu and must never
          overwrite the remembered player Attack; otherwise a real

@@ -2852,7 +2852,8 @@ const battleSetCommandLockEnd = script.indexOf("  function battleResetCommandLoc
 if (sendBattleTargetStart < 0 || sendBattleTargetEnd <= sendBattleTargetStart ||
     battleSetCommandLockStart < 0 || battleSetCommandLockEnd <= battleSetCommandLockStart ||
     (sendBattleTargetSource.match(/lastPlayerActionKind/g) || []).length !== 1 ||
-    !/if\(kind==="player"\)\{[\s\S]{0,320}lastPlayerActionKind[\s\S]{0,220}\}else\{[\s\S]{0,220}lastPetActionKind/.test(sendBattleTargetSource)) {
+    !/if\(kind==="player"\)\{[\s\S]{0,320}lastPlayerActionKind[\s\S]{0,220}\}else\{[\s\S]{0,220}lastPetActionKind/.test(sendBattleTargetSource) ||
+    !/await send\("B",\[command\]\);[\s\S]{0,800}state\.targetSelectionPending=false;/.test(sendBattleTargetSource)) {
   throw new Error("pet actor-target W must not overwrite the player's remembered command");
 }
 /* The native menu remembers battleButtonBak before lssproto_B_send returns.
