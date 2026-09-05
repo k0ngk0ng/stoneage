@@ -2706,6 +2706,7 @@
     #server-window-screen #server-window-title{display:none;left:var(--wnd-content-x,112px);top:var(--wnd-title-y,132px);width:var(--wnd-content-w,416px);text-align:center;color:#ffe08a;font:bold 13px Tahoma,sans-serif}
     #server-window-screen .window-box{background:transparent;border:0;padding:0;text-align:center;color:#f5ecd4}
     #server-window-screen.server-window-message #server-window-body{left:var(--wnd-message-x);top:var(--wnd-message-y);width:var(--wnd-message-w);height:var(--wnd-message-h);overflow:hidden;text-align:left;white-space:pre;font:14px/20px SimSun,"Songti SC",serif;line-height:20px;color:#fff}
+    #server-window-screen.server-window-message .native-message-glyph{display:inline-block;vertical-align:top;height:20px;line-height:20px;text-align:left}
     #server-window-screen #server-window-options{left:var(--wnd-content-x,112px);top:var(--wnd-options-y,310px);width:var(--wnd-content-w,416px);display:grid;grid-template-columns:repeat(2,1fr);gap:3px}
     #server-window-screen #server-window-form{left:var(--wnd-content-x,112px);top:var(--wnd-input-y,278px);width:var(--wnd-content-w,416px);display:flex;gap:3px}
     #server-window-screen #server-window-form input{flex:1;min-width:0}
@@ -13867,7 +13868,18 @@
       screen.style.setProperty("--wnd-message-y",`${frameY+(frameH-totalRows*20)/2}px`);
       screen.style.setProperty("--wnd-message-w",`${maxBytes*9}px`);
       screen.style.setProperty("--wnd-message-h",`${visibleRows*20}px`);
-      body.textContent=nativeMessageRows(wnd.data,maxBytes,visibleRows).join("\n");
+      body.replaceChildren();
+      const rows=nativeMessageRows(wnd.data,maxBytes,visibleRows);
+      for(let row=0;row<rows.length;row++){
+        if(row)body.append("\n");
+        /* GDI's default SimSun advances CP936 text by 7/14 pixels. Browser
+           Songti fallbacks have proportional Latin/space metrics, so even
+           preserved spaces otherwise collapse ranking columns sideways. */
+        for(const ch of rows[row]){
+          const glyph=document.createElement("span");glyph.className="native-message-glyph";
+          glyph.style.width=`${ch.charCodeAt(0)>0x7f?14:7}px`;glyph.textContent=ch;body.append(glyph);
+        }
+      }
     }
     else if(type===2){
       /* LOGIN.CPP::initServerWindowType1 stores the leading digit as

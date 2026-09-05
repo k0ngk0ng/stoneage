@@ -4073,7 +4073,9 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
         const classes=new Set();this.classList={add:(...names)=>names.forEach(n=>classes.add(n)),remove:(...names)=>names.forEach(n=>classes.delete(n)),
           toggle:(name,on)=>{if(on)classes.add(name);else classes.delete(name);},contains:name=>classes.has(name)};}
       append(...nodes){this.children.push(...nodes);}
-      replaceChildren(...nodes){this.children=nodes;}
+      get textContent(){return (this.ownText||"")+this.children.map(n=>typeof n==="string"?n:n.textContent).join("");}
+      set textContent(value){this.ownText=String(value);this.children=[];}
+      replaceChildren(...nodes){this.ownText="";this.children=nodes;}
       setAttribute(){}
     }
     const nodes=Object.fromEntries(["screen","title","body","options","input","form","close"].map(name=>["server-window-"+name,new Node()]));
@@ -4117,6 +4119,8 @@ const dismissFactory = new Function("app", "send", "closeServerWindow", `${scrip
     if(test.nodes["server-window-body"].textContent!==sourceLines.slice(0,visible).join("\n")){
       throw new Error(`MESSAGE ${type} must retain whitespace and cap native visible rows without SELECT prefix parsing`);
     }
+    const glyphs=test.nodes["server-window-body"].children.filter(n=>typeof n!=="string");
+    if(!glyphs.length||glyphs.some(n=>n.className!=="native-message-glyph"||n.style.width!==`${n.textContent.charCodeAt(0)>127?14:7}px`))throw new Error("MESSAGE glyph advances must be fixed 7px/14px, including spaces, independently of browser font metrics");
     if(screen.properties["--wnd-message-x"]!==`${wide?59:140}px`||
        screen.properties["--wnd-message-y"]!==`${wide?60:150}px`||
        screen.properties["--wnd-message-h"]!==`${visible*20}px`||
