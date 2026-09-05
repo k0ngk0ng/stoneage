@@ -3808,6 +3808,53 @@ if (!/function battleActorTargetAtPoint\(event\)[\s\S]{0,1800}battleTargetSelect
     !/event\.target\?\.closest\?\.\("#battle-ui,#battle-popup,#battle-target-panel"\)/.test(script)) {
   throw new Error("battle actor body clicks must delegate through the native target proxy");
 }
+/* Exercise real pointer resolution, not just the presence of its event
+   listeners. Rectangles are in physical viewport pixels as returned by the
+   browser after scaling: overlap, reorder and skill changes must all reuse
+   the existing proxy owner. */
+{
+  const start=script.indexOf("  function battleActorTargetAtPoint(event){");
+  const end=script.indexOf('  battleScreen.addEventListener("click"',start);
+  const hoverEnd=script.indexOf("  /* MOUSE.CPP uses a 48x48 foot rectangle",battleHoverStart);
+  const state={pendingAction:{kind:"pet"},movieActive:false};
+  const app={battle:true,battleState:state};
+  const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+  const proxy=(battleId,body,feet)=>{
+    const item={battleId,selectable:true};
+    const hit={_battleItem:item,getBoundingClientRect:()=>feet};
+    const frame={getBoundingClientRect:()=>body};
+    return {item,hit,querySelector:selector=>selector.endsWith(".battle-target-frame")?frame:hit};
+  };
+  const back=proxy(15,rect(410.5,100.25,160,210),rect(450.5,250.25,60,60));
+  const front=proxy(0,rect(440.5,150.25,160,210),rect(480.5,300.25,60,60));
+  let proxies=[back,front],hovered=null;
+  const document={querySelectorAll:selector=>selector.endsWith(".battle-target-hit")?proxies.map(p=>p.hit):proxies};
+  const helpers=new Function("app","document","battleTargetSelectable","paintBattleHoverTarget",`
+    ${script.slice(start,end)}
+    ${script.slice(battleHoverStart,hoverEnd)}
+    return {resolve:battleActorTargetAtPoint,hover:updateBattleHoverFromPointer};
+  `)(app,document,(_action,item)=>item.selectable,id=>{hovered=id;});
+  const point={clientX:490.5,clientY:200.25};
+  if(helpers.resolve(point)?.item!==front.item)throw new Error("overlapping body target must prefer the frontmost proxy");
+  helpers.hover(point);
+  if(hovered!==0)throw new Error("body hover must advertise the same frontmost target as body click");
+  proxies=[front,back];
+  if(helpers.resolve(point)?.item!==back.item)throw new Error("body target must follow updated native paint order, not stale roster order");
+  proxies=[back,front];front.item.selectable=false;
+  if(helpers.resolve(point)?.item!==back.item)throw new Error("a skill change must revalidate overlapping body targets");
+  front.item.selectable=true;
+  helpers.hover({clientX:470.5,clientY:280.25});
+  if(hovered!==15)throw new Error("native foot hit must take precedence over a different actor's body fallback");
+  helpers.hover({clientX:800,clientY:500});
+  if(hovered!==null||helpers.resolve({clientX:800,clientY:500})!==null)throw new Error("empty battle ground must not select or highlight an actor");
+  for(const event of [{clientX:NaN,clientY:200},{clientX:490,clientY:Infinity}]){
+    if(helpers.resolve(event)!==null)throw new Error("non-finite pointer coordinates must not target an actor");
+  }
+  state.movieActive=true;
+  if(helpers.resolve(point)!==null)throw new Error("battle movie must disable body targeting");
+  state.movieActive=false;state.pendingAction=null;
+  if(helpers.resolve(point)!==null)throw new Error("submitted action must remove delegated body targeting");
+}
 /* The smooth local walker is a shallow fractional-position copy.  Persist
    its decoded frame back to the real C actor so the next render cannot lose
    the fallback bitmap and blank the player for one tick. */
