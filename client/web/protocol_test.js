@@ -2463,11 +2463,11 @@ for (const expected of [
      update the client-owned catalog instead of replacing it with an empty
      modal. */
   /const acknowledgement=shop\.valid===0&&shop\.items\.length===0[\s\S]{0,260}applyShopAcknowledgement\(previous\)/,
-  /* The native client dismisses a non-paging WN immediately after its
+  /* The native client dismisses a WN, including PREV/NEXT, immediately after its
      response is queued.  Do not wait for HTTP completion (which can leave an
      OK window stuck during a slow bridge request); a later WN owns its own
      activeWindow and is therefore not affected by the old response. */
-  /const response=send\("WN",\[app\.position\[0\],app\.position\[1\],wnd\.seqno,wnd\.objindex,select,data\]\);[\s\S]{0,260}if\(!retainPagingWindow&&app\.activeWindow===wnd\)closeServerWindow\(\);[\s\S]{0,80}return response;/,
+  /const response=send\("WN",\[app\.position\[0\],app\.position\[1\],wnd\.seqno,wnd\.objindex,select,data\]\);[\s\S]{0,260}if\(app\.activeWindow===wnd\)closeServerWindow\(\);[\s\S]{0,80}return response;/,
   /frameX=\(640-frameW\)\/2,frameY=\(\(type===2\?480:456\)-frameH\)\/2/,
   /* serverWindowType1 stocks each visible msgWN row once and overlays its
      MakeHitBox at the same 21-pixel row.  Do not duplicate selectable text
@@ -4018,15 +4018,30 @@ const responseFactory = new Function("app", "send", "closeServerWindow", `${scri
     throw new Error(`message WN response must close immediately after queueing: ${JSON.stringify({closes,calls,active:app.activeWindow})}`);
   }
 }
-{
-  const calls=[];
-  let closes=0;
-  const app={position:[17,25],activeWindow:{windowType:1,seqno:272,objindex:1604}};
-  const respond=responseFactory(app,(name,fields)=>{calls.push({name,fields});return Promise.resolve();},()=>{closes++;app.activeWindow=null;});
-  respond(32,"next");
-  if (closes!==0 || !app.activeWindow || calls.length!==1) {
-    throw new Error("paging WN response must retain the current window");
+/* serverWindowType0 handles MESSAGE / MESSAGEANDLINEINPUT and their wide
+   variants; serverWindowType1..4 handle SELECT and specialized types 3..5.
+   PRE/NEXT, like OK, sends the response then destroys the window;
+   only a new server WN can supply another page. Exercise a pending transport
+   and preserve the input payload, including empty text for message windows. */
+for(const windowType of [0,1,2,3,4,5,10,11])for(const select of [16,32]){
+  const calls=[];let closes=0;
+  const app={position:[17,25],activeWindow:{windowType,seqno:272,objindex:1604}};
+  const pending=new Promise(()=>{});
+  const respond=responseFactory(app,(name,fields)=>{calls.push({name,fields});return pending;},()=>{closes++;app.activeWindow=null;});
+  const data=[1,11].includes(windowType)?"测试输入":[2,3,4,5].includes(windowType)?"0":"";
+  const result=respond(select,data);
+  if(closes!==1||app.activeWindow!==null||result!==pending||
+      JSON.stringify(calls)!==JSON.stringify([{name:"WN",fields:[17,25,272,1604,select,data]}])){
+    throw new Error(`message WN ${windowType} paging ${select} must send once and close before transport completion`);
   }
+}
+{
+  let closes=0;
+  const replacement={windowType:0,seqno:274,objindex:1604};
+  const app={position:[17,25],activeWindow:{windowType:0,seqno:273,objindex:1604}};
+  const respond=responseFactory(app,()=>{app.activeWindow=replacement;return Promise.resolve();},()=>{closes++;app.activeWindow=null;});
+  respond(32,"");
+  if(closes!==0||app.activeWindow!==replacement)throw new Error("queueing an old response must never close a replacement WN");
 }
 const dismissFactory = new Function("app", "send", "closeServerWindow", `${script.slice(dismissStart, dismissEnd)};return dismissServerWindow;`);
 /* Exercise production SELECT rendering with long explanatory text and more

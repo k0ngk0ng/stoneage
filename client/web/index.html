@@ -13486,18 +13486,18 @@
   function parseProtocolFields(){return [...$("protocol-fields").querySelectorAll("[name^=field-]")].map(input=>input.dataset.kind==="int"?decimal(input.value):input.value);}
   function windowResponse(select,data=""){
     const wnd=app.activeWindow;if(!wnd)return Promise.reject(new Error("服务器窗口已关闭"));
-    /* LOGIN.CPP clears the current back-buffer as soon as a non-paging
-       response is accepted by its send queue.  HTTP transport completion is
+    /* LOGIN.CPP destroys server response windows as soon as a response is
+       accepted by its send queue, including PREV/NEXT. HTTP completion is
        deliberately not part of that visual decision: a slow/failing POST
        used to leave the OK/YES/NO window stuck on screen until the request
        timeout.  Close this exact window synchronously after queueing the
        packet; a follow-up WN from the server can then install its replacement
-       without being hidden by an old promise callback. SELECT's PREV/NEXT
-       also destroy the window: serverWindowType1 sends the button bit and
-       waits for a replacement WN, rather than paging the old choices. */
+       without being hidden by an old promise callback. serverWindowType0..4
+       sends the button bit and waits for a replacement WN rather than
+       paging the old message/choices. Shop catalog pagination is local and
+       does not call this response helper. */
     const response=send("WN",[app.position[0],app.position[1],wnd.seqno,wnd.objindex,select,data]);
-    const retainPagingWindow=Number(wnd.windowType)!==2&&(select===16||select===32);
-    if(!retainPagingWindow&&app.activeWindow===wnd)closeServerWindow();
+    if(app.activeWindow===wnd)closeServerWindow();
     return response;
   }
   function splitWindowTokens(data){return String(data||"").split("|").map(token=>unescapeCharacterOption(token));}
@@ -19380,7 +19380,7 @@
     /* LOGIN.CPP's line-input windows submit through the OK button path.  The
        select field is a bit mask, not a zero-based form index; sending 0
        made NPC_Quiz/NPC_Alldoman ignore an otherwise valid answer.  Reuse
-       windowResponse() so the native close timing and paging exceptions stay
+       windowResponse() so the native close timing stays
        identical to a click on the bitmap OK button. */
     windowResponse(1,$("server-window-input").value).catch(reportError);
   });
