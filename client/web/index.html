@@ -5631,7 +5631,12 @@
         cache.failed.add(file);cache.dirty=true;cache.ready=false;
         setMapLoading(true,"地图贴片加载失败，等待重试…");
       }
-    }else{cache.failed.delete(file);cache.dirty=true;}
+    }else{
+      cache.failed.delete(file);cache.dirty=true;
+      /* Only a live same-floor handoff exposes these parts. Initial entry
+         still waits for one complete window, avoiding per-image repaints. */
+      if(refreshMapLayerParts(cache,file)&&mapLayerCacheUsable(app.mapLayerFallback))scheduleAssetRefresh(true);
+    }
     renderMapLoadingProgress(failed?"正在重试地图贴片…":"正在解码地图贴片…");
     if(cache.pending.size===0)scheduleAssetRefresh(true);
     return true;
@@ -16244,7 +16249,7 @@
     /* Keep ground and parts separate. The native drawMap() queues parts with
        setPartsPrio() and interleaves them with characters; baking both layers
        into one bitmap forces every actor above every tree/roof. */
-    const cache={key,canvas,minX,minY,parts:[],dirty:false,ready:false,manifestReady:Boolean(assetState.manifestReady),required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map(),context:null,rasterScheduled:false,rasterComplete:false,rasterFailed:false,rasterIndex:0,groundCells:null};
+    const cache={key,canvas,minX,minY,parts:[],pendingParts:new Map(),dirty:false,ready:false,manifestReady:Boolean(assetState.manifestReady),required:new Set(),pending:new Set(),failed:new Set(),missing:new Set(),unavailable:new Set(),retryCount:new Map(),context:null,rasterScheduled:false,rasterComplete:false,rasterFailed:false,rasterIndex:0,groundCells:null};
     /* While a same-floor M window is downloading, the last completed cache is
        exposed by renderWorld() as a fallback.  Never alias its Canvas here:
        image onload callbacks rasterise the new window asynchronously, and
@@ -16266,7 +16271,17 @@
          still required for every drawable cell and a failed HTTP image remains
          a hard loading error below. */
       if(!info?.file)return;
-      cache.required.add(info.file);const sourceImage=loadAsset(info.file,{map:true}),image=mapPaletteImage(info.file,sourceImage);if(!image){cache.missing.add(info.file);return;}if(!mapImageReady(image)){cache.pending.add(info.file);return;}if(!Number(image.naturalWidth||image.width)){
+      const worldX=Number(map.x1)+column,worldY=Number(map.y1)+row,anchor=mapPixel(worldX,worldY);if(!anchor)return;
+      const part=isPart?{x:worldX,y:worldY,anchor:[anchor[0],anchor[1]],info,value}:null;
+      cache.required.add(info.file);const sourceImage=loadAsset(info.file,{map:true}),image=mapPaletteImage(info.file,sourceImage);
+      /* Retain object cells while their image decodes. Otherwise a tree
+         which finishes before an unrelated ground image never enters PARTS
+         until the entire window is rebuilt, despite already being resident. */
+      if(part&&(!mapImageReady(image)||!Number(image?.naturalWidth||image?.width))){
+        if(!cache.pendingParts.has(info.file))cache.pendingParts.set(info.file,[]);
+        cache.pendingParts.get(info.file).push(part);
+      }
+      if(!image){cache.missing.add(info.file);return;}if(!mapImageReady(image)){cache.pending.add(info.file);return;}if(!Number(image.naturalWidth||image.width)){
         if(cache.unavailable.has(info.file)||cache.pending.has(info.file))return;
         const attempts=Number(cache.retryCount.get(info.file)||0);
         if(attempts<2){
@@ -16275,7 +16290,7 @@
         }else{cache.unavailable.add(info.file);}
         return;
       }
-      const worldX=Number(map.x1)+column,worldY=Number(map.y1)+row,anchor=mapPixel(worldX,worldY);if(!anchor)return;if(isPart)cache.parts.push({x:worldX,y:worldY,anchor:[anchor[0],anchor[1]],image,info,value});else groundCells.push({image,info,anchor:[anchor[0]-minX,anchor[1]-minY]});};
+      if(part)cache.parts.push({...part,image});else groundCells.push({image,info,anchor:[anchor[0]-minX,anchor[1]-minY]});};
     const drawLayer=(layer,isPart=false)=>{if(!Array.isArray(layer)||!layer.length)return;let ti=map.height-1,tj=0;while(ti>=0){let row=ti,column=tj;while(row>=0&&column>=0){drawCell(row,column,layer,isPart);row--;column--;}if(tj<map.width-1)tj++;else ti--;}};
     drawLayer(map.tiles,false);drawLayer(map.objects,true);
     /* SortComp() orders equal DISP_PRIO entries by descending DispInfo.no.
@@ -16370,6 +16385,18 @@
      Once the new cache is usable renderWorld() passes it alone, preserving
      the native immutable-window behaviour.
   */
+  function refreshMapLayerParts(cache,file){
+    if(app.mapLayerCache!==cache)return false;
+    const cells=cache?.pendingParts?.get(file);if(!cells?.length)return false;
+    const image=mapPaletteImage(file,assetState.images.get(file));
+    if(!mapImageReady(image)||!Number(image?.naturalWidth||image?.width))return false;
+    for(const cell of cells)cache.parts.push({...cell,image});
+    cache.pendingParts.delete(file);
+    /* Decode callbacks may arrive in any order. Restore native PARTS order,
+       without touching the ground canvas or publishing an incomplete cache. */
+    cache.parts=mergeMapLayerParts(cache,null);
+    return true;
+  }
   function mergeMapLayerParts(primary,fallback){
     const lists=[primary?.parts||[],fallback?.parts||[]],merged=[],seen=new Set();
     for(const list of lists)for(const part of list){

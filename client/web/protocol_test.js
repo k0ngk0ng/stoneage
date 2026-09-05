@@ -5512,6 +5512,111 @@ if(!/function mapLayerCacheUsable\(cache\)\{[\s\S]{0,900}cache\.rasterComplete!=
    !/app\.worldBackBufferHasFrame=false;const result=enterWorldWithoutBattleTimers/.test(script)){
   throw new Error("map refresh must retain the last complete back-buffer until the replacement cache is ready");
 }
+/* A replacement M window can have a pending ground bitmap while an object
+   bitmap (tree/roof) finishes first. Exercise the production
+   ensureMapLayerCache() -> settleMapAsset() path: the object must be promoted
+   into PARTS immediately, without touching the old fallback canvas or
+   inventing a second descriptor when a duplicate callback/retry arrives. */
+const mapCacheKeyStart=script.indexOf("  function mapLayerCacheKey(map){");
+const mapCacheKeyEnd=script.indexOf("  function ensureMapLayerCache(map){",mapCacheKeyStart);
+const ensureMapLayerStart=mapCacheKeyEnd;
+const ensureMapLayerEnd=script.indexOf("  // Paint the live M window",ensureMapLayerStart);
+const mapPartRefreshStart=script.indexOf("  function refreshMapLayerParts(cache,file){");
+const mapPartRefreshEnd=script.indexOf("  /* ----------------------------------------------------------------------",mapPartRefreshStart);
+const mapAssetSettleStart=script.indexOf("  function settleMapAsset(file,failed=false)");
+const mapAssetSettleEnd=script.indexOf("  const MAP_RENDER_OVERRIDES",mapAssetSettleStart);
+if(mapCacheKeyStart<0||mapCacheKeyEnd<=mapCacheKeyStart||ensureMapLayerEnd<=ensureMapLayerStart||
+   mapPartRefreshStart<0||mapPartRefreshEnd<=mapPartRefreshStart||mapAssetSettleStart<0||mapAssetSettleEnd<=mapAssetSettleStart||
+   !/pendingParts:new Map\(\)/.test(script.slice(ensureMapLayerStart,ensureMapLayerEnd))||
+   !/function refreshMapLayerParts\(cache,file\)/.test(script.slice(mapPartRefreshStart,mapPartRefreshEnd))){
+  throw new Error("map partial-decode PARTS refresh path is missing");
+}
+const mapLayerReadinessSource=script.slice(mapLayerUsableStart,mapLayerUsableEnd);
+const mapPartEnsureHarness=new Function(
+  "app","assetState","document","window","mapPixel","getMap2DContext","resolveBitmapInfo",
+  "loadAsset","mapPaletteImage","mapImageReady","drawBitmapAt","forgetMapAssetCache",
+  "renderWorld","renderMapLoadingProgress","scheduleAssetRefresh","setMapLoading",`
+  const MAP_LAYER_ASYNC_RASTER_THRESHOLD=240;
+  ${mapLayerReadinessSource}
+  ${script.slice(mapCacheKeyStart,mapCacheKeyEnd)}
+  ${script.slice(mapPartRefreshStart,mapPartRefreshEnd)}
+  ${script.slice(mapAssetSettleStart,mapAssetSettleEnd)}
+  ${script.slice(ensureMapLayerStart,ensureMapLayerEnd)}
+  return {ensureMapLayerCache,refreshMapLayerParts,settleMapAsset};
+`);
+const partImage=file=>({file,ready:false,naturalWidth:0,naturalHeight:0,width:0,height:0});
+const mapPartImages=new Map([
+  ["ground.png",partImage("ground.png")],
+  ["tree-a.png",partImage("tree-a.png")],
+  ["tree-b.png",partImage("tree-b.png")],
+]);
+const mapPartApp={mapLayerCache:null,mapLayerFallback:null};
+const mapPartAssetState={manifestReady:true,images:mapPartImages};
+const mapPartFallbackCanvas={id:"completed-ground"};
+const mapPartFallbackParts=[{x:99,y:99,anchor:[0,0],image:{file:"old-tree.png"},info:{file:"old-tree.png"},value:202}];
+const mapPartFallback={key:"fallback",canvas:mapPartFallbackCanvas,parts:mapPartFallbackParts,ready:true,rasterComplete:true,rasterFailed:false,manifestReady:true};
+mapPartApp.mapLayerFallback=mapPartFallback;
+const mapPartTimers=[],mapPartRefreshes=[];
+const mapPartWindow={floor:77,x1:10,y1:20,width:3,height:2,tiles:Array(6).fill(101),objects:[202,203,0,0,202,203]};
+const mapPartHarness=mapPartEnsureHarness(
+  mapPartApp,mapPartAssetState,
+  {createElement(tag){if(tag!=="canvas")throw new Error(`unexpected map test element: ${tag}`);return {width:0,height:0};}},
+  {setTimeout(callback,delay){mapPartTimers.push({callback,delay});return mapPartTimers.length;},clearTimeout(){}},
+  (x,y)=>[Number(x)*32,Number(y)*24],
+  ()=>({imageSmoothingEnabled:false}),
+  value=>({file:{101:"ground.png",202:"tree-a.png",203:"tree-b.png"}[Number(value)]||""}),
+  file=>mapPartImages.get(file)||null,
+  (_file,image)=>image,
+  image=>Boolean(image?.ready),
+  ()=>{},
+  ()=>{},
+  ()=>{},
+  ()=>{},
+  (...values)=>mapPartRefreshes.push(values),
+  ()=>{}
+);
+const mapPartCache=mapPartHarness.ensureMapLayerCache(mapPartWindow);
+if(!mapPartCache||mapPartCache.pending.size!==3||!mapPartCache.pending.has("ground.png")||
+   !mapPartCache.pending.has("tree-a.png")||!mapPartCache.pending.has("tree-b.png")||
+   mapPartCache.pendingParts.get("tree-a.png")?.length!==2||mapPartCache.pendingParts.get("tree-b.png")?.length!==2||
+   mapPartCache.pendingParts.has("ground.png")){
+  throw new Error(`ensureMapLayerCache must retain pending object cells separately: ${JSON.stringify({pending:[...mapPartCache?.pending||[]],pendingParts:[...(mapPartCache?.pendingParts||new Map())].map(([file,cells])=>[file,cells.length])})}`);
+}
+const cacheCanvasBeforeParts=mapPartCache.canvas,fallbackCanvasBeforeParts=mapPartFallback.canvas,fallbackPartsBeforeParts=mapPartFallback.parts.slice();
+const settlePart=(file)=>{const image=mapPartImages.get(file);image.ready=true;image.naturalWidth=32;image.naturalHeight=32;image.width=32;image.height=32;return mapPartHarness.settleMapAsset(file,false);};
+if(!settlePart("tree-b.png")||mapPartCache.pending.size!==2||!mapPartCache.pending.has("ground.png")||
+   !mapPartCache.pending.has("tree-a.png")||mapPartCache.parts.length!==2||mapPartCache.pendingParts.has("tree-b.png")||
+   mapPartRefreshes.length!==1){
+  throw new Error(`first tree decode must refresh PARTS while ground stays pending: ${JSON.stringify({pending:[...mapPartCache.pending],parts:mapPartCache.parts.length,pendingParts:[...mapPartCache.pendingParts.keys()],refreshes:mapPartRefreshes.length})}`);
+}
+if(!settlePart("tree-a.png")||mapPartCache.pending.size!==1||!mapPartCache.pending.has("ground.png")||mapPartCache.parts.length!==4||
+   mapPartCache.parts.map(part=>`${part.x},${part.y}`).join("|")!=="11,21|10,20|12,21|11,20"||
+   mapPartCache.canvas!==cacheCanvasBeforeParts||mapPartFallback.canvas!==fallbackCanvasBeforeParts||
+   mapPartFallback.parts.length!==fallbackPartsBeforeParts.length||mapPartRefreshes.length!==2){
+  throw new Error(`out-of-order tree decodes must restore native PARTS order without replacing ground: ${JSON.stringify({pending:[...mapPartCache.pending],parts:mapPartCache.parts.map(part=>[part.x,part.y]),sameCacheCanvas:mapPartCache.canvas===cacheCanvasBeforeParts,sameFallbackCanvas:mapPartFallback.canvas===fallbackCanvasBeforeParts,refreshes:mapPartRefreshes.length})}`);
+}
+const partsBeforeDuplicate=mapPartCache.parts.slice();
+if(mapPartHarness.settleMapAsset("tree-a.png",false)!==false||mapPartHarness.refreshMapLayerParts(mapPartCache,"tree-a.png")!==false||
+   mapPartCache.parts.length!==partsBeforeDuplicate.length||mapPartCache.parts.some((part,index)=>part!==partsBeforeDuplicate[index])){
+  throw new Error("duplicate map asset completion must not append duplicate tree PARTS");
+}
+const staleMapPartCache={key:"stale",parts:[],pendingParts:new Map([["tree-a.png",[{x:55,y:55,anchor:[0,0],info:{file:"tree-a.png"},value:202}]]])};
+if(mapPartHarness.refreshMapLayerParts(staleMapPartCache,"tree-a.png")!==false||staleMapPartCache.parts.length!==0||!staleMapPartCache.pendingParts.has("tree-a.png")){
+  throw new Error("a superseded map cache must reject late object decode callbacks");
+}
+mapPartApp.mapLayerCache=null;mapPartApp.mapLayerFallback=null;
+for(const file of mapPartImages.keys())mapPartImages.set(file,partImage(file));
+const firstEntryPartCache=mapPartHarness.ensureMapLayerCache({...mapPartWindow,floor:78,__layerKey:""});
+const refreshesBeforeFirstEntry=mapPartRefreshes.length;
+mapPartHarness.settleMapAsset("tree-a.png",true);
+if(firstEntryPartCache.parts.length||!firstEntryPartCache.pending.has("tree-a.png")||firstEntryPartCache.ready){
+  throw new Error("failed tree decode must remain pending without publishing an incomplete cache");
+}
+mapPartImages.set("tree-a.png",partImage("tree-a.png"));
+settlePart("tree-a.png");
+if(firstEntryPartCache.parts.length!==2||firstEntryPartCache.ready||firstEntryPartCache.pending.size!==2||mapPartRefreshes.length!==refreshesBeforeFirstEntry){
+  throw new Error("successful tree retry must not cause per-image repaint on initial map entry");
+}
 if (!/app\.serverState=\{\};\s*clearChatBuffer\(\);/.test(script)) {
   throw new Error("fresh character entry must clear chat lines from the previous character session");
 }
