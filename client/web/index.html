@@ -16361,6 +16361,35 @@
     ctx.drawImage(source,x,y);
     return true;
   }
+  /* A sliding M window replaces the native back-buffer asynchronously.  The
+     completed ground cache remains visible while the replacement decodes,
+     but its PARTS list used to come exclusively from the old window.  At the
+     edge of a window that drops a newly entering tree/roof for a few frames,
+     so the actor appears to walk through (or on top of) the decoration.  Keep
+     any already decoded parts from both windows during that short hand-off.
+     Once the new cache is usable renderWorld() passes it alone, preserving
+     the native immutable-window behaviour.
+  */
+  function mergeMapLayerParts(primary,fallback){
+    const lists=[primary?.parts||[],fallback?.parts||[]],merged=[],seen=new Set();
+    for(const list of lists)for(const part of list){
+      if(!part||!Number.isFinite(Number(part.x))||!Number.isFinite(Number(part.y)))continue;
+      const file=String(part.info?.file||"");
+      const key=`${Math.trunc(Number(part.x))},${Math.trunc(Number(part.y))},${Number(part.value)||0},${file}`;
+      if(seen.has(key))continue;
+      seen.add(key);merged.push(part);
+    }
+    /* drawMap() feeds PARTS in increasing map diagonal order (and decreasing
+       row within a diagonal).  Sorting the merged overlap by that same key
+       avoids a fallback part being painted after a newly decoded neighbour
+       merely because it came from the older cache object.
+    */
+    if(merged.length>1)merged.sort((left,right)=>{
+      const diagonal=(item)=>Number(item.x)+Number(item.y),row=(item)=>Number(item.y);
+      return diagonal(left)-diagonal(right)||row(right)-row(left);
+    });
+    return merged;
+  }
   /* ----------------------------------------------------------------------
      MAP.CPP environmental effects
 
@@ -16585,7 +16614,7 @@
     if(dynamicReady||staticReady){
       const domActors=actors.slice();
       if(!domActors.some(actor=>actor.name===app.character))domActors.push({name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3,x:app.position[0],y:app.position[1]});
-      const parts=dynamicReady?(mapLayerCacheUsable(layerCache)?(layerCache.parts||[]):(mapLayerCacheUsable(app.mapLayerFallback)?(app.mapLayerFallback.parts||[]):[])):[];
+      const parts=dynamicReady?(mapLayerCacheUsable(layerCache)?(layerCache.parts||[]):(mapLayerCacheUsable(app.mapLayerFallback)?mergeMapLayerParts(layerCache,app.mapLayerFallback):(layerCache?.parts||[]))):[];
       renderSceneActorsAndParts(domActors,parts,canvas);
       presentWorldBackBuffer(canvas);
       renderWorldOverlay();scheduleWorldAnimation();return;
