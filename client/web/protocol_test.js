@@ -3309,7 +3309,7 @@ const captureVisualSource=script.slice(script.indexOf("  function syncBattleButt
 if(!/#battle-capture-cross\{left:523px;top:27px;width:40px;height:40px/.test(html)||
    !/<img id="battle-capture-cross" data-src="\/assets\/bitmaps\/bitmap_8701\.png"/.test(html)||
    !/captureCross\.hidden=!app\.battle\|\|!battlePetCapacityFull\(\)/.test(captureVisualSource)||
-   !/async function sendBattleTarget[\s\S]{0,700}rejectFullBattleCapture\(action,app\.battleState\)/.test(script)||
+   !/async function sendBattleTarget[\s\S]{0,1200}rejectFullBattleCapture\(action,app\.battleState\)/.test(script)||
    !script.includes('if(/^(?:T|C)(?:\\||$)/i.test(text)&&rejectFullBattleCapture({kind:"capture"},state))return;')){
   throw new Error("full-stable Capture cross or final/direct packet gate regressed");
 }
@@ -3794,6 +3794,8 @@ if (battleHoverStart < 0 || battleHoverEnd <= battleHoverStart ||
    than adding a second button that can race the 48x48 owner. */
 if (!/function battleActorTargetAtPoint\(event\)[\s\S]{0,1800}battleTargetSelectable\(state\.pendingAction,item,state\)[\s\S]{0,420}getBoundingClientRect\?\.\(\)/.test(script) ||
     !/battleScreen\.addEventListener\("click",event=>\{[\s\S]{0,520}battleActorTargetAtPoint\(event\)[\s\S]{0,180}sendBattleTarget\(target\.item\)/.test(script) ||
+    !/battleScreen\.addEventListener\("pointerup",event=>\{[\s\S]{0,620}battleActorTargetAtPoint\(event\)[\s\S]{0,180}sendBattleTarget\(target\.item\)[\s\S]{0,100}\},\{passive:false\}\)/.test(script) ||
+    !/async function sendBattleTarget\(target\)\{[\s\S]{0,700}const owner=action\.kind==="pet"\?"pet":"player";[\s\S]{0,120}if\(state\.targetSelectionPending\|\|state\.commandPending\?\.\[owner\]\)return;/.test(script) ||
     !/event\.target\?\.closest\?\.\("#battle-ui,#battle-popup,#battle-target-panel"\)/.test(script)) {
   throw new Error("battle actor body clicks must delegate through the native target proxy");
 }

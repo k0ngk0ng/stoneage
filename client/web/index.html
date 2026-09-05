@@ -8521,7 +8521,14 @@
     for(const item of candidates){const targetButton=document.createElement("button");targetButton.type="button";targetButton.className=item.dead?"dead":"";const id=Number(item.battleId);const hp=item.special?"":` · HP ${item.hp??0}/${item.maxHp??0}`;targetButton.textContent=`${battleHex(id)} ${item.name||`#${battleHex(id)}`}${item.dead?"（倒下）":""}${hp}`;targetButton.title=item.title||"";targetButton.addEventListener("click",()=>sendBattleTarget(item));list.append(targetButton);}
   }
   async function sendBattleTarget(target){
-    const action=app.battleState.pendingAction;if(!action)return;
+    const state=app.battleState,action=state?.pendingAction;if(!action)return;
+    /* A touch release may be followed by a synthetic click on the same
+       transparent hit button.  The first release arms the per-owner command
+       latch before awaiting the HTTP bridge; ignore that follow-up instead
+       of treating the now-locked owner as an unavailable action and clearing
+       the live selector while the original W/H write is still in flight. */
+    const owner=action.kind==="pet"?"pet":"player";
+    if(state.targetSelectionPending||state.commandPending?.[owner])return;
     if(!battleActionAllowed(action)){
       battleExplainUnavailable(action);
       setBattleMenuPressedCommand(app.battleState,"");
@@ -8550,7 +8557,8 @@
       return;
     }
     const command=battleActionCommand(action,target);if(!command)return;
-    const state=app.battleState,kind=action.kind==="pet"?"pet":"player";
+    state.targetSelectionPending=true;
+    const kind=owner;
     /* H/T retain their main-button flag after BattleTargetSelect() accepts
        an actor.  J/I/W row handlers already called ClearBattleButton(), so
        they deliberately enter the same return path with no pressed command. */
@@ -8742,6 +8750,11 @@
        and two bitmap buttons appear pressed at once. */
     if(app.battlePopup&&!options?.closePopup)closeBattlePopup({skipDefault:true});
     if(options?.closePopup){const closeOptions=options.closePopup===true?{}:options.closePopup;closeBattlePopup(closeOptions);}
+    /* A target selection is one-shot for the lifetime of this pending
+       action. Reset the latch only when a genuinely new action is opened;
+       it is independent of commandPending because a fast BP acknowledgement
+       can clear that bridge latch before a synthetic touch click arrives. */
+    state.targetSelectionPending=false;
     setBattleMenuPressedCommand(state,nextCommand);
     state.pendingAction={...action};const pending=state.pendingAction,candidates=battleTargetCandidates(pending),targetType=Number(pending.targetType);renderBattleWorld();
     if(battleUsesActorTarget(pending)){
@@ -18215,7 +18228,7 @@
       app.battleCommands.push(`我：${text}`);$("battle-log").textContent+=`\n我：${text}`;$("battle-log").scrollTop=$("battle-log").scrollHeight;
       if(kind==="player")maybeOpenBattlePetSkillMenu(state,text);
       renderBattle();renderBattleWorld();
-    }catch(error){if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,false);battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattle();renderBattleWorld();reportError(error);}
+    }catch(error){state.targetSelectionPending=false;if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(state,playerAction,false);battleClearCommandPending(state,kind);battleSetCommandLock(state,kind,false);renderBattle();renderBattleWorld();reportError(error);}
   }
   function parseFormBytes(value) { return value; }
 
@@ -18784,6 +18797,18 @@
     const target=battleActorTargetAtPoint(event);if(!target)return;
     event.preventDefault();event.stopPropagation();sendBattleTarget(target.item);
   });
+  /* Some mobile WebViews do not synthesize a DOM `click` after a touch on a
+     transparent element (and a long-press can cancel that synthesis).  The
+     native client commits BattleTargetSelect() on button release, so use the
+     same release boundary as a fallback.  sendBattleTarget() removes the
+     one-shot proxy synchronously before the browser's optional synthetic
+     click can run, which keeps this path single-send. */
+  battleScreen.addEventListener("pointerup",event=>{
+    if(event.defaultPrevented)return;
+    if(event.target?.closest?.("#battle-ui,#battle-popup,#battle-target-panel"))return;
+    const target=battleActorTargetAtPoint(event);if(!target)return;
+    event.preventDefault();event.stopPropagation();sendBattleTarget(target.item);
+  },{passive:false});
   /* BattleTargetSelect() positions its native brown hint from the logical
      mouse y coordinate.  Track the real pointer independently from the field
      cursor (which intentionally remains in the world scene) so an actor
