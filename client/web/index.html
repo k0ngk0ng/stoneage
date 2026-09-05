@@ -611,6 +611,12 @@
        follows the actor's current VCT position. */
     #battle-actors-layer .battle-status-effect { position:absolute; display:block; max-width:none; pointer-events:none; image-rendering:pixelated; }
     #battle-actors-layer .battle-effect{position:absolute;z-index:4;transform:translate(-50%,-50%);color:#fff4aa;font:bold 18px/20px Tahoma,"Microsoft YaHei",sans-serif;text-shadow:1px 1px #4b140e,-1px -1px #4b140e;pointer-events:none;animation:battle-effect-rise .9s ease-out forwards;white-space:nowrap}
+    /* damage_num() paints native CG_ICON_* bitmaps for Miss/Counter/Guard
+       and similar result states. Keep the text fallback until the bitmap has
+       decoded, then let the original icon and its REALBIN offsets own the
+       presentation. */
+    #battle-actors-layer .battle-effect.native-art{color:transparent;font-size:0;line-height:0;text-shadow:none}
+    #battle-actors-layer .battle-effect.native-art .battle-effect-sprite{transform:none}
     #battle-actors-layer .battle-effect.miss,#battle-actors-layer .battle-effect.dodge{color:#d3d0c4;font-size:13px}
     #battle-actors-layer .battle-effect.heal{color:#7dff9b;text-shadow:1px 1px #124b24,-1px -1px #124b24}
     #battle-actors-layer .battle-effect.mp{color:#ffe96b;text-shadow:1px 1px #57420d,-1px -1px #57420d}
@@ -3954,6 +3960,17 @@
     stopSoundEffects();
     stopBackgroundMusic();
     soundState.pendingBgm=null;
+    /* 8.5 login.cpp::initInputIdPassword resets both input counts/cursors.
+       Clear the Web values at this explicit title boundary as well, per the
+       requested no-input-history behaviour.  The archived 2.5 LOGIN.CPP
+       instead restores getCdkey/getPassword; do not confuse that older
+       path with this intentional Web input policy.  A reconnect retains
+       credentials until the user explicitly returns to account login. */
+    app.account="";
+    app.password="";
+    const accountInput=$("account"),passwordInput=$("password");
+    if(accountInput){accountInput.value="";accountInput.defaultValue="";}
+    if(passwordInput){passwordInput.value="";passwordInput.defaultValue="";}
     app.phase="login";
     show(loginScreen);
     /* login.cpp starts the title track when the account/character list is
@@ -10593,6 +10610,25 @@
     const value=String(text||"");
     const duration=Math.max(700,Number(extra.duration)||1100),now=Date.now();
     const startsAt=Math.max(now,Number(extra.startsAt)||now);
+    /* oft.cpp::damage_num() selects these CG_ICON_* records instead of
+       drawing a browser string. Keep the string as a cold-cache fallback;
+       renderBattleWorld() removes it after the native bitmap decodes. */
+    const nativeIcons={
+      "闪避":{graphic:26504,nativeVPos:-64},"消失":{graphic:26504,nativeVPos:-64},
+      "逃跑失败":{graphic:26505,nativeVPos:-64},"捕捉失败":{graphic:26505,nativeVPos:-64},
+      "捕捉成功":{graphic:26506,nativeVPos:-64},"反击":{graphic:26507,nativeVPos:-48},
+      "防御":{graphic:26510,nativeVPos:-48},"吸收":{graphic:26510,nativeVPos:-48},
+      "逃跑成功":{graphic:26511,nativeVPos:-64},"退场":{graphic:26513,nativeVPos:-64},
+      "破防":{graphic:26514,nativeVPos:-48},"粉碎":{graphic:26515,nativeVPos:-48},
+      "收回宠物":{graphic:26501,nativeVPos:-64},"放出宠物":{graphic:26502,nativeVPos:-64},
+    };
+    const native=nativeIcons[value];
+    if(native){
+      if(extra.graphic===undefined)extra.graphic=native.graphic;
+      if(extra.graphicKey===undefined)extra.graphicKey=String(native.graphic);
+      if(extra.nativeVPos===undefined)extra.nativeVPos=native.nativeVPos;
+      if(extra.nativeStatic===undefined)extra.nativeStatic=true;
+    }
     /* BH and BD can carry the same HP change in a single B packet.  Keep a
        single native-looking number at a target when the server repeats the
        exact same event at the same contact frame, while allowing separate
@@ -12529,7 +12565,7 @@
             /* ATT_TAKE (VCT35..44) uses damage_num() color 5 while the
                capture swing is in progress, then replaces it with color 7
                (CG_ICON_GET) or color 8 (CG_ICON_FAIL) after the result is
-               known.  These are the native 2.5 bitmap ids 26512/26514/26513;
+               known.  These are the native 2.5 bitmap ids 26512/26506/26505;
                keeping them on the attacker is important because the original
                set_damage_num(a0, ..., -64) is anchored to the capture action,
                not the monster being captured.  The old web path put only a
@@ -12538,7 +12574,10 @@
             if(attacker>=0){
               const captureStart=timing?.startAt||Date.now(),captureEnd=Math.max(captureStart+1,Number(timing?.endAt)||captureStart+420),resultAt=Math.max(captureStart,Number(timing?.endAt)||captureStart+420);
               battlePushEffect(effects,attacker,"","capture",{graphic:26512,graphicKey:"26512",nativeVPos:-64,duration:Math.max(700,captureEnd-captureStart),startsAt:captureStart});
-              battlePushEffect(effects,attacker,success?"捕捉成功":"捕捉失败",success?"capture-success":"capture-fail",{graphic:success?26514:26513,graphicKey:success?"26514":"26513",nativeVPos:-64,duration:success?60*BATTLE_PROC_TICK_MS:900,startsAt:resultAt});
+              /* damage_num() uses CG_ICON_GET/FAIL for capture results;
+                 26514/26513 are GuardBreak/Leave and were an obvious
+                 cross-wired texture pair in the Web port. */
+              battlePushEffect(effects,attacker,success?"捕捉成功":"捕捉失败",success?"capture-success":"capture-fail",{graphic:success?26506:26505,graphicKey:success?"26506":"26505",nativeVPos:-64,duration:success?60*BATTLE_PROC_TICK_MS:900,startsAt:resultAt});
             }
             if(success){
               /* BATTLE_Capture() removes the captured enemy from the server
@@ -18075,12 +18114,22 @@
           node.style.transform=`translate(-50%,${-34*effectProgress}px) scale(${.75+.33*effectProgress})`;
         }
       }
-      if(effect.text)node.textContent=String(effect.text);
+      let nativeImage=null;
       if(effect.graphic){
         const postAt=Number(effect.startsAt||0)+Math.max(1,Number(effect.until||0)-Number(effect.startsAt||0))*.72;
         const graphicNow=effect.postGraphic&&now>=postAt?effect.postGraphic:effect.graphic,graphicKeyNow=effect.postGraphic&&now>=postAt?(effect.postGraphicKey||effect.postGraphic):(effect.graphicKey||effect.graphic);
         const info=resolveBitmapInfo(graphicKeyNow||graphicNow),image=info?.file?loadAsset(info.file):null;
-        if(image?.complete&&image.naturalWidth){const sprite=document.createElement("img");sprite.className="battle-effect-sprite";sprite.src=image.src;sprite.alt="";sprite.style.left=`${Number(info.xoffset)||0}px`;sprite.style.top=`${Number(info.yoffset)||0}px`;sprite.style.width=`${image.naturalWidth}px`;sprite.style.height=`${image.naturalHeight}px`;node.append(sprite);}
+        if(image?.complete&&image.naturalWidth)nativeImage={info,image};
+      }
+      /* Keep a readable fallback on a cold cache, but once a native result
+         icon is ready do not combine it with the browser text label. */
+      if(effect.text&&!nativeImage)node.textContent=String(effect.text);
+      if(nativeImage){
+        node.classList.add("native-art");
+        const {info,image}=nativeImage,sprite=document.createElement("img");
+        sprite.className="battle-effect-sprite";sprite.src=image.src;sprite.alt="";
+        sprite.style.left=`${Number(info.xoffset)||0}px`;sprite.style.top=`${Number(info.yoffset)||0}px`;
+        sprite.style.width=`${image.naturalWidth}px`;sprite.style.height=`${image.naturalHeight}px`;node.append(sprite);
       }
       effectLayer.append(node);
     }

@@ -2238,7 +2238,7 @@ for (const expected of [
   /fireMagicCount=Math\.max\(0,battleSegmentNumber\(segment,"n",0,0\)\)[\s\S]{0,3000}index>0&&index<=fireMagicCount&&amount===0&&petAmount===0/,
   /* ATT_TAKE anchors Capture/Success/Fail damage_num graphics to the
      attacker (the native a0 action), not the target being captured. */
-  /const attacker=battleSegmentNumber\(segment,"a",0,-1\),target=battleSegmentNumber\(segment,"r",0,-1\)[\s\S]{0,1800}graphic:26512[\s\S]{0,650}success\?26514:26513[\s\S]{0,650}if\(success\)/,
+  /const attacker=battleSegmentNumber\(segment,"a",0,-1\),target=battleSegmentNumber\(segment,"r",0,-1\)[\s\S]{0,1800}graphic:26512[\s\S]{0,650}success\?26506:26505[\s\S]{0,650}if\(success\)/,
   /* BattleMenuProc() auto-submits N/W when BP disables a command menu. */
   /function submitBattleUnavailableDefaults\(state,turnKey=state\?\.turn\)[\s\S]{0,3600}send\("B",\["N"\]\)[\s\S]{0,1200}sendBattlePetDefault\(state,\{force:true(?:,clearChoice:true)?\}\)/,
   /* The implicit N path must hand the original shared BattleCntDown deadline
