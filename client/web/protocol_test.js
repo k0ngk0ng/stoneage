@@ -3825,6 +3825,28 @@ if (!/mapPartBeforeActor\(part,candidate\)\)\{items\.splice\(index,0,entry\);ins
     /mapPartBeforeActor\(part,candidate\)\)\{items\.splice\(index\+1,0,entry\)/.test(worldActorPaintSource)) {
   throw new Error("map parts must be inserted before the matching character in the native priority chain");
 }
+/* Exercise the actual depth predicate with the same map-space/screen-space
+   relationships used by MAP.CPP.  A regex alone would not catch a reversed
+   diagonal comparison that still happened to keep the insertion location. */
+const worldDepthStart = script.indexOf("  function visualPriorityInfo(");
+const worldDepthEnd = script.indexOf("  function renderSceneActorsAndParts(", worldDepthStart);
+if (worldDepthStart < 0 || worldDepthEnd <= worldDepthStart) throw new Error("map depth predicate boundary missing");
+const mapPartBeforeActor = new Function("mapPixel", `${script.slice(worldDepthStart, worldDepthEnd)}; return mapPartBeforeActor;`)(() => [0, 0]);
+const depthAnchor = (x, y) => [(Number(x) + Number(y)) * 32, (Number(y) - Number(x)) * 24];
+const depthPart = (x, y, info = {}) => ({x, y, anchor: depthAnchor(x, y), info: {hit: 0, prio_type: 0, hit_x: 1, hit_y: 1, ...info}});
+const depthActor = (x, y) => ({actor: {x, y}, anchor: depthAnchor(x, y)});
+for (const [part, actor, expected] of [
+  [depthPart(635, 499), depthActor(634, 499), false], // same diagonal row: actor stays in front
+  [depthPart(635, 499), depthActor(637, 496), true],  // north-east: tree covers actor
+  [depthPart(635, 499), depthActor(633, 502), false], // south-west: actor is in front
+  [depthPart(635, 499, {prio_type: 1}), depthActor(636, 498), true],
+  [depthPart(638, 496, {hit_x: 2, hit_y: 2}), depthActor(637, 496), false],
+  [depthPart(638, 496, {hit: 1, prio_type: 3}), depthActor(637, 495), false],
+]) {
+  if (mapPartBeforeActor(part, actor) !== expected) {
+    throw new Error(`map depth predicate drifted for ${part.x},${part.y} vs ${actor.actor.x},${actor.actor.y}`);
+  }
+}
 if (/requestPointerLock|exitPointerLock/.test(script)) {
   throw new Error("field cursor must never lock or move the browser's real pointer");
 }
