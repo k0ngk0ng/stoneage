@@ -174,15 +174,16 @@ Apple Silicon 开发目录所需的 Linux arm64 二进制。最终输出和总�
 ### GitHub Actions 发布与缓存
 
 `main` 推送会执行验证并预热缓存；推送 `v*` tag 才发布版本镜像和 GitHub
-Release。验证、四个平台的二进制编译和资源打包分别运行，两个镜像在验证通过后
-并行构建，最后统一汇总产物、镜像 digest 和 SHA256 校验清单。
+Release。验证和四个平台的二进制编译分别运行，两个镜像在验证通过后并行构建，
+最后统一汇总程序产物、镜像 digest 和 SHA256 校验清单。精灵资源不会随普通程序
+Release 上传；需要离线资源包时，在有资源工作树的机器上运行
+`python3 scripts/package-sprites.py vX.Y.Z --output dist` 自行生成。
 
 Go 缓存按工具链、目标平台和依赖区分，由默认分支写入，后续 tag 读取。
 不要只在 tag 工作流保存缓存：GitHub 的 ref 隔离会让下一个 tag 无法复用。
 Docker 使用两个镜像各自的 GHCR `:buildcache` 标签保存 BuildKit 中间层，
-这些标签用于编译缓存，不是可部署版本。资源压缩包按 Git 资源目录 tree ID 和
-打包脚本内容缓存，资源没有变化时直接复用。已压缩的产物上传 Actions artifact
-时关闭二次压缩。
+这些标签用于编译缓存，不是可部署版本。已压缩的程序产物上传 Actions artifact
+时关闭二次压缩；资源包由本地按需生成，不进入该 workflow 的缓存或附件。
 
 首轮构建或缓存被淘汰时仍需要完整编译。发布前先让对应 `main` 构建完成，
 能获得最好的缓存命中率；main 和 tag 同时推送时，两次任务可能都遇到冷缓存。

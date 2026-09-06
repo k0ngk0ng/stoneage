@@ -166,54 +166,10 @@ jobs:
           retention-days: 2
           if-no-files-found: error
 
-  sprites:
-    name: Public sprite archive
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            scripts
-            client/web/assets/original
-      - name: Identify resource content
-        id: content
-        shell: bash
-        run: echo "tree=$(git rev-parse HEAD:client/web/assets/original)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@v4
-        id: sprites
-        with:
-          path: build/release-cache/sprites.tar.gz
-          key: sprites-v1-${{ runner.os }}-${{ steps.content.outputs.tree }}-${{ hashFiles('scripts/package-sprites.py') }}
-      - name: Package unchanged resources only once
-        if: steps.sprites.outputs.cache-hit != 'true'
-        run: |
-          python3 scripts/package-sprites.py v0.0.0 --output build/release-cache
-          mv build/release-cache/stoneage-sprites-v0.0.0.tar.gz build/release-cache/sprites.tar.gz
-      - uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main' && steps.sprites.outputs.cache-hit != 'true'
-        with:
-          path: build/release-cache/sprites.tar.gz
-          key: ${{ steps.sprites.outputs.cache-primary-key }}
-      - name: Name archive for release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          mkdir -p dist
-          cp build/release-cache/sprites.tar.gz "dist/stoneage-sprites-${RELEASE_TAG}.tar.gz"
-      - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/v')
-        with:
-          name: release-sprites
-          path: dist/*
-          compression-level: 0
-          retention-days: 2
-          if-no-files-found: error
-
   publish:
     name: Publish verified release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [verify, binaries, images, sprites]
+    needs: [verify, binaries, images]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -247,7 +247,9 @@ SQLite 认证卷。
 推送 `v*` 标签会触发 [GitHub Actions release workflow](.github/workflows/release.yml)，
 从仓库内受 Git 管理的 `server/legacy/source/2.5` 构建 amd64 GMSV/SAAC 镜像和 Go
 控制面镜像，推送到 GHCR 并发布 digest。完整的服务端版本不再依赖开发者本机的
-私有源码归档；运行中的角色、邮件、家族和账号数据仍只保存在部署机的持久化目录。
+私有源码归档；GitHub 程序 Release 不附带精灵资源，首次部署或资源更新请使用已有
+资源副本，或在本地运行 `scripts/package-sprites.py` 自行生成离线包；运行中的角色、
+邮件、家族和账号数据仍只保存在部署机的持久化目录。
 
 ## 当前目标
 

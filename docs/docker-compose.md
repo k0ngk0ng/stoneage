@@ -4,12 +4,11 @@
 
 ## 1. 安装部署包
 
-从 GitHub Release 下载 `stoneage-deploy-vX.Y.Z.tar.gz`（不要下载 Source code），以及独立资源包 `stoneage-sprites-vX.Y.Z.tar.gz`，上传到服务器后：
+从 GitHub Release 下载 `stoneage-deploy-vX.Y.Z.tar.gz`（不要下载 Source code）并上传到服务器。程序 Release 不再附带精灵资源包；首次部署还要从已有部署或备份准备 `assets/sprites/` 和 `assets/client/`。如果需要离线精灵包，可在有仓库和资源的机器上运行 `python3 scripts/package-sprites.py vX.Y.Z --output dist` 后自行传到服务器：
 
 ```bash
 mkdir -p /opt/stoneage
 tar -xzf stoneage-deploy-vX.Y.Z.tar.gz -C /opt/stoneage
-tar -xzf stoneage-sprites-vX.Y.Z.tar.gz -C /opt/stoneage
 cd /opt/stoneage
 ./bin/stoneage init
 ```
@@ -127,7 +126,7 @@ chmod 600 config/secrets/oss-access-key-*
 
 `--dry-run` 校验资源但不上传。上传工具已包含在 Linux 部署包内，直接运行，不使用 Docker、不拉取镜像。正式同步一次发布图片、地图和音频，只上传变化文件。CDN 的 URL 路径必须与 OSS `prefix` 一致（上例均为 `stoneage`），网页直接从 CDN 加载资源。
 
-本地与服务器均支持以上上传命令。本地解压部署包和资源包，执行 `init`，准备 `assets/client/`，填写 Web/OSS 配置及 OSS 密钥即可；无需 Docker 或 GHCR 凭据。Mac 额外下载对应架构的 `stoneage-assets-sync-vX.Y.Z-darwin-arm64.tar.gz`（Intel 用 `darwin-amd64`），在部署目录解压覆盖 `bin/stoneage-assets-sync`。服务器保留完整 `assets/` 副本和 AK/SK，方便任选一端上传；本版本不实现 CDN 故障自动回退。
+本地与服务器均支持以上上传命令。本地解压部署包、准备资源副本和 `assets/client/`，执行 `init`，填写 Web/OSS 配置及 OSS 密钥即可；无需 Docker 或 GHCR 凭据。Mac 额外下载对应架构的 `stoneage-assets-sync-vX.Y.Z-darwin-arm64.tar.gz`（Intel 用 `darwin-amd64`），在部署目录解压覆盖 `bin/stoneage-assets-sync`。服务器保留完整 `assets/` 副本和 AK/SK，方便任选一端上传；本版本不实现 CDN 故障自动回退。
 
 ## 5. 下次更新
 
@@ -169,7 +168,7 @@ vi .env                         # 将 STONEAGE_VERSION 改为同一个 tag
 
 **资源有更新时**
 
-下载新的 `stoneage-sprites-vX.Y.Z.tar.gz` 到 `/opt/stoneage`；确认没有上传任务正在运行后解压，再同步 OSS：
+准备新的精灵资源包或资源副本（可在仓库工作树运行 `python3 scripts/package-sprites.py vX.Y.Z --output dist` 生成），复制到 `/opt/stoneage`；确认没有上传任务正在运行后解压，再同步 OSS：
 
 ```bash
 cd /opt/stoneage
