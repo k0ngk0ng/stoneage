@@ -3,6 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"flag"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -10,6 +14,85 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 )
+
+func TestGatewayConfigHelp(t *testing.T) {
+	if _, _, err := configFromCommandLine([]string{"-help"}); !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("help error = %v, want flag.ErrHelp", err)
+	}
+}
+
+func TestGatewayConfigFile(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "gateway.toml")
+	if err := os.WriteFile(filename, []byte(`listen_address = "0.0.0.0:9065"
+upstream_address = "gmsv:9065"
+trace = true
+trace_battle = true
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, configPath, err := configFromCommandLine([]string{"-config", filename})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configPath != filename {
+		t.Fatalf("config path = %q, want %q", configPath, filename)
+	}
+	if opts.listenAddress != "0.0.0.0:9065" || opts.upstreamAddress != "gmsv:9065" || !opts.trace || !opts.traceBattle {
+		t.Fatalf("loaded options = %#v", opts)
+	}
+}
+
+func TestGatewayConfigExplicitFlagsOverrideFile(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "gateway.toml")
+	if err := os.WriteFile(filename, []byte(`listen_address = "0.0.0.0:9065"
+upstream_address = "gmsv:9065"
+trace = true
+trace_battle = true
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, _, err := configFromCommandLine([]string{
+		"-config", filename,
+		"-listen", "127.0.0.1:19065",
+		"-upstream", "gmsv2:19065",
+		"-trace=false",
+		"-trace-battle=false",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.listenAddress != "127.0.0.1:19065" || opts.upstreamAddress != "gmsv2:19065" || opts.trace || opts.traceBattle {
+		t.Fatalf("explicit options = %#v", opts)
+	}
+}
+
+func TestGatewayConfigRejectsUnknownField(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "gateway.toml")
+	if err := os.WriteFile(filename, []byte("listen_adress = \"0.0.0.0:9065\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := configFromCommandLine([]string{"-config", filename}); err == nil {
+		t.Fatal("unknown gateway config field accepted")
+	}
+}
+
+func TestGatewayConfigWithoutFileKeepsLegacyDefaults(t *testing.T) {
+	t.Setenv("STONEAGE_GATEWAY_ROUTES", "")
+	t.Setenv("STONEAGE_AUTH_DB", "")
+	t.Setenv("STONEAGE_AUTH_REQUIRED", "")
+	opts, configPath, err := configFromCommandLine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configPath != "" {
+		t.Fatalf("config path = %q, want empty", configPath)
+	}
+	if opts.listenAddress != "127.0.0.1:9065" || opts.upstreamAddress != "127.0.0.1:19065" || opts.trace || opts.traceBattle {
+		t.Fatalf("legacy defaults = %#v", opts)
+	}
+}
 
 func TestNamedBattleCommand(t *testing.T) {
 	want := []byte("BC|0|0|ProbeHero||1234|1|35|35|5|")

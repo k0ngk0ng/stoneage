@@ -6,6 +6,7 @@ log_root="${STONEAGE_LOG_ROOT:-$game_root/gmsv/logs}"
 saac_host="${STONEAGE_SAAC_HOST:-saac}"
 saac_port="${STONEAGE_SAAC_PORT:-9300}"
 saac_char_dir="${STONEAGE_SAAC_CHAR_DIR:-}"
+source_config="${STONEAGE_GMSV_CONFIG:-$game_root/gmsv/setup.cf}"
 
 mkdir -p "$log_root"
 
@@ -23,7 +24,7 @@ done
 # GMSV and SAAC on one machine. In a split deployment SAAC is a peer service;
 # generate an ephemeral config with only the connection endpoint changed and
 # keep the user-editable setup.cf untouched on the shared runtime volume.
-config_file="$(mktemp /tmp/stoneage-setup.XXXXXX)"
+config_file="$(mktemp "${TMPDIR:-/tmp}/stoneage-setup.XXXXXX")"
 cleanup()
 {
     rm -f "$config_file"
@@ -36,11 +37,11 @@ if [ -n "$saac_char_dir" ]; then
     sed -e "s/^acserv=.*/acserv=$saac_host/" \
         -e "s/^acservport=.*/acservport=$saac_port/" \
         -e "s#^storedir=.*#storedir=$saac_char_dir#" \
-        "$game_root/gmsv/setup.cf" >"$config_file"
+        "$source_config" >"$config_file"
 else
     sed -e "s/^acserv=.*/acserv=$saac_host/" \
         -e "s/^acservport=.*/acservport=$saac_port/" \
-        "$game_root/gmsv/setup.cf" >"$config_file"
+        "$source_config" >"$config_file"
 fi
 
 cd "$game_root/gmsv"

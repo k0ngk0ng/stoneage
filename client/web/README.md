@@ -116,7 +116,7 @@ Linux Docker Compose 部署由根目录的 `docker-compose.yml` 管理。`web` �
 control-plane 镜像内的 `assets/original`，并以只读方式挂载
 `STONEAGE_CLIENT_DATA_ROOT` 提供 2.5 客户端的 `map/`、`data/bgm/`、`data/se/` 和 `data/pal/`；
 它只通过 Compose 内网的 `gateway:9065` 转发协议，不会把 GMSV 或 SAAC 端口暴露给
-浏览器。首次部署可直接运行 `./scripts/deploy-mvp.sh --init`，详见根目录
+浏览器。首次部署可直接运行 `./scripts/deploy.sh --init`，详见根目录
 README 的 Linux Docker Compose 小节。
 
 转发 API 是 `POST /api/sessions`（建立 TCP 并返回 `L\0` 握手）、`POST /api/sessions/:id/send`（JSON `{packet: base64}`）、`GET /api/sessions/:id/events`（按 TCP 顺序长轮询 base64 包）、`DELETE /api/sessions/:id`，另有只读资源 `GET /assets/*`、`GET /maps/*` 和 `GET /audio/*`。`send?close=1` 会在写入这一包后原子关闭桥接会话，供刷新/卸载阶段的 keepalive 登出使用；即使写入失败也会清理会话。网页已经内置这套调用，不需要额外前端构建工具。

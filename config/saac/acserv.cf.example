@@ -1,0 +1,22 @@
+# Compose SAAC template. File-backed character service behind the authenticated gateway.
+# Keep port 9300 and match pass with GMSV acpasswd.
+
+port 9300
+pass test
+
+rotate_interval 604800
+
+logdir log
+lockdir lock
+chardir char
+dbdir db
+maildir mail
+familydir data/family
+fmpointdir data/fmpointdir
+fmsmemodir data/fmsmemodir
+
+Total_Charlist 3600
+Expired_mail 600
+Del_Family_or_Member 3600
+Write_Family 600
+SameIpMun 10

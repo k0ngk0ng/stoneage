@@ -1,0 +1,6 @@
+# Gateway process configuration. Authentication database wiring remains in the
+# deployment environment so gateway, admin and service-control share one DB.
+listen_address = "0.0.0.0:9065"
+upstream_address = "gmsv:9065"
+trace = false
+trace_battle = false

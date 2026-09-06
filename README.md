@@ -64,16 +64,20 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 
 ### Linux Docker Compose
 
+完整服务端 + Web 客户端的部署步骤见 [Docker Compose 部署文档](docs/docker-compose.md)，
+包含 GMSV/SAAC 初始化、网关、后台、浏览器访问、HTTPS、升级与备份恢复。
+
 Linux 也可以把旧版游戏服务、Go 网关、浏览器客户端、管理后台和受限 operator
 一起交给 Compose 编排。首次部署推荐使用仓库内的入口脚本；它会创建持久化目录、
 校验配置、按版本构建/拉取镜像，最后逐个等待健康检查：
 
 ```bash
-./scripts/deploy-mvp.sh --init   # 只执行一次，生成 0600 的 .env 和随机后台密码
-# 编辑 .env：生产镜像填 GHCR 的仓库和 v* 版本；本地 MVP 保持 VERSION=local
-./scripts/deploy-mvp.sh          # VERSION=local 自动构建；v* 自动拉取
+./scripts/deploy.sh --init   # 生成 .env、随机后台密码及 GMSV/SAAC 配置
+# 编辑 .env、config/web.toml、config/{gateway.toml,gmsv/setup.cf,saac/acserv.cf}
+# 编辑 .env：生产镜像填 GHCR 的仓库和 v* 版本；本地构建 保持 VERSION=local
+./scripts/deploy.sh          # 默认拉取 GHCR 版本镜像；local 仅用于源码构建
 # 如果这次发布也要更新 CDN/OSS/R2 上的客户端整体资源：
-./scripts/deploy-mvp.sh --sync-assets
+./scripts/deploy.sh --sync-assets
 docker compose --env-file .env ps
 docker compose --env-file .env logs -f saac gmsv gateway web
 ```
@@ -208,9 +212,9 @@ admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和
 `ghcr.io/<owner>/<repo>/legacy-runtime`，填入对应的 `v*` 版本并运行
-`./scripts/deploy-mvp.sh --pull`。
+`./scripts/deploy.sh --pull`。
 
-Compose 默认把浏览器端 8088、游戏网关 9065 和后台 8080 绑定到 `127.0.0.1`；
+Compose 默认把浏览器端 8088、游戏网关 9065 和后台 18080 绑定到 `127.0.0.1`；
 需要让朋友访问网页时，把 `STONEAGE_WEB_BIND` 设为服务器的 LAN/VPN 地址（或
 `0.0.0.0`）并只在防火墙放行 8088。原生客户端才需要 9065；后台应继续绑定回环，
 或放在带 HTTPS 和访问控制的反向代理后，并把 `STONEAGE_ADMIN_COOKIE_SECURE` 设为
@@ -233,7 +237,7 @@ SQLite 认证卷。
 服务器上的游戏入口，但不要在这份 Compose 中追加第二个 GMSV；多节点编排将在
 后续单独设计。
 
-首次启动后访问 `http://127.0.0.1:8080/`。如果没有在 `.env` 设置管理员账号密码，
+首次启动后访问 `http://127.0.0.1:18080/`。如果没有在 `.env` 设置管理员账号密码，
 可设置一次性的 `STONEAGE_ADMIN_SETUP_TOKEN` 后从 `/setup` 初始化管理员。
 
 局域网和互联网部署见 [`docs/networking.md`](docs/networking.md)。当前本机服务

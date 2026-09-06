@@ -71,7 +71,7 @@ if [[ "$env_file" != /* ]]; then
     env_file="$project_root/$env_file"
 fi
 if [[ ! -f "$env_file" ]]; then
-    echo "Missing $env_file. Run scripts/deploy-mvp.sh --init first." >&2
+    echo "Missing $env_file. Run scripts/deploy.sh --init first." >&2
     exit 1
 fi
 if [[ ! -f "$compose_file" ]]; then

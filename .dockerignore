@@ -3,6 +3,13 @@
 build
 dist
 runtime
+.env
+.env.*
+!.env.compose.example
+.secrets
+.cache
+config/gmsv/setup.cf
+config/saac/acserv.cf
 # These are local reverse-engineering/mobile build artifacts and are not
 # inputs to either Linux image. Keeping them out makes a first Docker build
 # practical on a small deployment host.

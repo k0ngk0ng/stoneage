@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/server/go/bridge"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
+	"github.com/pelletier/go-toml/v2"
 )
 
 const maximumPacketSize = 4 * 1024 * 1024
@@ -41,17 +43,29 @@ type gatewayRoute struct {
 	upstreamAddress string
 }
 
+// gatewayConfigFile is intentionally limited to process routing and tracing.
+// Authentication stays in the deployment environment so the gateway and the
+// admin service continue to share the same account database configuration.
+// Pointer fields preserve the distinction between an omitted TOML value and an
+// explicit false/empty value when command-line flags are merged below.
+type gatewayConfigFile struct {
+	ListenAddress   *string `toml:"listen_address"`
+	UpstreamAddress *string `toml:"upstream_address"`
+	Trace           *bool   `toml:"trace"`
+	TraceBattle     *bool   `toml:"trace_battle"`
+}
+
 func main() {
-	var opts options
-	flag.StringVar(&opts.listenAddress, "listen", "127.0.0.1:9065", "client-facing listen address")
-	flag.StringVar(&opts.upstreamAddress, "upstream", "127.0.0.1:19065", "numeric GMSV address")
-	flag.StringVar(&opts.routes, "routes", os.Getenv("STONEAGE_GATEWAY_ROUTES"), "semicolon-separated listener=GMSV route list; overrides -listen/-upstream")
-	flag.BoolVar(&opts.trace, "trace", false, "log translated function names (never logs password fields)")
-	flag.BoolVar(&opts.traceBattle, "trace-battle", false, "log server battle command bytes as hex (never logs password fields)")
-	flag.StringVar(&opts.authDB, "auth-db", os.Getenv("STONEAGE_AUTH_DB"), "SQLite account database (enables login authentication)")
-	flag.BoolVar(&opts.authRequired, "auth-required", envBool("STONEAGE_AUTH_REQUIRED", false), "reject game logins not accepted by the account database")
-	flag.Parse()
-	opts.stateDelay = legacyStateTransitionDelay
+	opts, configPath, err := configFromCommandLine(os.Args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	if configPath != "" {
+		log.Printf("gateway configuration loaded from %s", configPath)
+	}
 	if opts.authDB != "" {
 		opts.authRequired = true
 	}
@@ -60,6 +74,76 @@ func main() {
 	if err := serve(opts, logger); err != nil {
 		logger.Fatal(err)
 	}
+}
+
+func configFromCommandLine(arguments []string) (options, string, error) {
+	opts := options{
+		listenAddress:   "127.0.0.1:9065",
+		upstreamAddress: "127.0.0.1:19065",
+		routes:          os.Getenv("STONEAGE_GATEWAY_ROUTES"),
+		authDB:          os.Getenv("STONEAGE_AUTH_DB"),
+		authRequired:    envBool("STONEAGE_AUTH_REQUIRED", false),
+		stateDelay:      legacyStateTransitionDelay,
+	}
+	var configPath string
+	flags := flag.NewFlagSet("stoneage-gateway", flag.ContinueOnError)
+	flags.StringVar(&configPath, "config", "", "path to gateway TOML configuration")
+	flags.StringVar(&opts.listenAddress, "listen", opts.listenAddress, "client-facing listen address")
+	flags.StringVar(&opts.upstreamAddress, "upstream", opts.upstreamAddress, "numeric GMSV address")
+	flags.StringVar(&opts.routes, "routes", opts.routes, "semicolon-separated listener=GMSV route list; overrides -listen/-upstream")
+	flags.BoolVar(&opts.trace, "trace", opts.trace, "log translated function names (never logs password fields)")
+	flags.BoolVar(&opts.traceBattle, "trace-battle", opts.traceBattle, "log server battle command bytes as hex (never logs password fields)")
+	flags.StringVar(&opts.authDB, "auth-db", opts.authDB, "SQLite account database (enables login authentication)")
+	flags.BoolVar(&opts.authRequired, "auth-required", opts.authRequired, "reject game logins not accepted by the account database")
+	if err := flags.Parse(arguments); err != nil {
+		return options{}, "", fmt.Errorf("parse gateway arguments: %w", err)
+	}
+	if flags.NArg() != 0 {
+		return options{}, configPath, fmt.Errorf("unexpected gateway arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	configPath = strings.TrimSpace(configPath)
+	if configPath != "" {
+		fileConfig, err := loadGatewayConfigFile(configPath)
+		if err != nil {
+			return options{}, configPath, err
+		}
+		if !flagWasSet(flags, "listen") && fileConfig.ListenAddress != nil {
+			opts.listenAddress = *fileConfig.ListenAddress
+		}
+		if !flagWasSet(flags, "upstream") && fileConfig.UpstreamAddress != nil {
+			opts.upstreamAddress = *fileConfig.UpstreamAddress
+		}
+		if !flagWasSet(flags, "trace") && fileConfig.Trace != nil {
+			opts.trace = *fileConfig.Trace
+		}
+		if !flagWasSet(flags, "trace-battle") && fileConfig.TraceBattle != nil {
+			opts.traceBattle = *fileConfig.TraceBattle
+		}
+	}
+	return opts, configPath, nil
+}
+
+func loadGatewayConfigFile(filename string) (gatewayConfigFile, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return gatewayConfigFile{}, fmt.Errorf("read gateway TOML config %q: %w", filename, err)
+	}
+	var config gatewayConfigFile
+	decoder := toml.NewDecoder(bytes.NewReader(content)).DisallowUnknownFields()
+	if err := decoder.Decode(&config); err != nil {
+		return gatewayConfigFile{}, fmt.Errorf("decode gateway TOML config %q: %w", filename, err)
+	}
+	return config, nil
+}
+
+func flagWasSet(flags *flag.FlagSet, name string) bool {
+	set := false
+	flags.Visit(func(flag *flag.Flag) {
+		if flag.Name == name {
+			set = true
+		}
+	})
+	return set
 }
 
 func serve(opts options, logger *log.Logger) error {

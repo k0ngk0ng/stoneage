@@ -1,5 +1,6 @@
 # 文档索引
 
+- [docker-compose.md](docker-compose.md)：Linux 单机完整服务端 + Web 客户端部署、配置、验收与备份恢复
 - `inventory.md`：旧档案资产清单与可信度
 - `architecture.md`：复活路线、组件边界和里程碑
 - `development.md`：macOS 构建、运行与验证

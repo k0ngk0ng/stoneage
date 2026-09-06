@@ -50,6 +50,9 @@ server/legacy/source/2.5/saac/data/fmsmemodir/
 .env.*
 !.env.compose.example
 .secrets/
+# Generated, host-specific game server configuration (templates are versioned).
+config/gmsv/setup.cf
+config/saac/acserv.cf
 
 # Python bytecode
 __pycache__/

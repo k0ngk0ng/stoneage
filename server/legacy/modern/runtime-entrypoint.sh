@@ -37,7 +37,7 @@ init_gmsv()
             copy_file "$defaults/gmsv/$file" "$root/$file"
         fi
     done
-    if [ ! -f "$root/setup.cf" ]; then
+    if [ -z "${STONEAGE_GMSV_CONFIG:-}" ] && [ ! -f "$root/setup.cf" ]; then
         copy_file "$defaults/gmsv/setup.cf" "$root/setup.cf"
     fi
     mkdir -p "$root/log" "$root/lostpet" "$root/logs"
@@ -51,7 +51,7 @@ init_saac()
     if [ -f "$defaults/saac/badpetstring.txt" ]; then
         copy_file "$defaults/saac/badpetstring.txt" "$root/badpetstring.txt"
     fi
-    if [ ! -f "$root/acserv.cf" ]; then
+    if [ -z "${STONEAGE_SAAC_CONFIG:-}" ] && [ ! -f "$root/acserv.cf" ]; then
         copy_file "$defaults/saac/acserv.cf" "$root/acserv.cf"
     fi
     mkdir -p "$root/char" "$root/char_sleep" "$root/db" "$root/mail" \

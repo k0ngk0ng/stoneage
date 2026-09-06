@@ -51,7 +51,7 @@ printf '%s\n' '请替换为强密码' | \
 
 如果希望由 Docker Compose 统一编排网关、网页客户端、后台、operator 和旧版游戏服务，
 请在仓库根目录使用 `docker-compose.yml`；推荐执行
-`./scripts/deploy-mvp.sh --init` 后再运行 `./scripts/deploy-mvp.sh`，它会按
+`./scripts/deploy.sh --init` 后再运行 `./scripts/deploy.sh`，它会按
 `.env` 自动构建本地镜像或拉取 GHCR 版本镜像。Compose 的 operator 需要访问 Docker socket 执行
 经过固定白名单的服务脚本，后台本身不挂载该 socket。默认端口仍只绑定回环地址。
 

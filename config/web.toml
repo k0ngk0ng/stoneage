@@ -24,4 +24,8 @@ bucket = ""
 prefix = "stoneage"
 
 [static.cdn]
+# Set your public HTTPS asset root, for example https://cdn.example.com/stoneage.
+# It must contain assets/, maps/ and audio/. Leave empty for local resources
+# when no public OSS origin is configured. A non-empty STONEAGE_WEB_CDN_BASE_URL
+# environment variable overrides this value. Setting this does not upload files.
 base_url = ""
