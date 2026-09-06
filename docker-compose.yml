@@ -17,7 +17,7 @@ services:
   # SAAC is the shared account/character service. Its writable data is kept
   # outside the versioned image so a release cannot replace player records.
   saac:
-    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.13}
     container_name: ${STONEAGE_SAAC_CONTAINER:-stoneage-saac}
     init: true
     restart: unless-stopped
@@ -43,7 +43,7 @@ services:
   # immutable maps/NPC definitions come from the legacy image; character
   # snapshots and logs remain in the GMSV/SAAC data directories.
   gmsv:
-    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.13}
     container_name: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
     init: true
     restart: unless-stopped
@@ -74,7 +74,7 @@ services:
       start_period: 10s
 
   gateway:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.13}
     container_name: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
     init: true
     restart: unless-stopped
@@ -109,10 +109,9 @@ services:
 
   # Browser client. It only reaches the authenticated gateway over the
   # private Compose network; the browser never receives a raw GMSV socket.
-  # The generated sprite pack is in the control image. Matching 2.5 client
-  # maps/audio are mounted read-only from STONEAGE_CLIENT_DATA_ROOT.
+  # All public game resources are mounted read-only from the host.
   web:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.13}
     container_name: ${STONEAGE_WEB_CONTAINER:-stoneage-web}
     init: true
     restart: unless-stopped
@@ -131,6 +130,7 @@ services:
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:
       - ${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_SPRITES_ROOT:-./assets/sprites}:/opt/stoneage/web-assets:ro
       - ${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro
       - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv:ro
     ports:
@@ -148,8 +148,9 @@ services:
   # The three trees are mounted together and published as one stable client
   # root: stoneage/{assets,maps,audio}/.
   assets-sync:
+    platform: linux/amd64
     profiles: ["assets-sync"]
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.13}
     init: true
     restart: "no"
     networks:
@@ -175,12 +176,13 @@ services:
       - stoneage-oss-access-key-secret
     volumes:
       - ${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_SPRITES_ROOT:-./assets/sprites}:/opt/stoneage/web-assets:ro
       - ${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro
 
   # This is the privileged-but-fixed service control boundary. The web
   # container never receives the Docker socket.
   service-control:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.13}
     container_name: ${STONEAGE_OPERATOR_CONTAINER:-stoneage-service-control}
     init: true
     restart: unless-stopped
@@ -252,6 +254,7 @@ services:
       - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv
       - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
       - ${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_SPRITES_ROOT:-./assets/sprites}:/opt/stoneage/web-assets:ro
       - ${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro
       - auth-data:/data
       - operator-run:/run/stoneage
@@ -274,7 +277,7 @@ services:
   # The authenticated web administration site (accounts, audit, services,
   # notifications and per-service configuration).
   admin:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.13}
     container_name: ${STONEAGE_ADMIN_CONTAINER:-stoneage-admin}
     init: true
     restart: unless-stopped

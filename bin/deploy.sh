@@ -168,7 +168,7 @@ fi
 
 if [[ "$created_env" == 1 || "$prepare_configs_only" == 1 ]]; then
     prepare_server_configs
-    mkdir -p "$project_root/data/gmsv" "$project_root/data/saac" "$project_root/assets/client" "$project_root/backups"
+    mkdir -p "$project_root/data/gmsv" "$project_root/data/saac" "$project_root/assets/client" "$project_root/assets/sprites" "$project_root/backups"
     install -d -m 700 "$project_root/config/registry" "$project_root/config/secrets"
     echo "Review .env, Web TOML, and the server configuration files above before deployment." >&2
     exit 0
@@ -242,7 +242,7 @@ prepare_asset_secret()
 version="$(env_value STONEAGE_VERSION || true)"
 control_image="$(env_value STONEAGE_CONTROL_IMAGE || true)"
 legacy_image="$(env_value STONEAGE_LEGACY_IMAGE || true)"
-version="${version:-v0.1.12}"
+version="${version:-v0.1.13}"
 control_image="${control_image:-ghcr.io/k0ngk0ng/stoneage/control-plane}"
 legacy_image="${legacy_image:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}"
 admin_password="$(env_value STONEAGE_ADMIN_PASSWORD || true)"
@@ -298,7 +298,7 @@ fi
 # Bind mounts are created by Docker as root when absent.  Create them here so
 # the operator can back them up and so a typo in a relative path is visible in
 # the host checkout before containers start.
-for data_key in STONEAGE_GMSV_DATA_ROOT STONEAGE_SAAC_DATA_ROOT STONEAGE_CLIENT_DATA_ROOT; do
+for data_key in STONEAGE_GMSV_DATA_ROOT STONEAGE_SAAC_DATA_ROOT STONEAGE_CLIENT_DATA_ROOT STONEAGE_SPRITES_ROOT; do
     data_root="$(env_value "$data_key" || true)"
     [[ -n "$data_root" ]] || continue
     case "$data_root" in
@@ -339,6 +339,20 @@ if [[ -n "$client_data_root" ]]; then
         echo "WARNING: $client_data_root lacks client map/data/auto.dat/data/bgm/data/se/data/pal; web map, palette or audio resources will be unavailable." >&2
     fi
 fi
+
+sprites_root="${STONEAGE_SPRITES_ROOT:-$(env_value STONEAGE_SPRITES_ROOT || true)}"
+sprites_root="${sprites_root:-./assets/sprites}"
+case "$sprites_root" in
+    /*) ;;
+    *) sprites_root="$project_root/${sprites_root#./}" ;;
+esac
+for sprite_manifest in manifest.json sprites.json; do
+    if [[ ! -f "$sprites_root/$sprite_manifest" || ! -s "$sprites_root/$sprite_manifest" ]]; then
+        echo "Sprite resource file is missing or empty: $sprites_root/$sprite_manifest" >&2
+        echo "Extract the standalone sprite archive into $sprites_root before deploying or syncing." >&2
+        exit 2
+    fi
+done
 
 if [[ "$check_only" != 1 ]]; then
     prepare_server_configs

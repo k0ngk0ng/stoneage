@@ -122,6 +122,20 @@ env_value()
     ' "$env_file"
 }
 
+sprites_root="${STONEAGE_SPRITES_ROOT:-$(env_value STONEAGE_SPRITES_ROOT || true)}"
+sprites_root="${sprites_root:-./assets/sprites}"
+case "$sprites_root" in
+    /*) ;;
+    *) sprites_root="$project_root/${sprites_root#./}" ;;
+esac
+for sprite_manifest in manifest.json sprites.json; do
+    if [[ ! -f "$sprites_root/$sprite_manifest" || ! -s "$sprites_root/$sprite_manifest" ]]; then
+        echo "Sprite resource file is missing or empty: $sprites_root/$sprite_manifest" >&2
+        echo "Extract the standalone sprite archive into $sprites_root before deploying or syncing." >&2
+        exit 2
+    fi
+done
+
 compose config --quiet
 
 run_args=(run --rm --no-deps assets-sync)

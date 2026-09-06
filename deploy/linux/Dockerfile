@@ -22,10 +22,7 @@ COPY --from=build /out/stoneage-admin /opt/stoneage/bin/stoneage-admin
 COPY --from=build /out/stoneage-operator /opt/stoneage/bin/stoneage-operator
 COPY --from=build /out/stoneage-assets-sync /opt/stoneage/bin/stoneage-assets-sync
 COPY --from=build /out/stoneage-web /opt/stoneage/bin/stoneage-web
-# The generated sprite pack is immutable release content. Maps, WAVs and NPC
-# definitions stay on the host because they come from the matching 2.5 client
-# and server runtime and can be updated without rebuilding the control image.
-COPY client/web/assets/original/ /opt/stoneage/web-assets/
+# Public game assets are distributed separately and mounted by Compose.
 COPY deploy/linux/compose/ /opt/stoneage/compose/
 
 RUN chmod 0755 /opt/stoneage/bin/* /opt/stoneage/compose/*.sh

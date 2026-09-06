@@ -70,7 +70,7 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 下载 Release 中的 `stoneage-deploy-vX.Y.Z.tar.gz` 到 `/opt/stoneage`，使用
 `./bin/stoneage init` 生成配置，再运行 `./bin/stoneage deploy`。服务器只拉取
 预构建镜像，不需要源码或编译工具。配置统一放在 `config/<服务>/`，运行数据在
-`data/`，匹配的 2.5 客户端公开地图和音频在 `assets/client/`；精灵图片随镜像发布。
+`data/`，匹配的 2.5 客户端公开地图和音频在 `assets/client/`；精灵图片使用独立资源包，放在 `assets/sprites/`。
 
 图片、地图、音效和音乐可以直接由阿里云 OSS、Cloudflare R2/CDN 提供，避免所有玩家从 8088
 重复下载大文件。资源使用一个固定根目录，版本发布时做增量同步，不按 tag 重复

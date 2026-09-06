@@ -148,6 +148,9 @@ jobs:
       - name: Package Compose deployment
         run: python3 scripts/package-deployment.py "${{ github.ref_name }}"
 
+      - name: Package public sprite resources
+        run: python3 scripts/package-sprites.py "${{ github.ref_name }}"
+
       - name: Write image digest manifest
         env:
           CONTROL_DIGEST: ${{ steps.control-image.outputs.digest }}
@@ -167,6 +170,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/stoneage-deploy-${{ github.ref_name }}.tar.gz
+            dist/stoneage-sprites-${{ github.ref_name }}.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-linux-amd64.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-darwin-arm64.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-windows-amd64.zip

@@ -53,3 +53,6 @@ server/legacy/source/2.5/saac/data/fmsmemodir
 /config/registry/username
 /config/registry/token
 /config/registry/docker/
+
+# Public sprites ship as a separate resource archive, never in application images.
+client/web/assets/original

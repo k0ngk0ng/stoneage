@@ -4,11 +4,12 @@
 
 ## 1. 安装部署包
 
-从 GitHub Release 下载 `stoneage-deploy-vX.Y.Z.tar.gz`（不要下载 Source code），上传到服务器后：
+从 GitHub Release 下载 `stoneage-deploy-vX.Y.Z.tar.gz`（不要下载 Source code），以及独立资源包 `stoneage-sprites-vX.Y.Z.tar.gz`，上传到服务器后：
 
 ```bash
 mkdir -p /opt/stoneage
 tar -xzf stoneage-deploy-vX.Y.Z.tar.gz -C /opt/stoneage
+tar -xzf stoneage-sprites-vX.Y.Z.tar.gz -C /opt/stoneage
 cd /opt/stoneage
 ./bin/stoneage init
 ```
@@ -29,7 +30,9 @@ cd /opt/stoneage
 │   ├── saac/acserv.cf          # 账号服务端
 │   ├── registry/              # GHCR 用户名、token、登录缓存
 │   └── secrets/               # OSS 密钥
-├── assets/client/             # 公开客户端地图、音频、调色板
+├── assets/
+│   ├── sprites/                # 独立资源包：精灵图片及索引
+│   └── client/                 # 公开客户端地图、音频、调色板
 ├── data/{gmsv,saac}/           # 游戏运行数据
 └── backups/                   # 配置与数据备份
 ```
@@ -50,7 +53,7 @@ data/se/
 data/pal/
 ```
 
-精灵图片已在镜像中，不需要复制 `client/` 源码。`.env` 中 `./` 开头的路径相对部署目录；TOML 的 `/game/...`、`/opt/stoneage/web-assets` 是容器内绝对路径。
+精灵图片在 `assets/sprites/`，应用镜像不包含游戏资源，也不需要复制 `client/` 源码。`.env` 中 `./` 开头的路径相对部署目录；TOML 的 `/game/...`、`/opt/stoneage/web-assets` 是容器内绝对路径。
 
 使用阿里云 OSS 时，编辑 `config/web/web.toml` 中已有配置项：
 
@@ -109,10 +112,12 @@ chmod 600 config/secrets/oss-access-key-*
 ./bin/stoneage sync-assets
 ```
 
-`--dry-run` 校验资源但不上传，也需要拉取镜像。正式同步一次发布图片、地图和音频，只上传变化文件。
+`--dry-run` 校验资源但不上传，也需要拉取镜像。正式同步一次发布图片、地图和音频，只上传变化文件。CDN 的 URL 路径必须与 OSS `prefix` 一致（上例均为 `stoneage`），网页直接从 CDN 加载资源。
+
+本地与服务器均支持以上上传命令：本地解压同样的两个发布包，执行 `init`，准备 `assets/client/`，填写本地 Web/OSS 配置及两类凭据即可。上传只运行一次性容器，不启动游戏；ARM Mac 需 Docker Desktop 支持运行 amd64 容器。服务器保留完整 `assets/` 副本和 AK/SK，方便任选一端上传；本版本不实现 CDN 故障自动回退。
 
 ## 5. 升级和备份
 
 普通镜像升级：修改 `.env` 中的 `STONEAGE_VERSION` 为已发布 tag，再执行 `./bin/stoneage deploy`。部署工具本身升级时，先解压新包到临时目录，对比并更新 `bin/`、Compose 和配置模板；不要直接覆盖现有 `.env`、`config/`。
 
-备份 `.env`、`config/`、`data/`、`assets/client/` 和 Docker 命名卷 `stoneage-auth`（账号数据库）；备份数据前先 `./bin/stoneage stop`，完成后再部署启动。若自定义卷名，以 `.env` 为准。不要执行 `docker compose down -v`，它会删除账号数据库卷。
+备份 `.env`、`config/`、`data/`、`assets/` 和 Docker 命名卷 `stoneage-auth`（账号数据库）；备份数据前先 `./bin/stoneage stop`，完成后再部署启动。若自定义卷名，以 `.env` 为准。不要执行 `docker compose down -v`，它会删除账号数据库卷。
