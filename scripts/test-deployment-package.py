@@ -11,8 +11,11 @@ root = Path(__file__).resolve().parent.parent
 (root / 'build').mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as temporary:
     stage = Path(temporary)
-    subprocess.run(['python3', str(root / 'scripts/package-deployment.py'), 'v0.1.12', '--output', str(stage)], check=True)
-    with tarfile.open(stage / 'stoneage-deploy-v0.1.12.tar.gz') as archive:
+    uploader = stage / 'uploader'
+    uploader.write_text("#!/usr/bin/env bash\necho \"$*\" >> \"$MOCK_UPLOAD_LOG\"\n")
+    uploader.chmod(0o755)
+    subprocess.run(['python3', str(root / 'scripts/package-deployment.py'), 'v0.1.14', '--output', str(stage), '--uploader', str(uploader)], check=True)
+    with tarfile.open(stage / 'stoneage-deploy-v0.1.14.tar.gz') as archive:
         names = archive.getnames()
         expected = {
             '.env.compose.example',
@@ -20,6 +23,7 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
             'README.md',
             'VERSION',
             'bin/stoneage',
+            'bin/stoneage-assets-sync',
             'bin/deploy.sh',
             'bin/sync-assets.sh',
             'bin/registry-login.sh',
@@ -81,7 +85,7 @@ case "$*" in
 esac
 ''')
     mock.chmod(0o755)
-    env = dict(os.environ, STONEAGE_DOCKER_BIN=str(mock), MOCK_LOG=str(stage / 'calls'))
+    env = dict(os.environ, STONEAGE_DOCKER_BIN=str(mock), MOCK_LOG=str(stage / 'calls'), MOCK_UPLOAD_LOG=str(stage / 'uploads'))
     missing_check = subprocess.run([str(entry), 'check'], env=env, capture_output=True, text=True)
     assert missing_check.returncode != 0
     assert 'manifest.json' in missing_check.stderr
@@ -98,7 +102,8 @@ esac
     calls = (stage / 'calls').read_text()
     assert ' pull\n' in calls
     assert 'up -d --no-build --remove-orphans' in calls
-    assert 'assets-sync' in calls
+    assert 'assets-sync' not in calls
+    assert '-dry-run' in (stage / 'uploads').read_text()
 
     dockerfile = (root / 'deploy/linux/Dockerfile').read_text()
     assert not any(

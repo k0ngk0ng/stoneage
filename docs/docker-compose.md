@@ -87,7 +87,7 @@ unset registry_user registry_token
 ./bin/stoneage login
 ```
 
-后续拉取、部署、同步资源均自动读取这两个文件。更换账号或续期时更新文件即可，登录缓存保存在 `config/registry/docker/`。凭据未配置时使用当前 Docker 登录状态。
+后续拉取、部署自动读取这两个文件；资源上传不使用 GHCR。更换账号或续期时更新文件即可，登录缓存保存在 `config/registry/docker/`。凭据未配置时使用当前 Docker 登录状态。
 
 ## 4. 启动和上传资源
 
@@ -100,7 +100,7 @@ unset registry_user registry_token
 
 启动后用 `.env` 中的后台账号登录管理后台，再创建游戏账号。容器首次启动自动初始化服务端数据。
 
-需要 OSS/CDN 时，将 AccessKey ID 和 Secret 分别写入以下文件（仅首次上传需要，内容不加引号）：
+需要 OSS/CDN 时，将 AccessKey ID 和 Secret 分别写入以下文件（仅资源上传需要，内容不加引号）：
 
 ```bash
 install -d -m 700 config/secrets
@@ -112,9 +112,9 @@ chmod 600 config/secrets/oss-access-key-*
 ./bin/stoneage sync-assets
 ```
 
-`--dry-run` 校验资源但不上传，也需要拉取镜像。正式同步一次发布图片、地图和音频，只上传变化文件。CDN 的 URL 路径必须与 OSS `prefix` 一致（上例均为 `stoneage`），网页直接从 CDN 加载资源。
+`--dry-run` 校验资源但不上传。上传工具已包含在 Linux 部署包内，直接运行，不使用 Docker、不拉取镜像。正式同步一次发布图片、地图和音频，只上传变化文件。CDN 的 URL 路径必须与 OSS `prefix` 一致（上例均为 `stoneage`），网页直接从 CDN 加载资源。
 
-本地与服务器均支持以上上传命令：本地解压同样的两个发布包，执行 `init`，准备 `assets/client/`，填写本地 Web/OSS 配置及两类凭据即可。上传只运行一次性容器，不启动游戏；ARM Mac 需 Docker Desktop 支持运行 amd64 容器。服务器保留完整 `assets/` 副本和 AK/SK，方便任选一端上传；本版本不实现 CDN 故障自动回退。
+本地与服务器均支持以上上传命令。本地解压部署包和资源包，执行 `init`，准备 `assets/client/`，填写 Web/OSS 配置及 OSS 密钥即可；无需 Docker 或 GHCR 凭据。Mac 额外下载对应架构的 `stoneage-assets-sync-vX.Y.Z-darwin-arm64.tar.gz`（Intel 用 `darwin-amd64`），在部署目录解压覆盖 `bin/stoneage-assets-sync`。服务器保留完整 `assets/` 副本和 AK/SK，方便任选一端上传；本版本不实现 CDN 故障自动回退。
 
 ## 5. 升级和备份
 

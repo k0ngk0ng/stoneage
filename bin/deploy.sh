@@ -242,7 +242,7 @@ prepare_asset_secret()
 version="$(env_value STONEAGE_VERSION || true)"
 control_image="$(env_value STONEAGE_CONTROL_IMAGE || true)"
 legacy_image="$(env_value STONEAGE_LEGACY_IMAGE || true)"
-version="${version:-v0.1.13}"
+version="${version:-v0.1.14}"
 control_image="${control_image:-ghcr.io/k0ngk0ng/stoneage/control-plane}"
 legacy_image="${legacy_image:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}"
 admin_password="$(env_value STONEAGE_ADMIN_PASSWORD || true)"
@@ -382,10 +382,8 @@ case "$mode" in
 esac
 
 if [[ "$sync_assets" == 1 ]]; then
-    echo "Publishing the complete client asset tree through the one-shot assets-sync profile..."
-    # Keep publication independent from the admin/operator socket.  Only this
-    # short-lived Compose process receives the OSS credentials.
-    "$docker_bin" compose "${compose_args[@]}" --profile assets-sync run --rm --no-deps assets-sync
+    echo "Publishing the complete client asset tree with the standalone uploader..."
+    "$project_root/bin/sync-assets.sh" --env "$env_file"
 fi
 
 echo "Starting StoneAge deployment services..."

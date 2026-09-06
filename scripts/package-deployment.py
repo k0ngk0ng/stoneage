@@ -10,6 +10,7 @@ root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('version')
 parser.add_argument('--output', default='dist')
+parser.add_argument('--uploader', required=True, help='prebuilt Linux amd64 stoneage-assets-sync executable')
 args = parser.parse_args()
 if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', args.version):
     parser.error('version must be a release tag such as v0.1.12')
@@ -25,6 +26,11 @@ files = {
        ('web/web.toml', 'web/web.r2.toml.example', 'gateway/gateway.toml',
         'gmsv/setup.cf.example', 'saac/acserv.cf.example', 'registry/username.example')},
 }
+if args.uploader:
+    uploader = Path(args.uploader).resolve()
+    if not uploader.is_file() or uploader.is_symlink():
+        parser.error('--uploader must be a regular executable file')
+    files['bin/stoneage-assets-sync'] = str(uploader)
 archive = output / f'stoneage-deploy-{args.version}.tar.gz'
 with tarfile.open(archive, 'w:gz') as tar:
     for target, source in files.items():

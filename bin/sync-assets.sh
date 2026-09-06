@@ -1,32 +1,25 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Publish the complete browser client static tree as one explicit operation.
-# This script is intentionally outside the admin UI: an administrator can
-# restart game services, while a deployment operator/CI pipeline owns public
-# client asset publication.  Credentials are passed only to the one-shot
-# Compose service and are never mounted into web or admin.
-
+# Publish browser resources with the platform-native uploader. This path never
+# contacts Docker or GHCR.
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
-docker_bin="${STONEAGE_DOCKER_BIN:-docker}"
-env_file="${STONEAGE_ENV_FILE:-$project_root/.env}"
-compose_file="$project_root/docker-compose.yml"
+env_file="$(printenv STONEAGE_ENV_FILE 2>/dev/null || true)"
+if [[ -z "$env_file" ]]; then
+    env_file="$project_root/.env"
+fi
 dry_run=0
 workers=""
+asset_sync_bin=""
 
 usage()
 {
     cat <<'EOF'
 Usage: bin/sync-assets.sh [options]
 
-Publish the complete public 2.5 browser client (sprites, maps, BGM and SE)
-to the Aliyun OSS or Cloudflare R2 origin configured in config/web/web.toml. The destination is the
-stable <prefix>/{assets,maps,audio}/ root; no release tag is added to the URL.
-The uploader keeps a SHA-256 client manifest at <prefix>/_client-manifest.json
-and a small browser revision marker at <prefix>/_client-version.json; only
-changed objects are uploaded on later runs. The sync job deliberately
-excludes private files from data/ such as saves, chat history and PE support
-binaries.
+Publish sprites, maps, BGM and SE to the OSS/R2 origin configured in
+config/web/web.toml. The host-native bin/stoneage-assets-sync uploader is
+required; set STONEAGE_ASSET_SYNC_BIN to override its path.
 
 Options:
   --dry-run       Validate the source trees and print the object count only.
@@ -34,11 +27,9 @@ Options:
   --env FILE      Read FILE instead of .env.
   -h, --help      Show this help.
 
-Set STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE and
-STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE to 0600 files containing the two
-object-storage credentials. For CI/direct use, provider-compatible variables
-(AWS_*, CLOUDFLARE_R2_* or the legacy ALIBABA_CLOUD_*) are accepted and copied
-to those files for the one-shot container. The admin UI is not involved.
+Credentials use the existing 0600 secret files or provider-compatible
+AWS_*, CLOUDFLARE_R2_* and ALIBABA_CLOUD_* variables. Docker and GHCR are not
+used by this command.
 EOF
 }
 
@@ -68,37 +59,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$env_file" != /* ]]; then
-    env_file="$project_root/$env_file"
+    case "$env_file" in
+        ./*) env_file="$project_root/$(printf '%s' "$env_file" | sed 's#^\./##')" ;;
+        *) env_file="$project_root/$env_file" ;;
+    esac
 fi
 if [[ ! -f "$env_file" ]]; then
     echo "Missing $env_file. Run bin/deploy.sh --init first." >&2
     exit 1
 fi
-if [[ ! -f "$compose_file" ]]; then
-    echo "Compose file not found: $compose_file" >&2
-    exit 1
-fi
-if ! command -v "$docker_bin" >/dev/null 2>&1; then
-    echo "Docker CLI not found: $docker_bin" >&2
-    exit 1
-fi
-if ! "$docker_bin" info >/dev/null 2>&1; then
-    echo "Docker daemon is not reachable; start Docker Engine and retry." >&2
-    exit 1
-fi
-if ! "$docker_bin" compose version >/dev/null 2>&1; then
-    echo "Docker Compose v2 plugin is required (try: docker compose version)." >&2
-    exit 1
-fi
-
-# Compose performs .env interpolation.  Keep the explicit --env-file so the
-# selected credentials/configuration are used even when the caller's cwd is
-# not the project root.
-compose_args=(--project-directory "$project_root" --env-file "$env_file" -f "$compose_file" --profile assets-sync)
-compose()
-{
-    "$docker_bin" compose "${compose_args[@]}" "$@"
-}
 
 env_value()
 {
@@ -113,6 +82,7 @@ env_value()
             value=substr(line, length(fields[1])+2)
             sub(/^[[:space:]]*/, "", value)
             sub(/[[:space:]]+#.*$/, "", value)
+            sub(/\r$/, "", value)
             if (value ~ /^".*"$/ || value ~ /^\047.*\047$/) {
                 value=substr(value, 2, length(value)-2)
             }
@@ -122,12 +92,59 @@ env_value()
     ' "$env_file"
 }
 
-sprites_root="${STONEAGE_SPRITES_ROOT:-$(env_value STONEAGE_SPRITES_ROOT || true)}"
-sprites_root="${sprites_root:-./assets/sprites}"
-case "$sprites_root" in
-    /*) ;;
-    *) sprites_root="$project_root/${sprites_root#./}" ;;
-esac
+first_nonempty()
+{
+    local value
+    for value in "$@"; do
+        if [[ -n "$value" ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+    return 0
+}
+
+env_or_file_value()
+{
+    local env_name="$1"
+    local file_key="$2"
+    local value
+    value="$(printenv "$env_name" 2>/dev/null || true)"
+    if [[ -z "$value" ]]; then
+        value="$(env_value "$file_key" || true)"
+    fi
+    printf '%s\n' "$value"
+}
+
+resolve_path()
+{
+    local value="$1"
+    case "$value" in
+        /*) printf '%s\n' "$value" ;;
+        ./*) printf '%s/%s\n' "$project_root" "$(printf '%s' "$value" | sed 's#^\./##')" ;;
+        *) printf '%s/%s\n' "$project_root" "$value" ;;
+    esac
+}
+
+asset_sync_bin="$(first_nonempty \
+    "$(env_or_file_value STONEAGE_ASSET_SYNC_BIN STONEAGE_ASSET_SYNC_BIN)" \
+    "$project_root/bin/stoneage-assets-sync")"
+asset_sync_bin="$(resolve_path "$asset_sync_bin")"
+
+web_config_file="$(first_nonempty \
+    "$(env_or_file_value STONEAGE_WEB_CONFIG_FILE STONEAGE_WEB_CONFIG_FILE)" \
+    "./config/web/web.toml")"
+web_config_file="$(resolve_path "$web_config_file")"
+if [[ ! -f "$web_config_file" ]]; then
+    echo "Web configuration file not found: $web_config_file" >&2
+    exit 2
+fi
+
+
+sprites_root="$(first_nonempty \
+    "$(env_or_file_value STONEAGE_SPRITES_ROOT STONEAGE_SPRITES_ROOT)" \
+    "./assets/sprites")"
+sprites_root="$(resolve_path "$sprites_root")"
 for sprite_manifest in manifest.json sprites.json; do
     if [[ ! -f "$sprites_root/$sprite_manifest" || ! -s "$sprites_root/$sprite_manifest" ]]; then
         echo "Sprite resource file is missing or empty: $sprites_root/$sprite_manifest" >&2
@@ -136,45 +153,71 @@ for sprite_manifest in manifest.json sprites.json; do
     fi
 done
 
-compose config --quiet
+client_root="$(first_nonempty \
+    "$(env_or_file_value STONEAGE_CLIENT_DATA_ROOT STONEAGE_CLIENT_DATA_ROOT)" \
+    "./assets/client")"
+client_root="$(resolve_path "$client_root")"
+if [[ ! -d "$client_root" ]]; then
+    echo "Client data directory not found: $client_root" >&2
+    exit 2
+fi
 
-run_args=(run --rm --no-deps assets-sync)
-if [[ "$dry_run" == 1 ]]; then
-    run_args+=(--dry-run)
+if [[ -z "$workers" ]]; then
+    workers="$(first_nonempty \
+        "$(env_or_file_value STONEAGE_ASSET_SYNC_WORKERS STONEAGE_ASSET_SYNC_WORKERS)" \
+        "8")"
 fi
-if [[ -n "$workers" ]]; then
-    if [[ ! "$workers" =~ ^[0-9]+$ ]] || (( workers < 1 || workers > 64 )); then
-        echo "--workers must be between 1 and 64" >&2
-        exit 2
-    fi
-    run_args+=(-workers "$workers")
+if [[ ! "$workers" =~ ^[0-9]+$ ]] || (( workers < 1 || workers > 64 )); then
+    echo "--workers must be between 1 and 64" >&2
+    exit 2
 fi
+
+if [[ ! -x "$asset_sync_bin" ]]; then
+    echo "Native asset uploader not found or not executable: $asset_sync_bin" >&2
+    echo "Install the platform-matched stoneage-assets-sync binary (Linux, macOS, or WSL), or set STONEAGE_ASSET_SYNC_BIN. Docker/GHCR is not used." >&2
+    exit 1
+fi
+
+# Keep the existing provider-compatible credential precedence. Secret values
+# are written to files and only the file paths are exported to the uploader;
+# no secret value is ever included in its argument vector.
+if [[ "$dry_run" != 1 ]]; then
+    access_key="$(first_nonempty \
+        "$(printenv STONEAGE_ASSET_SYNC_ACCESS_KEY 2>/dev/null || true)" \
+        "$(printenv CLOUDFLARE_R2_ACCESS_KEY_ID 2>/dev/null || true)" \
+        "$(printenv AWS_ACCESS_KEY_ID 2>/dev/null || true)" \
+        "$(printenv ALIBABA_CLOUD_ACCESS_KEY_ID 2>/dev/null || true)" \
+        "$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY || true)" \
+        "$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID || true)" \
+        "$(env_value AWS_ACCESS_KEY_ID || true)" \
+        "$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)")"
+    access_secret="$(first_nonempty \
+        "$(printenv STONEAGE_ASSET_SYNC_ACCESS_SECRET 2>/dev/null || true)" \
+        "$(printenv CLOUDFLARE_R2_SECRET_ACCESS_KEY 2>/dev/null || true)" \
+        "$(printenv AWS_SECRET_ACCESS_KEY 2>/dev/null || true)" \
+        "$(printenv ALIBABA_CLOUD_ACCESS_KEY_SECRET 2>/dev/null || true)" \
+        "$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET || true)" \
+        "$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY || true)" \
+        "$(env_value AWS_SECRET_ACCESS_KEY || true)" \
+        "$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)")"
+fi
+
+access_key_file="$(first_nonempty \
+    "$(env_or_file_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE)" \
+    "$(env_or_file_value CLOUDFLARE_R2_ACCESS_KEY_ID_FILE CLOUDFLARE_R2_ACCESS_KEY_ID_FILE)" \
+    "$(env_or_file_value AWS_ACCESS_KEY_ID_FILE AWS_ACCESS_KEY_ID_FILE)" \
+    "$(env_or_file_value ALIBABA_CLOUD_ACCESS_KEY_ID_FILE ALIBABA_CLOUD_ACCESS_KEY_ID_FILE)" \
+    "./config/secrets/oss-access-key-id")"
+access_secret_file="$(first_nonempty \
+    "$(env_or_file_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE)" \
+    "$(env_or_file_value CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE)" \
+    "$(env_or_file_value AWS_SECRET_ACCESS_KEY_FILE AWS_SECRET_ACCESS_KEY_FILE)" \
+    "$(env_or_file_value ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE)" \
+    "./config/secrets/oss-access-key-secret")"
+access_key_file="$(resolve_path "$access_key_file")"
+access_secret_file="$(resolve_path "$access_secret_file")"
 
 if [[ "$dry_run" != 1 ]]; then
-    # Do not silently start an upload with empty credentials. Prefer secret
-    # files so the values never enter Compose's rendered environment.
-    access_key="${STONEAGE_ASSET_SYNC_ACCESS_KEY:-${CLOUDFLARE_R2_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-${ALIBABA_CLOUD_ACCESS_KEY_ID:-}}}}"
-    access_secret="${STONEAGE_ASSET_SYNC_ACCESS_SECRET:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}}}}"
-    access_key="${access_key:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY || true)}"
-    access_secret="${access_secret:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET || true)}"
-    access_key="${access_key:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID || true)}"
-    access_secret="${access_secret:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY || true)}"
-    access_key="${access_key:-$(env_value AWS_ACCESS_KEY_ID || true)}"
-    access_secret="${access_secret:-$(env_value AWS_SECRET_ACCESS_KEY || true)}"
-    access_key="${access_key:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID || true)}"
-    access_secret="${access_secret:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET || true)}"
-    access_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
-    access_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
-    access_key_file="${access_key_file:-${CLOUDFLARE_R2_ACCESS_KEY_ID_FILE:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID_FILE || true)}}"
-    access_secret_file="${access_secret_file:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE || true)}}"
-    access_key_file="${access_key_file:-${AWS_ACCESS_KEY_ID_FILE:-$(env_value AWS_ACCESS_KEY_ID_FILE || true)}}"
-    access_secret_file="${access_secret_file:-${AWS_SECRET_ACCESS_KEY_FILE:-$(env_value AWS_SECRET_ACCESS_KEY_FILE || true)}}"
-    access_key_file="${access_key_file:-${ALIBABA_CLOUD_ACCESS_KEY_ID_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID_FILE || true)}}"
-    access_secret_file="${access_secret_file:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE || true)}}"
-    access_key_file="${access_key_file:-config/secrets/oss-access-key-id}"
-    access_secret_file="${access_secret_file:-config/secrets/oss-access-key-secret}"
-    case "$access_key_file" in /*) ;; *) access_key_file="$project_root/${access_key_file#./}" ;; esac
-    case "$access_secret_file" in /*) ;; *) access_secret_file="$project_root/${access_secret_file#./}" ;; esac
     if [[ -n "$access_key" && ! -s "$access_key_file" ]]; then
         umask 077
         mkdir -p "$(dirname "$access_key_file")"
@@ -185,49 +228,63 @@ if [[ "$dry_run" != 1 ]]; then
         mkdir -p "$(dirname "$access_secret_file")"
         printf '%s\n' "$access_secret" >"$access_secret_file"
     fi
-    chmod 600 "$access_key_file" "$access_secret_file"
+    if [[ ( -e "$access_key_file" && ! -f "$access_key_file" ) || ( -e "$access_secret_file" && ! -f "$access_secret_file" ) ]]; then
+        echo "object-storage credential paths must be regular files." >&2
+        exit 2
+    fi
     if [[ ! -s "$access_key_file" || ! -s "$access_secret_file" ]]; then
         echo "object-storage credentials are missing; provide the two secret files or provider-compatible access-key variables." >&2
         exit 2
     fi
-    # Compose resolves secret file paths against the project directory. Pass
-    # the normalized paths explicitly so --env FILE and an external cwd agree.
-    export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$access_key_file"
-    export STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE="$access_secret_file"
+    chmod 600 "$access_key_file" "$access_secret_file"
 else
-    # Compose still needs a source file for a file-backed secret even though
-    # the uploader will not read it in --dry-run mode. Create only the ignored
-    # local defaults; custom external paths are an operator error.
-    access_key_file="${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE || true)}"
-    access_secret_file="${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-$(env_value STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE || true)}"
-    access_key_file="${access_key_file:-${CLOUDFLARE_R2_ACCESS_KEY_ID_FILE:-$(env_value CLOUDFLARE_R2_ACCESS_KEY_ID_FILE || true)}}"
-    access_secret_file="${access_secret_file:-${CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE:-$(env_value CLOUDFLARE_R2_SECRET_ACCESS_KEY_FILE || true)}}"
-    access_key_file="${access_key_file:-${AWS_ACCESS_KEY_ID_FILE:-$(env_value AWS_ACCESS_KEY_ID_FILE || true)}}"
-    access_secret_file="${access_secret_file:-${AWS_SECRET_ACCESS_KEY_FILE:-$(env_value AWS_SECRET_ACCESS_KEY_FILE || true)}}"
-    access_key_file="${access_key_file:-${ALIBABA_CLOUD_ACCESS_KEY_ID_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_ID_FILE || true)}}"
-    access_secret_file="${access_secret_file:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE:-$(env_value ALIBABA_CLOUD_ACCESS_KEY_SECRET_FILE || true)}}"
-    access_key_file="${access_key_file:-config/secrets/oss-access-key-id}"
-    access_secret_file="${access_secret_file:-config/secrets/oss-access-key-secret}"
-    case "$access_key_file" in /*) ;; *) access_key_file="$project_root/${access_key_file#./}" ;; esac
-    case "$access_secret_file" in /*) ;; *) access_secret_file="$project_root/${access_secret_file#./}" ;; esac
+    # The native uploader skips credential reads for --dry-run, but retain the
+    # old default-file behavior so callers can use the same env configuration
+    # for a subsequent real upload. Custom missing paths remain an error.
     for secret_file in "$access_key_file" "$access_secret_file"; do
         if [[ ! -e "$secret_file" ]]; then
-            if [[ "$secret_file" != "$project_root/config/secrets/"* ]]; then
-                echo "secret file is missing: $secret_file" >&2
-                exit 2
-            fi
+            case "$secret_file" in
+                "$project_root/config/secrets/"*) ;;
+                *)
+                    echo "secret file is missing: $secret_file" >&2
+                    exit 2
+                    ;;
+            esac
             umask 077
             mkdir -p "$(dirname "$secret_file")"
             : >"$secret_file"
+        elif [[ ! -f "$secret_file" ]]; then
+            echo "secret file is not a regular file: $secret_file" >&2
+            exit 2
         fi
         chmod 600 "$secret_file"
     done
-    export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$access_key_file"
-    export STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE="$access_secret_file"
 fi
 
-source "$project_root/bin/registry-login.sh"
-stoneage_registry_login
+
+export STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE="$access_key_file"
+export STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE="$access_secret_file"
+# Values are no longer needed after materializing the files. Prevent inherited
+# provider aliases from becoming a second credential channel for the child.
+unset STONEAGE_ASSET_SYNC_ACCESS_KEY STONEAGE_ASSET_SYNC_ACCESS_SECRET \
+    CLOUDFLARE_R2_ACCESS_KEY_ID CLOUDFLARE_R2_SECRET_ACCESS_KEY \
+    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
+    ALIBABA_CLOUD_ACCESS_KEY_ID ALIBABA_CLOUD_ACCESS_KEY_SECRET
+
+run_args=(
+    -config "$web_config_file"
+    -assets "$sprites_root"
+    -client-data "$client_root"
+    -workers "$workers"
+)
+if [[ "$dry_run" == 1 ]]; then
+    run_args+=(-dry-run)
+fi
+
 echo "Publishing the complete client asset tree (assets, maps, audio)…"
-compose "${run_args[@]}"
-echo "Client assets published."
+"$asset_sync_bin" "${run_args[@]}"
+if [[ "$dry_run" == 1 ]]; then
+    echo "Client asset dry-run completed; no objects uploaded."
+else
+    echo "Client assets published."
+fi

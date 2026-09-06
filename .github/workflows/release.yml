@@ -37,6 +37,7 @@ jobs:
       - name: Verify production deployment tools
         run: |
           bash bin/registry-login_test.sh
+          bash bin/sync-assets_test.sh
           python3 scripts/test-deployment-package.py
 
       - name: Set up Docker Buildx
@@ -91,12 +92,10 @@ jobs:
             local bin_root="$package_root/bin"
 
             mkdir -p "$bin_root"
-            commands=(stoneage-gateway stoneage-admin stoneage-operator)
+            commands=(stoneage-gateway stoneage-admin stoneage-operator stoneage-assets-sync)
             if [[ "$goos" == linux ]]; then
-              # The uploader is a separate, one-shot control-plane utility;
-              # it is shipped with Linux artifacts but is never started as a
-              # long-running web/admin service.
-              commands+=(stoneage-web stoneage-assets-sync)
+              # The embedded Web server is part of the Linux deployment.
+              commands+=(stoneage-web)
             fi
             for command in "${commands[@]}"; do
               local output="$bin_root/$command$suffix"
@@ -107,6 +106,8 @@ jobs:
               CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
                 go build -trimpath -ldflags='-s -w' -o "$output" "$package"
             done
+
+            tar -czf "$dist/stoneage-assets-sync-${RELEASE_TAG}-${goos}-${goarch}.tar.gz" -C "$package_root" "bin/stoneage-assets-sync$suffix"
 
             cp README.md "$package_root/README.md"
             mkdir -p "$package_root/docs"
@@ -137,6 +138,7 @@ jobs:
 
           build_target linux amd64 ''
           build_target darwin arm64 ''
+          build_target darwin amd64 ''
           build_target windows amd64 '.exe'
 
           (cd "$stage" && zip -q -r -9 "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.zip" \
@@ -146,7 +148,7 @@ jobs:
           (cd "$dist" && sha256sum * > SHA256SUMS)
 
       - name: Package Compose deployment
-        run: python3 scripts/package-deployment.py "${{ github.ref_name }}"
+        run: python3 scripts/package-deployment.py "${{ github.ref_name }}" --uploader "$RUNNER_TEMP/stoneage-release/stoneage-control-plane-${{ github.ref_name }}-linux-amd64/bin/stoneage-assets-sync"
 
       - name: Package public sprite resources
         run: python3 scripts/package-sprites.py "${{ github.ref_name }}"
@@ -171,8 +173,10 @@ jobs:
           files: |
             dist/stoneage-deploy-${{ github.ref_name }}.tar.gz
             dist/stoneage-sprites-${{ github.ref_name }}.tar.gz
+            dist/stoneage-assets-sync-${{ github.ref_name }}-*.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-linux-amd64.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-darwin-arm64.tar.gz
+            dist/stoneage-control-plane-${{ github.ref_name }}-darwin-amd64.tar.gz
             dist/stoneage-control-plane-${{ github.ref_name }}-windows-amd64.zip
             dist/IMAGE-DIGESTS
             dist/SHA256SUMS
