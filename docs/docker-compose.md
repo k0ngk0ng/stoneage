@@ -184,6 +184,16 @@ rm stoneage-sprites-vX.Y.Z.tar.gz
 
 **回退与备份**
 
+更新完成后，可清理未被任何容器使用的其他版本 StoneAge 镜像：
+
+```bash
+cd /opt/stoneage
+./bin/stoneage clean --dry-run   # 仅列出待清理的镜像
+./bin/stoneage clean             # 执行清理
+```
+
+命令读取 `.env` 中的 `STONEAGE_VERSION`、`STONEAGE_CONTROL_IMAGE` 和 `STONEAGE_LEGACY_IMAGE`，只删除这两个仓库的其他版本标签。当前版本的两个镜像必须已存在，否则停止清理并提示先部署。运行中或已停止容器使用的镜像、与当前版本共享镜像 ID 的标签都会保留。不会清理其他项目镜像、无标签镜像、构建缓存、容器、数据卷或存档；被删除的旧版本需要重新拉取后才能回退。可用 `--env FILE` 指定其他环境文件。
+
 仅镜像更新且发布说明确认数据格式兼容时，可将 `.env` 的 `STONEAGE_VERSION` 改回上一版本再部署。若本次同时改过 Compose、配置、资源或数据格式，应使用对应版本的工具和备份恢复。
 
 更新前备份 `.env`、`config/`、`data/`、`assets/` 和 Docker 命名卷 `stoneage-auth`（账号数据库）；备份数据前先 `./bin/stoneage stop`，完成后再部署启动。若自定义卷名，以 `.env` 为准。不要执行 `docker compose down -v`，它会删除账号数据库卷。

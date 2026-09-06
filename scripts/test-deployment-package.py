@@ -27,6 +27,7 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
             'bin/deploy.sh',
             'bin/sync-assets.sh',
             'bin/registry-login.sh',
+            'bin/clean-images.sh',
             'bin/aliyun-certificate.py',
             'config/certificates/aliyun.json.example',
             'config/certificates/README.md',
@@ -71,6 +72,8 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
         archive.extractall(stage / 'host', filter='data')
     host = stage / 'host'
     entry = host / 'bin/stoneage'
+    clean_help = subprocess.run([str(entry), 'clean', '--help'], check=True, capture_output=True, text=True)
+    assert 'clean [--dry-run]' in clean_help.stdout
     subprocess.run([str(entry), 'init'], check=True, capture_output=True)
     assert (host / '.env').stat().st_mode & 0o777 == 0o600
     for name in ('config/gmsv/setup.cf', 'config/saac/acserv.cf'):

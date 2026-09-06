@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -269,7 +270,7 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 	for _, fragment := range []string{
 		base + "/assets/bitmaps/bitmap_9113.png",
 		base + "/assets/manifest.json",
-		base + "/maps/${encodeURIComponent(candidates[index])}",
+		base + "/maps/${encodeURIComponent(file)}",
 		base + "/audio/${kind}/${encodeURIComponent(String(file||\"\"))}",
 		base + "/audio/auto.dat",
 		`const ASSET_RESOURCE_ROOT=new URL("` + base + `/assets/",window.location.href)`,
@@ -323,6 +324,59 @@ func TestPageWithCDNBaseDoesNotRewriteInsertedRoot(t *testing.T) {
 	want := `assets=https://cdn.example.com/game/maps/audio/assets/a.png maps=https://cdn.example.com/game/maps/audio/maps/1000.MAP audio=https://cdn.example.com/game/maps/audio/audio/bgm/sabgm_s0.wav`
 	if got != want {
 		t.Fatalf("CDN root was rewritten more than once:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestAutoMapFilesIndexPreservesCaseAndExcludesUnsafeEntries(t *testing.T) {
+	directory := t.TempDir()
+	for _, name := range []string{
+		"200.DAT", "201.dat", "202.MAP", "203.map", "204.json", "205.DAT", "205.map", "205.DAT.bak", "20x.DAT",
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(directory, "206.DAT"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(directory, "200.DAT"), filepath.Join(directory, "207.DAT")); err != nil {
+		if os.IsPermission(err) {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"200": {"200.DAT"},
+		"201": {"201.dat"},
+		"202": {"202.MAP"},
+		"203": {"203.map"},
+		"205": {"205.DAT", "205.map"},
+	}
+	if got := autoMapFilesForDirectory(directory); !reflect.DeepEqual(got, want) {
+		t.Fatalf("auto map file index=%v want %v", got, want)
+	}
+
+	page := pageWithAutoMapFiles([]byte("const AUTO_MAP_FILES={};"), want)
+	if strings.Contains(string(page), "207.DAT") || strings.Contains(string(page), "204.json") || strings.Contains(string(page), "205.DAT.bak") {
+		t.Fatalf("unsafe map filename leaked into page: %s", page)
+	}
+	var encoded map[string][]string
+	if err := json.Unmarshal([]byte(strings.TrimSuffix(strings.TrimPrefix(string(page), "const AUTO_MAP_FILES="), ";")), &encoded); err != nil {
+		t.Fatalf("embedded map index is not JSON: %v; page=%s", err, page)
+	}
+	if !reflect.DeepEqual(encoded, want) {
+		t.Fatalf("embedded map index=%v want %v", encoded, want)
+	}
+}
+
+func TestAutoMapFilesIndexMissingDirectoryIsEmpty(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	if got := autoMapFilesForDirectory(missing); len(got) != 0 {
+		t.Fatalf("missing map directory index=%v want empty", got)
+	}
+	page := pageWithAutoMapFiles([]byte("const AUTO_MAP_FILES={};"), nil)
+	if got := string(page); got != "const AUTO_MAP_FILES={};" {
+		t.Fatalf("empty map index page=%q", got)
 	}
 }
 

@@ -10,6 +10,7 @@ case "$command" in
   deploy) exec "$project_root/bin/deploy.sh" "$@" ;;
   sync-assets) exec "$project_root/bin/sync-assets.sh" "$@" ;;
   login) exec "$project_root/bin/registry-login.sh" "$@" ;;
+  clean) exec "$project_root/bin/clean-images.sh" "$@" ;;
   pull|status|logs|stop)
     action="$command"
     [[ "$action" != status ]] || action=ps
@@ -19,6 +20,6 @@ case "$command" in
     fi
     exec "$docker_bin" compose --project-directory "$project_root" --env-file "${STONEAGE_ENV_FILE:-$project_root/.env}" -f "$project_root/docker-compose.yml" "$action" "$@"
     ;;
-  help|-h|--help) echo 'Usage: bin/stoneage {init|check|login|pull|deploy|status|logs|stop|sync-assets} [options]' ;;
+  help|-h|--help) echo 'Usage: bin/stoneage {init|check|login|pull|deploy|status|logs|stop|sync-assets|clean} [options]' ;;
   *) echo "Unknown command: $command" >&2; exit 2 ;;
 esac

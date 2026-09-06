@@ -40,6 +40,7 @@ jobs:
           bash scripts/runtime-entrypoint_test.sh
           bash bin/registry-login_test.sh
           bash bin/sync-assets_test.sh
+          bash bin/clean-images_test.sh
           python3 scripts/test-deployment-package.py
 
       - name: Set up Docker Buildx

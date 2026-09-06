@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -282,6 +283,73 @@ func pageWithCDNBase(source []byte, baseURL string) []byte {
 		result = bytes.ReplaceAll(result, []byte(item.marker), []byte(baseURL+item.prefix))
 	}
 	return result
+}
+
+var autoMapFilenamePattern = regexp.MustCompile(`^([0-9]+)\.(?i:dat|map)$`)
+
+// autoMapFilesForDirectory returns the exact case-sensitive filenames which
+// can be requested from the browser for each numeric floor.  The legacy map
+// tree came from Windows and contains both .DAT/.MAP and lower-case variants;
+// a CDN/object store serves those names case-sensitively, so the browser must
+// not guess one spelling and then retry a long chain of 404s.  Directory
+// entries and symlinks are deliberately excluded from the public index.
+func autoMapFilesForDirectory(directory string) map[string][]string {
+	files := make(map[string][]string)
+	if strings.TrimSpace(directory) == "" {
+		return files
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return files
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		match := autoMapFilenamePattern.FindStringSubmatch(name)
+		if len(match) != 2 || entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(directory, name))
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			continue
+		}
+		floor, err := strconv.Atoi(match[1])
+		if err != nil || floor < 0 {
+			continue
+		}
+		key := strconv.Itoa(floor)
+		files[key] = append(files[key], name)
+	}
+	for key, names := range files {
+		sort.Slice(names, func(left, right int) bool {
+			leftDAT := strings.EqualFold(filepath.Ext(names[left]), ".dat")
+			rightDAT := strings.EqualFold(filepath.Ext(names[right]), ".dat")
+			if leftDAT != rightDAT {
+				return leftDAT
+			}
+			leftLower, rightLower := strings.ToLower(names[left]), strings.ToLower(names[right])
+			if leftLower != rightLower {
+				return leftLower < rightLower
+			}
+			return names[left] < names[right]
+		})
+		files[key] = names
+	}
+	return files
+}
+
+func pageWithAutoMapFiles(source []byte, files map[string][]string) []byte {
+	if files == nil {
+		files = make(map[string][]string)
+	}
+	payload, err := json.Marshal(files)
+	if err != nil || len(payload) == 0 {
+		payload = []byte("{}")
+	}
+	result := append([]byte(nil), source...)
+	const emptyDeclaration = "const AUTO_MAP_FILES={};"
+	declaration := append([]byte("const AUTO_MAP_FILES="), payload...)
+	declaration = append(declaration, ';')
+	return bytes.Replace(result, []byte(emptyDeclaration), declaration, 1)
 }
 
 func positiveIntEnv(name string) int {
@@ -1089,8 +1157,8 @@ func NewHandler(config Config) (*Handler, error) {
 		}
 		handler.assets = http.StripPrefix("/assets/", http.FileServer(http.Dir(assetsDirectory)))
 	}
-	if strings.TrimSpace(config.MapDirectory) != "" {
-		mapDirectory := strings.TrimSpace(config.MapDirectory)
+	mapDirectory := strings.TrimSpace(config.MapDirectory)
+	if mapDirectory != "" {
 		/* Resolve the repository layout when the service is started from
 		   client/web, while leaving an explicit operator path untouched. */
 		if _, err := os.Stat(mapDirectory); os.IsNotExist(err) && mapDirectory == defaultMapDirectory {
@@ -1107,6 +1175,12 @@ func NewHandler(config Config) (*Handler, error) {
 		}
 		handler.maps = http.StripPrefix("/maps/", http.FileServer(http.Dir(mapDirectory)))
 	}
+	/* The browser's automatic-map loader must use the exact case-sensitive
+	   object name published by the map tree.  Build this after the same path
+	   fallback above so repository-root and client/web launches see the same
+	   files.  An unavailable/empty directory simply contributes an empty index;
+	   the normal live M-window path remains available. */
+	handler.page = pageWithAutoMapFiles(handler.page, autoMapFilesForDirectory(mapDirectory))
 	if strings.TrimSpace(config.AudioDirectory) != "" {
 		audioDirectory := strings.TrimSpace(config.AudioDirectory)
 		/* Match the asset path convenience above for both repository-root and

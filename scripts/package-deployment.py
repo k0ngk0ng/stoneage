@@ -21,7 +21,7 @@ files = {
     '.env.compose.example': '.env.compose.example',
     'README.md': 'docs/docker-compose.md',
     **{f'bin/{name}': f'bin/{name}' for name in
-       ('stoneage', 'deploy.sh', 'sync-assets.sh', 'registry-login.sh', 'aliyun-certificate.py')},
+       ('stoneage', 'deploy.sh', 'sync-assets.sh', 'registry-login.sh', 'clean-images.sh', 'aliyun-certificate.py')},
     **{f'config/{name}': f'config/{name}' for name in
        ('web/web.toml', 'web/web.r2.toml.example', 'gateway/gateway.toml',
         'gmsv/setup.cf.example', 'saac/acserv.cf.example', 'registry/username.example', 'certificates/aliyun.json.example', 'certificates/README.md',

@@ -1688,6 +1688,7 @@
      cannot reopen the disconnect dialog or close the replacement session. */
   app.pollingTransport=null;
   app.connectionToken=0;
+  const connectionRetry={active:false,attempt:0,generation:0,timer:0,timeout:0};
   app.battleState.commandTimers={player:0,pet:0};
   app.battleState.commandPending={player:null,pet:null};
   app.battleState.choiceTimer=0;app.battleState.choiceDeadline=0;app.battleState.choiceOwner="";
@@ -2030,7 +2031,9 @@
     const file=soundFileForTone(tone);if(!file||!app.systemSettings.se||app.systemSettings.soundMuted)return;
     if(!soundState.unlocked){if(!fromQueue&&soundState.pendingSE.length<16)soundState.pendingSE.push({tone,x,y});return;}
     const px=Math.max(0,Math.min(640,Number(x)||320)),pan=app.systemSettings.seStereo?Math.max(-1,Math.min(1,(px-320)/320)):0;
-    const audio=new Audio(audioURL("se",file));audio.preload="auto";audio.volume=seVolume();audio.setAttribute("aria-hidden","true");
+    /* Set CORS mode before src starts fetching: Web Audio silences a
+       cross-origin media element loaded in the default no-cors mode. */
+    const audio=new Audio();audio.crossOrigin="anonymous";audio.src=audioURL("se",file);audio.preload="auto";audio.volume=seVolume();audio.setAttribute("aria-hidden","true");
     soundState.activeSE.add(audio);
     let source=null,panner=null;
     /* play_se() sets DirectSound's pan from the map x coordinate.  Keep the
@@ -2351,7 +2354,9 @@
     #status-screen #status-title-ok{left:40px;background-image:url('/assets/bitmaps/bitmap_9211.png')}
     #status-screen #status-title-cancel{left:150px;background-image:url('/assets/bitmaps/bitmap_9170.png')}
     #status-screen #status-list{pointer-events:none}
-    #status-screen .status-face{position:absolute;left:214px;top:123px;width:56px;height:64px;object-fit:contain;image-rendering:pixelated;pointer-events:none}
+    /* MENU.CPP submits the face at (214,123); its REALBIN offset (-32,-36)
+       places the original 64x72 bitmap inside the portrait frame. */
+    #status-screen .status-face{position:absolute;left:182px;top:87px;width:64px;height:72px;object-fit:contain;image-rendering:pixelated;pointer-events:none}
     #status-screen .status-attr-bar{position:absolute;left:182px;width:64px;height:8px;pointer-events:none;box-shadow:1px 1px #ddd8,2px 2px #2228}
     #status-screen .status-attr-bar.earth{top:183px;background:#3caa58}
     #status-screen .status-attr-bar.water{top:203px;background:#41a8ae}
@@ -3908,7 +3913,7 @@
     const choice=$("server-choice"),back=$("server-back"),visualMessage=$("server-message"),liveStatus=$("server-status");
     choice.textContent="测试一线";
     choice.disabled=connecting;
-    back.classList.toggle("hidden",connecting);
+    back.classList.toggle("hidden",connecting&&!connectionRetry.active);
     visualMessage.textContent=message||(connecting?"連接中…":"");
     liveStatus.textContent=message||(connecting?"正在连接本機一線。":"请选择服务器。");
     app.phase=connecting?"connecting":"server-group";
@@ -3929,6 +3934,7 @@
     return raw;
   }
   function showConnectionFailure(error,fallback="服务器连接失败。"){
+    cancelConnectionRetry();
     /* A failed CharList/HTTP request can leave the bridge object alive even
        though the title flow has already returned to the server list. Tear it
        down here so the next click is a genuine retry, not a disabled item. */
@@ -3954,6 +3960,7 @@
        not retry other failures: bad credentials and missing data should use
        the normal native-style error dialog immediately. */
     if(String(reason||"").trim().toLowerCase()!=="locked"||Number(app.charListLockRetryCount||0)>0)return false;
+    if(connectionRetry.active){scheduleConnectionRetry();return true;}
     app.charListLockRetryCount=1;
     const account=String(app.account||""),password=String(app.password||"");
     /* Do not start the replacement login until the bridge has completed the
@@ -3969,6 +3976,7 @@
     return true;
   }
   function returnToAccountLogin(message="请输入账号和密码。"){
+    cancelConnectionRetry();
     cancelMapFloorTransition();
     /* A title return is a hard scene boundary.  Clear any hit/skill effects
        from the previous field or battle before selecting the title track;
@@ -5312,7 +5320,12 @@
     try{packet=Protocol.packetMessage(app.messageID++,functionName,values);}catch(error){return Promise.reject(error);}
     if(app.messageID>0xffffffff)app.messageID=1;
     addWire(`→ ${functionName}`);
-    return app.transport.send(packet);
+    const transport=app.transport,token=app.connectionToken;
+    return transport.send(packet).catch(error=>{
+      const failure=new Error(error?.message||String(error));
+      failure.sourceTransport=transport;failure.sourceToken=token;
+      throw failure;
+    });
   }
   function decodeValue(message,index,fallback="") { const schema=message.schema[index]; const value=message.values[index]; return schema==="string"?textDecoderSafe(value):value??fallback; }
   function textDecoderSafe(value) { try{return decodeLegacyText(value);}catch(_){try{return new TextDecoder("gb18030").decode(value);}catch(__){return new TextDecoder().decode(value);}} }
@@ -6327,7 +6340,7 @@
      index and the auto-map colour tables are owned by later screens.  Start
      those resources from the first screen that actually needs them instead
      of making every login (including a failed one) download map data. */
-  function reportError(error) { const message=String(error?.message||error||"网络错误"); addWire(`发送失败：${message}`); status("网络错误","error"); $("event-status").textContent=message; if(app.phase==="world"&&/closed|disconnect|network|fetch|HTTP 4|HTTP 5|连接|socket/i.test(message))handleConnectionLost(message); else if(["connecting","server-line","character-list","character-create","login-error"].includes(app.phase))showConnectionFailure(message); }
+  function reportError(error) { if(error?.sourceTransport&&(error.sourceTransport!==app.transport||error.sourceToken!==app.connectionToken))return; const message=String(error?.message||error||"网络错误"); addWire(`发送失败：${message}`); status("网络错误","error"); $("event-status").textContent=message; if((app.phase==="world"||connectionRetry.active)&&/closed|disconnect|network|fetch|HTTP 4|HTTP 5|连接|socket/i.test(message))handleConnectionLost(message); else if(["connecting","server-line","character-list","character-create","login-error"].includes(app.phase))showConnectionFailure(message); }
   function textOr(value,fallback="") { return value===undefined||value===null?fallback:String(value); }
   function decimal(value,fallback=0) { const n=Number.parseInt(String(value),10); return Number.isFinite(n)?n:fallback; }
   function addEvent(text) { app.events.push(`${new Date().toLocaleTimeString()} ${text}`); if(app.events.length>160)app.events.shift(); if($("event-journal"))renderJournal(); }
@@ -7139,6 +7152,8 @@
     if(layers<3)for(let index=0;index<count;index++)if(tile[index]||parts[index])event[index]=AUTO_MAP_SEE_FLAG;
     return {floor:Number(floor),width,height,tile,parts,event,source:String(source||"")};
   }
+  /* Filled by the Web server from its map directory, preserving CDN case. */
+  const AUTO_MAP_FILES={};
   const AUTO_MAP_RETRY_MS=5000;
   function autoMapRequestAllowed(floor){
     const id=Math.trunc(Number(floor));if(!Number.isFinite(id)||id<0)return false;
@@ -7178,14 +7193,21 @@
       return Promise.resolve(cached);
     }
     if(autoMapDataRequests.has(id))return autoMapDataRequests.get(id);
-    const candidates=[`${id}.DAT`,`${id}.dat`,`${id}.MAP`,`${id}.map`];
-    const tryFile=(index,lastError=null)=>{
-      if(index>=candidates.length)throw lastError||new Error(`地图 ${id} 没有 DAT/MAP 文件`);
-      return fetch(`/maps/${encodeURIComponent(candidates[index])}`,{cache:"force-cache"}).then(response=>{
-        if(!response.ok)throw new Error(`地图 ${candidates[index]} HTTP ${response.status}`);return response.arrayBuffer();
-      }).then(buffer=>parseAutoMapData(buffer,id,candidates[index])).then(data=>data||tryFile(index+1,new Error(`地图 ${candidates[index]} 格式无效`))).catch(error=>index+1<candidates.length?tryFile(index+1,error):Promise.reject(error));
+    const candidates=[...new Set([...(AUTO_MAP_FILES[String(id)]||[]),`${id}.DAT`,`${id}.dat`,`${id}.MAP`,`${id}.map`])];
+    const tryFile=async()=>{
+      let lastError=null;
+      for(const file of candidates){
+        try{
+          const response=await fetch(`/maps/${encodeURIComponent(file)}`,{cache:"force-cache"});
+          if(!response.ok)throw new Error(`地图 ${file} HTTP ${response.status}`);
+          const data=parseAutoMapData(await response.arrayBuffer(),id,file);
+          if(data)return data;
+          throw new Error(`地图 ${file} 格式无效`);
+        }catch(error){lastError=error;}
+      }
+      throw lastError||new Error(`地图 ${id} 没有 DAT/MAP 文件`);
     };
-    const request=tryFile(0).then(data=>{
+    const request=tryFile().then(data=>{
       autoMapDataCache.set(id,data);app.autoMapFailedFloor=-1;app.autoMapFailedAt=0;
       if(Number(app.floor)===id){
         /* Keep decoded DAT data even if a cosmetic map redraw encounters a
@@ -7512,7 +7534,8 @@
   function performNormalLogout(){
     if(!app.transport){returnToLogin("连接已断开，请重新登录。");return;}
     app.logoutPending="record-point";setWorldState("正在回记录点…");
-    send("CharLogout",[]).catch(error=>{app.logoutPending="";reportError(error);});
+    const transport=app.transport,token=app.connectionToken;
+    send("CharLogout",[]).catch(error=>handleConnectionLost(error.message,transport,token));
   }
   function renderSystem(){
     const screen=$("system-screen"),list=$("system-list");if(!screen||!list)return;
@@ -14557,6 +14580,7 @@
     event.preventDefault();event.returnValue="";
   }
   function logoutBeforePageUnload(){
+    cancelConnectionRetry();
     if(pageUnloadLogoutSent)return;
     const transport=app.transport;
     if(!transport)return;
@@ -14586,11 +14610,54 @@
   window.addEventListener("pagehide",logoutBeforePageUnload,{capture:true});
   window.addEventListener("beforeunload",confirmPageUnload,{capture:true});
   function returnToLogin(message="已返回标题。"){
+    cancelConnectionRetry();
     clearPartyFollow();if(app.actorDetailRequests instanceof Set)app.actorDetailRequests.clear();closeLocalDialog();closeTransport();app.logoutPending="";app.battle=false;app.mapLoading=false;returnToAccountLogin(message);status("离线");loginStatus(message,"error");
     setMusicMode("title",2);
   }
-  function retryAfterDisconnect(){
-    closeLocalDialog();if(app.account)$("account").value=app.account;if(app.password)$("password").value=app.password;openServerSelection("connecting");connectLogin().catch(error=>showConnectionFailure(error));
+  const CONNECTION_RETRY_DELAYS=[1000,2000,4000];
+  const CONNECTION_RETRY_TIMEOUT_MS=15000;
+  function cancelConnectionRetry(){
+    connectionRetry.active=false;connectionRetry.generation++;
+    window.clearTimeout(connectionRetry.timer);window.clearTimeout(connectionRetry.timeout);
+    connectionRetry.timer=0;connectionRetry.timeout=0;
+  }
+  function showDisconnectedDialog(message){
+    show(worldScreen);
+    openLocalDialog("连接中断",message,[{label:"重新连接",kind:"yes",handler:retryAfterDisconnect},{label:"返回登录",kind:"no",handler:()=>returnToLogin("连接已断开，请重新登录。")}]);
+  }
+  function scheduleConnectionRetry(closePromise=null){
+    if(!connectionRetry.active)return;
+    window.clearTimeout(connectionRetry.timer);window.clearTimeout(connectionRetry.timeout);
+    const closed=closePromise||closeTransport(null,{waitForPeer:true});
+    app.phase="disconnected";
+    if(connectionRetry.attempt>=CONNECTION_RETRY_DELAYS.length){
+      cancelConnectionRetry();showDisconnectedDialog("自动重连 3 次未成功，请稍后重新连接。");return;
+    }
+    const delay=CONNECTION_RETRY_DELAYS[connectionRetry.attempt++];
+    const attempt=connectionRetry.attempt,generation=connectionRetry.generation;
+    const current=()=>connectionRetry.active&&connectionRetry.generation===generation&&connectionRetry.attempt===attempt;
+    show(worldScreen);
+    openLocalDialog("连接中断",`服务器连接已断开。\n${delay/1000} 秒后自动重连（${attempt}/3）。`,[{label:"返回登录",kind:"no",handler:()=>returnToLogin("已取消自动重连。")}]);
+    connectionRetry.timer=window.setTimeout(async()=>{
+      if(!current())return;
+      // Budget includes session cleanup, connect, authentication and CharList.
+      connectionRetry.timeout=window.setTimeout(()=>{if(current())scheduleConnectionRetry();},CONNECTION_RETRY_TIMEOUT_MS);
+      try{
+        await closed;
+        if(!current())return;
+        closeLocalDialog();$("account").value=app.account;$("password").value=app.password;
+        openServerSelection("connecting",`正在重新连接（${attempt}/3）…`);
+        await connectLogin();
+        // Only a successful CharList ends recovery. A TCP greeting alone
+        // does not prove the account has logged in or released its old lock.
+      }catch(error){if(current())scheduleConnectionRetry();}
+    },delay);
+  }
+  function retryAfterDisconnect(closePromise=null){
+    cancelConnectionRetry();
+    if(!app.account||!app.password){returnToLogin("连接已断开，请重新登录。");return;}
+    connectionRetry.active=true;connectionRetry.attempt=0;app.charListLockRetryCount=0;
+    scheduleConnectionRetry(closePromise);
   }
   function handleConnectionLost(reason="TCP 连接已关闭",sourceTransport=null,sourceToken=null){
     /* Ignore a completion from an older long-poll request.  Without this
@@ -14601,6 +14668,9 @@
       closeTransport(sourceTransport);return;
     }
     if(app.phase==="disconnected")return;
+    if(app.logoutPending==="record-point"){
+      returnToLogin("登出时连接已断开，请重新登录确认记录点。");return;
+    }
     if(app.logoutPending==="in-place"){
       /* 原地登出 deliberately closes the 2.5 socket so its ordinary
          disconnect cleanup saves the current coordinates.  Treat that
@@ -14609,7 +14679,7 @@
     }
     const wasSelectingServer=app.phase==="connecting"||app.phase==="server-line"||app.phase==="character-list"||app.phase==="character-create"||app.phase==="login-error";
     const wasWorld=app.phase==="world"||app.battle||worldScreen?.classList.contains("hidden")===false;
-    closeTransport(sourceTransport||null);
+    const disconnectedClose=closeTransport(sourceTransport||null,{waitForPeer:true});
     /* Do not let a stale field/battle track or queued effect continue while
        the reconnect dialog is shown.  returnToAccountLogin() selects the
        title track again when the user explicitly returns to login. */
@@ -14617,7 +14687,8 @@
     stopBackgroundMusic();
     soundState.pendingBgm=null;
     app.phase="disconnected";app.battle=false;setWorldState("连接已中断","error");status("连接中断","error");
-    if(wasWorld){show(worldScreen);openLocalDialog("连接中断",`${reason}\n服务器连接已断开。`,[{label:"重新连接",kind:"yes",handler:retryAfterDisconnect},{label:"返回登录",kind:"no",handler:()=>returnToLogin("连接已断开，请重新登录。" )}]);}
+    if(connectionRetry.active){scheduleConnectionRetry(disconnectedClose);}
+    else if(wasWorld){retryAfterDisconnect(disconnectedClose);}
     else if(wasSelectingServer&&app.account){showConnectionFailure(reason);}
     else {returnToAccountLogin(reason);loginStatus(reason,"error");}
   }
@@ -15060,6 +15131,7 @@
       showConnectionFailure(reason,"读取人物列表失败，请稍后重试。");
       return;
     }
+    cancelConnectionRetry();
     const container=$("characters"),hitLayer=$("character-hit-layer"); container.replaceChildren();if(hitLayer)hitLayer.replaceChildren(); let count=0;
     for(const record of parseCharacterRecords(values[1])) { if(count>=2)break; const name=record.name.trim(),option=record.option||""; if(!name)continue; container.append(renderCharacterCard(count,name,option)); count++; }
     for(let slot=count;slot<2;slot++)renderEmptyCharacterSlot(slot);
@@ -18849,6 +18921,7 @@
     try{await connectLogin();}catch(error){showConnectionFailure(error);}
   });
   $("server-back").addEventListener("click",()=>{
+    if(connectionRetry.active){returnToLogin("已取消自动重连。");$("account").focus();return;}
     returnToAccountLogin();
     $("account").focus();
   });

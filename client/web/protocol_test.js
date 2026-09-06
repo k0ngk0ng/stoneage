@@ -6223,4 +6223,6 @@ require("node:child_process").execFileSync(process.execPath, [__dirname + "/worl
 require("./login_credentials_test.js");
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sprite_loading_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sw_cache_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/resource_loading_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/connection_retry_test.js"], {stdio:"inherit"});
 console.log("web protocol vectors OK");
