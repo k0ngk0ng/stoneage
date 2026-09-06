@@ -63,6 +63,27 @@ func TestDecodeLegacyNPCTextChoosesEncodingPerLine(t *testing.T) {
 	}
 }
 
+func TestNPCInteractionRangeFromCreateArg(t *testing.T) {
+	tests := []struct {
+		name  string
+		enemy string
+		want  int
+	}{
+		{name: "range one", enemy: "npcgen_winhealer|1|4.0|6.0|1", want: 1},
+		{name: "range two", enemy: "npcgen_winhealer|1|4.0|6.0|2", want: 2},
+		{name: "missing defaults to one", enemy: "npcgen_winhealer|1|4.0|6.0", want: 1},
+		{name: "zero defaults to one", enemy: "windowhealer|1|4.0|6.0|0", want: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			template := npcTemplateFromEnemy(test.enemy)
+			if got := npcInteractionRange(template, test.enemy); got != test.want {
+				t.Fatalf("npcInteractionRange(%q)=%d want %d", test.enemy, got, test.want)
+			}
+		})
+	}
+}
+
 type fakeTCP struct {
 	listener net.Listener
 	accepted chan struct{}
@@ -485,7 +506,8 @@ func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 		`send("TK",[app.position[0],app.position[1],"P|hi",0,3])`,
 		`interactive-widget=overlays-content`,
 		`autocapitalize="none"`,
-		`maxlength="15"`,
+		`账号须为 1–15 位英文字母、数字、下划线、连字符或点`,
+		`密码须为 1–12 位半角英文字母、数字或符号，不支持空格`,
 		`font-size:16px !important`,
 		`navigator.serviceWorker.register("/sw.js",{scope:"/"})`,
 		`const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE)`,

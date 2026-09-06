@@ -32,7 +32,7 @@ func main() {
 	var opts options
 	flag.StringVar(&opts.address, "address", "127.0.0.1:9065", "GMSV TCP address")
 	flag.StringVar(&opts.account, "account", "probe", "local protocol-test account (maximum 15 bytes)")
-	flag.StringVar(&opts.password, "password", "local", "local protocol-test password (maximum 15 bytes)")
+	flag.StringVar(&opts.password, "password", "local", "local protocol-test password (maximum 12 bytes)")
 	flag.IntVar(&opts.rotation, "rotation", 0, "deterministic outer-packet rotation (0..98)")
 	flag.DurationVar(&opts.timeout, "timeout", 5*time.Second, "connection and exchange timeout")
 	flag.BoolVar(&opts.trace, "trace", false, "print packet bytes and decoded envelopes (includes account, never password text)")
@@ -51,8 +51,8 @@ func run(opts options) error {
 	if len(opts.account) == 0 || len(opts.account) > 15 {
 		return fmt.Errorf("account must contain 1..15 bytes")
 	}
-	if len(opts.password) == 0 || len(opts.password) > 15 {
-		return fmt.Errorf("password must contain 1..15 bytes")
+	if len(opts.password) == 0 || len(opts.password) > 12 {
+		return fmt.Errorf("password must contain 1..12 bytes")
 	}
 	if len(opts.character) == 0 || len(opts.character) >= 32 {
 		return fmt.Errorf("character must contain 1..31 bytes")

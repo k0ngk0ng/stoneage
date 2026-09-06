@@ -280,11 +280,10 @@
     /* mouse.cpp stocks CG_MOUSE_CURSOR at mouse.nowPoint + (16,16); the
        bitmap itself carries (-16,-16) offsets, so the fish head/tip is the
        logical pointer coordinate, not the image centre. */
-    /* cg_25000/cg_mouse_cursor carries REALBIN x/y offsets of -16/-16.
-       The browser image element has no native ADRN anchor of its own, so
-       apply that hotspot explicitly; without it a pointer at the task bar or
-       scene rim placed the entire fish below the clipped 480px surface. */
-    #world-cursor { left:0; top:0; width:32px; height:32px; z-index:2; transform:translate(-16px,-16px); }
+    /* The native +16 placement and -16 bitmap offsets cancel. The extracted
+       image therefore starts at the pointer, matching the CSS cursor's 0 0
+       hotspot on login/dialog controls. */
+    #world-cursor { left:0; top:0; width:32px; height:32px; z-index:2; }
     /* Runtime state stays in the DOM for diagnostics; the PC back buffer has
        no browser HUD laid over its artwork. */
     #hud { position:absolute; left:-10000px; top:0; width:1px; height:1px; overflow:hidden; }
@@ -1045,8 +1044,8 @@
       <img class="login-bitmap login-ok" src="/assets/bitmaps/bitmap_9114.png" alt="确定">
       <img class="login-bitmap login-quit" src="/assets/bitmaps/bitmap_9115.png" alt="退出">
       <form id="login-form" autocomplete="off">
-        <label for="account">账号</label><input id="account" name="stoneage-account" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="next" maxlength="15" required autofocus data-lpignore="true" data-1p-ignore="true">
-        <label for="password">密码</label><input id="password" name="stoneage-passcode" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done" maxlength="12" required data-lpignore="true" data-1p-ignore="true">
+        <label for="account">账号</label><input id="account" name="stoneage-account" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="next" title="账号须为 1–15 位英文字母、数字、下划线、连字符或点" required autofocus data-lpignore="true" data-1p-ignore="true">
+        <label for="password">密码</label><input id="password" name="stoneage-passcode" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done" title="密码须为 1–12 位半角英文字母、数字或符号，不支持空格" required data-lpignore="true" data-1p-ignore="true">
         <button class="primary" type="submit">连接并登录</button>
       </form>
       <button id="login-quit-button" type="button" aria-label="退出"></button>
@@ -4179,9 +4178,15 @@
        server-side key; passwords remain byte-for-byte case-sensitive. */
     return String(value??"").trim().replace(/[A-Z]/g,character=>character.toLowerCase());
   }
+  function validateLoginCredentials(account,password){
+    if(!account||!password){loginStatus("账号和密码不能为空。","error");return false;}
+    if(account.length>15||/[^A-Za-z0-9_.-]/.test(account)){loginStatus("账号须为 1–15 位英文字母、数字、下划线、连字符或点。","error");return false;}
+    if(password.length>12||/[^\x21-\x7e]/.test(password)){loginStatus("密码须为 1–12 位半角英文字母、数字或符号，不支持空格。","error");return false;}
+    return true;
+  }
   function acceptLoginCredentials(){
     const account=canonicalAccount($("account").value),password=$("password").value;
-    if(!account||!password){loginStatus("账号和密码不能为空。","error");return false;}
+    if(!validateLoginCredentials(account,password))return false;
     $("account").value=account;
     unlockAudio();
     playSoundEffect(217);
@@ -5093,7 +5098,7 @@
         :`资源清单已接收 ${formatLoadingBytes(stats.manifestBytes)}（总量未知）`)
       :(hasTotal?`贴片 ${stats.done}/${stats.total}`:"正在统计地图贴片");
     const bootstrapText=bootstrapPending
-      ?(bootstrapHasTotal?` · 首屏人物 ${formatLoadingBytes(stats.fieldBootstrapBytes)} / ${formatLoadingBytes(stats.fieldBootstrapTotalBytes)}`:" · 正在读取首屏人物")
+      ?(assetState.fieldBootstrapSpritesFailed&&assetState.spritesFailed?" · 人物资源加载失败，请点击重试":bootstrapHasTotal?` · 首屏人物 ${formatLoadingBytes(stats.fieldBootstrapBytes)} / ${formatLoadingBytes(stats.fieldBootstrapTotalBytes)}`:" · 正在读取首屏人物")
       :"";
     const actorStats=app.mapLoadingActorStats;
     const actorText=actorStats?.pending>0?` · 人物帧 ${Math.max(0,actorStats.total-actorStats.pending)}/${actorStats.total}`:"";
@@ -5109,7 +5114,7 @@
     const previous=app.mapLoadingStats||{};
     const lastProgressAt=progressKey!==previous.lastProgressKey?now:Number(previous.lastProgressAt)||now;
     const stalled=Boolean(startedAt&&now-lastProgressAt>=15000&&(!hasTotal||stats.pending>0||manifestPending||bootstrapPending));
-    const retryVisible=Boolean(stalled&&app.mapLoading&&app.phase==="world");
+    const retryVisible=Boolean((stalled||(bootstrapPending&&assetState.fieldBootstrapSpritesFailed&&assetState.spritesFailed))&&app.mapLoading&&app.phase==="world");
     detail.textContent=`${suffix}${bootstrapText}${actorText}${byteText}${elapsed>0?` · ${elapsed}s`:""}${stalled?" · 资源响应较慢":""}`;
     if(retry){retry.hidden=!retryVisible;retry.setAttribute("aria-hidden",retryVisible?"false":"true");}
     /* The character-entry shutter sits above #world-screen, so the normal
@@ -5155,7 +5160,7 @@
        record while its SPR row is unresolved.  Start the compact all-actor
        STAND/WALK table as soon as a world load begins, in parallel with map
        tiles, so it adds no post-map blank interval. */
-    if(loading&&app.phase==="world"&&!assetState.fieldBootstrapSpritesReady&&!assetState.fieldBootstrapSpriteLoading&&!assetState.spritesReady)loadFieldBootstrapSpriteManifest();
+    if(loading&&app.phase==="world"&&!assetState.fieldBootstrapSpritesReady&&!assetState.fieldBootstrapSpriteLoading&&!assetState.fieldBootstrapSpritesFailed&&!assetState.spritesReady)loadFieldBootstrapSpriteManifest();
     if(loading&&!app.mapLoadingStartedAt){app.mapLoadingStartedAt=Date.now();app.mapLoadingStats.startedAt=app.mapLoadingStartedAt;}
     if(!loading){
       app.mapLoadingStats.startedAt=0;
@@ -5197,6 +5202,8 @@
     if(assetState.manifestFailed){
       assetState.loading=null;assetState.manifestFailed=false;assetState.manifestReady=false;assetState.manifestError="";loadAssetManifest();
     }
+    assetState.spritesFailed=false;
+    assetState.fieldSpritesFailed=false;
     if(assetState.fieldBootstrapSpritesFailed){
       assetState.fieldBootstrapSpritesFailed=false;assetState.fieldBootstrapSpriteLoading=null;loadFieldBootstrapSpriteManifest();
     }
@@ -5246,7 +5253,7 @@
     if(dynamicReady&&!bootstrapReady){
       if(!assetState.fieldBootstrapSpriteLoading&&!assetState.fieldBootstrapSpritesFailed)loadFieldBootstrapSpriteManifest();
       if(assetState.fieldBootstrapSpritesFailed&&!assetState.spriteLoading&&!assetState.spritesReady)loadSpriteManifest();
-      setMapLoading(true,assetState.fieldBootstrapSpritesFailed?"正在读取兼容人物资源…":"正在准备首屏人物…");
+      setMapLoading(true,assetState.fieldBootstrapSpritesFailed?(assetState.spritesFailed?"人物资源加载失败，请点击重试":"正在读取兼容人物资源…"):"正在准备首屏人物…");
       return;
     }
     const actorFrames=dynamicReady?fieldBootstrapFrameReadiness():{ready:true,total:0,pending:0};
@@ -5804,6 +5811,8 @@
     if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
     if(assetState.fieldBootstrapSpritesReady)return Promise.resolve(assetState.fieldBootstrapSprites);
     if(assetState.fieldBootstrapSpriteLoading)return assetState.fieldBootstrapSpriteLoading;
+    /* A repaint must not restart a failed multi-megabyte download. Retry is explicit. */
+    if(assetState.fieldBootstrapSpritesFailed)return Promise.resolve(null);
     assetState.fieldBootstrapSpritesFailed=false;assetState.fieldBootstrapBytes=0;assetState.fieldBootstrapTotalBytes=0;
     const progress={_bytesKey:"fieldBootstrapBytes",_totalKey:"fieldBootstrapTotalBytes",fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0};
     assetState.fieldBootstrapSpriteLoading=fetch(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
@@ -5838,6 +5847,7 @@
     if(assetState.spritesReady)return Promise.resolve(assetState.sprites);
     if(assetState.fieldSpritesReady)return Promise.resolve(assetState.fieldSprites);
     if(assetState.fieldSpriteLoading)return assetState.fieldSpriteLoading;
+    if(assetState.fieldSpritesFailed)return Promise.resolve(null);
     assetState.fieldSpritesFailed=false;
     assetState.fieldSpriteLoading=fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`场景动作资源 HTTP ${response.status}`);
@@ -5873,6 +5883,7 @@
       return Promise.resolve(assetState.sprites);
     }
     if(assetState.spriteLoading)return assetState.spriteLoading;
+    if(assetState.spritesFailed)return Promise.resolve(null);
     assetState.spriteBytes=0;assetState.spriteTotalBytes=0;assetState.spritesFailed=false;
     const progress={_spriteProgress:true,spriteBytes:0,spriteTotalBytes:0};
     assetState.spriteLoading=fetch(`${SPRITE_MANIFEST_URL}`,{cache:"no-cache"}).then(async response=>{
@@ -5895,11 +5906,10 @@
     }).catch(error=>{
       assetState.sprites=null;assetState.spritesReady=false;assetState.spritesFailed=true;
       addEvent(`精灵资源加载失败：${error?.message||error}`);
-      /* Sprite tables are visual enhancement data.  Do not reopen a map
-         loading curtain when an optional animation file is unavailable;
-         retry slowly so a transient mobile connection can recover. */
+      /* Retain failure until the user retries; render/menu callbacks must
+         not repeatedly download the full compatibility table. */
       assetState.spriteLoading=null;
-      window.setTimeout(()=>{if(!assetState.spritesReady&&app.phase!=="login")loadSpriteManifest();},5000);
+      renderWorld(true);if(app.battle)renderBattleWorld();
       return null;
     });
     return assetState.spriteLoading;
@@ -7621,7 +7631,7 @@
          the server's viewport; when that object leaves, restoreStaticNPCAt()
          must be able to rebuild the same bitmap and facing direction instead
          of falling back to graphic 0 (an invisible actor). */
-      const metadata={template:String(record.template||""),interaction:String(record.interaction||""),source:String(record.source||""),id,name,graphic,direction:stateNumber(record.direction)};
+      const metadata={template:String(record.template||""),interaction:String(record.interaction||""),interactionRange:Number(record.interactionRange)||1,source:String(record.source||""),id,name,graphic,direction:stateNumber(record.direction)};
       app.npcMetadataByKey.set(npcMetadataKey(floor,x,y),metadata);
       wanted.add(id);
       const existing=app.actors.get(id);
@@ -8524,7 +8534,15 @@
     const panel=$("battle-target-panel"),list=$("battle-target-list");if(!panel||!list)return;const action=app.battleState.pendingAction;list.replaceChildren();
     panel.classList.remove("actor-target-prompt");
     if(!action){panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom");panel.classList.add("hidden");return;}
-    if(!battleActionAllowed(action)){app.battleState.pendingAction=null;panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom");panel.classList.add("hidden");return;}
+    if(!battleActionAllowed(action)){
+      /* Locking a submitted command synchronously repaints this panel before
+         its HTTP write completes. Hide the hit boxes, but retain the action
+         identity used by sendBattleTarget's stale-response guard. Clearing
+         it here skips the player -> pet hand-off (and failed-write retry).
+         New BP/battle cleanup still explicitly retires the pending action. */
+      if(!app.battleState.targetSelectionPending)app.battleState.pendingAction=null;
+      panel.dataset.promptPlacement="";panel.classList.remove("target-prompt-top","target-prompt-bottom");panel.classList.add("hidden");return;
+    }
     if(battleUsesActorTarget(action)){
       /* BattleTargetSelect() is shared by BATTLE_ATTACK, BATTLE_CAPTURE and
          actor-targeted magic.  The browser still selects through the actor's
@@ -14099,7 +14117,15 @@
      server template intentionally has no TALKEDFUNC.  CHAR_TYPEMSG (6) is
      also a safe wire fallback for generated Msg/SignBoard objects when a
      deployment has no static metadata file. */
-  function npcUsesLookInteraction(actor){
+  function npcInteractionRange(actor){
+    /* Healer TALKEDFUNC uses the create record's configured range. LOOK
+       still dispatches only one cell; missing metadata stays adjacent-only. */
+    const metadata=app.npcMetadataByKey?.get(npcMetadataKey(app.floor,actor?.x,actor?.y));
+    const template=String(actor?.npcTemplate||metadata?.template||"").trim().toLowerCase();
+    return template==="npcgen_winhealer"||template==="windowhealer"?Math.max(1,Math.min(2,Number(metadata?.interactionRange??actor?.npcInteractionRange)||1)):1;
+  }
+  function npcUsesLookInteraction(actor,distance=1){
+    if(distance>1&&npcInteractionRange(actor)===2)return false;
     return Boolean(actor&&(
       String(actor.npcInteraction||"").toLowerCase()==="look"||
       Number(actor.charType)===6
@@ -14221,7 +14247,7 @@
       return;
     }
     const distance=Math.max(Math.abs(Number(target.x)-Number(app.position[0])),Math.abs(Number(target.y)-Number(app.position[1])));
-    if(distance>1)return;
+    if(distance>npcInteractionRange(target))return;
     /* Walking is locally predicted because ordinary 2.5 W packets do not
        echo every tile to the owner.  NPC face-to-face validation, however,
        runs against the server's coordinate.  Never send TK in the small
@@ -14286,8 +14312,8 @@
   }
   function approachNPC(target){
     const tx=Number(target?.x),ty=Number(target?.y);if(!Number.isFinite(tx)||!Number.isFinite(ty))return false;
-    const candidates=[];
-    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const candidates=[],range=npcInteractionRange(target);
+    for(let dy=-range;dy<=range;dy++)for(let dx=-range;dx<=range;dx++){
       if(!dx&&!dy)continue;
       const x=tx+dx,y=ty+dy;
       if(localCellWalkable(x,y)!==true||actorOccupiesCell(x,y))continue;
@@ -14376,28 +14402,25 @@
         setWorldState("NPC 已离开视野，请重新选择。","error");return false;
       }
     }
-    /* The 2.5 server's CHAR_Talk() checks only the player's current tile and
-       the single tile in front of the player.  The native field loop also
-       limits lookAtAround() to one tile.  A target two cells away may be
-       visible under the pointer, but sending TK immediately cannot reach it:
-       the server only echoes the player's own chat and never dispatches the
-       NPC callback.  Approach every target beyond the adjacent tile first,
-       then issue the native face/L/TK pair once the route has landed. */
+    /* L dispatches only the front cell. Normal P|hi/area3 TK broadcasts to
+       a 7x7 region; each TALKEDFUNC then applies its own distance check.
+       Keep the normal adjacent approach, except for the verified healer
+       callback which accepts distance 2 across a counter. */
     const targetDistance=Math.max(Math.abs(Number(current.x)-Number(app.position[0])),Math.abs(Number(current.y)-Number(app.position[1])));
     if(targetDistance===0){if(app.pendingTalk?.id===id)return false;return approachNPC(current);}
-    const lookInteraction=npcUsesLookInteraction(current);
+    const lookInteraction=npcUsesLookInteraction(current,targetDistance);
     /* A LOOKEDFUNC object can sit behind a decorative wall/door tile, so
        requiring an adjacent walkable cell made valid nurse/door/signboard
        clicks fail with “附近没有可到达的位置”.  At this point the target is
        adjacent; let the server's L handler perform the native face/object
        check. */
-    if(targetDistance>1){
+    if(targetDistance>npcInteractionRange(current)){
       if(app.pendingTalk?.id===id)return false;
       return approachNPC(current);
     }
     const now=Date.now();if(now-(app.talkSentAt||0)<LEGACY_TURN_SEND_WAIT_MS)return false;
     const desired=directionFor(Number(current.x)-Number(app.position[0]),Number(current.y)-Number(app.position[1]));
-    if(npcUsesLookInteraction(current)){
+    if(lookInteraction){
       /* lookAtAround() computes the direction from the clicked adjacent tile
          and sends one L packet. CHAR_Look then dispatches CHAR_LOOKEDFUNC. */
       const wireDirection=desired>=0?serverDirectionFromClient(desired):serverDirectionFromClient(app.direction);
@@ -14604,7 +14627,7 @@
        returns to the title and logs in again without a full reload, the new
        session must install its own refresh guard. */
     pageUnloadLogoutSent=false;
-    const account=canonicalAccount($("account").value),password=$("password").value;if(!account||!password)return;
+    const account=canonicalAccount($("account").value),password=$("password").value;if(!validateLoginCredentials(account,password))return;
     $("account").value=account;
     app.account=account;app.password=password;app.phase="connecting";loginStatus("正在建立 HTTP → TCP 会话…");status("连接中");
     const transport=new HTTPTransport("");
@@ -16114,8 +16137,15 @@
     return [Number(render.origin_x??fallback.render.origin_x)+(lx+ly)*Number(step[0]??32),Number(render.origin_y??fallback.render.origin_y)+(ly-lx)*Number(step[1]??24)];
   }
   function walkProgress(now=performance.now(),animation=currentWorldWalkAnimation()){if(!animation)return 0;return Math.max(0,Math.min(1,(now-animation.startedAt)/animation.duration));}
-  function viewPosition(){const animation=currentWorldWalkAnimation();if(!animation)return app.position;const progress=walkProgress(performance.now(),animation);return [animation.from[0]+(animation.to[0]-animation.from[0])*progress,animation.from[1]+(animation.to[1]-animation.from[1])*progress];}
-  function tilePoint(x,y){const canvas=$("world"),view=viewPosition(),px=view[0],py=view[1],center=mapPixel(px,py),point=mapPixel(x,y);if(center&&point)return [canvas.width/2+point[0]-center[0],canvas.height/2+point[1]-center[1]];return [canvas.width/2+(x-px+y-py)*32,canvas.height/2+(y-py-x+px)*24];}
+  function viewPosition(now=performance.now(),animation=currentWorldWalkAnimation()){if(!animation)return app.position;const progress=walkProgress(now,animation);return [animation.from[0]+(animation.to[0]-animation.from[0])*progress,animation.from[1]+(animation.to[1]-animation.from[1])*progress];}
+  function worldRenderFrame(now=performance.now()){
+    const animation=currentWorldWalkAnimation();
+    /* Native drawMap/setCharPrio share the positions from one process tick.
+       Freeze only this draw's coordinates, not the pointer or movement clock:
+       clipping, sorting and painting must not advance the camera separately. */
+    return {view:viewPosition(now,animation).slice(),walking:Boolean(animation),direction:animation?.direction};
+  }
+  function tilePoint(x,y,view=viewPosition()){const canvas=$("world"),px=view[0],py=view[1],center=mapPixel(px,py),point=mapPixel(x,y);if(center&&point)return [canvas.width/2+point[0]-center[0],canvas.height/2+point[1]-center[1]];return [canvas.width/2+(x-px+y-py)*32,canvas.height/2+(y-py-x+px)*24];}
   function drawBitmapAt(ctx,image,info,anchor,scale=1){if(!image?.complete||!image.naturalWidth)return false;const x=anchor[0]+Number(info?.xoffset??info?.x??0)*scale,y=anchor[1]+Number(info?.yoffset??info?.y??0)*scale;ctx.drawImage(image,x,y,image.naturalWidth*scale,image.naturalHeight*scale);return true;}
   function drawActorSpeech(ctx,actor,point){
     if(!String(actor?.speech||"").trim()||Number(actor?.speechUntil||0)<=Date.now())return;
@@ -16234,12 +16264,12 @@
     }else if(Number(partPoint[1])<=Number(actorPoint[1]))return false;
     return true;
   }
-  function renderSceneActorsAndParts(actors,parts,canvas=$("world")){
+  function renderSceneActorsAndParts(actors,parts,canvas=$("world"),sceneFrame=worldRenderFrame()){
     const ctx=getWorld2DContext(canvas);if(!canvas||!ctx)return;
-    const animation=currentWorldWalkAnimation(),now=performance.now(),progress=animation?walkProgress(now,animation):1,actorItems=[];
+    const view=sceneFrame.view,actorItems=[];
     for(const actor of actors){
       const isSelf=actor.name===app.character||actor.id===app.playerActorId;
-      const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:4}):actor;
+      const renderActor=isSelf&&sceneFrame.walking?Object.assign({},actor,{x:view[0],y:view[1],direction:sceneFrame.direction,action:4}):actor;
       const anchor=mapPixel(Number(renderActor.x)||0,Number(renderActor.y)||0);
       const frame=actorFrame(renderActor),info=frame?.frame||frame?.info||{};
       /* The local smooth-walk actor is a shallow presentation copy with a
@@ -16280,7 +16310,7 @@
     const visibleParts=[];
     for(const part of parts||[]){
       if(!part?.image?.complete||!part.image.naturalWidth)continue;
-      const point=tilePoint(Number(part.x)||0,Number(part.y)||0),info=part.info||{};
+      const point=tilePoint(Number(part.x)||0,Number(part.y)||0,view),info=part.info||{};
       const left=Number(point?.[0]||0)+Number(info.xoffset??info.x??0),top=Number(point?.[1]||0)+Number(info.yoffset??info.y??0);
       const right=left+part.image.naturalWidth,bottom=top+part.image.naturalHeight;
       if(right<0||bottom<0||left>canvas.width||top>canvas.height)continue;
@@ -16300,20 +16330,20 @@
       if(!inserted)items.push(entry);
     }
     for(const item of items.slice().reverse()){
-      if(item.kind===1){const actor=item.actor;drawActor(ctx,actor,tilePoint(actor.x,actor.y),{labels:false,speech:false});}
-      else {const part=item.part;if(part?.image?.complete&&part.image.naturalWidth)drawBitmapAt(ctx,part.image,part.info,tilePoint(part.x,part.y),1);}
+      if(item.kind===1){const actor=item.actor;drawActor(ctx,actor,tilePoint(actor.x,actor.y,view),{labels:false,speech:false});}
+      else {const part=item.part;if(part?.image?.complete&&part.image.naturalWidth)drawBitmapAt(ctx,part.image,part.info,tilePoint(part.x,part.y,view),1);}
     }
     /* DISP_PRIO_RESERVE is emitted after CHAR/PARTS but before the native
        font back-buffer is flushed.  Paint weather at that same boundary so
        rain/snow can cross sprites without obscuring names or speech text. */
-    drawMapEffects(ctx);
+    drawMapEffects(ctx,view);
     /* StockFontBuffer is flushed after the sprite/part display list.  Do the
        same for field names and speech so text cannot disappear behind a roof
        or be clipped by a tree's bitmap.  Only character records participate;
        item/gold objects remain sprite-only. */
     for(const item of actorItems){
       if(item.actorKind!=="character"&&!actorHasCharacterLabels(item.actor))continue;
-      const actor=item.actor,point=tilePoint(actor.x,actor.y);
+      const actor=item.actor,point=tilePoint(actor.x,actor.y,view);
       drawActorLabels(ctx,actor,point);
       drawActorSpeech(ctx,actor,point);
     }
@@ -16678,8 +16708,8 @@
     const active=levels.rain>0||levels.snow>0||app.mapEffectParticles.some(item=>item.kind==="star");
     if(active)scheduleMapEffectAnimation();else stopMapEffectAnimation();
   }
-  function drawMapStar(ctx,star){
-    const point=tilePoint(Number(star.gx)||0,Number(star.gy)||0),x=Math.round(Number(point?.[0]||0)+Number(star.ggx||0)),y=Math.round(Number(point?.[1]||0)+Number(star.ggy||0));
+  function drawMapStar(ctx,star,view){
+    const point=tilePoint(Number(star.gx)||0,Number(star.gy)||0,view),x=Math.round(Number(point?.[0]||0)+Number(star.ggx||0)),y=Math.round(Number(point?.[1]||0)+Number(star.ggy||0));
     const white=MAP_EFFECT_STAR_WHITE,yellow=MAP_EFFECT_STAR_YELLOW,soft=MAP_EFFECT_STAR_SOFT,gold=MAP_EFFECT_STAR_GOLD,pale=MAP_EFFECT_STAR_PALE;
     const pixel=(dx,dy,color)=>{ctx.fillStyle=color;ctx.fillRect(x+dx,y+dy,1,1);};
     switch(Number(star.mode)||0){
@@ -16694,11 +16724,11 @@
       default: pixel(0,0,yellow);break;
     }
   }
-  function drawMapEffects(ctx){
+  function drawMapEffects(ctx,view){
     if(!ctx||!app.mapEffectParticles.length)return;
     ctx.save();ctx.imageSmoothingEnabled=false;
     for(const particle of app.mapEffectParticles){
-      if(particle.kind==="star"){drawMapStar(ctx,particle);continue;}
+      if(particle.kind==="star"){drawMapStar(ctx,particle,view);continue;}
       const x=Math.round(Number(particle.x)||0),y=Math.round(Number(particle.y)||0);
       if(particle.kind==="rain"){ctx.fillStyle=MAP_EFFECT_RAIN_COLOR;ctx.fillRect(x,y-1,1,1);ctx.fillRect(x,y,1,1);ctx.fillRect(x+1,y+1,1,1);ctx.fillRect(x+1,y+2,1,1);}
       else {ctx.fillStyle=MAP_EFFECT_SNOW_SHADE;ctx.fillRect(x-1,y-1,1,1);ctx.fillRect(x+1,y-1,1,1);ctx.fillRect(x-1,y+1,1,1);ctx.fillRect(x+1,y+1,1,1);ctx.fillStyle=MAP_EFFECT_SNOW_BRIGHT;ctx.fillRect(x,y-1,1,1);ctx.fillRect(x-1,y,1,1);ctx.fillRect(x,y,1,1);ctx.fillRect(x+1,y,1,1);ctx.fillRect(x,y+1,1,1);}
@@ -16727,7 +16757,8 @@
        private canvas.  Only the finished surface is presented below; the
        public #world canvas remains stable for pointer hit testing. */
     app._lastWorldRender=now;ctx.imageSmoothingEnabled=false;
-    const map=app.map,node=$("world-map"),staticReady=!!(map?.image?.complete&&node?.complete&&node.naturalWidth),dynamicReady=!!(map&&Array.isArray(map.tiles)&&map.tiles.length),view=viewPosition(),center=mapPixel(view[0],view[1]),layerCache=dynamicReady?ensureMapLayerCache(map):null;
+    const frame=worldRenderFrame(now);
+    const map=app.map,node=$("world-map"),staticReady=!!(map?.image?.complete&&node?.complete&&node.naturalWidth),dynamicReady=!!(map&&Array.isArray(map.tiles)&&map.tiles.length),view=frame.view,center=mapPixel(view[0],view[1]),layerCache=dynamicReady?ensureMapLayerCache(map):null;
     /* MAP.CPP keeps the previous DirectDraw back-buffer on screen while a
        replacement M window is being read and decoded.  Do not clear our
        private canvas and expose the black clear colour during that interval:
@@ -16769,7 +16800,7 @@
     }
     maybeFinishMapLoading();
     const peopleVisible=app.systemSettings?.peopleVisible!==false;
-    const renderCenter=viewPosition(),staticNPCVisibleRange=40;
+    const renderCenter=view,staticNPCVisibleRange=40;
     const actors=[...app.actors.values()].filter(actor=>{
       if(!Number.isFinite(Number(actor.x))||!Number.isFinite(Number(actor.y)))return false;
       /* /api/npcs is intentionally floor-wide so town NPCs can be found
@@ -16789,12 +16820,12 @@
       const domActors=actors.slice();
       if(!domActors.some(actor=>actor.name===app.character))domActors.push({name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3,x:app.position[0],y:app.position[1]});
       const parts=dynamicReady?(mapLayerCacheUsable(layerCache)?(layerCache.parts||[]):(mapLayerCacheUsable(app.mapLayerFallback)?mergeMapLayerParts(layerCache,app.mapLayerFallback):(layerCache?.parts||[]))):[];
-      renderSceneActorsAndParts(domActors,parts,canvas);
+      renderSceneActorsAndParts(domActors,parts,canvas,frame);
       presentWorldBackBuffer(canvas);
       renderWorldOverlay();scheduleWorldAnimation();return;
     }
-    for(const actor of actors)drawActor(ctx,actor,tilePoint(actor.x,actor.y));
-    if(!actors.some(actor=>actor.name===app.character))drawActor(ctx,{name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3},tilePoint(app.position[0],app.position[1]));
+    for(const actor of actors)drawActor(ctx,actor,tilePoint(actor.x,actor.y,view));
+    if(!actors.some(actor=>actor.name===app.character))drawActor(ctx,{name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3},tilePoint(app.position[0],app.position[1],view));
     presentWorldBackBuffer(canvas);renderWorldOverlay();scheduleWorldAnimation();
   }
   function scheduleWorldAnimation(){

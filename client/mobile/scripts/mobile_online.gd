@@ -616,6 +616,17 @@ func _on_login_pressed() -> void:
 		login_status_label.text = "账号和密码不能为空"
 		login_status_label.add_theme_color_override("font_color", DANGER)
 		return
+	var password_bytes := password.to_utf8_buffer()
+	var password_valid := password_bytes.size() <= 12
+	for character in password_bytes:
+		if character < 0x21 or character > 0x7e:
+			password_valid = false
+			break
+	if not password_valid:
+		login_status_label.visible = true
+		login_status_label.text = "密码须为 1–12 位半角英文字母、数字或符号，不支持空格"
+		login_status_label.add_theme_color_override("font_color", DANGER)
+		return
 	login_status_label.visible = true
 	login_status_label.text = "正在连接游戏网关…"
 	login_status_label.add_theme_color_override("font_color", ACCENT)

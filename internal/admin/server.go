@@ -945,10 +945,10 @@ func requestSourceIP(request *http.Request) string {
 
 func publicError(err error) string {
 	if errors.Is(err, auth.ErrInvalidUsername) {
-		return "账号格式不正确（仅支持 1–15 位 ASCII 字符）"
+		return "账号须为 1–15 位英文字母、数字、下划线、连字符或点"
 	}
 	if errors.Is(err, auth.ErrInvalidPassword) {
-		return "密码长度必须为 1–15 位可打印字符"
+		return "密码须为 1–12 位半角英文字母、数字或符号，不支持空格"
 	}
 	return err.Error()
 }

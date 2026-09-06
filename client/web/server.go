@@ -736,8 +736,9 @@ type npcMetadata struct {
 	// do not answer an NPC request; they only let the browser select the
 	// native L (LOOK) or TK (TALK) entry point.  The 2.5 server remains the
 	// authority and may still reject either packet.
-	Template    string `json:"template,omitempty"`
-	Interaction string `json:"interaction,omitempty"`
+	Template         string `json:"template,omitempty"`
+	Interaction      string `json:"interaction,omitempty"`
+	InteractionRange int    `json:"interactionRange,omitempty"`
 }
 
 type npcMetadataResponse struct {
@@ -905,6 +906,26 @@ func npcTemplateFromEnemy(value string) string {
 	return strings.TrimSpace(value)
 }
 
+// npcInteractionRange exposes the distance enforced by the native healer
+// callback.  Its final create-record argument is the range; native code uses
+// one when the argument is absent or zero.  Other NPC templates do not have
+// this interaction-specific hint.
+func npcInteractionRange(template, enemy string) int {
+	switch strings.ToLower(strings.TrimSpace(template)) {
+	case "windowhealer", "npcgen_winhealer":
+		interactionRange := 1
+		arguments := strings.Split(enemy, "|")
+		if len(arguments) > 4 {
+			if parsed, ok := parseNPCInteger(arguments[4]); ok && parsed != 0 {
+				interactionRange = parsed
+			}
+		}
+		return interactionRange
+	default:
+		return 0
+	}
+}
+
 func parseNPCCreateFile(path, source string, result map[int]map[string]npcMetadata) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -931,9 +952,10 @@ func parseNPCCreateFile(path, source string, result map[int]map[string]npcMetada
 		if npcUsesLookInteraction(template) {
 			interaction = "look"
 		}
+		interactionRange := npcInteractionRange(template, fields["enemy"])
 		// Event/NPC records are all talkable from the browser's point of view;
 		// the exact server subtype arrives later in the C object packet.
-		item := npcMetadata{ID: stableNPCMetadataID(source, floor, x, y, graphic, name), Floor: floor, X: x, Y: y, Direction: 0, Graphic: graphic, Name: name, Source: source, Template: template, Interaction: interaction}
+		item := npcMetadata{ID: stableNPCMetadataID(source, floor, x, y, graphic, name), Floor: floor, X: x, Y: y, Direction: 0, Graphic: graphic, Name: name, Source: source, Template: template, Interaction: interaction, InteractionRange: interactionRange}
 		if direction, ok := parseNPCInteger(fields["dir"]); ok {
 			item.Direction = direction
 		}

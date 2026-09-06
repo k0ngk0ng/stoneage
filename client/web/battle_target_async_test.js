@@ -9,22 +9,29 @@ const cancelStart = html.indexOf("  function battleCancelPendingUi(state){");
 const cancelEnd = html.indexOf("  function battleCancelPendingDamage(", cancelStart);
 assert.ok(cancelStart >= 0 && cancelEnd > cancelStart, "production selector cleanup missing");
 
-function harness(kind) {
+const targetsStart = html.indexOf("  function renderBattleTargets(){");
+const targetsEnd = html.indexOf("  async function sendBattleTarget(", targetsStart);
+assert.ok(targetsStart >= 0 && targetsEnd > targetsStart);
+
+function harness(kind, repaintOnLock = false) {
   const action = {kind, index: 0, targetType: 6};
   const state = {pendingAction: action, commandPending: {}, turnKey: 1};
   const app = {battle: true, battleState: state, battleCommands: []};
   const requests = [], errors = [], effects = [];
-  const node = {classList: {add() {}}, textContent: "", scrollTop: 0, scrollHeight: 0};
+  const node = {classList: {add() {}, remove() {}, toggle() {}}, dataset: {}, replaceChildren() {}, setAttribute() {}, textContent: "", scrollTop: 0, scrollHeight: 0};
+  let paintTargets = () => {};
   const deps = {
     app, $: () => node,
-    battleActionAllowed: () => true,
+    battleActionAllowed: () => !(kind === "pet" ? state.petLocked : state.playerLocked),
+    battleUsesActorTarget: () => true,
+    battleTargetPromptPlacement: () => {},
     rejectFullBattleCapture: () => false,
     rejectUnavailableBattleMagic: () => false,
     battleTargetSelectable: () => true,
     battleActionCommand: () => kind === "pet" ? "W|0|A" : "H|A",
     battleButtonCommandForAction: () => kind === "pet" ? "" : "H|A",
     setBattleMenuPressedCommand: () => {},
-    battleSetCommandLock: (current, owner, locked) => { current[owner + "Locked"] = locked; effects.push("lock"); },
+    battleSetCommandLock: (current, owner, locked) => { current[owner + "Locked"] = locked; effects.push("lock"); if(repaintOnLock)paintTargets(); },
     battleStartCommandPending: (current, owner, command) => { current.commandPending[owner] = command; },
     battleClearCommandPending: (current, owner) => { current.commandPending[owner] = null; effects.push("clear"); },
     battleActivePetSlot: () => 0,
@@ -37,16 +44,18 @@ function harness(kind) {
     reportError: error => { errors.push(error); },
     send: (name, fields) => new Promise((resolve, reject) => { requests.push({name, fields, resolve, reject}); }),
   };
+  paintTargets = new Function(...Object.keys(deps), html.slice(targetsStart, targetsEnd) + "\nreturn renderBattleTargets;")(...Object.values(deps));
   const handlers = new Function(...Object.keys(deps), html.slice(start, end) + html.slice(cancelStart, cancelEnd) + "\nreturn {sendTarget:sendBattleTarget,cancel:battleCancelPendingUi};")(...Object.values(deps));
   return {state, app, requests, errors, effects, ...handlers};
 }
 
 async function run() {
-  for (const kind of ["pet", "attack"]) {
-    const test = harness(kind);
+  for (const repaintOnLock of [false, true]) for (const kind of ["pet", "attack"]) {
+    const test = harness(kind, repaintOnLock);
     const pending = test.sendTarget({battleId: 10});
     await test.sendTarget({battleId: 10});
     assert.equal(test.requests.length, 1, "pointerup/click pair must send once");
+    assert.ok(test.state.pendingAction, "locking the command must hide targets without discarding the in-flight action owner");
     test.requests[0].reject(new Error("bridge unavailable"));
     await pending;
     assert.equal(test.errors.length, 1);
@@ -57,6 +66,7 @@ async function run() {
     await retry;
     assert.equal(test.state.pendingAction, null);
     assert.equal(test.app.battleCommands.length, 1);
+    assert.equal(test.effects.filter(effect=>effect==="pet-stage").length, kind==="attack"?1:0, "accepted player target must hand off to pet exactly once");
   }
   for (const accepted of [true, false]) for (const replacedBattle of [true, false]) {
     const test = harness("pet");

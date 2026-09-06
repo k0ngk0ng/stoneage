@@ -59,6 +59,36 @@ func TestAccountAuthenticationAndLockout(t *testing.T) {
 	}
 }
 
+func TestGamePasswordTwelveByteLimit(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	password := []byte("AbCD@efg7^&H")
+	account, err := store.CreateAccount(ctx, "probe", password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tooLong := range []string{"1234567890123", "AbCD@efg7^&HIJ", "123456789012345"} {
+		if _, err := store.CreateAccount(ctx, "invalid", []byte(tooLong)); !errors.Is(err, ErrInvalidPassword) {
+			t.Fatalf("create with %d-byte password: %v", len(tooLong), err)
+		}
+		if err := store.SetAccountPassword(ctx, account.ID, []byte(tooLong), false); !errors.Is(err, ErrInvalidPassword) {
+			t.Fatalf("reset with %d-byte password: %v", len(tooLong), err)
+		}
+		if _, err := store.Authenticate(ctx, "probe", []byte(tooLong), "127.0.0.1"); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("login with %d-byte password: %v", len(tooLong), err)
+		}
+	}
+	if _, err := store.Authenticate(ctx, "probe", password, "127.0.0.1"); err != nil {
+		t.Fatalf("12-byte password must survive rejected resets: %v", err)
+	}
+	if err := store.SetAccountPassword(ctx, account.ID, []byte("Z"), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, "probe", []byte("Z"), "127.0.0.1"); err != nil {
+		t.Fatalf("minimum-length password: %v", err)
+	}
+}
+
 func TestGameAccountNamesAreCaseInsensitive(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

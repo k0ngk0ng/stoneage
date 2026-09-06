@@ -20,7 +20,8 @@
   <h2>重置密码</h2>
   <form method="post" action="/accounts/{{.Account.ID}}/password">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>新密码（1–15 位）<input type="password" name="password" maxlength="15" required></label>
+    <label>新密码（1–12 位）<input type="password" name="password" pattern="[!-~]{1,12}" title="密码须为 1–12 位半角英文字母、数字或符号，不支持空格" required></label>
+    <p class="hint">密码支持半角英文字母、数字和符号（如 @、^、&amp;），不支持空格；与游戏客户端一致，最多 12 位。</p>
     <label class="checkbox"><input type="checkbox" name="must_change" value="1"> 下次登录前标记为需重置</label>
     <button class="primary" type="submit">保存新密码</button>
   </form>

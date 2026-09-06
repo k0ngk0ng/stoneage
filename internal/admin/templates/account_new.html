@@ -3,9 +3,9 @@
 <div class="card narrow">
 <form method="post" action="/accounts">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <label>账号（1–15 位 ASCII）<input name="username" value="{{.FormUsername}}" maxlength="15" pattern="[A-Za-z0-9_.-]{1,15}" required autofocus></label>
-  <label>密码（1–15 位，建议至少 8 位）<input type="password" name="password" maxlength="15" required></label>
-  <p class="hint">旧客户端协议最多传输 15 字节密码，暂不能使用更长密码。</p>
+  <label>账号（1–15 位英文字母、数字、下划线、连字符或点）<input name="username" value="{{.FormUsername}}" pattern="[A-Za-z0-9_.\-]{1,15}" required autofocus></label>
+  <label>密码（1–12 位，建议至少 8 位）<input type="password" name="password" pattern="[!-~]{1,12}" title="密码须为 1–12 位半角英文字母、数字或符号，不支持空格" required></label>
+  <p class="hint">密码支持半角英文字母、数字和符号（如 @、^、&amp;），不支持空格；与游戏客户端一致，最多 12 位。</p>
   <button class="primary" type="submit">创建账号</button>
 </form>
 </div>

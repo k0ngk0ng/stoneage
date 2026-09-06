@@ -24,6 +24,11 @@ let previousChangedAll = true;
 let previousDeltaFrom = "";
 let previousChanged = new Set();
 let previousRemoved = new Set();
+/* A repaint, prefetch, and media/image loader can all ask for one immutable
+   object before the first response has reached Cache Storage.  Keep one
+   network operation per strategy/URL until it settles; each fetch event gets
+   its own Response clone below. */
+const inflightResponses = new Map();
 
 function validRevision(value) {
   const revision = String(value || "").trim();
@@ -147,6 +152,78 @@ async function writeMeta(key, value) {
   }
 }
 
+function responseClone(response) {
+  try {
+    return response && typeof response.clone === "function" ? response.clone() : response;
+  } catch (_) {
+    return response;
+  }
+}
+
+function responseCloneForCache(response) {
+  try {
+    return response && typeof response.clone === "function" ? response.clone() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function responseKey(request, strategy) {
+  /* A preload (no-cors) and a JSON fetch (cors) must never share an opaque
+     response. Revision and request headers are also part of its identity. */
+  return JSON.stringify([strategy,activeRevision,request.method,request.url,request.mode,request.credentials,request.cache,request.redirect,Array.from(request.headers.entries())]);
+}
+
+function coalescedResponse(request, strategy, operation) {
+  const key = responseKey(request, strategy);
+  let pending = inflightResponses.get(key);
+  if (!pending) {
+    pending = Promise.resolve().then(operation);
+    inflightResponses.set(key, pending);
+    const clear = () => {
+      if (inflightResponses.get(key) === pending) inflightResponses.delete(key);
+    };
+    /* Attach both branches so a rejected network operation is still observed
+       while the caller receives the original rejection below. */
+    pending.then(clear, clear);
+  }
+  return pending.then(responseClone);
+}
+
+async function cachePutBestEffort(cache, request, response) {
+  if (!cache || !response || response.type === "error") return false;
+  try {
+    /* Cache Storage rejects some valid network responses (for example a
+       206/range response or a response whose body became a network error).
+       The fetch response remains usable because this is a separate clone. */
+    const clone = responseCloneForCache(response);
+    if (!clone) return false;
+    await cache.put(request, clone);
+    return true;
+  } catch (_) {
+    /* Cache Storage is an optional optimization.  Never turn a successful
+       network response into a failed fetch event because storage rejected it. */
+    return false;
+  }
+}
+
+async function cacheMatchBestEffort(cache, request) {
+  if (!cache) return null;
+  try {
+    return await cache.match(request, {ignoreVary: true});
+  } catch (_) {
+    return null;
+  }
+}
+
+async function globalCacheMatchBestEffort(request) {
+  try {
+    return await caches.match(request, {ignoreVary: true});
+  } catch (_) {
+    return null;
+  }
+}
+
 async function removeOldCaches() {
   const names = await caches.keys();
   const keep = new Set([cacheName()]);
@@ -157,56 +234,62 @@ async function removeOldCaches() {
 }
 
 async function networkFirst(request) {
-  const cache = await caches.open(cacheName());
-  try {
-    const response = await fetch(request);
-    if (response && (response.ok || response.type === "opaque")) {
-      await cache.put(request, response.clone());
+  return coalescedResponse(request, "network-first", async () => {
+    let cache = null;
+    try { cache = await caches.open(cacheName()); } catch (_) { /* network remains usable */ }
+    try {
+      const response = await fetch(request);
+      if (response && (response.ok || response.type === "opaque")) {
+        await cachePutBestEffort(cache, request, response);
+      }
+      return response;
+    } catch (error) {
+      const current = await cacheMatchBestEffort(cache, request);
+      if (current) return current;
+      const fallback = await globalCacheMatchBestEffort(request);
+      if (fallback) return fallback;
+      throw error;
     }
-    return response;
-  } catch (error) {
-    const current = await cache.match(request, {ignoreVary: true});
-    if (current) return current;
-    const fallback = await caches.match(request, {ignoreVary: true});
-    if (fallback) return fallback;
-    throw error;
-  }
+  });
 }
 
 async function cacheFirst(request) {
-  const cache = await caches.open(cacheName());
-  const hit = await cache.match(request, {ignoreVary: true});
-  if (hit) return hit;
-  /* When a publication revision changes, unchanged objects are safe to reuse
-     from the previous namespace because the uploader compared their SHA-256.
-     Changed/removed objects are excluded and must be fetched from the new
-     publication.  If the marker predates delta metadata, do not guess. */
-  if (previousRevision && previousDeltaKnown && !previousChangedAll && previousDeltaFrom === previousRevision) {
-    const key = assetObjectKey(new URL(request.url));
-    if (key && !previousChanged.has(key) && !previousRemoved.has(key)) {
-      try {
-        const previousCache = await caches.open(cacheName(previousRevision));
-        const previousHit = await previousCache.match(request, {ignoreVary: true});
-        if (previousHit) {
-          try { await cache.put(request, previousHit.clone()); } catch (_) { /* quota is optional */ }
-          return previousHit;
+  return coalescedResponse(request, "cache-first", async () => {
+    let cache = null;
+    try { cache = await caches.open(cacheName()); } catch (_) { /* network remains usable */ }
+    const hit = await cacheMatchBestEffort(cache, request);
+    if (hit) return hit;
+    /* When a publication revision changes, unchanged objects are safe to reuse
+       from the previous namespace because the uploader compared their SHA-256.
+       Changed/removed objects are excluded and must be fetched from the new
+       publication.  If the marker predates delta metadata, do not guess. */
+    if (previousRevision && previousDeltaKnown && !previousChangedAll && previousDeltaFrom === previousRevision) {
+      const key = assetObjectKey(new URL(request.url));
+      if (key && !previousChanged.has(key) && !previousRemoved.has(key)) {
+        try {
+          const previousCache = await caches.open(cacheName(previousRevision));
+          const previousHit = await cacheMatchBestEffort(previousCache, request);
+          if (previousHit) {
+            await cachePutBestEffort(cache, request, previousHit);
+            return previousHit;
+          }
+        } catch (_) {
+          /* Storage failures fall through to the normal network path. */
         }
-      } catch (_) {
-        /* Storage failures fall through to the normal network path. */
       }
     }
-  }
-  try {
-    const response = await fetch(request);
-    if (response && (response.ok || response.type === "opaque")) {
-      await cache.put(request, response.clone());
+    try {
+      const response = await fetch(request);
+      if (response && (response.ok || response.type === "opaque")) {
+        await cachePutBestEffort(cache, request, response);
+      }
+      return response;
+    } catch (error) {
+      const fallback = await globalCacheMatchBestEffort(request);
+      if (fallback) return fallback;
+      throw error;
     }
-    return response;
-  } catch (error) {
-    const fallback = await caches.match(request, {ignoreVary: true});
-    if (fallback) return fallback;
-    throw error;
-  }
+  });
 }
 
 async function loadStoredState() {

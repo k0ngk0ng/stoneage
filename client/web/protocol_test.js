@@ -1979,10 +1979,10 @@ for (const expected of [
      into the same field back-buffer. */
   /function mapEffectWeatherLevels\(map=app\.map\)[\s\S]{0,900}value>=80&&value<=84[\s\S]{0,220}value>=85&&value<=89/,
   /const MAP_EFFECT_RAIN_COLOR="#e3f8ff"/,
-  /function drawMapEffects\(ctx\)[\s\S]{0,1800}fillRect\(x,y-1,1,1\)[\s\S]{0,700}MAP_EFFECT_SNOW_BRIGHT/,
+  /function drawMapEffects\(ctx,view\)[\s\S]{0,1800}fillRect\(x,y-1,1,1\)[\s\S]{0,700}MAP_EFFECT_SNOW_BRIGHT/,
   /function ensureMapEffectStars\(now\)[\s\S]{0,1000}MAP_EFFECT_STAR_PATTERNS/,
-  /function renderWorld\(force=false\)[\s\S]{0,260}updateMapEffects\(now\)[\s\S]{0,5200}renderSceneActorsAndParts\(domActors,parts,canvas\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
-  /function renderSceneActorsAndParts\([\s\S]{0,2600}drawMapEffects\(ctx\)[\s\S]{0,420}StockFontBuffer|DISP_PRIO_RESERVE is emitted[\s\S]{0,260}drawMapEffects\(ctx\)/,
+  /function renderWorld\(force=false\)[\s\S]{0,260}updateMapEffects\(now\)[\s\S]{0,5200}renderSceneActorsAndParts\(domActors,parts,canvas,frame\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
+  /function renderSceneActorsAndParts\([\s\S]{0,2600}drawMapEffects\(ctx,view\)[\s\S]{0,420}StockFontBuffer|DISP_PRIO_RESERVE is emitted[\s\S]{0,260}drawMapEffects\(ctx,view\)/,
   /* map.cpp's held-left-button mode samples a new moveStack point every
      250 ms.  Once MOVE_MODE_CHANGE_TIME elapses it keeps the fish pointer,
      but suppresses the orange CG_GRID_CURSOR until button release. */
@@ -2028,10 +2028,9 @@ for (const expected of [
      Keep the M-window guard only while that floor-wide back-buffer is still
      unavailable, otherwise long clicks can never cross the current window. */
   /const hasCompleteFloorMap=Boolean\(app\.autoMapData&&Number\(app\.autoMapData\.floor\)===Number\(app\.floor\)\);[\s\S]{0,220}app\.map&&!hasCompleteFloorMap&&!mapCellAt\(next\[0\],next\[1\]\)/,
-  /* CHAR_Talk() and CHAR_Look() only inspect the current/facing adjacent
-     tiles on the 2.5 server.  A farther target must be approached locally
-     before the native L/TK pair is sent. */
-  /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,1400}if\(targetDistance>1\)[\s\S]{0,220}return approachNPC\(current\)/,
+  /* L is adjacent-only; healer TALKEDFUNC also accepts distance 2.
+     Approach using the verified callback range, not a global L radius. */
+  /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,1400}if\(targetDistance>npcInteractionRange\(current\)\)[\s\S]{0,220}return approachNPC\(current\)/,
   /* A map actor may be painted underneath one of the fixed field controls.
      Native display priority gives the control the click, so keep the UI hit
      guard before actorAtTile() instead of letting the covered NPC consume
@@ -3962,8 +3961,8 @@ for (const [part, actor, expected] of [
   if(merged.map(p=>p.value).join()!==nativeParts.map(p=>p.value).join())throw new Error("sliding map hand-off changes native PARTS traversal");
   const paint=[];
   const renderSource=script.slice(worldActorPaintStart,script.indexOf("  /* A large M window",worldActorPaintStart));
-  const render=new Function("getWorld2DContext","currentWorldWalkAnimation","mapPixel","actorFrame","fieldActorFrameVisualKey","app","tilePoint","mapPartDepth","mapPartBeforeActor","drawActor","drawBitmapAt","drawMapEffects","drawActorLabels","drawActorSpeech",`${renderSource};return renderSceneActorsAndParts;`)(
-    ()=>({}),()=>null,depthAnchor,()=>null,()=>"",{character:"self",playerActorId:1},
+  const render=new Function("getWorld2DContext","worldRenderFrame","mapPixel","actorFrame","fieldActorFrameVisualKey","app","tilePoint","mapPartDepth","mapPartBeforeActor","drawActor","drawBitmapAt","drawMapEffects","drawActorLabels","drawActorSpeech",`${renderSource};return renderSceneActorsAndParts;`)(
+    ()=>({}),()=>({view:[0,0],walking:false}),depthAnchor,()=>null,()=>"",{character:"self",playerActorId:1},
     (x,y)=>[320+(x+y)*32,240+(y-x)*24],p=>p.anchor[1],mapPartBeforeActor,
     (_,actor)=>paint.push(`actor-${actor.id}`),(_,image,info)=>paint.push(info.file),()=>{},()=>{},()=>{}
   );
@@ -6219,4 +6218,9 @@ if (!/dirx\[i\+1\] = CHAR_getDX\([\s\S]{0,260}dirx\[0\] = CHAR_getDX[\s\S]{0,180
 // Keep deferred HTTP/selector races in the normal protocol regression gate.
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_async_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_rules_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/npc_interaction_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/world_frame_test.js"], {stdio:"inherit"});
+require("./login_credentials_test.js");
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/sprite_loading_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/sw_cache_test.js"], {stdio:"inherit"});
 console.log("web protocol vectors OK");

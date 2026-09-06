@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	// Legacy game clients keep account and password fields in 16-byte buffers,
-	// including the trailing NUL. Keep the web account layer compatible with
-	// that protocol until the client is replaced.
+	// Account buffers allow 15 bytes plus NUL. The original client's password
+	// input and saved-password fields allow only 12 bytes; enforce that limit
+	// across account creation, password resets and game authentication.
 	MaxGameUsernameBytes = 15
-	MaxGamePasswordBytes = 15
+	MaxGamePasswordBytes = 12
 	MinGamePasswordBytes = 1
 
 	argonMemoryKiB   = 64 * 1024
