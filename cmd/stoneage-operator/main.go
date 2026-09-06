@@ -38,11 +38,12 @@ type status struct {
 }
 
 type response struct {
-	OK         bool             `json:"ok"`
-	Error      string           `json:"error,omitempty"`
-	Status     status           `json:"status,omitempty"`
-	Deployment deploymentStatus `json:"deployment,omitempty"`
-	AssetSync  assetSyncStatus  `json:"asset_sync,omitempty"`
+	GameServers []gameServerStatus `json:"game_servers,omitempty"`
+	OK          bool               `json:"ok"`
+	Error       string             `json:"error,omitempty"`
+	Status      status             `json:"status,omitempty"`
+	Deployment  deploymentStatus   `json:"deployment,omitempty"`
+	AssetSync   assetSyncStatus    `json:"asset_sync,omitempty"`
 }
 
 type deploymentStatus struct {
@@ -61,6 +62,8 @@ type assetSyncStatus struct {
 }
 
 type operator struct {
+	gameServersJSON string
+	gatewayAPIURL   string
 	packageRoot     string
 	socket          string
 	gatewayAddr     string
@@ -103,6 +106,8 @@ func main() {
 	flag.StringVar(&value.authVolume, "auth-volume", envOr("STONEAGE_AUTH_VOLUME", "stoneage-auth"), "auth database Docker volume")
 	flag.StringVar(&value.gmsvDataRoot, "gmsv-data-root", os.Getenv("STONEAGE_GMSV_DATA_ROOT"), "absolute GMSV data path on Docker host")
 	flag.StringVar(&value.saacDataRoot, "saac-data-root", os.Getenv("STONEAGE_SAAC_DATA_ROOT"), "absolute SAAC data path on Docker host")
+	flag.StringVar(&value.gatewayAPIURL, "gateway-api", os.Getenv("STONEAGE_GATEWAY_API_URL"), "gateway HTTP directory base URL")
+	flag.StringVar(&value.gameServersJSON, "game-servers", os.Getenv("STONEAGE_GAME_SERVERS"), "JSON array of game server name/address entries; defaults to upstream")
 	flag.Parse()
 	if err := value.listen(); err != nil {
 		log.Fatal(err)
@@ -159,6 +164,14 @@ func (value *operator) handle(connection net.Conn) {
 	}
 	var output response
 	switch input.Action {
+	case "game_servers":
+		servers, err := value.gameServerList()
+		if err != nil {
+			output.Error = err.Error()
+		} else {
+			output.OK = true
+			output.GameServers = servers
+		}
 	case "status":
 		output.Status = value.status()
 		output.OK = true

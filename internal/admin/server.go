@@ -47,6 +47,11 @@ type Server struct {
 }
 
 type pageData struct {
+	GameServers      []GameServerStatus
+	GameServersError string
+	OnlinePlayers    int64
+	UnknownServers   int
+
 	Title               string
 	Session             *auth.Session
 	CSRF                string
@@ -667,6 +672,26 @@ func (server *Server) renderService(response http.ResponseWriter, request *http.
 		}
 	} else {
 		data.Status = ServiceStatus{Gateway: "未配置运维接口", GMSV: "未配置运维接口", SAAC: "未配置运维接口", Database: "正常"}
+	}
+	if listing, ok := server.operator.(GameServerListingOperator); ok {
+		servers, err := listing.GameServers(request.Context())
+		if err != nil {
+			data.GameServersError = err.Error()
+		} else {
+			data.GameServers = servers
+			for _, entry := range servers {
+				if entry.Disabled {
+					continue
+				}
+				if entry.Online == nil {
+					data.UnknownServers++
+				} else {
+					data.OnlinePlayers += int64(*entry.Online)
+				}
+			}
+		}
+	} else {
+		data.GameServersError = "当前运维接口未提供游戏服务器清单"
 	}
 	data.GatewayRunning = data.Status.Gateway == "running"
 	data.GatewayStopped = data.Status.Gateway == "stopped"

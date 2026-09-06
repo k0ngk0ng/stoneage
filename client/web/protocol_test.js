@@ -6189,6 +6189,11 @@ if (!/function closeLocalPanelsForMapTransition\(\)\{[\s\S]{0,1800}app\.activeWi
 if (!/let characterLogoutPending=false;[\s\S]{0,1200}addEventListener\("click",async\(\)=>\{[\s\S]{0,700}await closeTransport\(transport,\{waitForPeer:true\}\)[\s\S]{0,350}openServerSelection\("group"\)/.test(script)) {
   throw new Error("character-list logout must await graceful transport close");
 }
+if (!/function invalidateServerSelectionView\(\)\{serverSelectionViewToken\+\+;\}/.test(script) ||
+    !/function returnToAccountLogin\([^)]*\)\{[\s\S]{0,180}invalidateServerSelectionView\(\);/.test(script) ||
+    !/async function selectServer\([^)]*\)\{[\s\S]{0,260}if\(!serverID\)return;/.test(script)) {
+  throw new Error("server directory responses must not revive login selection or invent a fallback line");
+}
 
 /* BATTLE_ActSettingSend() has two broadcast loops: the primary battle and
    any linked/parent battle.  The latter must send BA to its local
@@ -6225,4 +6230,5 @@ require("node:child_process").execFileSync(process.execPath, [__dirname + "/spri
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sw_cache_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/resource_loading_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/connection_retry_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/server_directory_test.js"], {stdio:"inherit"});
 console.log("web protocol vectors OK");

@@ -9,6 +9,15 @@
 {{if .OperatorError}}<div class="alert error">服务控制不可用：{{.OperatorError}}</div>{{end}}
 
 <section class="card service-panel">
+  <div class="card-heading"><div><h2>游戏服务器清单</h2><p class="muted">按已配置的游戏线路统计，每次打开或刷新页面时查询在线角色人数。</p></div><a class="button" href="/server">刷新</a></div>
+  {{if .GameServersError}}<div class="alert error">{{.GameServersError}}</div>{{else}}
+  <p>服务器：<strong>{{len .GameServers}}</strong> 个 · {{if and .UnknownServers (eq .UnknownServers (len .GameServers))}}在线人数：<strong>未知</strong>{{else}}{{if .UnknownServers}}已知{{end}}在线人数：<strong>{{.OnlinePlayers}}</strong>{{end}}{{if .UnknownServers}} · {{.UnknownServers}} 个服务器人数未知{{end}}</p>
+  <div class="table-scroll"><table><thead><tr><th>服务器</th><th>地址</th><th>在线人数</th><th>状态</th><th>查询时间</th></tr></thead>
+  <tbody>{{range .GameServers}}<tr><td>{{.Name}}</td><td>{{.Address}}</td><td>{{if .Disabled}}—{{else if ne .Online nil}}{{.Online}}{{else}}未知{{end}}</td><td>{{if .Disabled}}维护中{{else if .Error}}{{.Error}}{{else}}正常{{end}}</td><td><time data-local-time="{{.CheckedAt}}" datetime="{{.CheckedAt}}">{{.CheckedAt}}</time></td></tr>{{else}}<tr><td colspan="5">暂无配置的游戏服务器</td></tr>{{end}}</tbody></table></div>
+  {{end}}
+</section>
+
+<section class="card service-panel">
   <div class="card-heading">
     <div><h2>服务控制</h2><p class="muted">游戏服务可以整体重启或停止；需要排障时，也可以在展开的内部进程区域分别操作 GMSV/SAAC。</p></div>
     <span class="section-kicker">实时状态</span>

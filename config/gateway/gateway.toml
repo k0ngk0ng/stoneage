@@ -1,6 +1,26 @@
-# Gateway process configuration. Authentication database wiring remains in the
-# deployment environment so gateway, admin and service-control share one DB.
-listen_address = "0.0.0.0:9065"
-upstream_address = "gmsv:9065"
+# Internal HTTP directory used by Web and admin/service-control.
+# Keep this port on the private network; Web exposes only IDs and names.
+catalog_listen_address = "0.0.0.0:9080"
 trace = false
 trace_battle = false
+
+# Stable IDs preserve a player's selected line across reconnects.
+[[servers]]
+id = "line-1"
+name = "一线"
+listen_address = "0.0.0.0:9065"
+address = "gateway:9065"
+upstream_address = "gmsv:9065"
+disabled = false
+
+# Add another [[servers]] section for each existing GMSV. Each enabled line
+# needs a unique gateway listener, e.g. 9066 and gateway:9066. Native clients
+# also need the additional port published in docker-compose.yml.
+# Uncomment after deploying a second GMSV reachable as gmsv2:9065:
+# [[servers]]
+# id = "line-2"
+# name = "二线"
+# listen_address = "0.0.0.0:9066"
+# address = "gateway:9066"
+# upstream_address = "gmsv2:9065"
+# disabled = false

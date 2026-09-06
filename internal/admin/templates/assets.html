@@ -17,13 +17,13 @@
   <dl class="details release-details">
     <dt>当前阶段</dt><dd>{{if .AssetSync.Phase}}{{.AssetSync.Phase}}{{else}}idle{{end}}</dd>
     <dt>说明</dt><dd>{{if .AssetSync.Message}}{{.AssetSync.Message}}{{else}}尚未运行资源同步{{end}}</dd>
-    <dt>开始时间</dt><dd>{{if .AssetSync.StartedAt}}{{.AssetSync.StartedAt}}{{else}}—{{end}}</dd>
-    <dt>更新时间</dt><dd>{{if .AssetSync.UpdatedAt}}{{.AssetSync.UpdatedAt}}{{else}}—{{end}}</dd>
+    <dt>开始时间</dt><dd>{{if .AssetSync.StartedAt}}<time data-local-time="{{.AssetSync.StartedAt}}">{{.AssetSync.StartedAt}}</time>{{else}}—{{end}}</dd>
+    <dt>更新时间</dt><dd>{{if .AssetSync.UpdatedAt}}<time data-local-time="{{.AssetSync.UpdatedAt}}">{{.AssetSync.UpdatedAt}}</time>{{else}}—{{end}}</dd>
   </dl>
   {{if .AssetSyncAvailable}}
   <form method="post" action="/assets/sync" class="release-form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <div class="form-footer"><small>同步任务在后台运行；已有任务运行时不会重复启动。</small><button class="primary" type="submit" data-confirm="将把当前静态资源批量上传到对象存储，确认继续？">开始同步</button></div>
+    <div class="form-footer"><small>同步任务在后台运行；已有任务运行时不会重复启动。</small><button class="primary" type="submit" data-confirm="将把当前静态资源批量上传到对象存储，确认继续？" {{if eq .AssetSync.Phase "running"}}disabled aria-busy="true"{{end}}>{{if eq .AssetSync.Phase "running"}}同步中…{{else}}开始同步{{end}}</button></div>
   </form>
   {{else}}
   <div class="empty config-readonly"><p>当前服务控制接口未提供资源同步能力。</p><a class="button" href="/server">返回服务</a></div>

@@ -34,6 +34,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
@@ -126,10 +127,13 @@ const (
 
 // Config controls both the HTTP endpoint and its fixed TCP destination.  The
 // destination is configured by the operator, never by a browser request; this
-// avoids turning the small bridge into an SSRF service.
+// avoids turning the small bridge into an SSRF service. When GatewayAPIURL is
+// configured, the gateway directory supplies the selected listener address
+// and TCPUpstream remains only as a backwards-compatible single-line fallback.
 type Config struct {
 	ListenAddress   string
 	TCPUpstream     string
+	GatewayAPIURL   string
 	AssetsDirectory string
 	MapDirectory    string
 	AudioDirectory  string
@@ -184,6 +188,9 @@ func applyEnvironmentConfig(cfg Config) Config {
 	}
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_TCP_UPSTREAM")); value != "" {
 		cfg.TCPUpstream = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_GATEWAY_API_URL")); value != "" {
+		cfg.GatewayAPIURL = value
 	}
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_ASSETS")); value != "" {
 		cfg.AssetsDirectory = value
@@ -249,6 +256,21 @@ func normalizeCDNBaseURL(value string) (string, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", fmt.Errorf("CDN base URL must be an absolute HTTP(S) URL without credentials, query or fragment")
+	}
+	return strings.TrimRight(value, "/"), nil
+}
+
+func normalizeGatewayAPIURL(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("gateway API URL must be an absolute HTTP(S) URL without credentials, query or fragment")
+	}
+	if strings.ContainsAny(value, "\"'`<>\\\r\n\t ") {
+		return "", errors.New("gateway API URL contains unsafe characters")
 	}
 	return strings.TrimRight(value, "/"), nil
 }
@@ -1105,11 +1127,18 @@ func NewHandler(config Config) (*Handler, error) {
 	if config.ListenAddress == "" {
 		config.ListenAddress = defaultListenAddress
 	}
+	gatewayAPIURL, err := normalizeGatewayAPIURL(config.GatewayAPIURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gateway API URL: %w", err)
+	}
+	config.GatewayAPIURL = gatewayAPIURL
 	if config.TCPUpstream == "" {
 		config.TCPUpstream = defaultTCPUpstream
 	}
-	if _, _, err := net.SplitHostPort(config.TCPUpstream); err != nil {
-		return nil, fmt.Errorf("invalid TCP upstream %q: %w", config.TCPUpstream, err)
+	if config.GatewayAPIURL == "" {
+		if _, _, err := net.SplitHostPort(config.TCPUpstream); err != nil {
+			return nil, fmt.Errorf("invalid TCP upstream %q: %w", config.TCPUpstream, err)
+		}
 	}
 	if config.PacketLimit <= 0 || config.PacketLimit > 64*1024*1024 {
 		return nil, fmt.Errorf("packet limit must be between 1 and 67108864 bytes")
@@ -1358,12 +1387,16 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		handler.listNPCs(response, request)
 		return
 	}
+	if request.URL.Path == "/api/servers" {
+		handler.listServers(response, request)
+		return
+	}
 	if request.URL.Path == "/api/sessions" {
 		if request.Method != http.MethodPost {
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		handler.createSession(response)
+		handler.createSession(response, request)
 		return
 	}
 	const prefix = "/api/sessions/"
@@ -1495,10 +1528,53 @@ func (handler *Handler) health(response http.ResponseWriter, request *http.Reque
 	count := len(handler.sessions.sessions)
 	handler.sessions.mu.RUnlock()
 	handler.writeJSON(response, http.StatusOK, map[string]any{
-		"status":   "ok",
-		"sessions": count,
-		"upstream": handler.config.TCPUpstream,
+		"status":          "ok",
+		"sessions":        count,
+		"upstream":        handler.config.TCPUpstream,
+		"gateway_api_url": handler.config.GatewayAPIURL,
 	})
+}
+
+const legacyServerID = "local-line"
+
+type publicServer struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Disabled bool   `json:"disabled"`
+}
+
+type publicServerListResponse struct {
+	Servers []publicServer `json:"servers"`
+}
+
+func (handler *Handler) configuredServers(ctx context.Context) ([]gameservers.Server, error) {
+	if handler.config.GatewayAPIURL == "" {
+		return []gameservers.Server{{
+			ID:              legacyServerID,
+			Name:            "游戏服务器",
+			Address:         handler.config.TCPUpstream,
+			UpstreamAddress: handler.config.TCPUpstream,
+		}}, nil
+	}
+	return gameservers.Fetch(ctx, handler.config.GatewayAPIURL)
+}
+
+func (handler *Handler) listServers(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		response.Header().Set("Allow", "GET")
+		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	servers, err := handler.configuredServers(request.Context())
+	if err != nil {
+		http.Error(response, "server directory unavailable", http.StatusBadGateway)
+		return
+	}
+	public := make([]publicServer, 0, len(servers))
+	for _, server := range servers {
+		public = append(public, publicServer{ID: server.ID, Name: server.Name, Disabled: server.Disabled})
+	}
+	handler.writeJSON(response, http.StatusOK, publicServerListResponse{Servers: public})
 }
 
 type createResponse struct {
@@ -1506,12 +1582,80 @@ type createResponse struct {
 	Greeting string `json:"greeting"`
 }
 
-func (handler *Handler) createSession(response http.ResponseWriter) {
+type createRequest struct {
+	ServerID string `json:"server_id"`
+}
+
+func decodeCreateRequest(response http.ResponseWriter, request *http.Request) (createRequest, error) {
+	var value createRequest
+	if request.Body == nil {
+		return value, nil
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 16*1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		if errors.Is(err, io.EOF) {
+			return value, nil
+		}
+		return createRequest{}, fmt.Errorf("invalid session request: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return createRequest{}, errors.New("session request contains multiple JSON values")
+		}
+		return createRequest{}, fmt.Errorf("invalid session request: %w", err)
+	}
+	value.ServerID = strings.TrimSpace(value.ServerID)
+	return value, nil
+}
+
+func (handler *Handler) sessionAddress(ctx context.Context, serverID string) (string, int, error) {
+	if handler.config.GatewayAPIURL == "" {
+		if serverID != "" && serverID != legacyServerID {
+			return "", http.StatusNotFound, errors.New("unknown server")
+		}
+		return handler.config.TCPUpstream, http.StatusOK, nil
+	}
+	if serverID == "" {
+		return "", http.StatusBadRequest, errors.New("server_id is required")
+	}
+	servers, err := handler.configuredServers(ctx)
+	if err != nil {
+		return "", http.StatusBadGateway, err
+	}
+	for _, server := range servers {
+		if server.ID != serverID {
+			continue
+		}
+		if server.Disabled {
+			return "", http.StatusServiceUnavailable, errors.New("server is disabled")
+		}
+		return server.Address, http.StatusOK, nil
+	}
+	return "", http.StatusNotFound, errors.New("unknown server")
+}
+
+func (handler *Handler) createSession(response http.ResponseWriter, request *http.Request) {
 	if !handler.sessions.hasCapacity() {
 		http.Error(response, "maximum browser sessions reached", http.StatusServiceUnavailable)
 		return
 	}
-	connection, err := net.DialTimeout("tcp", handler.config.TCPUpstream, handler.config.DialTimeout)
+	input, err := decodeCreateRequest(response, request)
+	if err != nil {
+		http.Error(response, err.Error(), http.StatusBadRequest)
+		return
+	}
+	address, status, err := handler.sessionAddress(request.Context(), input.ServerID)
+	if err != nil {
+		if status == http.StatusBadGateway {
+			http.Error(response, "server directory unavailable", status)
+		} else {
+			http.Error(response, err.Error(), status)
+		}
+		return
+	}
+	connection, err := net.DialTimeout("tcp", address, handler.config.DialTimeout)
 	if err != nil {
 		http.Error(response, "TCP upstream unavailable", http.StatusBadGateway)
 		return

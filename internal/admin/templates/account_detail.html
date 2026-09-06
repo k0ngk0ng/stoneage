@@ -6,10 +6,10 @@
   <dl class="details">
     <dt>状态</dt><dd><span class="badge {{if eq .Account.Status "active"}}ok{{else}}off{{end}}">{{.Account.Status}}</span></dd>
     <dt>密码</dt><dd>{{if .Account.MustChangePassword}}需要重置{{else}}已设置{{end}}</dd>
-    <dt>创建时间</dt><dd>{{.Account.CreatedAt.Format "2006-01-02 15:04:05"}}</dd>
-    <dt>更新时间</dt><dd>{{.Account.UpdatedAt.Format "2006-01-02 15:04:05"}}</dd>
-    <dt>最后登录</dt><dd>{{if .Account.LastLoginAt}}{{.Account.LastLoginAt.Format "2006-01-02 15:04:05"}}{{else}}从未登录{{end}}</dd>
-    <dt>锁定</dt><dd>{{if .Account.LockedUntil}}{{.Account.LockedUntil.Format "2006-01-02 15:04:05"}}{{else}}未锁定{{end}}</dd>
+    <dt>创建时间</dt><dd><time data-local-time="{{.Account.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Account.CreatedAt.Format "2006-01-02 15:04:05"}}</time></dd>
+    <dt>更新时间</dt><dd><time data-local-time="{{.Account.UpdatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Account.UpdatedAt.Format "2006-01-02 15:04:05"}}</time></dd>
+    <dt>最后登录</dt><dd>{{if .Account.LastLoginAt}}<time data-local-time="{{.Account.LastLoginAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Account.LastLoginAt.Format "2006-01-02 15:04:05"}}</time>{{else}}从未登录{{end}}</dd>
+    <dt>锁定</dt><dd>{{if .Account.LockedUntil}}<time data-local-time="{{.Account.LockedUntil.Format "2006-01-02T15:04:05Z07:00"}}">{{.Account.LockedUntil.Format "2006-01-02 15:04:05"}}</time>{{else}}未锁定{{end}}</dd>
   </dl>
   <form method="post" action="/accounts/{{.Account.ID}}/status" class="inline-form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">

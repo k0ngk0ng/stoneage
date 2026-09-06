@@ -21,6 +21,7 @@ import (
 type webConfigFile struct {
 	ListenAddress string              `toml:"listen_address"`
 	TCPUpstream   string              `toml:"tcp_upstream"`
+	GatewayAPIURL string              `toml:"gateway_api_url"`
 	PacketLimit   int                 `toml:"packet_limit"`
 	MaxSessions   int                 `toml:"max_sessions"`
 	PollTimeout   string              `toml:"poll_timeout"`
@@ -84,6 +85,7 @@ func loadWebConfigFile(filename string) (Config, error) {
 
 	applyNonEmpty(&cfg.ListenAddress, disk.ListenAddress)
 	applyNonEmpty(&cfg.TCPUpstream, disk.TCPUpstream)
+	applyNonEmpty(&cfg.GatewayAPIURL, disk.GatewayAPIURL)
 	applyNonEmpty(&cfg.AssetsDirectory, disk.Static.AssetsDirectory)
 	applyNonEmpty(&cfg.MapDirectory, disk.Static.MapsDirectory)
 	applyNonEmpty(&cfg.AudioDirectory, disk.Static.AudioDirectory)
@@ -109,6 +111,11 @@ func loadWebConfigFile(filename string) (Config, error) {
 	}
 	if err := applyFileDuration(&cfg.DialTimeout, disk.DialTimeout, "dial_timeout"); err != nil {
 		return Config{}, err
+	}
+	if gatewayAPIURL, err := normalizeGatewayAPIURL(cfg.GatewayAPIURL); err != nil {
+		return Config{}, fmt.Errorf("invalid gateway_api_url: %w", err)
+	} else {
+		cfg.GatewayAPIURL = gatewayAPIURL
 	}
 	return cfg, nil
 }

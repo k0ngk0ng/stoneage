@@ -98,10 +98,11 @@ services:
       - auth-data:/data
       - ${STONEAGE_GATEWAY_CONFIG_FILE:-./config/gateway/gateway.toml}:/etc/stoneage/gateway.toml:ro
     ports:
-      # Publish the single client entry for this deployment.
+      # Publish the first native TCP line. Add ports here for additional native-client lines.
       - ${STONEAGE_GATEWAY_BIND:-127.0.0.1}:${STONEAGE_GATEWAY_PORT:-9065}:9065
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
+      # The directory remains available even when all game lines are in maintenance.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9080 || nc -z 127.0.0.1 9065"]
       interval: 5s
       timeout: 2s
       retries: 30
@@ -242,6 +243,7 @@ services:
       STONEAGE_COMPOSE_FILE: ${STONEAGE_COMPOSE_FILE:-}
       STONEAGE_CONTROL_IMAGE: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}
       STONEAGE_LEGACY_IMAGE: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}
+      STONEAGE_GATEWAY_API_URL: ${STONEAGE_GATEWAY_API_URL:-http://gateway:9080}
       STONEAGE_OPERATOR_STATE_VOLUME: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
       STONEAGE_GMSV_DATA_ROOT: ${STONEAGE_GMSV_DATA_ROOT:-}
       STONEAGE_SAAC_DATA_ROOT: ${STONEAGE_SAAC_DATA_ROOT:-}

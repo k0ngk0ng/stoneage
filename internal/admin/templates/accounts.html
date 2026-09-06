@@ -16,7 +16,7 @@
   <td><a href="/accounts/{{.ID}}">{{.Username}}</a></td>
   <td><span class="badge {{if eq .Status "active"}}ok{{else}}off{{end}}">{{.Status}}</span></td>
   <td>{{if .MustChangePassword}}需要重置{{else}}已设置{{end}}</td>
-  <td>{{if .LastLoginAt}}{{.LastLoginAt.Format "2006-01-02 15:04"}}{{else}}从未登录{{end}}</td>
+  <td>{{if .LastLoginAt}}<time data-local-time="{{.LastLoginAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastLoginAt.Format "2006-01-02 15:04"}}</time>{{else}}从未登录{{end}}</td>
   <td><a href="/accounts/{{.ID}}">管理</a></td>
 </tr>
 {{else}}<tr><td colspan="5" class="empty">没有账号</td></tr>{{end}}

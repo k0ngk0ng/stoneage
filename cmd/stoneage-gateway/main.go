@@ -12,12 +12,14 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/auth"
+	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"github.com/k0ngk0ng/stoneage/server/go/bridge"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 	"github.com/pelletier/go-toml/v2"
@@ -28,6 +30,8 @@ const maximumPacketSize = 4 * 1024 * 1024
 const legacyStateTransitionDelay = 100 * time.Millisecond
 
 type options struct {
+	catalogAddress  string
+	servers         []gameservers.Server
 	listenAddress   string
 	upstreamAddress string
 	routes          string
@@ -49,10 +53,12 @@ type gatewayRoute struct {
 // Pointer fields preserve the distinction between an omitted TOML value and an
 // explicit false/empty value when command-line flags are merged below.
 type gatewayConfigFile struct {
-	ListenAddress   *string `toml:"listen_address"`
-	UpstreamAddress *string `toml:"upstream_address"`
-	Trace           *bool   `toml:"trace"`
-	TraceBattle     *bool   `toml:"trace_battle"`
+	CatalogListenAddress *string              `toml:"catalog_listen_address"`
+	Servers              []gameservers.Server `toml:"servers"`
+	ListenAddress        *string              `toml:"listen_address"`
+	UpstreamAddress      *string              `toml:"upstream_address"`
+	Trace                *bool                `toml:"trace"`
+	TraceBattle          *bool                `toml:"trace_battle"`
 }
 
 func main() {
@@ -90,6 +96,7 @@ func configFromCommandLine(arguments []string) (options, string, error) {
 	flags.StringVar(&configPath, "config", "", "path to gateway TOML configuration")
 	flags.StringVar(&opts.listenAddress, "listen", opts.listenAddress, "client-facing listen address")
 	flags.StringVar(&opts.upstreamAddress, "upstream", opts.upstreamAddress, "numeric GMSV address")
+	flags.StringVar(&opts.catalogAddress, "catalog-listen", "", "HTTP server directory listen address (empty disables)")
 	flags.StringVar(&opts.routes, "routes", opts.routes, "semicolon-separated listener=GMSV route list; overrides -listen/-upstream")
 	flags.BoolVar(&opts.trace, "trace", opts.trace, "log translated function names (never logs password fields)")
 	flags.BoolVar(&opts.traceBattle, "trace-battle", opts.traceBattle, "log server battle command bytes as hex (never logs password fields)")
@@ -106,6 +113,13 @@ func configFromCommandLine(arguments []string) (options, string, error) {
 		fileConfig, err := loadGatewayConfigFile(configPath)
 		if err != nil {
 			return options{}, configPath, err
+		}
+		if !flagWasSet(flags, "catalog-listen") && fileConfig.CatalogListenAddress != nil {
+			opts.catalogAddress = *fileConfig.CatalogListenAddress
+		}
+		opts.servers = fileConfig.Servers
+		if len(opts.servers) > 0 && (flagWasSet(flags, "listen") || flagWasSet(flags, "upstream")) {
+			return options{}, configPath, fmt.Errorf("servers configuration cannot be combined with -listen/-upstream")
 		}
 		if !flagWasSet(flags, "listen") && fileConfig.ListenAddress != nil {
 			opts.listenAddress = *fileConfig.ListenAddress
@@ -147,6 +161,10 @@ func flagWasSet(flags *flag.FlagSet, name string) bool {
 }
 
 func serve(opts options, logger *log.Logger) error {
+	servers, err := configuredServers(opts)
+	if err != nil {
+		return err
+	}
 	routes, err := configuredRoutes(opts)
 	if err != nil {
 		return err
@@ -187,7 +205,20 @@ func serve(opts options, logger *log.Logger) error {
 		}
 	}()
 
-	errorsCh := make(chan error, len(listeners))
+	errorsCh := make(chan error, len(listeners)+1)
+	if opts.catalogAddress != "" {
+		listener, err := net.Listen("tcp", opts.catalogAddress)
+		if err != nil {
+			return fmt.Errorf("listen server directory: %w", err)
+		}
+		server := &http.Server{Handler: catalogHandler(servers), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: time.Minute}
+		defer server.Close()
+		go func() { errorsCh <- server.Serve(listener) }()
+		logger.Printf("server directory listening on %s", opts.catalogAddress)
+	} else if len(listeners) == 0 {
+		return fmt.Errorf("no enabled game listeners or catalog listener")
+	}
+
 	for index, listener := range listeners {
 		route := routes[index]
 		go acceptConnections(listener, route, opts, accountStore, logger, errorsCh)
@@ -220,6 +251,20 @@ func acceptConnections(
 }
 
 func configuredRoutes(opts options) ([]gatewayRoute, error) {
+	if len(opts.servers) > 0 {
+		servers, err := configuredServers(opts)
+		if err != nil {
+			return nil, err
+		}
+		routes := make([]gatewayRoute, 0, len(servers))
+		for _, s := range servers {
+			if !s.Disabled {
+				routes = append(routes, gatewayRoute{listenAddress: s.ListenAddress, upstreamAddress: s.UpstreamAddress})
+			}
+		}
+		return routes, nil
+	}
+
 	if strings.TrimSpace(opts.routes) == "" {
 		if err := validateTCPAddress(opts.listenAddress, "listen address"); err != nil {
 			return nil, err

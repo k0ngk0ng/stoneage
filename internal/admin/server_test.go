@@ -17,6 +17,7 @@ import (
 )
 
 type fakeOperator struct {
+	gameServers     []GameServerStatus
 	restarts        int
 	gatewayRestarts int
 	gameRestarts    int
@@ -558,4 +559,48 @@ func TestAdminServiceButtonsFollowStatus(t *testing.T) {
 	if !strings.Contains(page, `暂时无法确认全部服务状态`) {
 		t.Fatalf("unknown services should disable all-service controls: %s", body)
 	}
+}
+
+func (operator *fakeOperator) GameServers(context.Context) ([]GameServerStatus, error) {
+	return operator.gameServers, nil
+}
+
+func TestAdminGameServerList(t *testing.T) {
+	_, operator, server := newAdminTestServer(t)
+	count := int32(7)
+	zero := int32(0)
+	operator.gameServers = []GameServerStatus{
+		{Name: "一线", Address: "gmsv:9065", Online: &count, CheckedAt: "2026-09-06T08:00:00Z"},
+		{Name: "二线", Address: "gmsv2:9065", Online: &zero, CheckedAt: "2026-09-06T08:00:00Z"},
+		{Name: "三线", Address: "gmsv3:9065", Error: "无法获取在线人数", CheckedAt: "2026-09-06T08:00:00Z"},
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	response, err := client.PostForm(server.URL+"/login", url.Values{"username": {"admin"}, "password": {"secret123"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	response, err = client.Get(server.URL + "/server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	for _, want := range []string{"服务器：<strong>3</strong>", "已知在线人数：<strong>7</strong>", "1 个服务器人数未知", "<td>0</td>", "<td>未知</td>", `data-local-time="2026-09-06T08:00:00Z"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("missing %q in %s", want, body)
+		}
+	}
+	operator.gameServers = operator.gameServers[2:]
+	response, err = client.Get(server.URL + "/server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if !strings.Contains(string(body), "在线人数：<strong>未知</strong>") {
+		t.Fatalf("all unknown servers must not show a zero total: %s", body)
+	}
+
 }

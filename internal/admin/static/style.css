@@ -35,6 +35,7 @@ button:disabled { cursor: not-allowed; opacity: .48; filter: saturate(.35); box-
 .toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
 .toolbar input { flex: 1; max-width: 360px; border: 2px solid #718791; border-radius: 5px; padding: 10px; color: #3d464c; background: #f7f7ef; font: inherit; }
 .toolbar button { color: #4a4d45; background: linear-gradient(#f7df65,#d7a53a); }
+.table-scroll { overflow-x: auto; }
 .table-wrap { overflow-x: auto; background: rgba(249,239,210,.96); border: 3px solid #5e7480; border-radius: 15px 15px 6px 15px; box-shadow: 0 4px 0 #52636c; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 13px 16px; border-bottom: 2px solid rgba(94,116,128,.23); white-space: nowrap; }

@@ -1,0 +1,44 @@
+name: Set up cached Go
+description: Restore main-branch build caches shared with release tags
+inputs:
+  target:
+    description: Separate caches for tests and each cross-compilation target
+    required: true
+outputs:
+  key:
+    description: Cache key for the completed build
+    value: ${{ steps.cache.outputs.cache-primary-key }}
+  hit:
+    description: Exact cache hit
+    value: ${{ steps.cache.outputs.cache-hit }}
+  modules:
+    description: Go module cache directory
+    value: ${{ steps.paths.outputs.modules }}
+  build:
+    description: Go build cache directory
+    value: ${{ steps.paths.outputs.build }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      id: go
+      with:
+        go-version-file: go.mod
+        cache: false
+    - id: paths
+      shell: bash
+      run: |
+        echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+        echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+    # Tags can restore default-branch caches, but cannot share caches saved
+    # under another tag. Main builds populate these before the next release.
+    - uses: actions/cache/restore@v4
+      id: cache
+      with:
+        path: |
+          ${{ steps.paths.outputs.modules }}
+          ${{ steps.paths.outputs.build }}
+        key: go-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ inputs.target }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+        restore-keys: |
+          go-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ inputs.target }}-${{ hashFiles('go.sum') }}-
+          go-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ inputs.target }}-

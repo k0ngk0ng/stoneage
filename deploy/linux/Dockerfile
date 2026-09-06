@@ -3,15 +3,19 @@ FROM golang:1.23-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
+# Only Go build inputs belong in this layer. Legacy C sources, map data and
+# deployment documentation must not invalidate the control-plane compilation.
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY server/go/ ./server/go/
+COPY client/web/*.go client/web/index.html client/web/sw.js ./client/web/
 
 ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
-    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-gateway ./cmd/stoneage-gateway && \
-    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-admin ./cmd/stoneage-admin && \
-    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-operator ./cmd/stoneage-operator && \
-    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-assets-sync ./cmd/stoneage-assets-sync && \
-    go build -mod=mod -trimpath -ldflags='-s -w' -o /out/stoneage-web ./client/web
+    go build -mod=readonly -trimpath -ldflags='-s -w' -o /out/ \
+    ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
+    ./cmd/stoneage-assets-sync ./client/web && \
+    mv /out/web /out/stoneage-web
 
 FROM alpine:3.22
 

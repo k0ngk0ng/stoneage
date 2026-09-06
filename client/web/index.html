@@ -118,6 +118,14 @@
     #server-window button { appearance:none; -webkit-appearance:none; position:absolute; left:22px; width:100px; height:18px; margin:0; padding:0; color:#ffe04b; background:transparent; border:0; border-radius:0; box-shadow:none; outline:0; font:16px/19px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif; text-align:left; text-shadow:1px 1px #171006; white-space:nowrap; pointer-events:auto; }
     #server-window button:hover,#server-window button:focus-visible { color:#fff5a4; filter:none; outline:0; transform:none; }
     #server-choice { top:28px; }
+    /* The native title window is small, but the configured gateway may expose
+       several lines. Keep every line in the same pixel window and let the
+       list scroll instead of creating a second browser-style picker. */
+    #server-list { position:absolute; left:0; top:28px; width:128px; height:72px; overflow-y:auto; overflow-x:hidden; pointer-events:none; scrollbar-width:none; }
+    #server-list::-webkit-scrollbar { display:none; }
+    #server-list button { pointer-events:auto; }
+    #server-list button.server-line-button { top:auto; position:relative; left:22px; display:block; margin:0 0 3px; overflow:hidden; text-overflow:ellipsis; }
+    #server-list button.server-line-button[disabled] { color:#b9a96b; opacity:.75; }
     #server-back { top:104px; }
     #server-message { position:absolute; left:22px; top:51px; width:88px; min-height:32px; color:#fff2b0; font:16px/19px MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif; text-shadow:1px 1px #171006; pointer-events:none; }
     #server-status { position:absolute; left:-10000px; top:0; width:1px; height:1px; overflow:hidden; }
@@ -1033,7 +1041,9 @@
         <img class="server-window-tile tile-mr" data-src="/assets/bitmaps/bitmap_9157.png" alt="">
         <img class="server-window-tile tile-bl" data-src="/assets/bitmaps/bitmap_9158.png" alt="">
         <img class="server-window-tile tile-br" data-src="/assets/bitmaps/bitmap_9160.png" alt="">
-        <button id="server-choice" type="button">测试一线</button>
+        <div id="server-list" role="group" aria-label="服务器线路" aria-busy="true">
+          <button id="server-choice" type="button">读取服务器列表…</button>
+        </div>
         <span id="server-message" aria-hidden="true"></span>
         <button id="server-back" type="button">结束游戏</button>
       </div>
@@ -1411,8 +1421,8 @@
   window.StoneAgeProtocol=Protocol;
 
   class HTTPTransport {
-    constructor(base="") { this.base=base.replace(/\/$/,""); this.id=""; this.closed=false; this.sendChain=Promise.resolve(); }
-    async connect() { const response=await fetch(this.base+"/api/sessions",{method:"POST",headers:{"Accept":"application/json"}}); if(!response.ok) throw new Error(await response.text()||`HTTP ${response.status}`); const data=await response.json(); this.id=data.id; return Protocol.fromBase64(data.greeting); }
+    constructor(base="",serverID="") { this.base=base.replace(/\/$/,""); this.serverID=String(serverID||""); this.id=""; this.closed=false; this.sendChain=Promise.resolve(); }
+    async connect(serverID=this.serverID) { const selected=String(serverID||this.serverID||"").trim(); const payload=selected?JSON.stringify({server_id:selected}):null; const request={method:"POST",headers:{"Accept":"application/json"}}; if(payload){request.body=payload;request.headers["Content-Type"]="application/json";} const response=await fetch(this.base+"/api/sessions",request); if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;} const data=await response.json(); this.id=data.id; return Protocol.fromBase64(data.greeting); }
     async sendToID(id,packet,options={}) {
       if(!id) throw new Error("TCP session is closed");
       const request={method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({packet:Protocol.toBase64(packet)})};
@@ -3897,11 +3907,43 @@
     applyScreenVisibility(screen);
     startSceneTransition(previous,screen);
   }
-  /* The executable has a single title-menu server window.  Keep the legacy
-     stage name `group` for protocol/test compatibility, but it now means the
-     actual server list (there is one configured 2.5 line in this deployment),
-     not a made-up group → line wizard. */
+  /* The executable has a single title-menu server window. Keep the legacy
+     stage name `group` for protocol/test compatibility; its entries now come
+     from the operator's same-origin server directory. */
   let serverSelectionStage="group";
+  let serverDirectoryState="idle",serverDirectory=null,serverDirectoryRequest=null,serverDirectoryLoadedAt=0,serverSelectionViewToken=0;
+  const SERVER_DIRECTORY_TTL_MS=30000,SERVER_DIRECTORY_TIMEOUT_MS=8000;
+  function invalidateServerSelectionView(){serverSelectionViewToken++;}
+  function validateServerDirectory(data){
+    if(!data||!Array.isArray(data.servers)||!data.servers.length)throw new Error("服务器列表为空");
+    const seen=new Set();
+    return data.servers.map(item=>{
+      const id=String(item?.id||"").trim(),name=String(item?.name||"").trim();
+      if(!id||!name||seen.has(id))throw new Error("服务器列表格式无效");
+      seen.add(id);
+      return {id,name,disabled:Boolean(item?.disabled)};
+    });
+  }
+  function loadServerDirectory(force=false){
+    const fresh=serverDirectoryState==="ready"&&Date.now()-serverDirectoryLoadedAt<SERVER_DIRECTORY_TTL_MS;
+    if(!force&&fresh)return Promise.resolve(serverDirectory);
+    if(serverDirectoryRequest)return serverDirectoryRequest;
+    serverDirectoryState="loading";
+    const controller=new AbortController(),timeout=window.setTimeout(()=>controller.abort(),SERVER_DIRECTORY_TIMEOUT_MS);
+    serverDirectoryRequest=fetch("/api/servers",{headers:{"Accept":"application/json"},signal:controller.signal}).then(async response=>{
+      if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;}
+      const data=validateServerDirectory(await response.json());
+      serverDirectory=data;serverDirectoryLoadedAt=Date.now();serverDirectoryState="ready";return data;
+    }).catch(error=>{serverDirectory=null;serverDirectoryState="error";throw error;}).finally(()=>{window.clearTimeout(timeout);serverDirectoryRequest=null;});
+    return serverDirectoryRequest;
+  }
+  function invalidateServerDirectory(){serverDirectory=null;serverDirectoryState="idle";serverDirectoryLoadedAt=0;}
+  function renderServerLine(item,index){
+    const button=document.createElement("button");
+    button.type="button";button.className="server-line-button";button.id=index===0?"server-choice":`server-choice-${index}`;
+    button.dataset.serverId=item.id;button.title=item.name;button.textContent=item.disabled?`${item.name}（维护中）`:item.name;button.disabled=Boolean(item.disabled);button.setAttribute("aria-selected",item.id===app.selectedServer?"true":"false");
+    return button;
+  }
   function renderServerSelection(stage="group",message=""){
     serverSelectionStage=stage;
     /* SAAC clears a stale account lock while answering CharList.  A fresh
@@ -3910,17 +3952,38 @@
     if(stage==="group")app.charListLockRetryCount=0;
     const connecting=stage==="connecting";
     serverScreen.dataset.stage=connecting?"connecting":"group";
-    const choice=$("server-choice"),back=$("server-back"),visualMessage=$("server-message"),liveStatus=$("server-status");
-    choice.textContent="测试一线";
-    choice.disabled=connecting;
+    const list=$("server-list"),back=$("server-back"),visualMessage=$("server-message"),liveStatus=$("server-status");
+    if(list){
+      list.replaceChildren();list.setAttribute("aria-busy",connecting||serverDirectoryState==="loading"?"true":"false");
+      if(connecting){
+        const choice=document.createElement("button");choice.type="button";choice.id="server-choice";choice.className="server-line-button";choice.textContent=message||"连接中…";choice.disabled=true;list.append(choice);
+      }else if(serverDirectoryState==="ready"&&Array.isArray(serverDirectory)){
+        serverDirectory.forEach((item,index)=>list.append(renderServerLine(item,index)));
+      }else{
+        const choice=document.createElement("button");choice.type="button";choice.id="server-choice";choice.className="server-line-button";choice.textContent=serverDirectoryState==="error"?"重试":"读取服务器列表…";choice.disabled=serverDirectoryState!=="error";choice.dataset.retry=serverDirectoryState==="error"?"1":"0";list.append(choice);
+      }
+    }
     back.classList.toggle("hidden",connecting&&!connectionRetry.active);
-    visualMessage.textContent=message||(connecting?"連接中…":"");
-    liveStatus.textContent=message||(connecting?"正在连接本機一線。":"请选择服务器。");
+    visualMessage.textContent=message||(connecting?"連接中…":serverDirectoryState==="loading"?"正在读取服务器列表…":serverDirectoryState==="error"?"服务器列表读取失败，请点击重试。":"");
+    liveStatus.textContent=message||(connecting?"正在连接所选服务器。":serverDirectoryState==="loading"?"正在读取服务器列表。":serverDirectoryState==="error"?"服务器列表读取失败，请点击重试。":"请选择服务器。");
     app.phase=connecting?"connecting":"server-group";
   }
-  function openServerSelection(stage="group",message=""){
+  function openServerSelection(stage="group",message="",forceDirectory=false){
+    const viewToken=++serverSelectionViewToken;
     renderServerSelection(stage,message);
     show(serverScreen);
+    if(stage!=="group")return;
+    const shouldLoad=forceDirectory||serverDirectoryState==="idle"||serverDirectoryState==="error"||(serverDirectoryState==="ready"&&Date.now()-serverDirectoryLoadedAt>=SERVER_DIRECTORY_TTL_MS);
+    if(!shouldLoad)return;
+    serverDirectoryState="loading";renderServerSelection(stage,message);
+    loadServerDirectory(forceDirectory).then(()=>{
+      if(viewToken!==serverSelectionViewToken||serverSelectionStage!=="group")return;
+      renderServerSelection("group","");
+    }).catch(error=>{
+      if(viewToken!==serverSelectionViewToken||serverSelectionStage!=="group")return;
+      renderServerSelection("group","服务器列表读取失败，请点击重试。");
+      console.debug?.("server directory unavailable",error);
+    });
   }
   function connectionFailureMessage(error,fallback="服务器连接失败。"){
     const raw=String(error?.message||error||"").trim();
@@ -3943,7 +4006,8 @@
        server-list page used before connecting.  Do not put the transport
        diagnostic into the list/status text; the native client shows this as
        one common message window only. */
-    openServerSelection("group","");
+    const unavailable=Number(error?.status)===404||Number(error?.status)===503;
+    if(unavailable)invalidateServerDirectory(),openServerSelection("group","所选服务器已不可用，请重新选择。",true);else openServerSelection("group","");
     openLocalDialog("提示",connectionFailureMessage(error,fallback),[{
       label:"确定",kind:"yes",handler:()=>{
         closeLocalDialog();
@@ -3976,6 +4040,7 @@
     return true;
   }
   function returnToAccountLogin(message="请输入账号和密码。"){
+    invalidateServerSelectionView();
     cancelConnectionRetry();
     cancelMapFloorTransition();
     /* A title return is a hard scene boundary.  Clear any hit/skill effects
@@ -14650,7 +14715,11 @@
         await connectLogin();
         // Only a successful CharList ends recovery. A TCP greeting alone
         // does not prove the account has logged in or released its old lock.
-      }catch(error){if(current())scheduleConnectionRetry();}
+      }catch(error){
+        if(!current())return;
+        if(Number(error?.status)===404||Number(error?.status)===503){cancelConnectionRetry();invalidateServerDirectory();openServerSelection("group","所选服务器已不可用，请重新选择。",true);return;}
+        scheduleConnectionRetry();
+      }
     },delay);
   }
   function retryAfterDisconnect(closePromise=null){
@@ -14701,11 +14770,11 @@
     const account=canonicalAccount($("account").value),password=$("password").value;if(!validateLoginCredentials(account,password))return;
     $("account").value=account;
     app.account=account;app.password=password;app.phase="connecting";loginStatus("正在建立 HTTP → TCP 会话…");status("连接中");
-    const transport=new HTTPTransport("");
+    const transport=new HTTPTransport("",app.selectedServer||"local-line");
     const token=++app.connectionToken;
     app.transport=transport;
     try{
-      const greeting=await transport.connect();
+      const greeting=await transport.connect(app.selectedServer||"local-line");
       if(app.transport!==transport||app.connectionToken!==token)throw new Error("连接已被新的会话取代");
       if(greeting.length!==2||greeting[0]!==76||greeting[1]!==0)throw new Error("网关握手不是 L\\0");
       pollLoop(transport,token);
@@ -18909,16 +18978,26 @@
     return Boolean(target?.closest?.("input,textarea,select,[contenteditable=true]"));
   }
 
-  $("server-choice").addEventListener("click",async()=>{
-    /* This is the one selectable server item in LOGIN.CPP's 2×3 title
-       window.  Selecting it starts the game-server connection immediately. */
+  async function selectServer(serverID,button=null){
     if(serverSelectionStage==="connecting"||app.transport)return;
+    if(button?.dataset?.retry==="1"){
+      invalidateServerDirectory();openServerSelection("group","正在读取服务器列表…",true);return;
+    }
+    serverID=String(serverID||"").trim();
+    if(!serverID)return;
+    const selected=Array.isArray(serverDirectory)?serverDirectory.find(item=>item.id===serverID):null;
+    if(!selected||selected.disabled)return;
     unlockAudio();
     playSoundEffect(217);
     setMusicMode("title",2);
-    app.selectedServer="local-line";
-    openServerSelection("connecting");
+    app.selectedServer=selected.id;
+    openServerSelection("connecting",`正在连接${selected.name}…`);
     try{await connectLogin();}catch(error){showConnectionFailure(error);}
+  }
+  $("server-window").addEventListener("click",event=>{
+    const button=event.target?.closest?.("#server-list button");
+    if(!button)return;
+    selectServer(button.dataset.serverId,button);
   });
   $("server-back").addEventListener("click",()=>{
     if(connectionRetry.active){returnToLogin("已取消自动重连。");$("account").focus();return;}

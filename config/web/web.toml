@@ -1,4 +1,8 @@
 listen_address = "0.0.0.0:8088"
+# The gateway's private HTTP directory is used to resolve the browser's
+# selected server_id to an operator-configured TCP listener. Leave empty only
+# for the legacy single-line tcp_upstream deployment.
+gateway_api_url = "http://gateway:9080"
 tcp_upstream = "gateway:9065"
 packet_limit = 4194304
 max_sessions = 64

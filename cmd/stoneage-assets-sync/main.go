@@ -41,6 +41,7 @@ import (
 )
 
 type configFile struct {
+	GatewayAPIURL string           `toml:"gateway_api_url"`
 	ListenAddress string           `toml:"listen_address"`
 	TCPUpstream   string           `toml:"tcp_upstream"`
 	PacketLimit   int              `toml:"packet_limit"`

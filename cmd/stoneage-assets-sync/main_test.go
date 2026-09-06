@@ -485,3 +485,15 @@ func TestWriteClientVersionUsesUploadRetry(t *testing.T) {
 		t.Fatalf("Put calls=%d, want 3", store.putCalls)
 	}
 }
+
+// The uploader reads the same strict TOML schema as Web. Adding an unrelated
+// Web setting must not break the admin's real asset-sync command.
+func TestUploaderAcceptsShippedWebConfigWithServerDirectory(t *testing.T) {
+	config, err := loadConfig(filepath.Join("..", "..", "config", "web", "web.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.GatewayAPIURL != "http://gateway:9080" {
+		t.Fatalf("gateway URL=%q", config.GatewayAPIURL)
+	}
+}

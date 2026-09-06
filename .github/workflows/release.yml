@@ -1,39 +1,38 @@
 name: Release
 
-# Releases are intentionally cut only from an explicitly pushed v* tag.  Pull
-# requests and branch pushes must never publish an artifact or mutate a GitHub
-# release.
+# Main warms caches visible to subsequent tags. Only v* tags publish releases
+# or versioned images; branch builds only update the registry build cache.
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+env:
+  GOFLAGS: -mod=readonly
 
 jobs:
-  release:
-    name: Build and publish release
+  verify:
+    name: Tests and deployment checks
     runs-on: ubuntu-latest
-    env:
-      GOFLAGS: -mod=mod
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-cache
+        id: go-cache
         with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Test
-        run: go test ./...
-
-      - name: Vet
-        run: go vet ./...
-
+          target: test
+      - name: Test and vet
+        run: |
+          go test ./...
+          go vet ./...
+          node client/web/protocol_test.js
+          node internal/admin/app_time_test.js
       - name: Verify production deployment tools
         run: |
           python3 scripts/aliyun-certificate_test.py
@@ -42,144 +41,189 @@ jobs:
           bash bin/sync-assets_test.sh
           bash bin/clean-images_test.sh
           python3 scripts/test-deployment-package.py
+          python3 scripts/build-release-target_test.py
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.hit != 'true'
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.modules }}
+            ${{ steps.go-cache.outputs.build }}
+          key: ${{ steps.go-cache.outputs.key }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  binaries:
+    name: Binaries (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: linux, arch: amd64}
+          - {os: darwin, arch: arm64}
+          - {os: darwin, arch: amd64}
+          - {os: windows, arch: amd64}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/vendor/
+            !/client/web/assets/
+            !/server/legacy/
+            !/reference/
+      - uses: ./.github/actions/setup-go-cache
+        id: go-cache
+        with:
+          target: ${{ matrix.os }}-${{ matrix.arch }}
+      - name: Build platform artifacts
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.0.0' }}
+          RELEASE_STAGE: ${{ runner.temp }}/stoneage-release
+        run: bash scripts/build-release-target.sh '${{ matrix.os }}' '${{ matrix.arch }}'
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.hit != 'true'
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.modules }}
+            ${{ steps.go-cache.outputs.build }}
+          key: ${{ steps.go-cache.outputs.key }}
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+  images:
+    name: Image (${{ matrix.image }})
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: control-plane
+            file: deploy/linux/Dockerfile
+          - image: legacy-runtime
+            file: deploy/linux/legacy-runtime.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/vendor/
+            !/client/web/assets/
+            !/reference/
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push control-plane image
-        id: control-image
+      - name: Build image with persistent registry cache
+        id: image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/linux/Dockerfile
+          file: ${{ matrix.file }}
           platforms: linux/amd64
-          push: true
-          tags: ghcr.io/${{ github.repository }}/control-plane:${{ github.ref_name }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
           provenance: true
-
-      - name: Build and push legacy runtime image
-        id: legacy-image
-        uses: docker/build-push-action@v6
+          # Registry caches cross tag boundaries; separate refs prevent the
+          # two Dockerfiles from replacing each other's cache records.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/${{ matrix.image }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+      - name: Record immutable image reference
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          IMAGE_REF: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          mkdir -p dist
+          test -n "$IMAGE_DIGEST"
+          printf '%s@%s\n' "$IMAGE_REF" "$IMAGE_DIGEST" > 'dist/digest-${{ matrix.image }}'
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
-          context: .
-          file: deploy/linux/legacy-runtime.Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ghcr.io/${{ github.repository }}/legacy-runtime:${{ github.ref_name }}
-          provenance: true
+          name: release-digest-${{ matrix.image }}
+          path: dist/digest-*
+          retention-days: 2
+          if-no-files-found: error
 
-      - name: Build control-plane artifacts
+  sprites:
+    name: Public sprite archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            client/web/assets/original
+      - name: Identify resource content
+        id: content
+        shell: bash
+        run: echo "tree=$(git rev-parse HEAD:client/web/assets/original)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: sprites
+        with:
+          path: build/release-cache/sprites.tar.gz
+          key: sprites-v1-${{ runner.os }}-${{ steps.content.outputs.tree }}-${{ hashFiles('scripts/package-sprites.py') }}
+      - name: Package unchanged resources only once
+        if: steps.sprites.outputs.cache-hit != 'true'
+        run: |
+          python3 scripts/package-sprites.py v0.0.0 --output build/release-cache
+          mv build/release-cache/stoneage-sprites-v0.0.0.tar.gz build/release-cache/sprites.tar.gz
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.sprites.outputs.cache-hit != 'true'
+        with:
+          path: build/release-cache/sprites.tar.gz
+          key: ${{ steps.sprites.outputs.cache-primary-key }}
+      - name: Name archive for release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        shell: bash
         run: |
-          set -euo pipefail
+          mkdir -p dist
+          cp build/release-cache/sprites.tar.gz "dist/stoneage-sprites-${RELEASE_TAG}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-sprites
+          path: dist/*
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
 
-          stage="${RUNNER_TEMP}/stoneage-release"
-          dist="${GITHUB_WORKSPACE}/dist"
-          rm -rf "$stage" "$dist"
-          mkdir -p "$stage" "$dist"
-
-          build_target() {
-            local goos="$1"
-            local goarch="$2"
-            local suffix="$3"
-            local package_root="$stage/stoneage-control-plane-${RELEASE_TAG}-${goos}-${goarch}"
-            local bin_root="$package_root/bin"
-
-            mkdir -p "$bin_root"
-            commands=(stoneage-gateway stoneage-admin stoneage-operator stoneage-assets-sync)
-            if [[ "$goos" == linux ]]; then
-              # The embedded Web server is part of the Linux deployment.
-              commands+=(stoneage-web)
-            fi
-            for command in "${commands[@]}"; do
-              local output="$bin_root/$command$suffix"
-              local package="./cmd/$command"
-              if [[ "$command" == stoneage-web ]]; then
-                package="./client/web"
-              fi
-              CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-                go build -trimpath -ldflags='-s -w' -o "$output" "$package"
-            done
-
-            tar -czf "$dist/stoneage-assets-sync-${RELEASE_TAG}-${goos}-${goarch}.tar.gz" -C "$package_root" "bin/stoneage-assets-sync$suffix"
-
-            cp README.md "$package_root/README.md"
-            mkdir -p "$package_root/docs"
-            cp docs/database.md docs/networking.md docs/development.md "$package_root/docs/"
-
-            if [[ "$goos" == linux ]]; then
-              cp release/linux/start-admin.sh \
-                release/linux/stop-admin.sh \
-                release/linux/status-admin.sh \
-                release/linux/start-game.sh \
-                release/linux/stop-game.sh \
-                release/linux/start-gateway.sh \
-                release/linux/stop-gateway.sh \
-                release/linux/restart-server.sh \
-                release/linux/restart-game.sh \
-                release/linux/restart-gmsv.sh \
-                release/linux/restart-saac.sh \
-                release/linux/stop-gmsv.sh \
-                release/linux/stop-saac.sh \
-                release/linux/restart-gateway.sh \
-                release/linux/send-notification.sh \
-                "$package_root/"
-            fi
-
-            (cd "$stage" && tar -czf "$dist/stoneage-control-plane-${RELEASE_TAG}-${goos}-${goarch}.tar.gz" \
-              "$(basename "$package_root")")
-          }
-
-          build_target linux amd64 ''
-          build_target darwin arm64 ''
-          build_target darwin amd64 ''
-          build_target windows amd64 '.exe'
-
-          (cd "$stage" && zip -q -r -9 "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.zip" \
-            "stoneage-control-plane-${RELEASE_TAG}-windows-amd64")
-          rm -f "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.tar.gz"
-
-          (cd "$dist" && sha256sum * > SHA256SUMS)
-
-      - name: Package Compose deployment
-        run: python3 scripts/package-deployment.py "${{ github.ref_name }}" --uploader "$RUNNER_TEMP/stoneage-release/stoneage-control-plane-${{ github.ref_name }}-linux-amd64/bin/stoneage-assets-sync"
-
-      - name: Package public sprite resources
-        run: python3 scripts/package-sprites.py "${{ github.ref_name }}"
-
-      - name: Write image digest manifest
-        env:
-          CONTROL_DIGEST: ${{ steps.control-image.outputs.digest }}
-          LEGACY_DIGEST: ${{ steps.legacy-image.outputs.digest }}
+  publish:
+    name: Publish verified release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, binaries, images, sprites]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Assemble image digests and checksums
+        working-directory: dist
         run: |
-          set -euo pipefail
-          cat > dist/IMAGE-DIGESTS <<EOF
-          ghcr.io/${{ github.repository }}/control-plane:${{ github.ref_name }}@${CONTROL_DIGEST}
-          ghcr.io/${{ github.repository }}/legacy-runtime:${{ github.ref_name }}@${LEGACY_DIGEST}
-          EOF
-          (cd dist && sha256sum $(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n') > SHA256SUMS)
-
+          cat digest-control-plane digest-legacy-runtime > IMAGE-DIGESTS
+          rm digest-control-plane digest-legacy-runtime
+          sha256sum ./* > SHA256SUMS
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: |
-            dist/stoneage-deploy-${{ github.ref_name }}.tar.gz
-            dist/stoneage-sprites-${{ github.ref_name }}.tar.gz
-            dist/stoneage-assets-sync-${{ github.ref_name }}-*.tar.gz
-            dist/stoneage-control-plane-${{ github.ref_name }}-linux-amd64.tar.gz
-            dist/stoneage-control-plane-${{ github.ref_name }}-darwin-arm64.tar.gz
-            dist/stoneage-control-plane-${{ github.ref_name }}-darwin-amd64.tar.gz
-            dist/stoneage-control-plane-${{ github.ref_name }}-windows-amd64.zip
-            dist/IMAGE-DIGESTS
-            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          files: dist/*

@@ -399,10 +399,35 @@ func TestCDNBaseComesFromEnvironmentAndRejectsUnsafeURLs(t *testing.T) {
 	}
 }
 
+func TestGatewayAPIURLValidation(t *testing.T) {
+	for _, value := range []string{
+		"http://gateway:9080",
+		"https://gateway.example/dir",
+	} {
+		got, err := normalizeGatewayAPIURL(value)
+		if err != nil || got != strings.TrimRight(value, "/") {
+			t.Fatalf("normalizeGatewayAPIURL(%q)=%q err=%v", value, got, err)
+		}
+	}
+	for _, value := range []string{
+		"gateway:9080",
+		"ftp://gateway:9080",
+		"https://user:secret@gateway:9080",
+		"https://gateway:9080/api?line=1",
+		"https://gateway:9080/api#line",
+		"https://gateway:9080/unsafe path",
+	} {
+		if _, err := normalizeGatewayAPIURL(value); err == nil {
+			t.Errorf("invalid gateway API URL accepted: %q", value)
+		}
+	}
+}
+
 func TestWebConfigFileLoadsOSSAndCDNWithEnvironmentOverride(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "web.toml")
 	content := `listen_address = "127.0.0.1:18089"
 tcp_upstream = "127.0.0.1:19065"
+gateway_api_url = "http://gateway:9080"
 max_sessions = 23
 poll_timeout = "9s"
 
@@ -427,12 +452,13 @@ base_url = "https://cdn.example.com/stoneage/"
 	}
 	t.Setenv("STONEAGE_WEB_CONFIG", "")
 	t.Setenv("STONEAGE_WEB_CDN_BASE_URL", "")
+	t.Setenv("STONEAGE_WEB_GATEWAY_API_URL", "")
 	t.Setenv("STONEAGE_WEB_MAX_SESSIONS", "")
 	cfg, path, err := configFromCommandLine([]string{"-config", filename})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != filename || cfg.ListenAddress != "127.0.0.1:18089" || cfg.TCPUpstream != "127.0.0.1:19065" || cfg.MaxSessions != 23 || cfg.PollTimeout != 9*time.Second || cfg.CDNBaseURL != "https://cdn.example.com/stoneage/" {
+	if path != filename || cfg.ListenAddress != "127.0.0.1:18089" || cfg.TCPUpstream != "127.0.0.1:19065" || cfg.GatewayAPIURL != "http://gateway:9080" || cfg.MaxSessions != 23 || cfg.PollTimeout != 9*time.Second || cfg.CDNBaseURL != "https://cdn.example.com/stoneage/" {
 		t.Fatalf("loaded config path=%q cfg=%+v", path, cfg)
 	}
 	oss, err := normalizeOSSConfig(cfg.OSS)
@@ -549,7 +575,6 @@ func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 		`show(loginScreen);`,
 		`acceptLoginCredentials();`,
 		`serverSelectionStage==="connecting"`,
-		`app.selectedServer="local-line"`,
 		`url('/assets/bitmaps/bitmap_9094.png')`,
 		`data-src="/assets/bitmaps/bitmap_9103.png"`,
 		`data-src="/assets/bitmaps/bitmap_9111.png"`,
@@ -586,6 +611,118 @@ func TestEmbeddedPageKeepsLegacyLoginServerCharacterFlow(t *testing.T) {
 		if strings.Contains(body, fragment) {
 			t.Errorf("embedded page contains obsolete server-first UI fragment %q", fragment)
 		}
+	}
+}
+
+func TestServerDirectoryIsProjectedAndSelectsOnlyConfiguredAddress(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	directory := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/servers" || request.Method != http.MethodGet {
+			http.Error(response, "not found", http.StatusNotFound)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(response, fmt.Sprintf(`{"servers":[{"id":"line-a","name":"一线","address":%q,"upstream_address":"10.0.0.8:19065","disabled":false},{"id":"line-b","name":"维护线","address":"127.0.0.1:19066","upstream_address":"10.0.0.9:19065","disabled":true}]}`, fake.address()))
+	}))
+	defer directory.Close()
+
+	cfg := testConfig("127.0.0.1:1")
+	cfg.GatewayAPIURL = directory.URL
+	handler, err := NewHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/api/servers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), `"id":"line-a"`) || !strings.Contains(string(body), `"disabled":true`) {
+		t.Fatalf("server directory status=%d body=%s", response.StatusCode, body)
+	}
+	if strings.Contains(string(body), "address") || strings.Contains(string(body), "upstream_address") {
+		t.Fatalf("browser directory leaked internal address: %s", body)
+	}
+
+	payload := strings.NewReader(`{"server_id":"line-a"}`)
+	response, err = http.Post(server.URL+"/api/sessions", "application/json", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated || created.ID == "" {
+		t.Fatalf("selected server status=%d response=%+v", response.StatusCode, created)
+	}
+	select {
+	case <-fake.accepted:
+	case <-time.After(time.Second):
+		t.Fatal("selected gateway address was not dialed")
+	}
+
+	for _, test := range []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{name: "unknown id", body: `{"server_id":"missing"}`, status: http.StatusNotFound},
+		{name: "disabled id", body: `{"server_id":"line-b"}`, status: http.StatusServiceUnavailable},
+		{name: "arbitrary address", body: `{"server_id":"line-a","address":"127.0.0.1:1"}`, status: http.StatusBadRequest},
+		{name: "missing id", body: `{}`, status: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := http.Post(server.URL+"/api/sessions", "application/json", strings.NewReader(test.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode != test.status {
+				t.Fatalf("status=%d want %d", response.StatusCode, test.status)
+			}
+		})
+	}
+}
+
+func TestLegacyServerDirectoryAndSessionRemainCompatible(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/api/servers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var directory publicServerListResponse
+	if err := json.NewDecoder(response.Body).Decode(&directory); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || len(directory.Servers) != 1 || directory.Servers[0].ID != legacyServerID {
+		t.Fatalf("legacy directory status=%d response=%+v", response.StatusCode, directory)
+	}
+	response, err = http.Post(server.URL+"/api/sessions", "application/json", strings.NewReader(`{"server_id":"local-line"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("legacy session status=%d", response.StatusCode)
 	}
 }
 

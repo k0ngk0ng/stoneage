@@ -17,6 +17,25 @@ type ServiceStatus struct {
 	Database string `json:"database"`
 }
 
+type GameServerStatus struct {
+	ID        string `json:"id,omitempty"`
+	Disabled  bool   `json:"disabled,omitempty"`
+	Name      string `json:"name"`
+	Address   string `json:"address"`
+	Online    *int32 `json:"online"`
+	Error     string `json:"error,omitempty"`
+	CheckedAt string `json:"checked_at"`
+}
+
+type GameServerListingOperator interface {
+	GameServers(context.Context) ([]GameServerStatus, error)
+}
+
+func (operator UnixOperator) GameServers(ctx context.Context) ([]GameServerStatus, error) {
+	response, err := operator.call(ctx, "game_servers")
+	return response.GameServers, err
+}
+
 type DeploymentStatus struct {
 	Version   string `json:"version"`
 	Phase     string `json:"phase"`
@@ -94,11 +113,12 @@ type operatorRequest struct {
 }
 
 type operatorResponse struct {
-	OK         bool             `json:"ok"`
-	Error      string           `json:"error,omitempty"`
-	Status     ServiceStatus    `json:"status,omitempty"`
-	Deployment DeploymentStatus `json:"deployment,omitempty"`
-	AssetSync  AssetSyncStatus  `json:"asset_sync,omitempty"`
+	GameServers []GameServerStatus `json:"game_servers,omitempty"`
+	OK          bool               `json:"ok"`
+	Error       string             `json:"error,omitempty"`
+	Status      ServiceStatus      `json:"status,omitempty"`
+	Deployment  DeploymentStatus   `json:"deployment,omitempty"`
+	AssetSync   AssetSyncStatus    `json:"asset_sync,omitempty"`
 }
 
 func (operator UnixOperator) Status(ctx context.Context) (ServiceStatus, error) {

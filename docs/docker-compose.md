@@ -199,3 +199,49 @@ cd /opt/stoneage
 更新前备份 `.env`、`config/`、`data/`、`assets/` 和 Docker 命名卷 `stoneage-auth`（账号数据库）；备份数据前先 `./bin/stoneage stop`，完成后再部署启动。若自定义卷名，以 `.env` 为准。不要执行 `docker compose down -v`，它会删除账号数据库卷。
 
 GMSV 启动失败时查看 `data/gmsv/logs/gmsv.log`，SAAC 查看 `data/saac/logs/saac.log`。v0.1.16 修复首次初始化缺少 `data/gmsv/log/log.cf` 导致 GMSV 不健康的问题，并保留已有日志配置。
+
+### 管理后台服务器清单与时间
+
+Web 选服列表和管理后台共用 `config/gateway/gateway.toml` 的服务器目录：
+
+```toml
+catalog_listen_address = "0.0.0.0:9080"
+
+[[servers]]
+id = "line-1"
+name = "一线"
+listen_address = "0.0.0.0:9065"
+address = "gateway:9065"
+upstream_address = "gmsv:9065"
+disabled = false
+
+[[servers]]
+id = "line-2"
+name = "二线"
+listen_address = "0.0.0.0:9066"
+address = "gateway:9066"
+upstream_address = "gmsv2:9065"
+disabled = false
+```
+
+`id` 应保持稳定；修改名称不影响重连线路。`listen_address` 是网关监听地址，
+`address` 是 Web 后端可访问的网关 TCP 地址，`upstream_address` 指向对应 GMSV。
+每条线路使用不同监听端口，设置 `disabled = true` 后该线路不再接受新连接。
+配置仅连接已有 GMSV，不会自动创建额外游戏容器。原版 TCP 客户端需要在 Compose
+中额外发布对应端口；Web 通过容器网络连接，不需要增加对外端口。
+
+网关提供内部 `GET /api/servers` 接口，Web 的 `gateway_api_url` 配置为
+`http://gateway:9080`；service-control 使用同一地址的 `STONEAGE_GATEWAY_API_URL`。
+浏览器访问 Web 同源 `/api/servers`，只接收线路 ID、名称和开放状态；建立会话时
+只提交 ID，不能指定任意 TCP 地址。网关内部目录端口不应发布到公网。
+修改网关配置后重启 gateway，重新加载网页即可看到更新。若更改目录端口，需同时更新 Web 的 `gateway_api_url` 和 service-control 的 `STONEAGE_GATEWAY_API_URL`。
+
+“服务”页通过目录中的 GMSV 地址查询原版 `PlayerNumGet`，展示已进入游戏的角色
+人数，而非 TCP 连接数。查询失败显示“未知”，总人数仅累加已知线路；维护线路
+不会发起探测。最多配置 32 条线路。没有启用目录的旧部署仍可使用单一 TCP 上游，
+但要使用可配置选服列表，应同步更新 gateway 配置、Web 配置和 service-control。
+
+管理后台的账号、审计、部署、同步和服务器查询时间统一按浏览器本地时区显示，
+数据库和接口仍保存带时区的时间。资源页“开始同步”会实际调用对象存储上传器，
+需要配置 `web.toml` 的存储参数并挂载对应凭据和资源目录；任务运行时按钮禁用，
+刷新页面可查看执行状态。它不会把 CDN 上的资源下载到游戏客户端。
