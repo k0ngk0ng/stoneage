@@ -3,13 +3,27 @@ set -eu
 
 game_root="${STONEAGE_GAME_ROOT:-/game}"
 role="${STONEAGE_RUNTIME_ROLE:-}"
-defaults="/opt/stoneage/defaults"
+defaults="${STONEAGE_DEFAULTS_ROOT:-/opt/stoneage/defaults}"
 
 copy_file()
 {
     source="$1"
     target="$2"
     install -m "${3:-0644}" "$source" "$target"
+}
+
+copy_file_if_missing()
+{
+    source="$1"
+    target="$2"
+    # Keep operator-owned runtime files intact.  Check symlinks explicitly so
+    # a dangling link is not silently replaced by an image default.
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        return 0
+    fi
+    if [ -f "$source" ]; then
+        copy_file "$source" "$target"
+    fi
 }
 
 replace_tree()
@@ -32,15 +46,24 @@ init_gmsv()
             replace_tree "$defaults/gmsv/$directory" "$root/$directory"
         fi
     done
-    for file in badpetstring.txt log.cf; do
+    for file in badpetstring.txt; do
         if [ -f "$defaults/gmsv/$file" ]; then
             copy_file "$defaults/gmsv/$file" "$root/$file"
         fi
     done
+    # Keep the legacy root-level path for existing configurations, but do not
+    # overwrite an operator's file on every container start.  GMSV combines
+    # logdir=./log with logconfname=log.cf, so the nested copy is the path it
+    # actually opens in the split Compose runtime.
+    copy_file_if_missing "$defaults/gmsv/log.cf" "$root/log.cf"
     if [ -z "${STONEAGE_GMSV_CONFIG:-}" ] && [ ! -f "$root/setup.cf" ]; then
         copy_file "$defaults/gmsv/setup.cf" "$root/setup.cf"
     fi
     mkdir -p "$root/log" "$root/lostpet" "$root/logs"
+    # Seed the nested configuration from the initialized root file so user
+    # edits to the mounted root-level file are preserved.  Never replace an
+    # existing nested configuration.
+    copy_file_if_missing "$root/log.cf" "$root/log/log.cf"
 }
 
 init_saac()

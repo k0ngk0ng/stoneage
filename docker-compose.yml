@@ -17,7 +17,7 @@ services:
   # SAAC is the shared account/character service. Its writable data is kept
   # outside the versioned image so a release cannot replace player records.
   saac:
-    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.16}
     container_name: ${STONEAGE_SAAC_CONTAINER:-stoneage-saac}
     init: true
     restart: unless-stopped
@@ -43,7 +43,7 @@ services:
   # immutable maps/NPC definitions come from the legacy image; character
   # snapshots and logs remain in the GMSV/SAAC data directories.
   gmsv:
-    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.16}
     container_name: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
     init: true
     restart: unless-stopped
@@ -74,7 +74,7 @@ services:
       start_period: 10s
 
   gateway:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.16}
     container_name: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
     init: true
     restart: unless-stopped
@@ -111,7 +111,7 @@ services:
   # private Compose network; the browser never receives a raw GMSV socket.
   # All public game resources are mounted read-only from the host.
   web:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.16}
     container_name: ${STONEAGE_WEB_CONTAINER:-stoneage-web}
     init: true
     restart: unless-stopped
@@ -150,7 +150,7 @@ services:
   assets-sync:
     platform: linux/amd64
     profiles: ["assets-sync"]
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.16}
     init: true
     restart: "no"
     networks:
@@ -182,7 +182,7 @@ services:
   # This is the privileged-but-fixed service control boundary. The web
   # container never receives the Docker socket.
   service-control:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.16}
     container_name: ${STONEAGE_OPERATOR_CONTAINER:-stoneage-service-control}
     init: true
     restart: unless-stopped
@@ -277,7 +277,7 @@ services:
   # The authenticated web administration site (accounts, audit, services,
   # notifications and per-service configuration).
   admin:
-    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.15}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.16}
     container_name: ${STONEAGE_ADMIN_CONTAINER:-stoneage-admin}
     init: true
     restart: unless-stopped

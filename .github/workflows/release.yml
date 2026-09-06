@@ -36,6 +36,7 @@ jobs:
 
       - name: Verify production deployment tools
         run: |
+          bash scripts/runtime-entrypoint_test.sh
           bash bin/registry-login_test.sh
           bash bin/sync-assets_test.sh
           python3 scripts/test-deployment-package.py
