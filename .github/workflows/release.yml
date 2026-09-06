@@ -31,7 +31,16 @@ jobs:
         run: |
           go test ./...
           go vet ./...
-          node client/web/protocol_test.js
+          node client/web/battle_target_async_test.js
+          node client/web/battle_target_rules_test.js
+          node client/web/connection_retry_test.js
+          node client/web/login_credentials_test.js
+          node client/web/npc_interaction_test.js
+          node client/web/resource_loading_test.js
+          node client/web/server_directory_test.js
+          node client/web/sprite_loading_test.js
+          node client/web/sw_cache_test.js
+          node client/web/world_frame_test.js
           node internal/admin/app_time_test.js
       - name: Verify production deployment tools
         run: |

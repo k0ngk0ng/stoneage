@@ -130,3 +130,5 @@ node protocol_test.js
 ```
 
 Go 测试使用本地 fake TCP upstream 覆盖握手、双向逐包转发、长轮询、关闭、错误握手、包大小、资源路由和并发会话上限；Node 用原版客户端捕获向量及 `LSSPROTO_CLI.H` 全量入口检查网页脚本、JEncode、Ringo、转义、base-62 和 schema。实际登录/地图/战斗仍以运行中的 GMSV/SAAC 返回为权威数据。
+
+`protocol_test.js` 是需要完整保留客户端、旧服务端和资源源码树的本地协议审计。发布 CI 运行仓库内可独立复制的 Web 回归测试（战斗目标、重连、登录、NPC、资源、线路目录、精灵加载、Service Worker 缓存和世界帧），不会把该本地审计作为唯一入口。
