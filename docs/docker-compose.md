@@ -64,11 +64,14 @@ base_url = "https://cdn.example.com/stoneage"
 [static.oss]
 provider = "aliyun-oss"
 endpoint = "https://oss-cn-shanghai.aliyuncs.com"
+region = "cn-shanghai"
 bucket = "stoneage-assets"
 prefix = "stoneage"
 ```
 
-保留模板其余配置项。`endpoint` 填地域地址，不含 bucket；`stoneage-assets.oss-cn-shanghai.aliyuncs.com` 是 bucket 的访问域名。网页与 CDN 可以用不同域名，CDN/OSS 配置允许网页域名跨域读取（GET、HEAD）；CDN 须提供 HTTPS。默认不启用 CDN，可先由 Web 提供资源。
+同地域阿里云 ECS 上传可将 `endpoint` 改成 `https://oss-cn-shanghai-internal.aliyuncs.com`；本地上传使用公网 endpoint。CDN 回源只选择 OSS bucket，不使用内网 endpoint。
+
+保留模板其余配置项。`endpoint` 填地域地址，不含 bucket；`stoneage-assets.oss-cn-shanghai.aliyuncs.com` 是 bucket 的访问域名。网页与 CDN 可以用不同域名，CDN/OSS 配置允许网页域名跨域读取（GET、HEAD）；CDN 须提供 HTTPS。CDN 源站只选择 OSS bucket，不追加 `/stoneage` 回源目录、不改写路径；私有 bucket 启用 CDN 回源授权，缓存遵循 OSS 的 `Cache-Control`，不要强制长期缓存 JSON 清单。默认不启用 CDN，可先由 Web 提供资源。
 
 ## 3. 配置镜像拉取凭据
 

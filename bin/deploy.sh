@@ -242,7 +242,7 @@ prepare_asset_secret()
 version="$(env_value STONEAGE_VERSION || true)"
 control_image="$(env_value STONEAGE_CONTROL_IMAGE || true)"
 legacy_image="$(env_value STONEAGE_LEGACY_IMAGE || true)"
-version="${version:-v0.1.14}"
+version="${version:-v0.1.15}"
 control_image="${control_image:-ghcr.io/k0ngk0ng/stoneage/control-plane}"
 legacy_image="${legacy_image:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}"
 admin_password="$(env_value STONEAGE_ADMIN_PASSWORD || true)"

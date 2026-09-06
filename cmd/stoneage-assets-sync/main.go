@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -139,6 +141,13 @@ type clientVersion struct {
 }
 
 const clientVersionDeltaMax = 8192
+
+// Uploads can encounter a stale keep-alive connection or a short-lived
+// provider throttling response. Keep retries bounded so a bad credential,
+// missing source file, or other permanent error fails promptly.
+const maxUploadAttempts = 4
+
+var uploadRetrySleep = time.Sleep
 
 // objectMetadata is the small provider-neutral subset needed by the browser
 // client.  Both Aliyun OSS and Cloudflare R2 preserve these HTTP headers and
@@ -377,22 +386,16 @@ func run(arguments []string) error {
 		}
 	}
 
-	var store objectStore
-	if !*dryRun {
-		store, err = newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
-		if err != nil {
-			return err
-		}
+	// Hash the complete source plan before opening an object-store client. A
+	// large local tree can take minutes to hash; doing this first avoids
+	// leaving a manifest connection idle long enough for its keep-alive to go
+	// stale before the first upload.
+	objects, err := buildPlan(trees, prefix)
+	if err != nil {
+		return err
 	}
 
 	if *dryRun {
-		// Use the same snapshot/planner as a real publication.  Apart from
-		// making the object count accurate, this catches duplicate keys and
-		// unsafe relative paths before an operator starts a long upload.
-		objects, planErr := buildPlan(trees, prefix)
-		if planErr != nil {
-			return planErr
-		}
 		targetBucket := bucketName
 		if targetBucket == "" {
 			targetBucket = "<bucket-not-configured>"
@@ -401,11 +404,13 @@ func run(arguments []string) error {
 		return nil
 	}
 
-	previous, err := readManifest(store, path.Join(prefix, clientManifestName))
+	var store objectStore
+	store, err = newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
 	if err != nil {
 		return err
 	}
-	objects, err := buildPlan(trees, prefix)
+
+	previous, err := readManifest(store, path.Join(prefix, clientManifestName))
 	if err != nil {
 		return err
 	}
@@ -527,7 +532,7 @@ func validateStorageEndpoint(endpoint, bucketName string) error {
 func newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret string) (objectStore, error) {
 	switch provider {
 	case "aliyun-oss":
-		options := []oss.ClientOption{oss.Timeout(10, 300), oss.AuthVersion(oss.AuthV4), oss.Region(region)}
+		options := []oss.ClientOption{oss.Timeout(10, 60), oss.AuthVersion(oss.AuthV4), oss.Region(region)}
 		client, err := oss.New(endpoint, accessKeyID, accessKeySecret, options...)
 		if err != nil {
 			return nil, fmt.Errorf("create Aliyun OSS client: %w", err)
@@ -726,7 +731,7 @@ func syncObjectBatch(store objectStore, objects []plannedObject, previous map[st
 					if strings.EqualFold(filepath.Ext(object.Filename), ".json") {
 						cacheControl = "no-cache"
 					}
-					if err := store.PutFile(object.Key, object.Filename, objectMetadata{ContentType: contentType, CacheControl: cacheControl, SHA256: object.SHA256}); err != nil {
+					if err := putFileWithRetry(store, object.Key, object.Filename, objectMetadata{ContentType: contentType, CacheControl: cacheControl, SHA256: object.SHA256}); err != nil {
 						setError(fmt.Errorf("upload %s: %w", object.Key, err))
 						return
 					}
@@ -773,7 +778,7 @@ func writeManifest(store objectStore, key string, manifest clientManifest) error
 		return fmt.Errorf("encode client manifest: %w", err)
 	}
 	payload = append(payload, '\n')
-	if err := store.Put(key, payload, objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
+	if err := putWithRetry(store, key, payload, objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
 		return fmt.Errorf("upload client manifest %s: %w", key, err)
 	}
 	return nil
@@ -785,10 +790,113 @@ func writeClientVersion(store objectStore, key string, version clientVersion) er
 		return fmt.Errorf("encode client version: %w", err)
 	}
 	payload = append(payload, '\n')
-	if err := store.Put(key, payload, objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
+	if err := putWithRetry(store, key, payload, objectMetadata{ContentType: "application/json", CacheControl: "no-cache"}); err != nil {
 		return fmt.Errorf("upload client version %s: %w", key, err)
 	}
 	return nil
+}
+
+// retryableUploadError limits retries to errors which may be resolved by
+// opening a fresh connection or waiting for provider throttling to clear.
+// Local source-file errors are permanent for this invocation and must not be
+// hidden behind repeated attempts.
+func retryableUploadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return false
+	}
+	if status := uploadHTTPStatus(err); status != 0 {
+		return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var networkErr net.Error
+	return errors.As(err, &networkErr)
+}
+
+// uploadHTTPStatus extracts status codes emitted by both supported storage
+// clients. The OSS SDK has a value ServiceError (and also permits a pointer
+// through wrappers), while the AWS SDK wraps R2 responses in ResponseError.
+func uploadHTTPStatus(err error) int {
+	var serviceErr oss.ServiceError
+	if errors.As(err, &serviceErr) {
+		return serviceErr.StatusCode
+	}
+	var serviceErrPtr *oss.ServiceError
+	if errors.As(err, &serviceErrPtr) && serviceErrPtr != nil {
+		return serviceErrPtr.StatusCode
+	}
+	var responseErr interface{ HTTPStatusCode() int }
+	if errors.As(err, &responseErr) {
+		return responseErr.HTTPStatusCode()
+	}
+	var statusErr interface{ Got() int }
+	if errors.As(err, &statusErr) {
+		return statusErr.Got()
+	}
+	return 0
+}
+
+func uploadRetryDelay(attempt int) time.Duration {
+	switch attempt {
+	case 1:
+		return 100 * time.Millisecond
+	case 2:
+		return 250 * time.Millisecond
+	default:
+		return 500 * time.Millisecond
+	}
+}
+
+func retryUpload(operationName string, operation func() error) error {
+	var err error
+	for attempt := 1; attempt <= maxUploadAttempts; attempt++ {
+		err = operation()
+		if err == nil || !retryableUploadError(err) || attempt == maxUploadAttempts {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "stoneage-assets-sync: retrying %s (attempt %d/%d) after %s\n", operationName, attempt+1, maxUploadAttempts, uploadRetryReason(err))
+		uploadRetrySleep(uploadRetryDelay(attempt))
+	}
+	return err
+}
+
+func putFileWithRetry(store objectStore, key, filename string, metadata objectMetadata) error {
+	return retryUpload("upload "+key, func() error {
+		// PutFile implementations open the source on every invocation, so a
+		// retry never reuses a partially consumed file handle.
+		return store.PutFile(key, filename, metadata)
+	})
+}
+
+func putWithRetry(store objectStore, key string, payload []byte, metadata objectMetadata) error {
+	return retryUpload("put "+key, func() error {
+		return store.Put(key, payload, metadata)
+	})
+}
+
+// uploadRetryReason deliberately reports only an error class or HTTP status;
+// provider error strings can contain request details and are unnecessary for
+// observing retry progress.
+func uploadRetryReason(err error) string {
+	if status := uploadHTTPStatus(err); status != 0 {
+		return fmt.Sprintf("HTTP %d", status)
+	}
+	if errors.Is(err, io.EOF) {
+		return "EOF"
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return "unexpected EOF"
+	}
+	var networkErr net.Error
+	if errors.As(err, &networkErr) {
+		return "network error"
+	}
+	return "transient error"
 }
 
 // publicationRevision derives a stable cache namespace from the complete

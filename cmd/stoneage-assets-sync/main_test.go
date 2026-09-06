@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
 
 func TestWalkTreeKeepsPublicClientAssetAllowlist(t *testing.T) {
@@ -271,6 +274,33 @@ type memoryObjectStore struct {
 	metadata map[string]objectMetadata
 }
 
+type scriptedObjectStore struct {
+	putFileCalls int
+	putCalls     int
+	putFileErr   func(attempt int) error
+	putErr       func(attempt int) error
+}
+
+func (store *scriptedObjectStore) GetObject(string) (io.ReadCloser, error) {
+	return nil, errObjectNotFound
+}
+
+func (store *scriptedObjectStore) PutFile(_, _ string, _ objectMetadata) error {
+	store.putFileCalls++
+	if store.putFileErr != nil {
+		return store.putFileErr(store.putFileCalls)
+	}
+	return nil
+}
+
+func (store *scriptedObjectStore) Put(_ string, _ []byte, _ objectMetadata) error {
+	store.putCalls++
+	if store.putErr != nil {
+		return store.putErr(store.putCalls)
+	}
+	return nil
+}
+
 func (store *memoryObjectStore) GetObject(key string) (io.ReadCloser, error) {
 	payload, ok := store.objects[key]
 	if !ok {
@@ -383,5 +413,75 @@ func TestWriteClientVersionPublishesNoCacheJSON(t *testing.T) {
 	}
 	if !reflect.DeepEqual(decoded, want) {
 		t.Fatalf("version=%#v, want %#v", decoded, want)
+	}
+}
+
+func withoutUploadRetrySleep(t *testing.T) {
+	t.Helper()
+	previous := uploadRetrySleep
+	uploadRetrySleep = func(time.Duration) {}
+	t.Cleanup(func() { uploadRetrySleep = previous })
+}
+
+func TestPutFileWithRetryRetriesUnexpectedEOF(t *testing.T) {
+	withoutUploadRetrySleep(t)
+	store := &scriptedObjectStore{putFileErr: func(attempt int) error {
+		if attempt < 3 {
+			return io.ErrUnexpectedEOF
+		}
+		return nil
+	}}
+	if err := putFileWithRetry(store, "stoneage/assets/sprite.png", "/tmp/sprite.png", objectMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	if store.putFileCalls != 3 {
+		t.Fatalf("PutFile calls=%d, want 3", store.putFileCalls)
+	}
+}
+
+func TestPutFileWithRetryStopsAfterFourServerErrors(t *testing.T) {
+	withoutUploadRetrySleep(t)
+	store := &scriptedObjectStore{putFileErr: func(int) error {
+		return oss.ServiceError{StatusCode: 503}
+	}}
+	if err := putFileWithRetry(store, "stoneage/assets/sprite.png", "/tmp/sprite.png", objectMetadata{}); err == nil {
+		t.Fatal("persistent server error unexpectedly succeeded")
+	}
+	if store.putFileCalls != maxUploadAttempts {
+		t.Fatalf("PutFile calls=%d, want %d", store.putFileCalls, maxUploadAttempts)
+	}
+}
+
+func TestPutFileWithRetryDoesNotRetryForbiddenOrLocalFileErrors(t *testing.T) {
+	for name, failure := range map[string]error{
+		"forbidden":  oss.ServiceError{StatusCode: 403},
+		"local file": &os.PathError{Op: "open", Path: "missing", Err: os.ErrNotExist},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withoutUploadRetrySleep(t)
+			store := &scriptedObjectStore{putFileErr: func(int) error { return failure }}
+			if err := putFileWithRetry(store, "stoneage/assets/sprite.png", "/tmp/sprite.png", objectMetadata{}); err == nil {
+				t.Fatal("permanent upload error unexpectedly succeeded")
+			}
+			if store.putFileCalls != 1 {
+				t.Fatalf("PutFile calls=%d, want 1", store.putFileCalls)
+			}
+		})
+	}
+}
+
+func TestWriteClientVersionUsesUploadRetry(t *testing.T) {
+	withoutUploadRetrySleep(t)
+	store := &scriptedObjectStore{putErr: func(attempt int) error {
+		if attempt < 3 {
+			return io.EOF
+		}
+		return nil
+	}}
+	if err := writeClientVersion(store, "stoneage/_client-version.json", clientVersion{Format: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if store.putCalls != 3 {
+		t.Fatalf("Put calls=%d, want 3", store.putCalls)
 	}
 }
