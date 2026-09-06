@@ -1,159 +1,118 @@
-# Docker Compose 部署（完整服务端 + Web）
+# Docker Compose 部署
 
-要求：Linux x86-64、Docker Engine、Docker Compose v2 或更新版本、Git。
-部署包含 GMSV、SAAC、认证网关、SQLite、管理后台和 Web 客户端。
-以下命令在项目根目录执行。
+服务包含 SAAC、GMSV、网关、Web 客户端、管理后台及服务控制器。需要 Linux amd64、Docker Engine 和 Compose v2+。服务器只拉取 GitHub 构建的镜像，不需要源码、Git、Go 或编译工具。
 
-## 1. 初始化配置
+## 1. 安装部署包
+
+从 GitHub Release 下载 `stoneage-deploy-vX.Y.Z.tar.gz`（不要下载 Source code），上传到服务器后：
 
 ```bash
-git clone https://github.com/k0ngk0ng/stoneage.git
-cd stoneage
-./scripts/deploy.sh --init
+mkdir -p /opt/stoneage
+tar -xzf stoneage-deploy-vX.Y.Z.tar.gz -C /opt/stoneage
+cd /opt/stoneage
+./bin/stoneage init
 ```
 
-初始化生成 `.env` 和缺失的 GMSV/SAAC 配置，不启动服务，不覆盖已有配置。
-组件配置统一放在 `config/`：
+`init` 生成 `.env`、随机后台密码及服务端配置，不覆盖已有配置。
 
 ```text
-.env                         # Compose 部署参数、首次管理员密码
-config/
-├── gateway.toml             # 网关监听、上游、日志开关
-├── web.toml                 # Web、资源路径、CDN、对象存储
-├── gmsv/setup.cf             # 游戏服务配置
-└── saac/acserv.cf            # 角色服务配置
+/opt/stoneage/
+├── .env                       # 镜像版本、端口、挂载路径、后台初始账号
+├── docker-compose.yml
+├── VERSION                    # 部署包版本
+├── README.md
+├── bin/stoneage                # 运维统一入口
+├── config/
+│   ├── web/web.toml            # Web、OSS、CDN
+│   ├── gateway/gateway.toml    # 网关
+│   ├── gmsv/setup.cf           # 游戏服务端
+│   ├── saac/acserv.cf          # 账号服务端
+│   ├── registry/              # GHCR 用户名、token、登录缓存
+│   └── secrets/               # OSS 密钥
+├── assets/client/             # 公开客户端地图、音频、调色板
+├── data/{gmsv,saac}/           # 游戏运行数据
+└── backups/                   # 配置与数据备份
 ```
 
-GMSV/SAAC 的 `.example` 是模板，编辑实际 `.cf` 文件。`.env` 和生成的 `.cf` 不提交 Git。
+## 2. 配置
 
-## 2. 填写实际配置
+通常只需检查 `.env` 中的后台账号、访问端口，以及 `config/web/web.toml` 中的 OSS/CDN；GMSV、SAAC 和网关默认值可直接使用。不要修改镜像内路径。
 
-常规参数已有默认值，按需修改以下文件：
+默认仅监听本机：Web `8088`、后台 `18080`、网关 `9065`。已有 Nginx 可将网页域名反代到 `127.0.0.1:8088`，后台域名反代到 `127.0.0.1:18080`。反代保留 `Host`、`X-Forwarded-For`、`X-Forwarded-Proto`；后台启用 HTTPS 后设置 `.env` 的 `STONEAGE_ADMIN_COOKIE_SECURE=true`。需要直接访问时再修改对应 `STONEAGE_*_BIND`。
 
-| 文件 | 默认配置 | 按环境填写 |
-| --- | --- | --- |
-| [`.env` 模板](../.env.compose.example) | GHCR 版本镜像；数据在 `runtime/`；Web 8088、后台 18080 绑定回环 | 镜像版本、数据/资源路径、宿主机入口、首次管理员账号 |
-| [config/gateway.toml](../config/gateway.toml) | 监听 `0.0.0.0:9065`，上游 `gmsv:9065`，日志跟踪关闭 | 通常保持默认；排障时调整 trace 开关 |
-| [GMSV 模板](../config/gmsv/setup.cf.example) → `config/gmsv/setup.cf` | 9065、`fdnum=128`、单条线路 | 线路名称、游戏参数、SAAC 连接密码 `acpasswd` |
-| [SAAC 模板](../config/saac/acserv.cf.example) → `config/saac/acserv.cf` | 9300、文件存档 | 服务间密码 `pass`，必须与 GMSV `acpasswd` 一致 |
-| [config/web.toml](../config/web.toml) | 上游 `gateway:9065`，本地资源 | CDN 域名；需要上传时再填写 OSS/R2 参数 |
-
-单机部署保持容器内部地址、端口与存档相对路径不变。网关认证固定开启，网关和后台共用
-`.env` 指定的 SQLite 卷与数据库文件，无需安装 MySQL。
-
-**客户端资源**：将匹配的 2.5 原版资源放入以下目录，或修改 `.env` 的 `STONEAGE_CLIENT_DATA_ROOT`：
+将匹配的 2.5 客户端公开资源放入 `assets/client/`：
 
 ```text
-runtime/legacy-client/
-├── map/
-└── data/
-    ├── auto.dat
-    ├── bgm/
-    ├── se/
-    └── pal/
+map/
+data/auto.dat
+data/bgm/
+data/se/
+data/pal/
 ```
 
-服务端数据和网页精灵图随镜像准备；上述原版资源需自行提供。
+精灵图片已在镜像中，不需要复制 `client/` 源码。`.env` 中 `./` 开头的路径相对部署目录；TOML 的 `/game/...`、`/opt/stoneage/web-assets` 是容器内绝对路径。
 
-**CDN（可选）**：编辑 `config/web.toml` 已有的配置段，填写自己的 HTTPS 资源根地址：
+使用阿里云 OSS 时，编辑 `config/web/web.toml` 中已有配置项：
 
 ```toml
 [static.cdn]
 base_url = "https://cdn.example.com/stoneage"
+
+[static.oss]
+provider = "aliyun-oss"
+endpoint = "https://oss-cn-shanghai.aliyuncs.com"
+bucket = "stoneage-assets"
+prefix = "stoneage"
 ```
 
-该地址下应有 `assets/`、`maps/`、`audio/`，允许游戏域名跨域 GET/HEAD。
-CDN 域名没有通用默认值；留空且未配置 OSS 公开地址时使用本地资源。
-填写域名不会自动上传文件。通常保持 `.env` 的 `STONEAGE_WEB_CDN_BASE_URL` 为空，避免覆盖 TOML。
-OSS/R2 上传配置见 [README](../README.md#linux-docker-compose) 和 [R2 模板](../config/web.r2.toml.example)。
+保留模板其余配置项。`endpoint` 填地域地址，不含 bucket；`stoneage-assets.oss-cn-shanghai.aliyuncs.com` 是 bucket 的访问域名。网页与 CDN 可以用不同域名，CDN/OSS 配置允许网页域名跨域读取（GET、HEAD）；CDN 须提供 HTTPS。默认不启用 CDN，可先由 Web 提供资源。
 
-## 3. 部署
+## 3. 配置镜像拉取凭据
+
+私有 GHCR 使用有两个镜像包读取权限的 GitHub 账号，可以是其他账号或专用部署账号。创建 **PAT classic**，仅勾选 `read:packages`，并确认账号拥有包的 Read 权限。SSH Deploy Key 只能拉 Git 仓库，不能用于 GHCR。
+
+在服务器 Bash 中执行一次（token 不回显、不进入命令历史）：
 
 ```bash
-./scripts/deploy.sh --check
-./scripts/deploy.sh
-docker compose --env-file .env ps
+cd /opt/stoneage
+install -d -m 700 config/registry
+read -r -p 'GitHub 用户名: ' registry_user
+read -r -s -p 'GitHub token: ' registry_token; echo
+(umask 077; printf '%s\n' "$registry_user" > config/registry/username
+ printf '%s\n' "$registry_token" > config/registry/token)
+unset registry_user registry_token
+./bin/stoneage login
 ```
 
-默认拉取 `.env` 指定的 GHCR 版本镜像并等待六个常驻服务健康。
-镜像由 GitHub Actions 在推送 `v*` tag 后构建，部署服务器不需要编译。`--check` 检查路径和 Compose，
-不启动服务，但可能创建数据目录；资源完整性仍需登录游戏验收。
+后续拉取、部署、同步资源均自动读取这两个文件。更换账号或续期时更新文件即可，登录缓存保存在 `config/registry/docker/`。凭据未配置时使用当前 Docker 登录状态。
 
-切换发布版本时，修改 `.env` 后执行 `./scripts/deploy.sh --pull`：
-
-```dotenv
-STONEAGE_VERSION=v实际发布版本
-STONEAGE_CONTROL_IMAGE=ghcr.io/<owner>/<repo>/control-plane
-STONEAGE_LEGACY_IMAGE=ghcr.io/<owner>/<repo>/legacy-runtime
-```
-
-代码、Compose 和镜像使用匹配版本；私有镜像先执行 `docker login ghcr.io`。
-当前布局需要 `v0.1.11` 或更新的兼容镜像。源码开发时可将镜像仓库改成本地名称、版本设为 `local`，再用 `--build`。
-
-## 4. 访问
-
-默认端口只绑定服务器回环地址。在自己的电脑建立 SSH 隧道：
+## 4. 启动和上传资源
 
 ```bash
-ssh -N -L 8088:127.0.0.1:8088 -L 18080:127.0.0.1:18080 user@服务器地址
+./bin/stoneage check
+./bin/stoneage deploy
+./bin/stoneage status
+./bin/stoneage logs --tail=100 -f
 ```
 
-1. 打开后台 `http://127.0.0.1:18080/`，用 `.env` 中的管理员账号和随机密码登录，创建游戏账号。
-2. 打开游戏 `http://127.0.0.1:8088/`，用游戏账号登录、创建角色，检查地图、NPC 和音频。
-3. 退出重登，确认角色和背包仍在。已有管理员的密码不会随 `.env` 初始密码变化。
+启动后用 `.env` 中的后台账号登录管理后台，再创建游戏账号。容器首次启动自动初始化服务端数据。
 
-正式域名通过宿主机 Caddy/Nginx HTTPS 代理到 `127.0.0.1:8088`。Caddy 示例：
-
-```caddyfile
-game.example.com {
-    reverse_proxy 127.0.0.1:8088
-}
-```
-
-域名需解析到服务器并开放 80/443。容器内反向代理加入项目网络后使用 `web:8088`。
-后台若使用 HTTPS，设置 `STONEAGE_ADMIN_COOKIE_SECURE=true` 并限制访问来源；
-HTTP 隧道访问保留 `false`。Web 玩家无需开放 9065、9300。
-
-## 5. 维护与旧配置迁移
-
-| 修改内容 | 应用方式 |
-| --- | --- |
-| `.env`、配置文件挂载路径 | `./scripts/deploy.sh --no-image-update` |
-| `config/gateway.toml` | `docker compose --env-file .env restart gateway` |
-| `config/web.toml` | `docker compose --env-file .env restart web` |
-| `config/gmsv/setup.cf` | `docker compose --env-file .env restart gmsv` |
-| SAAC 配置或两端连接密码 | 维护窗口停服，修改后用部署脚本启动 |
-| 源码/镜像版本 | `./scripts/deploy.sh --build` 或 `--pull` |
-
-后台可以编辑 GMSV/SAAC 的部分参数，保存后需重启。配置挂载整个目录，保证后台原子保存正常。
-SAAC 运行目录中的 `acserv.cf` 是启动时刷新的兼容副本，只编辑 `config/` 中的文件。
-
-旧部署先运行以下命令：目标缺失时，从 `.env` 指定的旧运行目录复制配置到 `config/`；
-没有旧配置则使用模板，原文件和已有目标均保留。自定义配置目录通过
-`STONEAGE_GMSV_CONFIG_DIR` / `STONEAGE_SAAC_CONFIG_DIR` 指定。
+需要 OSS/CDN 时，将 AccessKey ID 和 Secret 分别写入以下文件（仅首次上传需要，内容不加引号）：
 
 ```bash
-./scripts/deploy.sh --prepare-config
+install -d -m 700 config/secrets
+# 用编辑器分别填写：
+vi config/secrets/oss-access-key-id
+vi config/secrets/oss-access-key-secret
+chmod 600 config/secrets/oss-access-key-*
+./bin/stoneage sync-assets --dry-run
+./bin/stoneage sync-assets
 ```
 
-旧 `.env` 的 `STONEAGE_GATEWAY_LISTEN_HOST`、`STONEAGE_GATEWAY_UPSTREAM` 和两个 trace 变量
-不再配置网关进程；将自定义值迁入 `config/gateway.toml` 对应字段。宿主机映射和认证库仍由 `.env` 配置。
+`--dry-run` 校验资源但不上传，也需要拉取镜像。正式同步一次发布图片、地图和音频，只上传变化文件。
 
-常用排障与停服命令：
+## 5. 升级和备份
 
-```bash
-docker compose --env-file .env logs --tail=100 gateway web admin service-control
-docker compose --env-file .env exec gmsv tail -n 100 /game/gmsv/logs/gmsv.log
-docker compose --env-file .env exec saac tail -n 100 /game/saac/logs/saac.log
+普通镜像升级：修改 `.env` 中的 `STONEAGE_VERSION` 为已发布 tag，再执行 `./bin/stoneage deploy`。部署工具本身升级时，先解压新包到临时目录，对比并更新 `bin/`、Compose 和配置模板；不要直接覆盖现有 `.env`、`config/`。
 
-docker compose --env-file .env stop web gateway admin service-control
-docker compose --env-file .env stop gmsv
-docker compose --env-file .env stop saac
-# 恢复服务
-./scripts/deploy.sh --no-image-update
-```
-
-**升级前备份**：停服后同时保存 `.env`、完整 `config/`、`.secrets/`、两个服务端数据目录及
-认证命名卷 `stoneage-auth`（包含可能存在的 SQLite WAL/SHM）；运维状态在 `stoneage-operator-state`。
-恢复时使用同一时间点的配置、账号与角色数据，并修正路径。不要执行 `docker compose down -v`，
-否则会删除认证库等命名卷。数据库说明见 [database.md](database.md)。
+备份 `.env`、`config/`、`data/`、`assets/client/` 和 Docker 命名卷 `stoneage-auth`（账号数据库）；备份数据前先 `./bin/stoneage stop`，完成后再部署启动。若自定义卷名，以 `.env` 为准。不要执行 `docker compose down -v`，它会删除账号数据库卷。

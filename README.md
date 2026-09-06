@@ -31,7 +31,7 @@ HTML/CSS/JavaScript。Web 进程只负责游戏协议和公开静态资源 URL�
 ## macOS 一键运行
 
 首次需要 Docker Desktop、Go、Wine 11，以及已经保存在本目录中的
-`vendor/`、`runtime/legacy-client/` 资产。随后执行：
+`vendor/`、`assets/client/` 资产。随后执行：
 
 ```bash
 ./scripts/start-local.sh
@@ -67,25 +67,10 @@ printf '%s\n' '强密码' | ./bin/stoneage-admin create-admin \
 完整服务端 + Web 客户端的部署步骤见 [Docker Compose 部署文档](docs/docker-compose.md)，
 包含 GMSV/SAAC 初始化、网关、后台、浏览器访问、HTTPS、升级与备份恢复。
 
-Linux 也可以把旧版游戏服务、Go 网关、浏览器客户端、管理后台和受限 operator
-一起交给 Compose 编排。首次部署推荐使用仓库内的入口脚本；它会创建持久化目录、
-校验配置、按版本构建/拉取镜像，最后逐个等待健康检查：
-
-```bash
-./scripts/deploy.sh --init   # 生成 .env、随机后台密码及 GMSV/SAAC 配置
-# 编辑 .env、config/web.toml、config/{gateway.toml,gmsv/setup.cf,saac/acserv.cf}
-# 编辑 .env：生产镜像填 GHCR 的仓库和 v* 版本；本地构建 保持 VERSION=local
-./scripts/deploy.sh          # 默认拉取 GHCR 版本镜像；local 仅用于源码构建
-# 如果这次发布也要更新 CDN/OSS/R2 上的客户端整体资源：
-./scripts/deploy.sh --sync-assets
-docker compose --env-file .env ps
-docker compose --env-file .env logs -f saac gmsv gateway web
-```
-
-`STONEAGE_CLIENT_DATA_ROOT` 必须指向匹配的 2.5 客户端 `map/` 和 `data/`（至少
-包含 BGM/SE）目录；网页精灵图已随 control-plane 镜像发布。没有这些只读资源时，
-网页仍会启动，但地图自动地图、音乐等功能会缺少数据。脚本的 `--build`、`--pull`
-和 `--no-image-update` 可分别强制本地构建、拉取或完全跳过镜像更新。
+下载 Release 中的 `stoneage-deploy-vX.Y.Z.tar.gz` 到 `/opt/stoneage`，使用
+`./bin/stoneage init` 生成配置，再运行 `./bin/stoneage deploy`。服务器只拉取
+预构建镜像，不需要源码或编译工具。配置统一放在 `config/<服务>/`，运行数据在
+`data/`，匹配的 2.5 客户端公开地图和音频在 `assets/client/`；精灵图片随镜像发布。
 
 图片、地图、音效和音乐可以直接由阿里云 OSS、Cloudflare R2/CDN 提供，避免所有玩家从 8088
 重复下载大文件。资源使用一个固定根目录，版本发布时做增量同步，不按 tag 重复
@@ -103,8 +88,8 @@ stoneage/
 SHA-256，只上传变化文件，最后才更新发布清单：
 
 ```bash
-./scripts/sync-client-assets.sh --dry-run  # 检查来源和对象数量
-./scripts/sync-client-assets.sh             # 发布 assets、maps、audio
+./bin/sync-assets.sh --dry-run  # 检查来源和对象数量
+./bin/sync-assets.sh             # 发布 assets、maps、audio
 ```
 
 该命令只读取客户端公开资源（精灵图、地图、`auto.dat`、BGM、SE 和调色板），
@@ -126,7 +111,7 @@ revision 切换会建立新的 Service Worker Cache Storage 命名空间；发�
 `_client-manifest.json` 生成变更/删除路径，并附带 delta 的基准 revision。Worker 只有在
 浏览器当前缓存正好是这个基准版本时，才会安全复用上一个命名空间中未变化的对象；跳过版本、变化或删除对象都会走网络，避免误用旧内容。旧版 marker 没有 delta 信息时按全量更新处理。
 
-Web 后端启动时读取 [`config/web.toml`](config/web.toml)。在
+Web 后端启动时读取 [`config/web/web.toml`](config/web/web.toml)。在
 `static.oss` 中填写对象存储的 `provider`、`endpoint`、`region`、`bucket` 和固定
 `prefix`，在 `static.cdn.base_url` 中填写 CDN 公开根地址。阿里云 OSS 例如：
 
@@ -144,7 +129,7 @@ base_url = "https://cdn.example.com/stoneage"
 
 Cloudflare R2 使用相同配置格式：`provider = "cloudflare-r2"`、endpoint 为
 `https://<account-id>.r2.cloudflarestorage.com`、region 为 `auto`，CDN 填写
-Cloudflare 自定义域名（完整模板见 [`config/web.r2.toml.example`](config/web.r2.toml.example)）。
+Cloudflare 自定义域名（完整模板见 [`config/web/web.r2.toml.example`](config/web/web.r2.toml.example)）。
 R2 的 S3 API 默认不是公开下载端点，因此生产环境应配置 CDN；Web 不会把带签名的
 R2 API 地址暴露给浏览器。
 
@@ -155,7 +140,7 @@ R2 API 地址暴露给浏览器。
 不会自动暴露 S3 endpoint。网页会把
 `/assets/`、`/maps/`、`/audio/` 直接改写到该地址；登录、NPC 和游戏协议 API
 仍只访问 8088。当前资源模式是公开只读 OSS/R2/CDN；AK/SK 建议分别写入权限为 0600 的
-`.secrets/oss-access-key-id` 和 `.secrets/oss-access-key-secret`（或由 CI 注入），由一次性
+`config/secrets/oss-access-key-id` 和 `config/secrets/oss-access-key-secret`（或由 CI 注入），由一次性
 批量资源同步工具读取，Web 游戏进程和 admin HTTP 进程不会读取或上传。admin 页面如果启用
 同步，只能请求 service-control 的固定整包任务；service-control 只挂载这两个 Docker secret
 文件，并在任务启动时传给上传子进程，任务结束后不保留密钥。OSS/R2/CDN 必须允许网页正式域名进行跨域 `GET`/`HEAD`，并正确返回
@@ -169,8 +154,8 @@ HTTPS，并为精确下载进度返回 `Timing-Allow-Origin`，否则 HTTPS 网�
 的运维应用，不会被打进客户端资源包，也不会拿到 OSS/R2 AK/SK：
 
 ```bash
-./scripts/sync-client-assets.sh --dry-run   # 先检查目录和对象数量
-./scripts/sync-client-assets.sh              # 一次发布 assets、maps、audio
+./bin/sync-assets.sh --dry-run   # 先检查目录和对象数量
+./bin/sync-assets.sh              # 一次发布 assets、maps、audio
 ```
 
 同步器会在固定根目录写入 `stoneage/_client-manifest.json` 和轻量的
@@ -188,10 +173,10 @@ revision、对象数和总字节数。后续发布只上传变化的文件，全
 install -d -m 700 .secrets
 read -r -s -p 'OSS AccessKey ID: ' oss_id; echo
 read -r -s -p 'OSS AccessKey Secret: ' oss_secret; echo
-printf '%s\n' "$oss_id" > .secrets/oss-access-key-id
-printf '%s\n' "$oss_secret" > .secrets/oss-access-key-secret
+printf '%s\n' "$oss_id" > config/secrets/oss-access-key-id
+printf '%s\n' "$oss_secret" > config/secrets/oss-access-key-secret
 unset oss_id oss_secret
-chmod 600 .secrets/oss-access-key-id .secrets/oss-access-key-secret
+chmod 600 config/secrets/oss-access-key-id config/secrets/oss-access-key-secret
 ```
 
 R2 这里填写 Cloudflare 控制台创建的 R2 API Token（Access Key ID/Secret
@@ -212,7 +197,7 @@ admin HTTP 进程永远不会拿到 AK/SK，也不会因为上传而重启。目
 使用 GitHub Release 镜像时，先在服务器执行 `docker login ghcr.io`（若仓库为私有），
 再把 `.env` 中的两个镜像仓库写成 `ghcr.io/<owner>/<repo>/control-plane` 和
 `ghcr.io/<owner>/<repo>/legacy-runtime`，填入对应的 `v*` 版本并运行
-`./scripts/deploy.sh --pull`。
+`./bin/deploy.sh --pull`。
 
 Compose 默认把浏览器端 8088、游戏网关 9065 和后台 18080 绑定到 `127.0.0.1`；
 需要让朋友访问网页时，把 `STONEAGE_WEB_BIND` 设为服务器的 LAN/VPN 地址（或

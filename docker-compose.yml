@@ -17,7 +17,7 @@ services:
   # SAAC is the shared account/character service. Its writable data is kept
   # outside the versioned image so a release cannot replace player records.
   saac:
-    image: ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.12}
     container_name: ${STONEAGE_SAAC_CONTAINER:-stoneage-saac}
     init: true
     restart: unless-stopped
@@ -29,7 +29,7 @@ services:
       STONEAGE_RUNTIME_ROLE: saac
       STONEAGE_SAAC_CONFIG: /etc/stoneage/saac/acserv.cf
     volumes:
-      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
+      - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
       - ${STONEAGE_SAAC_CONFIG_DIR:-./config/saac}:/etc/stoneage/saac:ro
     command: ["/opt/stoneage/bin/run-saac.sh"]
     healthcheck:
@@ -43,7 +43,7 @@ services:
   # immutable maps/NPC definitions come from the legacy image; character
   # snapshots and logs remain in the GMSV/SAAC data directories.
   gmsv:
-    image: ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:${STONEAGE_VERSION:-v0.1.12}
     container_name: ${STONEAGE_GMSV_CONTAINER:-stoneage-gmsv}
     init: true
     restart: unless-stopped
@@ -60,11 +60,11 @@ services:
       STONEAGE_SAAC_HOST: saac
       STONEAGE_SAAC_PORT: 9300
     volumes:
-      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
+      - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv:ro
       # The legacy crash-recovery path is ../saac/char. Mount the shared SAAC
       # data explicitly without sharing the GMSV binary/static tree.
-      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
+      - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
     command: ["/opt/stoneage/bin/run-gmsv.sh"]
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
@@ -74,10 +74,7 @@ services:
       start_period: 10s
 
   gateway:
-    build:
-      context: .
-      dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
     container_name: ${STONEAGE_GATEWAY_CONTAINER:-stoneage-gateway}
     init: true
     restart: unless-stopped
@@ -99,7 +96,7 @@ services:
       STONEAGE_AUTH_DB: /data/${STONEAGE_AUTH_DB_FILE:-stoneage-auth.db}
     volumes:
       - auth-data:/data
-      - ${STONEAGE_GATEWAY_CONFIG_FILE:-./config/gateway.toml}:/etc/stoneage/gateway.toml:ro
+      - ${STONEAGE_GATEWAY_CONFIG_FILE:-./config/gateway/gateway.toml}:/etc/stoneage/gateway.toml:ro
     ports:
       # Publish the single client entry for this deployment.
       - ${STONEAGE_GATEWAY_BIND:-127.0.0.1}:${STONEAGE_GATEWAY_PORT:-9065}:9065
@@ -115,10 +112,7 @@ services:
   # The generated sprite pack is in the control image. Matching 2.5 client
   # maps/audio are mounted read-only from STONEAGE_CLIENT_DATA_ROOT.
   web:
-    build:
-      context: .
-      dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
     container_name: ${STONEAGE_WEB_CONTAINER:-stoneage-web}
     init: true
     restart: unless-stopped
@@ -136,9 +130,9 @@ services:
       STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:
-      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
-      - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
-      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv:ro
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro
+      - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv:ro
     ports:
       - ${STONEAGE_WEB_BIND:-127.0.0.1}:${STONEAGE_WEB_PORT:-8088}:8088
     healthcheck:
@@ -155,7 +149,7 @@ services:
   # root: stoneage/{assets,maps,audio}/.
   assets-sync:
     profiles: ["assets-sync"]
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
     init: true
     restart: "no"
     networks:
@@ -180,16 +174,13 @@ services:
       - stoneage-oss-access-key-id
       - stoneage-oss-access-key-secret
     volumes:
-      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
-      - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro
 
   # This is the privileged-but-fixed service control boundary. The web
   # container never receives the Docker socket.
   service-control:
-    build:
-      context: .
-      dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
     container_name: ${STONEAGE_OPERATOR_CONTAINER:-stoneage-service-control}
     init: true
     restart: unless-stopped
@@ -220,9 +211,9 @@ services:
       - -project-host-root
       - ${STONEAGE_PROJECT_ROOT:-}
       - -control-image
-      - ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}
+      - ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}
       - -legacy-image
-      - ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}
+      - ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}
       - -state
       - /state/deploy.status
       - -state-volume
@@ -247,8 +238,8 @@ services:
       STONEAGE_PROJECT_ROOT: ${STONEAGE_PROJECT_ROOT:-}
       STONEAGE_PROJECT_HOST_ROOT: ${STONEAGE_PROJECT_ROOT:-}
       STONEAGE_COMPOSE_FILE: ${STONEAGE_COMPOSE_FILE:-}
-      STONEAGE_CONTROL_IMAGE: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}
-      STONEAGE_LEGACY_IMAGE: ${STONEAGE_LEGACY_IMAGE:-stoneage-legacy-runtime}
+      STONEAGE_CONTROL_IMAGE: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}
+      STONEAGE_LEGACY_IMAGE: ${STONEAGE_LEGACY_IMAGE:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}
       STONEAGE_OPERATOR_STATE_VOLUME: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
       STONEAGE_GMSV_DATA_ROOT: ${STONEAGE_GMSV_DATA_ROOT:-}
       STONEAGE_SAAC_DATA_ROOT: ${STONEAGE_SAAC_DATA_ROOT:-}
@@ -258,10 +249,10 @@ services:
       STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE: /run/secrets/stoneage-oss-access-key-id
       STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE: /run/secrets/stoneage-oss-access-key-secret
     volumes:
-      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
-      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
-      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web.toml}:/etc/stoneage/web.toml:ro
-      - ${STONEAGE_CLIENT_DATA_ROOT:-./runtime/legacy-client}:/game/client:ro
+      - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv
+      - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
+      - ${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro
+      - ${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro
       - auth-data:/data
       - operator-run:/run/stoneage
       - operator-state:/state
@@ -283,10 +274,7 @@ services:
   # The authenticated web administration site (accounts, audit, services,
   # notifications and per-service configuration).
   admin:
-    build:
-      context: .
-      dockerfile: deploy/linux/Dockerfile
-    image: ${STONEAGE_CONTROL_IMAGE:-stoneage-control-plane}:${STONEAGE_VERSION:-local}
+    image: ${STONEAGE_CONTROL_IMAGE:-ghcr.io/k0ngk0ng/stoneage/control-plane}:${STONEAGE_VERSION:-v0.1.12}
     container_name: ${STONEAGE_ADMIN_CONTAINER:-stoneage-admin}
     init: true
     restart: unless-stopped
@@ -316,8 +304,8 @@ services:
       STONEAGE_ADMIN_SETUP_TOKEN: ${STONEAGE_ADMIN_SETUP_TOKEN:-}
       STONEAGE_ADMIN_COOKIE_SECURE: ${STONEAGE_ADMIN_COOKIE_SECURE:-false}
     volumes:
-      - ${STONEAGE_GMSV_DATA_ROOT:-./runtime/legacy-server/gmsv}:/game/gmsv
-      - ${STONEAGE_SAAC_DATA_ROOT:-./runtime/legacy-server/saac}:/game/saac
+      - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv
+      - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
       - auth-data:/data
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv
       - ${STONEAGE_SAAC_CONFIG_DIR:-./config/saac}:/etc/stoneage/saac
@@ -346,9 +334,9 @@ volumes:
 # files contain values.
 secrets:
   stoneage-oss-access-key-id:
-    file: ${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-./.secrets/oss-access-key-id}
+    file: ${STONEAGE_ASSET_SYNC_ACCESS_KEY_FILE:-./config/secrets/oss-access-key-id}
   stoneage-oss-access-key-secret:
-    file: ${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-./.secrets/oss-access-key-secret}
+    file: ${STONEAGE_ASSET_SYNC_ACCESS_SECRET_FILE:-./config/secrets/oss-access-key-secret}
 
 networks:
   # No host ports are published for GMSV/SAAC, so they remain private while

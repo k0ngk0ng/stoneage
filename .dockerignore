@@ -44,3 +44,12 @@ server/legacy/source/2.5/saac/data/fmpointdir
 server/legacy/source/2.5/saac/data/fmsmemodir
 *.log
 *.pcap
+
+# Production host state and credentials
+/data/
+/assets/
+/backups/
+/config/secrets/
+/config/registry/username
+/config/registry/token
+/config/registry/docker/

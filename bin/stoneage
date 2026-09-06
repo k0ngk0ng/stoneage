@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+project_root="$(cd "$(dirname "$0")/.." && pwd)"
+docker_bin="${STONEAGE_DOCKER_BIN:-docker}"
+command="${1:-help}"
+if (( $# )); then shift; fi
+case "$command" in
+  init) exec "$project_root/bin/deploy.sh" --init "$@" ;;
+  check) exec "$project_root/bin/deploy.sh" --check "$@" ;;
+  deploy) exec "$project_root/bin/deploy.sh" "$@" ;;
+  sync-assets) exec "$project_root/bin/sync-assets.sh" "$@" ;;
+  login) exec "$project_root/bin/registry-login.sh" "$@" ;;
+  pull|status|logs|stop)
+    action="$command"
+    [[ "$action" != status ]] || action=ps
+    if [[ "$action" == pull ]]; then
+      source "$project_root/bin/registry-login.sh"
+      stoneage_registry_login
+    fi
+    exec "$docker_bin" compose --project-directory "$project_root" --env-file "${STONEAGE_ENV_FILE:-$project_root/.env}" -f "$project_root/docker-compose.yml" "$action" "$@"
+    ;;
+  help|-h|--help) echo 'Usage: bin/stoneage {init|check|login|pull|deploy|status|logs|stop|sync-assets} [options]' ;;
+  *) echo "Unknown command: $command" >&2; exit 2 ;;
+esac

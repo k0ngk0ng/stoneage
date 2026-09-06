@@ -74,3 +74,12 @@ online-*.png
 # Local browser dogfood captures and reports. These can contain account names,
 # screenshots and protocol traces; never include them in a release commit.
 dogfood-output/
+
+# Production host state and credentials
+/data/
+/assets/
+/backups/
+/config/secrets/
+/config/registry/username
+/config/registry/token
+/config/registry/docker/
