@@ -1,0 +1,7 @@
+{
+  "domain": "cdn.ichenj.com",
+  "dns_zone": "ichenj.com",
+  "access_key_id_file": "/opt/stoneage/config/certificates/access-key-id",
+  "access_key_secret_file": "/opt/stoneage/config/certificates/access-key-secret",
+  "propagation_seconds": 120
+}

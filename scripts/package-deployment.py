@@ -21,10 +21,11 @@ files = {
     '.env.compose.example': '.env.compose.example',
     'README.md': 'docs/docker-compose.md',
     **{f'bin/{name}': f'bin/{name}' for name in
-       ('stoneage', 'deploy.sh', 'sync-assets.sh', 'registry-login.sh')},
+       ('stoneage', 'deploy.sh', 'sync-assets.sh', 'registry-login.sh', 'aliyun-certificate.py')},
     **{f'config/{name}': f'config/{name}' for name in
        ('web/web.toml', 'web/web.r2.toml.example', 'gateway/gateway.toml',
-        'gmsv/setup.cf.example', 'saac/acserv.cf.example', 'registry/username.example')},
+        'gmsv/setup.cf.example', 'saac/acserv.cf.example', 'registry/username.example', 'certificates/aliyun.json.example', 'certificates/README.md',
+        'certificates/stoneage-cdn-certificate.service', 'certificates/stoneage-cdn-certificate.timer')},
 }
 if args.uploader:
     uploader = Path(args.uploader).resolve()

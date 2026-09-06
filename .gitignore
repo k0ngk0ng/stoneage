@@ -83,3 +83,8 @@ dogfood-output/
 /config/registry/username
 /config/registry/token
 /config/registry/docker/
+
+# Certificate automation host configuration and credentials
+/config/certificates/aliyun.json
+/config/certificates/access-key-id
+/config/certificates/access-key-secret

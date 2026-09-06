@@ -1,0 +1,13 @@
+[Unit]
+Description=Deploy current StoneAge CDN certificate to Aliyun
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/letsencrypt/live/cdn.ichenj.com/fullchain.pem
+
+[Service]
+Type=oneshot
+Environment=RENEWED_LINEAGE=/etc/letsencrypt/live/cdn.ichenj.com
+Environment=RENEWED_DOMAINS=cdn.ichenj.com
+ExecStart=/usr/bin/python3 /opt/stoneage/bin/aliyun-certificate.py deploy
+UMask=0077
+TimeoutStartSec=120

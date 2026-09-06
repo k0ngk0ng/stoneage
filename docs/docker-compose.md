@@ -29,6 +29,7 @@ cd /opt/stoneage
 │   ├── gmsv/setup.cf           # 游戏服务端
 │   ├── saac/acserv.cf          # 账号服务端
 │   ├── registry/              # GHCR 用户名、token、登录缓存
+│   ├── certificates/          # CDN 自动证书配置及专用密钥
 │   └── secrets/               # OSS 密钥
 ├── assets/
 │   ├── sprites/                # 独立资源包：精灵图片及索引
@@ -50,7 +51,7 @@ nginx -t && systemctl reload nginx                  # 修改站点配置后
 certbot renew --cert-name sa.ichenj.com --dry-run     # 检查自动续期
 ```
 
-网页证书与 CDN 域名证书分别管理；CDN 证书在阿里云 CDN 控制台配置。CDN 跨域响应头应允许 `https://sa.ichenj.com`。
+网页证书与 CDN 域名证书分别管理。CDN 自动证书配置见 `config/certificates/README.md`：服务器使用 Certbot DNS-01 续签，并调用阿里云 API 部署到 CDN，无需本地 CLI 或容器挂载。CDN 跨域响应头应允许 `https://sa.ichenj.com`。
 
 将匹配的 2.5 客户端公开资源放入 `assets/client/`：
 
