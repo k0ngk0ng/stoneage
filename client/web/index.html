@@ -258,6 +258,11 @@
        The dynamic ground back-buffer is the sibling #world-ground layer;
        both remain above the optional legacy map <img>. */
     #world { position:relative; z-index:2; display:block; width:100%; height:100%; border:0; background:transparent; image-rendering:pixelated; touch-action:none; cursor:none; will-change:contents; }
+    /* Native field names are StockFontBuffer text, not part of the 640×480
+       bitmap. Keep a transparent compositor layer for them so glyphs are
+       rasterised at the displayed scene size instead of being enlarged from
+       the pixel canvas together with the old artwork. */
+    #world-labels { position:absolute; inset:0; z-index:3; display:block; width:100%; height:100%; border:0; background:transparent; image-rendering:auto; pointer-events:none; contain:paint; }
     #world-actors-layer { position:absolute; inset:0; z-index:2; width:640px; height:480px; pointer-events:none; }
     #world-actors-layer img { position:absolute; display:block; image-rendering:pixelated; }
     #world-actors-layer .actor-name { position:absolute; transform:translateX(-50%); color:#f8efd2; font:12px Tahoma,"Microsoft YaHei",sans-serif; white-space:nowrap; text-shadow:1px 1px #080706,-1px -1px #080706; }
@@ -278,7 +283,7 @@
        transform as the active scene, so its logical pointer coordinate stays
        locked to the map at every viewport scale. */
     #world-overlay { position:absolute; left:0; top:0; z-index:1100; width:640px; height:480px; transform:scale(var(--world-overlay-scale,1)); transform-origin:top left; pointer-events:none; }
-    #world-overlay.scene-cursor { left:50%; top:50%; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; }
+    #world-overlay.scene-cursor { left:50%; top:50%; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)); transform-origin:center center; }
     #world-overlay img { position:absolute; display:none; image-rendering:pixelated; pointer-events:none; }
     /* The cursor portal is deliberately not transformed with the map fold.
        The browser's real pointer remains free during the curtain: every
@@ -427,7 +432,7 @@
        producing the exact 620x456 stone trade plate below.  Keep every live
        label/hit target in those native coordinates; a generic browser modal
        cannot reproduce the four offer wells, pet panes or 15-slot bag. */
-    #trade-screen { position:absolute!important; left:50%!important; top:50%!important; width:640px!important; height:480px!important; max-width:none!important; max-height:none!important; overflow:visible!important; margin:0!important; padding:0!important; border:0!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; transform:translate(-50%,-50%) scale(var(--scene-scale,1))!important; transform-origin:center center!important; z-index:42!important; color:#f8efd2; pointer-events:none; font:12px/1.2 MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif; text-shadow:1px 1px #080706; }
+    #trade-screen { position:absolute!important; left:50%!important; top:50%!important; width:640px!important; height:480px!important; max-width:none!important; max-height:none!important; overflow:visible!important; margin:0!important; padding:0!important; border:0!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1))!important; transform-origin:center center!important; z-index:42!important; color:#f8efd2; pointer-events:none; font:12px/1.2 MingLiU,"Microsoft JhengHei","Microsoft YaHei",sans-serif; text-shadow:1px 1px #080706; }
     #trade-screen::before,#trade-screen::after { display:none!important; }
     #trade-screen h2 { position:absolute!important; left:-10000px!important; top:0!important; width:1px!important; height:1px!important; overflow:hidden!important; margin:0!important; padding:0!important; }
     #trade-window-art { position:absolute; left:10px; top:0; width:620px; height:456px; display:block; image-rendering:pixelated; pointer-events:none; }
@@ -665,7 +670,7 @@
        into 8x8 80x60 pieces.  Keep this curtain in that same logical scene
        (rather than stretching an 8x6 grid over the viewport); the outer
        scale is supplied by fitLegacyViewport(). */
-    #scene-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:900; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); grid-template-rows:repeat(8,minmax(0,1fr)); perspective:900px; overflow:hidden; pointer-events:none; opacity:0; }
+    #scene-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)); transform-origin:center center; z-index:900; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); grid-template-rows:repeat(8,minmax(0,1fr)); perspective:900px; overflow:hidden; pointer-events:none; opacity:0; }
     #scene-transition.active { opacity:1; }
     #scene-transition .scene-transition-tile { min-width:0; min-height:0; background:#030303; transform:rotateY(0deg) scaleX(1); transform-origin:center center; backface-visibility:hidden; will-change:transform,opacity; }
     /* The stock producer uses two different HAGARE_OCHI directions: entering
@@ -726,23 +731,23 @@
        panels above it.  This preserves the compressed centre strip and makes
        the newly exposed top/bottom rows black instead of leaking the page's
        blurred green backdrop. */
-    #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1000; display:none; overflow:hidden; pointer-events:none; background:#000; }
+    #map-transition { position:absolute; left:50%; top:50%; width:640px; height:480px; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)); transform-origin:center center; z-index:1000; display:none; overflow:hidden; pointer-events:none; background:#000; }
     #map-transition.active { display:block; }
     main.map-transition-active #world-screen { z-index:1001; transform-origin:center center; }
     main.map-transition-active #chat-screen { z-index:1002; transform-origin:center center; }
     main.map-transition-press-in #world-screen,
     main.map-transition-press-in #chat-screen { animation:map-transition-field-press-in .50s steps(30,end) forwards; }
     main.map-transition-pressed #world-screen,
-    main.map-transition-pressed #chat-screen { transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0); }
+    main.map-transition-pressed #chat-screen { transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)) scaleY(0); }
     main.map-transition-press-out #world-screen,
     main.map-transition-press-out #chat-screen { animation:map-transition-field-press-out .50s steps(30,end) forwards; }
     @keyframes map-transition-field-press-in {
-      from{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(1)}
-      to{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0)}
+      from{transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)) scaleY(1)}
+      to{transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)) scaleY(0)}
     }
     @keyframes map-transition-field-press-out {
-      from{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(0)}
-      to{transform:translate(-50%,-50%) scale(var(--scene-scale,1)) scaleY(1)}
+      from{transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)) scaleY(0)}
+      to{transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)) scaleY(1)}
     }
     @media (prefers-reduced-motion:reduce) {
       main.map-transition-press-in #world-screen,main.map-transition-press-in #chat-screen,
@@ -1109,6 +1114,7 @@
         <img id="world-map" alt="原版地图背景">
         <canvas id="world-ground" width="1" height="1" aria-hidden="true"></canvas>
         <canvas id="world" width="640" height="480" aria-label="石器时代地图"></canvas>
+        <canvas id="world-labels" width="640" height="480" aria-hidden="true"></canvas>
         <div id="world-actors-layer" aria-hidden="true"></div>
         <div id="world-overlay" aria-hidden="true">
           <img id="world-move-target" src="/assets/bitmaps/bitmap_8828.png" alt="">
@@ -1761,6 +1767,60 @@
       ?{alpha:false,willReadFrequently:false}
       :{alpha:false,desynchronized:true,willReadFrequently:false});
   }
+  /* Names are native font-buffer output. Keep their logical positions in
+     640x480 coordinates, but rasterise them into a transparent canvas whose
+     backing store follows the displayed scene size and devicePixelRatio.
+     This canvas is a sibling of the pixel back-buffer, so the old scene can
+     still be copied/presented atomically without first shrinking text to
+     640x480 pixels. */
+  const worldLabelState={items:[],canvas:null,context:null,backingWidth:0,backingHeight:0,sceneWidth:640,sceneHeight:480,dpr:1};
+  function syncWorldLabelSurface(){
+    const canvas=$("world-labels");if(!canvas)return null;
+    const screen=$("world-screen"),rect=screen?.getBoundingClientRect?.()||canvas.getBoundingClientRect?.();
+    let sceneWidth=Number(rect?.width)||0;
+    /* A fold/scaleY transition can temporarily report zero height. The scene's
+       uncompressed surface is always 4:3; derive height from width so the
+       transition transform never reallocates or resamples the label bitmap. */
+    if(sceneWidth<1)sceneWidth=Number(worldLabelState.sceneWidth)||640;
+    const sceneHeight=sceneWidth*.75;
+    const dpr=Math.max(1,Number(window.devicePixelRatio)||1),backingWidth=Math.max(1,Math.round(sceneWidth*dpr)),backingHeight=Math.max(1,Math.round(sceneHeight*dpr));
+    if(canvas.width!==backingWidth||canvas.height!==backingHeight){
+      canvas.width=backingWidth;canvas.height=backingHeight;
+      worldLabelState.backingWidth=backingWidth;worldLabelState.backingHeight=backingHeight;
+    }
+    /* This is a visible compositor surface. Keep the browser's normal
+       synchronised presentation path so text and the copied world frame land
+       in the same refresh. */
+    const context=getCanvas2DContext(canvas,{alpha:true,willReadFrequently:false});
+    if(!context)return null;
+    worldLabelState.canvas=canvas;worldLabelState.context=context;worldLabelState.sceneWidth=sceneWidth;worldLabelState.sceneHeight=sceneHeight;worldLabelState.dpr=dpr;
+    context.setTransform(backingWidth/640,0,0,backingHeight/480,0,0);
+    return {canvas,context,sceneWidth,sceneHeight,dpr};
+  }
+  function beginWorldLabelFrame(){worldLabelState.items.length=0;}
+  function paintWorldLabels(){
+    /* Keep the last label frame while a map fold holds the old world
+       back-buffer. This mirrors presentWorldBackBuffer() and prevents a
+       freshly cleared text layer from appearing over the held old map. */
+    if(app.mapBackBufferHold)return false;
+    const surface=syncWorldLabelSurface();if(!surface)return false;
+    const {context}=surface;context.clearRect(0,0,640,480);
+    if(!worldLabelState.items.length)return true;
+    context.save();context.font="12px Tahoma, 'Microsoft YaHei', sans-serif";context.textAlign="center";context.textBaseline="alphabetic";context.lineWidth=3;context.strokeStyle="#080706";context.fillStyle="#f4e8ca";
+    for(const item of worldLabelState.items){
+      if(item.guild) { context.strokeText(item.guild,item.x,item.y-23);context.fillText(item.guild,item.x,item.y-23); }
+      if(item.primary) { context.strokeText(item.primary,item.x,item.y-10);context.fillText(item.primary,item.x,item.y-10); }
+    }
+    context.restore();return true;
+  }
+  function presentWorldLabels(){return paintWorldLabels();}
+  let worldLabelRefreshFrame=0;
+  function scheduleWorldLabelRefresh(){
+    if(worldLabelRefreshFrame)return;
+    const refresh=()=>{worldLabelRefreshFrame=0;if(app.phase!=="world"||app.battle)return;app._lastWorldRender=0;renderWorld(true);};
+    if(typeof window.requestAnimationFrame==="function")worldLabelRefreshFrame=window.requestAnimationFrame(refresh);
+    else worldLabelRefreshFrame=window.setTimeout(refresh,0);
+  }
   function worldBackBuffer(visible=$("world")){
     if(!visible)return null;
     const width=Math.max(1,Number(visible.width)||640),height=Math.max(1,Number(visible.height)||480);
@@ -1792,6 +1852,11 @@
     ctx.drawImage(buffer,0,0);
     ctx.globalCompositeOperation=previous;
     app.worldBackBufferHasFrame=true;
+    /* Present labels only after the matching world pixels have committed.
+       Transition teardown can call this function directly after releasing
+       mapBackBufferHold, so keeping this beside the copy avoids leaving the
+       old map with a freshly cleared label layer (or vice versa). */
+    presentWorldLabels();
   }
   function getMap2DContext(canvas){
     return getCanvas2DContext(canvas,{alpha:true,desynchronized:true,willReadFrequently:false});
@@ -2220,7 +2285,7 @@
        submits each CG_WND2 tile at x+32/y+24, while every tile carries a
        -32/-24 ADRN origin, so their visible frame still begins at the exact
        MakeWindowDisp coordinates (16,16) and (440,16). */
-    .field-window-screen{position:absolute!important;left:50%!important;top:50%!important;width:640px!important;height:480px!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:translate(-50%,-50%) scale(var(--scene-scale,1))!important;transform-origin:center center!important;color:#f5ecd4!important;z-index:31!important;pointer-events:none}
+    .field-window-screen{position:absolute!important;left:50%!important;top:50%!important;width:640px!important;height:480px!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1))!important;transform-origin:center center!important;color:#f5ecd4!important;z-index:31!important;pointer-events:none}
     .field-window-screen h2{position:absolute!important;left:-10000px!important;top:0!important;width:1px!important;height:1px!important;overflow:hidden!important}
     .field-window-screen .field-window-frame{position:absolute;z-index:0;pointer-events:none;overflow:hidden;width:192px}
     #field-settings-screen .field-window-frame{left:16px;top:16px;height:240px}
@@ -2945,7 +3010,8 @@
     main.field-loading-active #world-actions,
     main.field-loading-active #world-tools,
     main.field-loading-active #chat-screen,
-    main.field-loading-active #world-overlay { visibility:hidden !important; pointer-events:none !important; }
+    main.field-loading-active #world-overlay,
+    main.field-loading-active #world-labels { visibility:hidden !important; pointer-events:none !important; }
     /* The field back-buffer paints its own cursor sprite, but battle and
        battle-result screens do not use that overlay. Keep the original
        fish-bone pointer visible there (including popup/target hit regions). */
@@ -2955,9 +3021,9 @@
     main[data-phase="world"] #battle-result-screen * { cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
     #server-screen,#login-screen,#character-screen,#creation-screen,#world-screen,#battle-screen,#battle-result-screen {
       position:absolute; left:50%; top:50%; width:640px; height:480px; max-width:none; max-height:none;
-      margin:0; z-index:2; border:0; box-shadow:none; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center;
+      margin:0; z-index:2; border:0; box-shadow:none; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)); transform-origin:center center;
     }
-    #chat-screen { left:50%; top:50%; width:640px; height:480px; max-width:none; transform:translate(-50%,-50%) scale(var(--scene-scale,1)); transform-origin:center center; }
+    #chat-screen { left:50%; top:50%; width:640px; height:480px; max-width:none; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)); transform-origin:center center; }
     #characters,#character-hit-layer,#field-ui,#world-actions,#world-tools,#chat-log,#world-actors-layer,#battle-actors-layer,#battle-target-overlay,#battle-field-ui,
     #creation-canvas,#creation-hit-layer,#creation-settings,#creation-home { transform:none !important; }
     #battle-ui { transform:none !important; }
@@ -2982,7 +3048,7 @@
     #logout-character { left:276px; top:421px; width:88px; height:22px; background-size:88px 22px; }
     #new-character-form { left:170px; top:180px; width:300px; }
     #creation-status { transform:none !important; left:-10000px; top:0; bottom:auto; width:1px; height:1px; overflow:hidden; }
-    .legacy-screen { left:50%; top:50%; width:640px; height:480px; transform:translate(-50%,-50%) scale(var(--scene-scale,1)) !important; transform-origin:center center !important; }
+    .legacy-screen { left:50%; top:50%; width:640px; height:480px; transform:translate(calc(-50% + var(--scene-offset-x,0px)),calc(-50% + var(--scene-offset-y,0px))) scale(var(--scene-scale,1)) !important; transform-origin:center center !important; }
   `;
   document.head.appendChild(advancedStyle);
   function visibleViewportSize() {
@@ -3030,6 +3096,23 @@
       height:Math.max(1,Number(window.innerHeight)||0,Number(document.documentElement?.clientHeight)||0),
     };
   }
+  const DISPLAY_MODE_KEY="stoneage:web:display-mode";
+  let displayMode="crisp";
+  try{if(window.localStorage?.getItem(DISPLAY_MODE_KEY)==="fit")displayMode="fit";}catch(_){/* storage is optional */}
+  function legacyViewportGeometry(viewport,dpr=1,mode="crisp"){
+    dpr=Number.isFinite(dpr)&&dpr>0?dpr:1;
+    const fit=Math.max(0.1,Math.min(viewport.width/640,viewport.height/480));
+    // Preserve the existing mobile fit. Large scenes use whole physical pixels,
+    // including fractional OS scaling (e.g. DPR 1.25) and Retina displays.
+    const physicalScale=Math.floor(fit*dpr+1e-8);
+    const scale=mode==="crisp"&&fit>=1&&physicalScale>=1?physicalScale/dpr:fit;
+    return {scale,dpr};
+  }
+  function setDisplayMode(mode){
+    displayMode=mode==="fit"?"fit":"crisp";
+    try{window.localStorage?.setItem(DISPLAY_MODE_KEY,displayMode);}catch(_){/* storage is optional */}
+    settleLegacyViewport();
+  }
   function fitLegacyViewport() {
     /* Keep every scene in the executable's logical coordinate system and
        scale the finished 640×480 surface exactly once.  Using the visible
@@ -3053,8 +3136,13 @@
       }
     } catch (_) { /* some WebViews expose read-only scroll offsets */ }
     const viewport=viewportForScene();
-    const scale=Math.max(0.1,Math.min(viewport.width/640,viewport.height/480));
+    const {scale,dpr}=legacyViewportGeometry(viewport,window.devicePixelRatio,displayMode);
     document.documentElement.style.setProperty("--scene-scale",String(scale));
+    const bounds=document.querySelector("main")?.getBoundingClientRect();
+    const left=(bounds?.left||0)+((bounds?.width||viewport.width)-640*scale)/2;
+    const top=(bounds?.top||0)+((bounds?.height||viewport.height)-480*scale)/2;
+    document.documentElement.style.setProperty("--scene-offset-x",`${Math.round(left*dpr)/dpr-left}px`);
+    document.documentElement.style.setProperty("--scene-offset-y",`${Math.round(top*dpr)/dpr-top}px`);
     /* The title artwork remains a faithfully scaled 640×480 surface, but a
        portrait phone would otherwise turn the 116×22 logical text fields into
        roughly 70×13 physical pixels.  Enlarge only the two native input
@@ -3069,6 +3157,7 @@
        snapshot the first keyboard frame would still recalculate the scene
        against the shortened height once. */
     if(!loginInputViewportLock)rememberStableViewport(viewport);
+    scheduleWorldLabelRefresh();
   }
   /* A focused title input intentionally freezes the pre-IME viewport so the
      mobile keyboard cannot make the 640×480 artwork jump or shrink.  That
@@ -3101,6 +3190,14 @@
   }
   fitLegacyViewport();
   window.addEventListener("resize",settleLegacyViewport,{passive:true});
+  let displayResolutionQuery=null;
+  function watchDisplayResolution(){
+    displayResolutionQuery?.removeEventListener?.("change",displayResolutionChanged);
+    displayResolutionQuery=window.matchMedia?.(`(resolution: ${window.devicePixelRatio||1}dppx)`);
+    displayResolutionQuery?.addEventListener?.("change",displayResolutionChanged);
+  }
+  function displayResolutionChanged(){watchDisplayResolution();settleLegacyViewport();}
+  watchDisplayResolution();
   window.visualViewport?.addEventListener("resize",settleLegacyViewport,{passive:true});
   function lockLoginInputViewport(){
     if(!loginInputViewportLock){
@@ -7608,7 +7705,7 @@
     const page=app.systemPage||"menu";const settings=app.systemSettings;configureSystemWindow(page);
     $("system-summary").textContent="StoneAge 2.5 系统菜单";
     if(page==="menu"){
-      /* Keep the five implemented client-side choices inside MENU.CPP's
+      /* Keep the client-side choices inside MENU.CPP's
          classic 3x7 (192x336) frame.  The web-only split between record-point
          and in-place logout stays behind the first row, while unsupported
          8.5 SaMenu server extensions remain absent. */
@@ -7622,7 +7719,10 @@
       add("    聊天设定    ",()=>{app.systemPage="chat";renderSystem();},40);
       add("    背景音乐    ",()=>{app.systemPage="bgm";renderSystem();},80);
       add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
-      const close=systemChoice("    关    闭    ",closeGameplayOverlay,172);list.append(close);
+      add(displayMode==="crisp"?"显示：整数倍清晰":"显示：适应窗口",()=>{
+        setDisplayMode(displayMode==="crisp"?"fit":"crisp");renderSystem();
+      },160);
+      const close=systemChoice("    关    闭    ",closeGameplayOverlay,212);list.append(close);
       return;
     }
     if(page==="logout-choice"){
@@ -16317,15 +16417,11 @@
     const primary=String(isPet?(actor.freeName||actor.name):(actor.name||actor.freeName)||"").trim();
     const guild=String(isPet?"":(actor.fmName||"")).trim();
     if(!primary&&!guild)return;
-    ctx.save();ctx.font="12px Tahoma, 'Microsoft YaHei', sans-serif";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.lineWidth=3;ctx.strokeStyle="#080706";ctx.fillStyle="#f4e8ca";
     /* character.cpp::drawCharStatus() queues the guild/family name at
-       y-23 and the character/pet name at y-10.  Keeping both labels in a
-       post-scene font pass prevents a roof/tree bitmap from cutting through
-       the text, while using the native baselines avoids the old fixed -36px
-       drift on tall NPCs. */
-    if(guild){ctx.strokeText(guild,point[0],top-23);ctx.fillText(guild,point[0],top-23);}
-    if(primary){ctx.strokeText(primary,point[0],top-10);ctx.fillText(primary,point[0],top-10);}
-    ctx.restore();
+       y-23 and the character/pet name at y-10. Keep the same actor order and
+       baselines, but defer the actual font pass to the independent displayed
+       size canvas so the 640x480 world buffer never rasterises these glyphs. */
+    worldLabelState.items.push({x:Number(point?.[0])||0,y:top,guild,primary});
   }
   function drawActor(ctx,actor,point,options={}){
     const frame=actorFrame(actor);
@@ -16345,12 +16441,14 @@
      keep the same contract here and paint actors into the world canvas. */
   function renderActorLayer(actors,canvas=$("world")){
     const ctx=getWorld2DContext(canvas);if(!canvas||!ctx)return;
+    beginWorldLabelFrame();
     const animation=currentWorldWalkAnimation(),now=performance.now(),progress=animation?walkProgress(now,animation):1;
     for(const actor of actors){
       const isSelf=actor.name===app.character||actor.id===app.playerActorId;
       const renderActor=isSelf&&animation?Object.assign({},actor,{x:animation.from[0]+(animation.to[0]-animation.from[0])*progress,y:animation.from[1]+(animation.to[1]-animation.from[1])*progress,direction:animation.direction,action:4}):actor;
       drawActor(ctx,renderActor,tilePoint(renderActor.x,renderActor.y));
     }
+    presentWorldLabels();
   }
   function mapPartDepth(part){
     const anchor=part?.anchor||mapPixel(Number(part?.x)||0,Number(part?.y)||0);
@@ -16894,6 +16992,7 @@
     if(app.phase!=="world"||app.battle)return;
     const interval=app.map?.image?60:50;
     if(!force&&app._lastWorldRender&&now-app._lastWorldRender<interval)return;
+    beginWorldLabelFrame();
     /* Render the complete foreground (parts, actors, labels, speech) into a
        private canvas.  Only the finished surface is presented below; the
        public #world canvas remains stable for pointer hit testing. */
@@ -19785,7 +19884,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
+  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginWorldLabelFrame,syncWorldLabelSurface,paintWorldLabels,presentWorldLabels,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);

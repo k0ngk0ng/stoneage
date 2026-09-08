@@ -1604,7 +1604,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,172\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,212\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -1981,7 +1981,7 @@ for (const expected of [
   /const MAP_EFFECT_RAIN_COLOR="#e3f8ff"/,
   /function drawMapEffects\(ctx,view\)[\s\S]{0,1800}fillRect\(x,y-1,1,1\)[\s\S]{0,700}MAP_EFFECT_SNOW_BRIGHT/,
   /function ensureMapEffectStars\(now\)[\s\S]{0,1000}MAP_EFFECT_STAR_PATTERNS/,
-  /function renderWorld\(force=false\)[\s\S]{0,260}updateMapEffects\(now\)[\s\S]{0,5200}renderSceneActorsAndParts\(domActors,parts,canvas,frame\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
+  /function renderWorld\(force=false\)[\s\S]{0,260}updateMapEffects\(now\)[\s\S]{0,6200}renderSceneActorsAndParts\(domActors,parts,canvas,frame\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
   /function renderSceneActorsAndParts\([\s\S]{0,2600}drawMapEffects\(ctx,view\)[\s\S]{0,420}StockFontBuffer|DISP_PRIO_RESERVE is emitted[\s\S]{0,260}drawMapEffects\(ctx,view\)/,
   /* map.cpp's held-left-button mode samples a new moveStack point every
      250 ms.  Once MOVE_MODE_CHANGE_TIME elapses it keeps the fish pointer,
@@ -4457,7 +4457,7 @@ for (const expected of [
   /add\("\s+聊天设定\s+",[\s\S]{0,120}systemPage="chat"/,
   /add\("\s+背景音乐\s+",[\s\S]{0,120}systemPage="bgm"/,
   /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
-  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,172\);list\.append\(close\)/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,212\);list\.append\(close\)/,
   /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);

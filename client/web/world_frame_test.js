@@ -47,6 +47,7 @@ function harness(delta, following = false) {
     ensureMapLayerCache() {clock += 130; return cache;}, mapLayerCacheUsable: value => Boolean(value),
     mapTransitionState: {active: false}, hideWorldGround() {}, maybeFinishMapLoading() {},
     renderWorldOverlay() {}, scheduleWorldAnimation() {}, presentWorldBackBuffer() {},
+    beginWorldLabelFrame() {}, presentWorldLabels() {},
     actorFrame() {clock += 75; return null;}, fieldActorFrameVisualKey: () => "",
     mapPartDepth: p => p.anchor[1], mapPartBeforeActor: () => true,
     drawActor: (_, actor, point) => {calls.push({kind: "actor", actor, point}); clock += 35;},
