@@ -456,6 +456,48 @@ static int bridge_write_all(int fd, const unsigned char *data, size_t length)
     return 0;
 }
 
+static int bridge_response_path(char *out, int out_length,
+                                const char *directory, const char *id,
+                                int temporary)
+{
+    const char *prefix = temporary ? "/." : "/";
+    const char *suffix = temporary ? ".resp.tmp" : ".resp";
+    size_t directory_length;
+    size_t prefix_length;
+    size_t id_length;
+    size_t suffix_length;
+    size_t length;
+    size_t offset;
+    size_t capacity;
+
+    if (out == NULL || out_length <= 0 || directory == NULL || id == NULL)
+        return 0;
+    capacity = (size_t)out_length;
+    directory_length = strlen(directory);
+    prefix_length = strlen(prefix);
+    id_length = strlen(id);
+    suffix_length = strlen(suffix);
+    if (directory_length >= capacity) return 0;
+    length = directory_length;
+    if (prefix_length > capacity - length - 1) return 0;
+    length += prefix_length;
+    if (id_length > capacity - length - 1) return 0;
+    length += id_length;
+    if (suffix_length > capacity - length - 1) return 0;
+    length += suffix_length;
+
+    offset = 0;
+    memcpy(out + offset, directory, directory_length);
+    offset += directory_length;
+    memcpy(out + offset, prefix, prefix_length);
+    offset += prefix_length;
+    memcpy(out + offset, id, id_length);
+    offset += id_length;
+    memcpy(out + offset, suffix, suffix_length);
+    out[length] = 0;
+    return 1;
+}
+
 static int bridge_write_response(const char *id, struct bridge_response *response)
 {
     char response_directory[PATH_MAX];
@@ -471,11 +513,11 @@ static int bridge_write_response(const char *id, struct bridge_response *respons
     if (!bridge_safe_id(id, BRIDGE_ID_MAX)) return -1;
     if (!bridge_subdirectory(response_directory, sizeof(response_directory),
                              "responses")) return -1;
-    snprintf(final_path, sizeof(final_path), "%s/%s.resp",
-             response_directory, id);
+    if (!bridge_response_path(final_path, sizeof(final_path),
+                              response_directory, id, 0)) return -1;
     if (access(final_path, F_OK) == 0) return 0;
-    snprintf(temp_path, sizeof(temp_path), "%s/.%s.resp.tmp",
-             response_directory, id);
+    if (!bridge_response_path(temp_path, sizeof(temp_path),
+                              response_directory, id, 1)) return -1;
     unlink(temp_path);
     fd = open(temp_path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (fd < 0) return -1;

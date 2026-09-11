@@ -75,11 +75,18 @@ destination slot before creating any of them. `template_id` is the
 `field=name` with a percent-encoded `name`. Pet fields use their native
 meanings: `chr` is base loyalty, `luc` is the signed loyalty variation, `slt`
 is the skill-slot count (1–7), `llt` is the growth rank (0–5), and `lvup` is
-the packed native allocation data. Player money/point fields are not accepted
+the packed native allocation data returned in snapshots. Editing uses
+`growth_vi`, `growth_str`, `growth_tou`, and `growth_dx` (0–255), replacing
+only the corresponding 24/16/8/0-bit byte. Player money/point fields are not accepted
 for pet edits.
 `delete_pet` removes the pet and clears default/follow/riding references.
 `set_pet_skill` and `delete_pet_skill` set or clear a validated native pet
 skill at `skill_slot`.
+Setting a skill respects the pet's current `slt`; shrinking `slt` refuses to
+hide existing skills. Deletion can clear a historical skill anywhere in the
+physical 0–6 range. New warehouse pets respect the character's available
+capacity, `min(15, 5 + 2 * transmigration)`, while snapshots retain existing
+pets in all physical slots. Batch grants notify the client for every new slot.
 
 `export_item` and `export_pet` are template-only requests used by an offline
 manager. They require only `template_id`, create a temporary native object,
@@ -101,6 +108,11 @@ responses contain `save_status=queued`: the existing GMSV-to-SAAC save is
 asynchronous, so this means the save request was accepted by GMSV, not that
 SAAC has already finished writing the archive. A snapshot contains
 `save_status=not_requested`.
+Online mutations also return `save_data_hash`, the standard FNV-1a64 hash of
+the serialized character. The Go manager waits for the matching SAAC archive
+before reporting success. `mutation_applied_save_failed` explicitly indicates
+that memory changed but saving failed; callers must refresh and must not
+automatically repeat the mutation.
 
 Grant responses additionally return the selected asset `slot` and its native
 `item_id` or `pet_id`. Export responses return `kind`, `template_id`, and the

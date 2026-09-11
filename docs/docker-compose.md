@@ -197,11 +197,14 @@ rm stoneage-sprites-vX.Y.Z.tar.gz
 
 ```bash
 cd /opt/stoneage
-./bin/stoneage clean --dry-run   # 仅列出待清理的镜像
-./bin/stoneage clean             # 执行清理
+# 发版后保留上一版用于回退（将 vX.Y.Z 替换为实际上一版）：
+./bin/stoneage clean --dry-run --keep-version vX.Y.Z
+./bin/stoneage clean --keep-version vX.Y.Z
 ```
 
 命令读取 `.env` 中的 `STONEAGE_VERSION`、`STONEAGE_CONTROL_IMAGE` 和 `STONEAGE_LEGACY_IMAGE`，只删除这两个仓库的其他版本标签。当前版本的两个镜像必须已存在，否则停止清理并提示先部署。运行中或已停止容器使用的镜像、与当前版本共享镜像 ID 的标签都会保留。不会清理其他项目镜像、无标签镜像、构建缓存、容器、数据卷或存档；被删除的旧版本需要重新拉取后才能回退。可用 `--env FILE` 指定其他环境文件。
+
+`--keep-version TAG` 可重复指定，保留本机已有的对应版本镜像，不主动拉取镜像。生产发版清理时应指定上一版，保留回退能力。
 
 仅镜像更新且发布说明确认数据格式兼容时，可将 `.env` 的 `STONEAGE_VERSION` 改回上一版本再部署。若本次同时改过 Compose、配置、资源或数据格式，应使用对应版本的工具和备份恢复。
 

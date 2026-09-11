@@ -5,15 +5,31 @@ project_root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 env_file="${STONEAGE_ENV_FILE:-$project_root/.env}"
 docker_bin="${STONEAGE_DOCKER_BIN:-docker}"
 dry_run=0
+keep_versions=()
+release_tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$'
 while (( $# )); do
     case "$1" in
         --dry-run) dry_run=1 ;;
         --env)
             [[ $# -ge 2 ]] || { echo '--env requires a file' >&2; exit 2; }
             env_file="$2"; shift ;;
+        --keep-version)
+            [[ $# -ge 2 ]] || { echo '--keep-version requires a release tag' >&2; exit 2; }
+            [[ "$2" =~ $release_tag_re ]] || {
+                echo "Invalid --keep-version tag: $2" >&2
+                exit 2
+            }
+            keep_versions+=("$2"); shift ;;
+        --keep-version=*)
+            keep_version="${1#*=}"
+            [[ "$keep_version" =~ $release_tag_re ]] || {
+                echo "Invalid --keep-version tag: $keep_version" >&2
+                exit 2
+            }
+            keep_versions+=("$keep_version") ;;
         -h|--help)
-            echo 'Usage: bin/stoneage clean [--dry-run] [--env FILE]'
-            echo 'Remove unused old StoneAge release images; preserve the configured version and all container images.'
+            echo 'Usage: bin/stoneage clean [--dry-run] [--env FILE] [--keep-version TAG]...'
+            echo 'Remove unused old StoneAge release images; preserve the configured version, requested release tags, and all container images.'
             exit 0 ;;
         *) echo "Unknown clean option: $1" >&2; exit 2 ;;
     esac
@@ -47,7 +63,7 @@ env_value() {
 }
 
 version="$(env_value STONEAGE_VERSION)"
-[[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]] || {
+[[ "$version" =~ $release_tag_re ]] || {
     echo 'STONEAGE_VERSION must be an explicit release tag in the env file (for example v0.1.17).' >&2
     exit 2
 }
@@ -81,15 +97,27 @@ container_image_ids() {
     done
 }
 contains_id() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
+is_kept_version() {
+    local candidate
+    (( ${#keep_versions[@]} > 0 )) || return 1
+    for candidate in "${keep_versions[@]}"; do
+        [[ "$candidate" == "$1" ]] && return 0
+    done
+    return 1
+}
 used_ids="$(container_image_ids)"
 images="$("$docker_bin" image ls --no-trunc --format '{{.Repository}} {{.Tag}} {{.ID}}')"
 count=0
 failed=0
 while read -r repo tag id; do
     [[ "$repo" == "$control_repo" || "$repo" == "$legacy_repo" ]] || continue
-    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]] || continue
+    [[ "$tag" =~ $release_tag_re ]] || continue
     [[ "$tag" != "$version" ]] || continue
     ref="$repo:$tag"
+    if is_kept_version "$tag"; then
+        echo "Keep requested image: $ref"
+        continue
+    fi
     if contains_id "$configured_ids" "$id" || contains_id "$used_ids" "$id"; then
         echo "Keep referenced image: $ref"
         continue

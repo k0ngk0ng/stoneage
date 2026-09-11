@@ -161,6 +161,27 @@ registry.example/other unrelated sha256:unrelated
 EOF
 }
 
+populate_keep_state()
+{
+    local case_root="$1"
+    local current_file="$case_root/current-images"
+    local image_list_file="$case_root/image-list"
+
+    populate_normal_state "$case_root"
+    printf '%s\t%s\n' \
+        'registry.example/stoneage/control-plane:v0.1.24' 'sha256:control-kept' \
+        'registry.example/stoneage/control-plane:v0.1.23' 'sha256:control-kept-2' \
+        'registry.example/stoneage/legacy-runtime:v0.1.24' 'sha256:legacy-kept' \
+        'registry.example/stoneage/legacy-runtime:v0.1.23' 'sha256:legacy-kept-2' \
+        >>"$current_file"
+    cat >>"$image_list_file" <<'EOF'
+registry.example/stoneage/control-plane v0.1.24 sha256:control-kept
+registry.example/stoneage/control-plane v0.1.23 sha256:control-kept-2
+registry.example/stoneage/legacy-runtime v0.1.24 sha256:legacy-kept
+registry.example/stoneage/legacy-runtime v0.1.23 sha256:legacy-kept-2
+EOF
+}
+
 run_helper()
 {
     local env_file="$1"
@@ -191,6 +212,34 @@ assert_file_not_contains "$removed_file" 'registry.example/stoneage/control-plan
 assert_file_not_contains "$removed_file" 'registry.example/stoneage/legacy-runtime:v0.1.14'
 assert_file_not_contains "$removed_file" 'registry.example/other:unrelated'
 assert_file_not_contains "$calls_file" '--force'
+
+# A repeated --keep-version preserves that tag in both configured repositories,
+# while another older release remains eligible for removal.
+setup_case keep-version
+populate_keep_state "$case_root"
+run_helper "$case_root/.env" --keep-version v0.1.24 --keep-version v0.1.23 >"$case_root/stdout" 2>"$case_root/stderr"
+assert_file_contains "$case_root/stdout" 'Keep requested image: registry.example/stoneage/control-plane:v0.1.24'
+assert_file_contains "$case_root/stdout" 'Keep requested image: registry.example/stoneage/control-plane:v0.1.23'
+assert_file_contains "$case_root/stdout" 'Keep requested image: registry.example/stoneage/legacy-runtime:v0.1.24'
+assert_file_contains "$case_root/stdout" 'Keep requested image: registry.example/stoneage/legacy-runtime:v0.1.23'
+assert_file_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.15'
+assert_file_contains "$removed_file" 'registry.example/stoneage/legacy-runtime:v0.1.15'
+assert_file_not_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.24'
+assert_file_not_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.23'
+assert_file_not_contains "$removed_file" 'registry.example/stoneage/legacy-runtime:v0.1.24'
+assert_file_not_contains "$removed_file" 'registry.example/stoneage/legacy-runtime:v0.1.23'
+
+# --keep-version accepts only explicit release tags and rejects values before
+# touching Docker, including an empty argument and interpolation syntax.
+for value in '' 'v0.1' '${RELEASE_TAG}' '$(touch should-not-exist)'; do
+    setup_case invalid-keep-version
+    populate_normal_state "$case_root"
+    if run_helper "$case_root/.env" --keep-version "$value" >"$case_root/stdout" 2>"$case_root/stderr"; then
+        fail "invalid keep version was accepted: $value"
+    fi
+    assert_empty_file "$removed_file"
+    assert_empty_file "$calls_file"
+done
 
 # If either current release reference is unavailable, the helper must stop
 # before listing or removing any image.
@@ -223,5 +272,8 @@ printf "STONEAGE_VERSION=v0.0.1\nexport STONEAGE_VERSION = 'v0.1.16' # deployed\
 run_helper "$case_root/.env" --dry-run >"$case_root/stdout" 2>"$case_root/stderr"
 assert_file_contains "$case_root/stdout" 'Keep configured image: registry.example/stoneage/control-plane:v0.1.16'
 assert_empty_file "$removed_file"
+
+help_output="$(bash "$repo_root/bin/clean-images.sh" --help)"
+[[ "$help_output" == *'--keep-version TAG'* ]] || fail 'help does not document --keep-version'
 
 echo "clean-images tests passed"
