@@ -100,7 +100,7 @@
        client uses the same fish-bone resource for every pointer state. */
     button,input,select,textarea,a,[role="button"] { cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
     #orientation-lock,#orientation-lock * { cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
-    #release-version { position:absolute; right:12px; bottom:8px; z-index:2; color:rgba(255,255,255,.55); font:10px/1.2 sans-serif; pointer-events:none; }
+    #release-version { position:absolute; left:12px; bottom:8px; z-index:2; color:rgba(190,180,160,.65); font:10px/1.2 sans-serif; pointer-events:none; }
     #login-screen { background:#000 url('/assets/bitmaps/bitmap_9113.png') center/100% 100% no-repeat; }
     #server-screen { background:#000 url('/assets/bitmaps/bitmap_9094.png') center/100% 100% no-repeat; }
     #login-screen h2,#server-screen h2,#character-screen h2,#world-screen h2,#battle-screen h2 { position:absolute; left:-10000px; }
@@ -7794,7 +7794,7 @@
       add("    聊天设定    ",()=>{app.systemPage="chat";renderSystem();},40);
       add("    背景音乐    ",()=>{app.systemPage="bgm";renderSystem();},80);
       add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
-      add(displayMode==="crisp"?"倍数显示":"适应窗口",()=>{
+      add(displayMode==="crisp"?"    倍数显示    ":"    适应窗口    ",()=>{
         setDisplayMode(displayMode==="crisp"?"fit":"crisp");renderSystem();
       },160);
       const close=systemChoice("    关    闭    ",closeGameplayOverlay,212);list.append(close);
