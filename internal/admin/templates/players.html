@@ -1,0 +1,86 @@
+{{define "content"}}
+<link rel="stylesheet" href="/static/players.css">
+<div class="players-page" id="player-admin" data-account-id="{{.Account.ID}}" data-csrf="{{.CSRF}}">
+  <div class="page-heading">
+    <div>
+      <h1>玩家资产</h1>
+      <p class="muted">账号：{{.Account.Username}} · 查看并管理角色当前拥有的物品、宠物、技能和钱。</p>
+    </div>
+    <a class="button" href="/accounts/{{.Account.ID}}">返回账号</a>
+  </div>
+
+  <section class="card player-selector-card" aria-labelledby="player-selector-title">
+    <div class="card-heading">
+      <div>
+        <span class="section-kicker">角色</span>
+        <h2 id="player-selector-title">选择角色</h2>
+      </div>
+      <button class="button" id="players-refresh" type="button">刷新</button>
+    </div>
+    <div class="player-selector-controls">
+      <label for="player-character">角色
+        <select id="player-character" disabled>
+          <option value="">加载中…</option>
+        </select>
+      </label>
+      <div class="player-load-state" id="player-load-state" role="status" aria-live="polite">正在加载角色…</div>
+    </div>
+  </section>
+
+  <div class="player-layout">
+    <section class="card player-overview-card" aria-labelledby="player-overview-title">
+      <div class="card-heading">
+        <div>
+          <span class="section-kicker">当前持有</span>
+          <h2 id="player-overview-title">角色状态</h2>
+        </div>
+        <span class="status-pill unknown" id="player-online-status">未选择</span>
+      </div>
+      <div id="player-snapshot" class="player-snapshot" aria-live="polite">
+        <div class="empty">选择角色后显示资产。</div>
+      </div>
+    </section>
+
+    <section class="card player-catalog-card" aria-labelledby="player-catalog-title">
+      <div class="card-heading">
+        <div>
+          <span class="section-kicker">发放</span>
+          <h2 id="player-catalog-title">搜索并赠送</h2>
+        </div>
+      </div>
+      <form id="player-catalog-search" class="catalog-search" novalidate>
+        <label for="catalog-kind">类型
+          <select id="catalog-kind">
+            <option value="item">物品</option>
+            <option value="pet">宠物</option>
+            <option value="pet_skill">宠物技能</option>
+          </select>
+        </label>
+        <label class="catalog-query-label" for="catalog-query">搜索
+          <input id="catalog-query" name="q" type="search" autocomplete="off" placeholder="名称、ID 或描述">
+        </label>
+        <button class="primary" type="submit">搜索</button>
+      </form>
+      <p class="hint catalog-search-hint" id="catalog-search-hint">搜索结果由服务端返回，可按名称、ID 或描述查找。</p>
+      <div class="catalog-results" id="catalog-results" aria-live="polite">
+        <div class="empty">输入条件后搜索物品、宠物或技能。</div>
+      </div>
+      <div class="catalog-selection" id="catalog-selection" hidden></div>
+    </section>
+  </div>
+</div>
+
+<div class="player-dialog" id="player-dialog" hidden>
+  <div class="player-dialog-backdrop" data-player-dialog-cancel tabindex="-1"></div>
+  <section class="player-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="player-dialog-title" aria-describedby="player-dialog-message" tabindex="-1">
+    <span class="section-kicker">请确认</span>
+    <h2 id="player-dialog-title">确认操作</h2>
+    <p id="player-dialog-message"></p>
+    <div class="player-dialog-actions">
+      <button class="button" type="button" data-player-dialog-cancel>取消</button>
+      <button class="primary" type="button" data-player-dialog-accept>确认</button>
+    </div>
+  </section>
+</div>
+<script src="/static/players.js" defer></script>
+{{end}}

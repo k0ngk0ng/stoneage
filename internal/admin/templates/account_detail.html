@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="page-heading"><div><h1>账号：{{.Account.Username}}</h1><p class="muted">ID {{.Account.ID}}</p></div><a href="/accounts">返回列表</a></div>
+<div class="page-heading"><div><h1>账号：{{.Account.Username}}</h1><p class="muted">ID {{.Account.ID}}</p></div><div><a class="button primary" href="/accounts/{{.Account.ID}}/players">管理玩家资产</a> <a href="/accounts">返回列表</a></div></div>
 <div class="grid two">
 <section class="card">
   <h2>账号状态</h2>

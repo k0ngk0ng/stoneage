@@ -1,3 +1,5 @@
 # The preserved 2.5 source/data comes from a byte-oriented legacy archive.
 # Do not make Git's whitespace checker reject its historical formatting.
 server/legacy/source/2.5/** -whitespace
+# Unified patches require a context prefix before legacy blank/tabbed lines.
+server/legacy/modern/patches/*.patch whitespace=-blank-at-eol,-space-before-tab

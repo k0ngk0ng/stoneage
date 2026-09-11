@@ -42,6 +42,9 @@ jobs:
           node client/web/sw_cache_test.js
           node client/web/world_frame_test.js
           node internal/admin/app_time_test.js
+          node internal/admin/players_test.js
+          python3 server/legacy/modern/tests/test-saac-admin-bridge.py
+          python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
       - name: Verify production deployment tools
         run: |
           python3 scripts/modernize-object-cstring_test.py

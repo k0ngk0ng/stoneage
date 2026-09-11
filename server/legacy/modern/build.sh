@@ -12,6 +12,15 @@ prepare_makefile() {
 prepare_makefile /src/saac/makefile
 prepare_makefile /src/gmsv/makefile
 
+# The administrator character bridge is a file-only module consumed by the
+# SAAC main loop. Keep its source in modern/ so the historical source tree
+# remains untouched, while the integration patch stays reviewable.
+cp /modern/saac_admin_bridge.c /src/saac/saac_admin_bridge.c
+cp /modern/saac_admin_bridge.h /src/saac/include/saac_admin_bridge.h
+if ! grep -q 'saac_admin_bridge.h' /src/saac/main.c; then
+  patch -d /src/saac -p1 < /modern/patches/0009-saac-admin-character-bridge.patch
+fi
+
 for child_makefile in \
   /src/gmsv/battle/makefile \
   /src/gmsv/char/makefile \
@@ -86,6 +95,15 @@ fi
 # command. The file is never interpreted as a shell command.
 if ! grep -q 'STONEAGE_ADMIN_NOTICE' /src/gmsv/main.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0007-admin-notification.patch
+fi
+
+# The player administration queue is a private local file bridge. Keep its
+# modern module in ASCII/UTF-8 and apply only the small main-loop/makefile
+# integration patch to the CP936 archive.
+if ! grep -q 'STONEAGE_PlayerAdminProcess' /src/gmsv/main.c; then
+  cp /modern/stoneage_player_admin.c /src/gmsv/stoneage_player_admin.c
+  cp /modern/stoneage_player_admin.h /src/gmsv/stoneage_player_admin.h
+  patch -d /src/gmsv -p1 < /modern/patches/0009-player-admin-bridge.patch
 fi
 
 # Debug output in the historic login, delete, shutdown, and configuration

@@ -1,0 +1,118 @@
+.players-page { min-width: 0; }
+.player-selector-card { margin-bottom: 20px; }
+.player-selector-card .card-heading { margin-bottom: 14px; }
+.player-selector-card h2 { margin: 5px 0 0; }
+.player-selector-controls { display: grid; grid-template-columns: minmax(240px, 360px) minmax(0, 1fr); align-items: end; gap: 16px; }
+.player-selector-controls label { margin: 0; }
+.player-selector-controls select, .catalog-search select, .catalog-search input, .attribute-editor input, .possession-name-form input, .skill-slot-input { display: block; width: 100%; margin-top: 7px; border: 2px solid #718791; border-radius: 7px; padding: 9px 10px; color: #3d464c; background: #f7f7ef; font: inherit; box-shadow: inset 0 1px 2px rgba(55,70,78,.12); }
+.player-selector-controls select:focus, .catalog-search select:focus, .catalog-search input:focus, .attribute-editor input:focus, .possession-name-form input:focus, .skill-slot-input:focus { outline: 0; border-color: #2187ad; box-shadow: 0 0 0 3px rgba(46,157,192,.18), inset 0 1px 2px rgba(55,70,78,.12); }
+.player-load-state { align-self: center; min-height: 19px; color: #5b6970; font-size: 13px; }
+.player-load-state.error { color: #8a4039; }
+.player-load-state.success { color: #2e6948; }
+.player-layout { display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(350px, .72fr); align-items: start; gap: 20px; }
+.player-overview-card, .player-catalog-card { min-width: 0; }
+.player-overview-card .card-heading { margin-bottom: 14px; }
+.player-overview-card .card-heading h2, .player-catalog-card .card-heading h2 { margin: 5px 0 0; }
+.player-snapshot { min-width: 0; }
+.player-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid rgba(94,116,128,.24); }
+.player-summary h3 { color: #3d5963; font-size: 20px; }
+.player-summary p { margin: 5px 0 0; color: #68777c; font-size: 12px; }
+.player-section { margin-top: 20px; }
+.player-section:first-child { margin-top: 0; }
+.player-section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: #287d9d; font-size: 16px; }
+.player-section-title small { color: #68777c; font-size: 11px; font-weight: 400; }
+.attribute-list { display: grid; gap: 8px; margin: 0; }
+.attribute-row { display: grid; grid-template-columns: minmax(82px, .7fr) minmax(90px, 1fr) auto; align-items: end; gap: 8px; padding: 8px 10px; border: 1px solid rgba(94,116,128,.26); border-radius: 8px; background: rgba(255,255,255,.42); }
+.attribute-row dt { color: #5c6b71; font-size: 12px; }
+.attribute-row dd { min-width: 0; margin: 0; }
+.attribute-editor { display: flex; align-items: flex-end; gap: 6px; min-width: 0; margin: 0; }
+.attribute-editor input { min-width: 0; margin-top: 0; padding: 6px 7px; font-size: 13px; }
+.attribute-editor small { display: block; margin-top: 4px; color: #899498; font-size: 10px; white-space: nowrap; }
+.attribute-editor button, .possession-actions button, .skill-actions button { padding: 6px 9px; font-size: 11px; white-space: nowrap; }
+.possession-card .attribute-row { display: block; }
+.possession-card .attribute-row dd { margin-top: 6px; }
+.possession-card .attribute-editor { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 5px 7px; }
+.possession-card .attribute-editor input { grid-column: 1 / -1; width: 100%; }
+.possession-card .attribute-editor small { grid-column: 1; grid-row: 2; margin: 0; overflow: hidden; text-overflow: ellipsis; }
+.possession-card .attribute-editor button { grid-column: 2; grid-row: 2; }
+.possession-groups { display: grid; gap: 19px; }
+.possession-location h4 { margin: 0 0 9px; padding-bottom: 6px; color: #496875; border-bottom: 2px solid rgba(94,116,128,.2); font-size: 13px; }
+.possession-kind { margin-top: 12px; }
+.possession-kind:first-of-type { margin-top: 0; }
+.possession-kind h5 { margin: 0 0 8px; color: #68777c; font-size: 12px; }
+.possession-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.possession-card { min-width: 0; padding: 10px; border: 2px solid rgba(94,116,128,.27); border-radius: 11px 11px 5px 11px; background: rgba(255,255,255,.42); }
+.possession-card-header { display: grid; grid-template-columns: 58px minmax(0,1fr); align-items: center; gap: 9px; min-width: 0; }
+.asset-preview { display: grid; place-items: center; width: 58px; height: 58px; overflow: hidden; border: 2px solid #718791; border-radius: 10px 10px 4px 10px; background: rgba(224,237,230,.7); }
+.asset-preview img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.asset-preview.missing::after { content: "无图"; color: #809096; font-size: 11px; }
+.possession-title { min-width: 0; }
+.possession-title strong { display: block; overflow: hidden; color: #3d5963; text-overflow: ellipsis; white-space: nowrap; }
+.possession-title small { display: block; margin-top: 3px; overflow: hidden; color: #68777c; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.possession-meta { display: flex; flex-wrap: wrap; gap: 5px 9px; margin: 8px 0; color: #68777c; font-size: 10px; }
+.possession-name-form { display: flex; gap: 5px; margin: 0 0 8px; }
+.possession-name-form input { min-width: 0; margin: 0; padding: 6px 7px; font-size: 12px; }
+.possession-name-form button { flex: 0 0 auto; padding: 6px 8px; font-size: 11px; }
+.possession-attributes { display: grid; gap: 4px; margin: 0 0 8px; }
+.possession-attribute { display: flex; justify-content: space-between; gap: 8px; color: #68777c; font-size: 11px; }
+.possession-attribute span:last-child { overflow: hidden; color: #3d5963; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.pet-skills { margin: 8px 0; padding-top: 7px; border-top: 1px solid rgba(94,116,128,.22); }
+.pet-skills-title { display: block; margin-bottom: 5px; color: #496875; font-size: 11px; font-weight: 800; }
+.skill-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 0; color: #68777c; font-size: 11px; }
+.skill-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-row button { flex: 0 0 auto; padding: 3px 6px; font-size: 10px; }
+.possession-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.possession-actions .danger, .skill-row .danger { color: #fffdf0; background: linear-gradient(#e78373,#be5a55); }
+.catalog-search { display: grid; grid-template-columns: 112px minmax(0,1fr) auto; align-items: end; gap: 8px; margin-bottom: 8px; }
+.catalog-search label { min-width: 0; margin: 0; font-size: 12px; }
+.catalog-search select, .catalog-search input { margin-top: 5px; padding: 8px 9px; font-size: 13px; }
+.catalog-search button { padding: 8px 12px; white-space: nowrap; }
+.catalog-search-hint { margin: 0 0 13px; font-size: 11px; line-height: 1.45; }
+.catalog-results { min-height: 115px; }
+.catalog-results-header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: #68777c; font-size: 11px; }
+.catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.catalog-entry { display: grid; grid-template-columns: 46px minmax(0,1fr); align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 7px; border: 2px solid rgba(94,116,128,.27); border-radius: 9px 9px 4px 9px; color: #3d5963; background: rgba(255,255,255,.44); text-align: left; }
+.catalog-entry:hover, .catalog-entry:focus { border-color: #2187ad; background: rgba(223,241,243,.78); }
+.catalog-entry.selected { border-color: #b59a62; box-shadow: 0 0 0 2px rgba(226,189,37,.24); }
+.catalog-entry .asset-preview { width: 46px; height: 46px; border-radius: 7px 7px 3px 7px; }
+.catalog-entry-copy { min-width: 0; }
+.catalog-entry-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-entry-copy small { display: block; margin-top: 3px; overflow: hidden; color: #68777c; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-selection { margin-top: 15px; padding-top: 14px; border-top: 2px solid rgba(94,116,128,.24); }
+.catalog-selection[hidden] { display: none; }
+.catalog-selection-heading { display: grid; grid-template-columns: 58px minmax(0,1fr); align-items: center; gap: 10px; margin-bottom: 10px; }
+.catalog-selection-heading .asset-preview { width: 58px; height: 58px; }
+.catalog-selection-heading h3 { overflow: hidden; color: #3d5963; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-selection-heading p { margin: 4px 0 0; overflow: hidden; color: #68777c; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.catalog-selection-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; align-items: end; }
+.catalog-selection-form label { min-width: 0; margin: 0; font-size: 11px; }
+.catalog-selection-form input, .catalog-selection-form select { display: block; width: 100%; margin-top: 5px; border: 2px solid #718791; border-radius: 6px; padding: 7px 8px; color: #3d464c; background: #f7f7ef; font: inherit; font-size: 12px; }
+.catalog-selection-form button { grid-column: 1 / -1; width: 100%; padding: 8px 11px; }
+.catalog-selection-form .selection-note { grid-column: 1 / -1; margin: 0; color: #68777c; font-size: 11px; line-height: 1.4; }
+.player-dialog { position: fixed; z-index: 1100; inset: 0; display: grid; place-items: center; padding: 20px; }
+.player-dialog[hidden] { display: none; }
+.player-dialog-backdrop { position: absolute; inset: 0; background: rgba(31,55,64,.58); backdrop-filter: blur(2px); }
+.player-dialog-panel { position: relative; width: min(460px,100%); padding: 24px; border: 3px solid #536a75; border-radius: 18px 18px 8px 18px; background: linear-gradient(145deg, rgba(255,255,250,.99), rgba(247,232,194,.98)); box-shadow: 0 14px 0 rgba(39,59,67,.28), 0 20px 45px rgba(31,55,64,.35); }
+.player-dialog-panel h2 { margin: 9px 0 8px; color: #3d5963; }
+.player-dialog-panel p { margin: 0; color: #56676d; line-height: 1.55; white-space: pre-wrap; }
+.player-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.player-dialog-actions button { min-width: 78px; }
+.player-dialog-actions .danger { color: #fffdf0; background: linear-gradient(#e78373,#be5a55); }
+.busy { cursor: wait; }
+@media (max-width: 980px) {
+  .player-layout { grid-template-columns: 1fr; }
+  .player-catalog-card { order: -1; }
+}
+@media (max-width: 640px) {
+  .player-selector-controls { grid-template-columns: 1fr; gap: 8px; }
+  .possession-grid, .catalog-grid { grid-template-columns: 1fr; }
+  .catalog-search { grid-template-columns: 1fr 1fr; }
+  .catalog-search .catalog-query-label { grid-column: 1 / -1; grid-row: 1; }
+  .catalog-search button { width: 100%; }
+  .attribute-row { grid-template-columns: 1fr; gap: 4px; }
+  .attribute-editor { align-items: stretch; }
+  .attribute-editor input { flex: 1; }
+  .player-summary { flex-direction: column; }
+  .catalog-selection-form { grid-template-columns: 1fr; }
+  .catalog-selection-form button, .catalog-selection-form .selection-note { grid-column: auto; }
+}

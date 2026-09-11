@@ -68,6 +68,10 @@ data/pal/
 
 精灵图片在 `assets/sprites/`，应用镜像不包含游戏资源，也不需要复制 `client/` 源码。`.env` 中 `./` 开头的路径相对部署目录；TOML 的 `/game/...`、`/opt/stoneage/web-assets` 是容器内绝对路径。
 
+后台账号详情中的“管理玩家资产”可选择角色，查看并修改随身和仓库的物品、宠物、技能、石币及属性。搜索目录来自当前 GMSV 数据，物品图标与宠物站立预览使用 Web 的同一套本地资源。更新此功能时须同时更新管理端、SAAC、GMSV 镜像和 Compose 文件；新增的 `player-admin` 私有卷只供这三个服务交换请求，不发布端口。已有资源无需重新上传。
+
+在线修改由 GMSV 主循环执行并确认 SAAC 存档，离线修改由 SAAC 检查角色锁及原存档后写入。页面提示数据已变化时应重新加载；保存待确认时先刷新检查，避免重复赠送。管理端不直接写角色存档。非 Compose 启动可通过 `STONEAGE_PLAYER_ADMIN_ROOT`、`STONEAGE_PLAYER_CATALOG_ROOT`、`STONEAGE_PLAYER_ASSETS_ROOT` 指定请求目录、游戏数据和图片资源目录；SAAC/GMSV 的 `STONEAGE_PLAYER_ADMIN_DIR` 分别指向根目录下的 `saac`、`gmsv` 子目录。
+
 使用阿里云 OSS 时，编辑 `config/web/web.toml` 中已有配置项：
 
 ```toml
@@ -165,7 +169,8 @@ rm stoneage-deploy-vX.Y.Z.tar.gz
 # 按发布说明对照 .env.compose.example 补充新增配置项；不要覆盖现有 .env/config
 vi .env                         # 将 STONEAGE_VERSION 改为同一个 tag
 ./bin/stoneage check
-./bin/stoneage deploy
+./bin/stoneage pull
+./bin/stoneage deploy --no-image-update
 ./bin/stoneage status
 ```
 

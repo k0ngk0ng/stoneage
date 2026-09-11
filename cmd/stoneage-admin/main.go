@@ -20,6 +20,10 @@ import (
 
 	"github.com/k0ngk0ng/stoneage/internal/admin"
 	"github.com/k0ngk0ng/stoneage/internal/auth"
+	"github.com/k0ngk0ng/stoneage/internal/gamecatalog"
+	"github.com/k0ngk0ng/stoneage/internal/playerassets"
+	"github.com/k0ngk0ng/stoneage/internal/playerbridge"
+	"github.com/k0ngk0ng/stoneage/internal/playermanager"
 )
 
 var legacyCharacterFile = regexp.MustCompile(`^(.+)\.[0-9]+\.char$`)
@@ -60,6 +64,9 @@ func serve(arguments []string) error {
 	operatorSocket := flags.String("operator-socket", os.Getenv("STONEAGE_OPERATOR_SOCKET"), "restricted operator Unix socket")
 	trustedProxies := flags.String("trusted-proxies", envOr("STONEAGE_ADMIN_TRUSTED_PROXIES", "127.0.0.1/32,::1/128"), "comma-separated trusted reverse-proxy IPs or CIDRs")
 	cookieSecure := flags.Bool("cookie-secure", envBool("STONEAGE_ADMIN_COOKIE_SECURE", false), "set Secure on admin session cookies")
+	playerRoot := flags.String("player-admin-root", envOr("STONEAGE_PLAYER_ADMIN_ROOT", "/run/stoneage/player-admin"), "private legacy player management queues")
+	catalogRoot := flags.String("player-catalog-root", envOr("STONEAGE_PLAYER_CATALOG_ROOT", "/game/gmsv/data"), "native game catalog directory")
+	assetsRoot := flags.String("player-assets-root", envOr("STONEAGE_PLAYER_ASSETS_ROOT", "/opt/stoneage/web-assets"), "native Web sprite directory")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -88,13 +95,30 @@ func serve(arguments []string) error {
 	if *operatorSocket != "" {
 		operator = admin.UnixOperator{Socket: *operatorSocket}
 	}
+	catalogLoader := gamecatalog.NewLoader(func() (*gamecatalog.Catalog, error) {
+		return gamecatalog.Load(*catalogRoot)
+	})
+	queue := func(role string) playerbridge.Queue {
+		return playerbridge.Queue{
+			Requests:  filepath.Join(*playerRoot, role, "requests"),
+			Responses: filepath.Join(*playerRoot, role, "responses"),
+		}
+	}
+	players := &playermanager.Manager{
+		Archives:      playerbridge.SAAC{Queue: queue("saac")},
+		Game:          playerbridge.GMSV{Queue: queue("gmsv")},
+		CatalogLoader: catalogLoader.Load,
+	}
 	control, err := admin.NewServer(store, admin.Options{
-		CookieSecure:   *cookieSecure,
-		TrustedProxies: strings.Split(*trustedProxies, ","),
-		SetupToken:     *setupToken,
-		Operator:       operator,
-		Config:         admin.ConfigManager{Path: *configPath},
-		SAACConfig:     admin.ConfigManager{Path: *saacConfigPath, Service: "saac"},
+		Players:             players,
+		PlayerCatalogLoader: catalogLoader.Load,
+		PlayerAssets:        &playerassets.Handler{Root: *assetsRoot},
+		CookieSecure:        *cookieSecure,
+		TrustedProxies:      strings.Split(*trustedProxies, ","),
+		SetupToken:          *setupToken,
+		Operator:            operator,
+		Config:              admin.ConfigManager{Path: *configPath},
+		SAACConfig:          admin.ConfigManager{Path: *saacConfigPath, Service: "saac"},
 	})
 	if err != nil {
 		return err

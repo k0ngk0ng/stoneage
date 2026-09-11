@@ -1,0 +1,24 @@
+--- a/main.c
++++ b/main.c
+@@ -14,5 +14,6 @@
+ #endif
+ 
+ #include "char.h"
++#include "saac_admin_bridge.h"
+ 
+ #ifdef _SASQL
+@@ -456,3 +457,4 @@
+     prepareDirectories( maildir );
++    stoneage_admin_bridge_init();
+ 
+ #ifdef _SLEEP_CHAR
+@@ -581,3 +583,4 @@
+ #endif
+         }
++    stoneage_admin_bridge_poll();
+     newti = tcpstruct_accept1();
+--- a/makefile
++++ b/makefile
+@@ -43,1 +43,1 @@
+-SRC = main.c recv.c util.c char.c db.c mail.c acfamily.c lock.c $(RPCSRC)
++SRC = main.c recv.c util.c char.c db.c mail.c acfamily.c lock.c saac_admin_bridge.c $(RPCSRC)

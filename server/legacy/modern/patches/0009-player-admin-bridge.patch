@@ -1,0 +1,26 @@
+--- a/main.c
++++ b/main.c
+@@ -19,6 +19,7 @@
+ #include "autil.h"
+ #include "family.h"
+ #include "trade.h"
++#include "stoneage_player_admin.h"
+ 
+ 
+ static void ShutdownProc( void);
+@@ -102,6 +103,7 @@
+ 
+ 	int itime=0;
+ 	while(1){
++		STONEAGE_PlayerAdminProcess();
+ 		StoneAge_ProcessAdminNotice();
+ 		if(getCpuUse()!=-1){
+ 			itime++;
+--- a/makefile
++++ b/makefile
+@@ -66,4 +66,4 @@
+ SRC=main.c init.c configfile.c util.c net.c buf.c msignal.c \
+ callfromac.c callfromcli.c object.c handletime.c function.c log.c autil.c \
+-$(CLIRPCSRC) $(SERVRPCSRC)
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c
+ PETSKILLGEN=~/bin/makedefs.perl

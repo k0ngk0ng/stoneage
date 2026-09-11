@@ -16,35 +16,47 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/k0ngk0ng/stoneage/internal/auth"
+	"github.com/k0ngk0ng/stoneage/internal/gamecatalog"
+	"github.com/k0ngk0ng/stoneage/internal/playerdata"
 )
 
 //go:embed templates/*.html static/*
 var webFiles embed.FS
 
 type Options struct {
-	TrustedProxies []string
-	CookieSecure   bool
-	SetupToken     string
-	Operator       Operator
-	Config         ConfigManager
-	SAACConfig     ConfigManager
-	CSRFSecret     []byte
+	Players             playerdata.Manager
+	PlayerCatalog       *gamecatalog.Catalog
+	PlayerCatalogLoader func() (*gamecatalog.Catalog, error)
+	PlayerAssets        http.Handler
+	TrustedProxies      []string
+	CookieSecure        bool
+	SetupToken          string
+	Operator            Operator
+	Config              ConfigManager
+	SAACConfig          ConfigManager
+	CSRFSecret          []byte
 }
 
 type Server struct {
-	trustedProxies []netip.Prefix
-	store          *auth.Store
-	templates      map[string]*template.Template
-	cookieSecure   bool
-	setupToken     string
-	operator       Operator
-	gmsvConfig     ConfigManager
-	saacConfig     ConfigManager
-	csrfSecret     []byte
+	players             playerdata.Manager
+	playerCatalog       *gamecatalog.Catalog
+	playerCatalogLoader func() (*gamecatalog.Catalog, error)
+	playerCatalogMu     sync.RWMutex
+	playerAssets        http.Handler
+	trustedProxies      []netip.Prefix
+	store               *auth.Store
+	templates           map[string]*template.Template
+	cookieSecure        bool
+	setupToken          string
+	operator            Operator
+	gmsvConfig          ConfigManager
+	saacConfig          ConfigManager
+	csrfSecret          []byte
 }
 
 type pageData struct {
@@ -116,8 +128,9 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
-		"assets": "assets.html",
-		"config": "config.html", "error": "error.html",
+		"assets":  "assets.html",
+		"players": "players.html",
+		"config":  "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
 		if parseErr != nil {
@@ -126,15 +139,19 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		templates[name] = parsed
 	}
 	return &Server{
-		trustedProxies: trustedProxies,
-		store:          store,
-		templates:      templates,
-		cookieSecure:   options.CookieSecure,
-		setupToken:     options.SetupToken,
-		operator:       options.Operator,
-		gmsvConfig:     options.Config,
-		saacConfig:     options.SAACConfig,
-		csrfSecret:     options.CSRFSecret,
+		players:             options.Players,
+		playerCatalog:       options.PlayerCatalog,
+		playerCatalogLoader: options.PlayerCatalogLoader,
+		playerAssets:        options.PlayerAssets,
+		trustedProxies:      trustedProxies,
+		store:               store,
+		templates:           templates,
+		cookieSecure:        options.CookieSecure,
+		setupToken:          options.SetupToken,
+		operator:            options.Operator,
+		gmsvConfig:          options.Config,
+		saacConfig:          options.SAACConfig,
+		csrfSecret:          options.CSRFSecret,
 	}, nil
 }
 
@@ -174,6 +191,10 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 	}
 	session, token := server.session(request)
 	if session == nil {
+		if strings.HasPrefix(request.URL.Path, "/api/") {
+			playerJSONError(response, http.StatusUnauthorized, "登录已过期，请重新登录")
+			return
+		}
 		if request.Method == http.MethodGet {
 			http.Redirect(response, request, "/login", http.StatusSeeOther)
 		} else {
@@ -182,6 +203,10 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	data := &pageData{Session: session, CSRF: server.csrfToken(token)}
+	if strings.HasPrefix(request.URL.Path, "/api/accounts/") || request.URL.Path == "/api/player-catalog" || strings.HasPrefix(request.URL.Path, "/api/player-assets/") {
+		server.playerAPI(response, request, data)
+		return
+	}
 	if request.URL.Path == "/logout" {
 		server.logout(response, request, token, data)
 		return
@@ -361,6 +386,16 @@ func (server *Server) account(response http.ResponseWriter, request *http.Reques
 		}
 		data.Title, data.Account = "账号详情", account
 		server.render(response, "account_detail", data)
+		return
+	}
+	if len(parts) == 3 && parts[2] == "players" && request.Method == http.MethodGet {
+		account, err := server.store.GetAccount(request.Context(), id)
+		if err != nil {
+			server.renderError(response, http.StatusNotFound, "账号不存在")
+			return
+		}
+		data.Title, data.Account = "玩家资产", account
+		server.render(response, "players", data)
 		return
 	}
 	if len(parts) != 3 || request.Method != http.MethodPost || !server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {

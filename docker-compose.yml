@@ -27,10 +27,12 @@ services:
       - backend
     environment:
       STONEAGE_RUNTIME_ROLE: saac
+      STONEAGE_PLAYER_ADMIN_DIR: /run/stoneage/player-admin/saac
       STONEAGE_SAAC_CONFIG: /etc/stoneage/saac/acserv.cf
     volumes:
       - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
       - ${STONEAGE_SAAC_CONFIG_DIR:-./config/saac}:/etc/stoneage/saac:ro
+      - player-admin:/run/stoneage/player-admin
     command: ["/opt/stoneage/bin/run-saac.sh"]
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9300"]
@@ -56,12 +58,14 @@ services:
         condition: service_healthy
     environment:
       STONEAGE_RUNTIME_ROLE: gmsv
+      STONEAGE_PLAYER_ADMIN_DIR: /run/stoneage/player-admin/gmsv
       STONEAGE_GMSV_CONFIG: /etc/stoneage/gmsv/setup.cf
       STONEAGE_SAAC_HOST: saac
       STONEAGE_SAAC_PORT: 9300
     volumes:
       - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv:ro
+      - player-admin:/run/stoneage/player-admin
       # The legacy crash-recovery path is ../saac/char. Mount the shared SAAC
       # data explicitly without sharing the GMSV binary/static tree.
       - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
@@ -319,6 +323,8 @@ services:
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv
       - ${STONEAGE_SAAC_CONFIG_DIR:-./config/saac}:/etc/stoneage/saac
       - operator-run:/run/stoneage:ro
+      - player-admin:/run/stoneage/player-admin
+      - ${STONEAGE_SPRITES_ROOT:-./assets/sprites}:/opt/stoneage/web-assets:ro
     ports:
       - ${STONEAGE_ADMIN_BIND:-127.0.0.1}:${STONEAGE_ADMIN_PORT:-18080}:8080
     healthcheck:
@@ -329,6 +335,7 @@ services:
       start_period: 10s
 
 volumes:
+  player-admin:
   auth-data:
     name: ${STONEAGE_AUTH_VOLUME:-stoneage-auth}
   operator-run:
