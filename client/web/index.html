@@ -18,7 +18,7 @@
        DevTools.  The legacy game has no separate browser icon asset. -->
   <link rel="icon" href="data:,">
   <link rel="manifest" href="/manifest.webmanifest">
-  <title>StoneAge 2.5 · sa_2903 web</title>
+  <title>StoneAge 2.5</title>
   <style>
     :root { color-scheme:dark; --text:#f8f1d8; --muted:#b8ae91; --accent:#f5dc83; --good:#b9e78b; --danger:#e9907c; --logical-width:640px; --logical-height:480px; }
     * { box-sizing:border-box; }
@@ -3149,9 +3149,9 @@
     };
   }
   const DISPLAY_MODE_KEY="stoneage:web:display-mode";
-  let displayMode="crisp";
-  try{if(window.localStorage?.getItem(DISPLAY_MODE_KEY)==="fit")displayMode="fit";}catch(_){/* storage is optional */}
-  function legacyViewportGeometry(viewport,dpr=1,mode="crisp"){
+  let displayMode="fit";
+  try{if(window.localStorage?.getItem(DISPLAY_MODE_KEY)==="crisp")displayMode="crisp";}catch(_){/* storage is optional */}
+  function legacyViewportGeometry(viewport,dpr=1,mode="fit"){
     dpr=Number.isFinite(dpr)&&dpr>0?dpr:1;
     const fit=Math.max(0.1,Math.min(viewport.width/640,viewport.height/480));
     // Preserve the existing mobile fit. Large scenes use whole physical pixels,
@@ -5262,7 +5262,11 @@
          modal curtain and stops immediately when maybeFinishMapLoading()
          publishes the completed cache. */
       const stats=mapLoadingProgress(),bootstrapReady=assetState.fieldBootstrapSpritesReady||assetState.spritesReady||Boolean(assetState.manifest?.sprites);
-      if(assetState.manifestReady&&bootstrapReady&&stats.total>0&&stats.pending===0&&stats.failed===0)renderWorld(true);
+      /* A valid first window can contain no drawable map bitmap.  The
+         character frame is still decoded asynchronously, so keep giving the
+         renderer a chance to publish the ready back-buffer even when the
+         required-tile set is empty. */
+      if(assetState.manifestReady&&bootstrapReady&&stats.pending===0&&stats.failed===0)renderWorld(true);
       if(app.mapLoading)scheduleMapLoadingProgress();
     },500);
   }
@@ -5324,18 +5328,16 @@
       :"";
     const actorStats=app.mapLoadingActorStats;
     const actorText=actorStats?.pending>0?` · 人物帧 ${Math.max(0,actorStats.total-actorStats.pending)}/${actorStats.total}`:"";
-    const cumulativeBytes=Math.max(0,stats.manifestBytes)+Math.max(0,stats.bytes)+Math.max(0,stats.fieldBootstrapBytes);
-    const byteText=manifestPending
-      ?""
-      :(cumulativeBytes>0
-        ?` · 已接收 ${formatLoadingBytes(cumulativeBytes)}${stats.pending>0?"（清单+已完成资源）":"（清单+贴片）"}`
-        :" · 已接收数据统计中");
+    const cumulativeBytes=Math.max(0,Number(assetState.receivedBytes)||0);
+    const byteText=cumulativeBytes>0
+      ?` · 已读取资源 ${formatLoadingBytes(cumulativeBytes)}`
+      :" · 已读取资源 0 B";
     const startedAt=app.mapLoading?Number(app.mapLoadingStartedAt)||Date.now():0;
     const now=Date.now(),elapsed=startedAt?Math.max(0,Math.floor((now-startedAt)/1000)):0;
-    const progressKey=`${assetState.manifestReady?1:0}:${stats.done}/${stats.total}:${stats.manifestBytes}:${stats.bytes}:${bootstrapReady?1:0}:${stats.fieldBootstrapBytes}`;
+    const progressKey=`${assetState.manifestReady?1:0}:${stats.done}/${stats.total}:${stats.manifestBytes}:${stats.bytes}:${cumulativeBytes}:${bootstrapReady?1:0}:${stats.fieldBootstrapBytes}`;
     const previous=app.mapLoadingStats||{};
     const lastProgressAt=progressKey!==previous.lastProgressKey?now:Number(previous.lastProgressAt)||now;
-    const stalled=Boolean(startedAt&&now-lastProgressAt>=15000&&(!hasTotal||stats.pending>0||manifestPending||bootstrapPending));
+    const stalled=Boolean(startedAt&&now-lastProgressAt>=15000&&(!hasTotal||stats.pending>0||manifestPending||bootstrapPending||actorStats?.pending>0));
     const retryVisible=Boolean((stalled||(bootstrapPending&&assetState.fieldBootstrapSpritesFailed&&assetState.spritesFailed))&&app.mapLoading&&app.phase==="world");
     detail.textContent=`${suffix}${bootstrapText}${actorText}${byteText}${elapsed>0?` · ${elapsed}s`:""}${stalled?" · 资源响应较慢":""}`;
     if(retry){retry.hidden=!retryVisible;retry.setAttribute("aria-hidden",retryVisible?"false":"true");}
@@ -5413,6 +5415,7 @@
     const retryFiles=new Set([
       ...(cache?.pending||[]),...(cache?.failed||[]),...(cache?.missing||[]),...(cache?.unavailable||[]),
     ]);
+    for(const [file,image] of assetState.images){if(image?._assetFailed)retryFiles.add(file);}
     for(const file of retryFiles)assetState.images.delete(file);
     if(cache){cache.pending.clear();cache.failed.clear();cache.missing.clear();cache.unavailable.clear();cache.retryCount.clear();}
     app.mapLayerCache=null;
@@ -5566,7 +5569,7 @@
      It is intentionally separate from the multi-megabyte object manifest so
      a normal page load can select a cache namespace with one small request. */
   const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE);
-  const assetState={manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldBootstrapSprites:null,fieldBootstrapSpritesReady:false,fieldBootstrapSpritesFailed:false,fieldBootstrapSpriteLoading:null,fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  const assetState={receivedBytes:0,manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldBootstrapSprites:null,fieldBootstrapSpritesReady:false,fieldBootstrapSpritesFailed:false,fieldBootstrapSpriteLoading:null,fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
   function assetWorkerTarget(){
     try{return navigator.serviceWorker?.controller||assetState.assetWorker?.active||assetState.assetWorker?.waiting||assetState.assetWorker?.installing||null;}catch(_){return null;}
   }
@@ -5817,6 +5820,7 @@
        from each native SE family.  Additional maps and effects are fetched on
        demand and then retained by the same worker cache. */
     backgroundAssetWarmupTimer=window.setTimeout(()=>{
+      if(app.mapLoading){scheduleBackgroundAssetWarmup();return;}
       const urls=[];
       const audioRoot=STATIC_RESOURCE_ROOTS[2];
       ["sabgm_s0.wav","sabgm_s1.wav","sabgm_t0.wav","sabgm_t1.wav","sabgm_b0.wav","sabgm_d0.wav","sabgm_f0.wav"].forEach(file=>urls.push(new URL(`bgm/${file}`,audioRoot).href));
@@ -5905,7 +5909,10 @@
          deployment CORS rule therefore pairs with anonymous image loading;
          same-origin development assets continue to work unchanged. */
       image=new Image();image.crossOrigin="anonymous";image.decoding="async";
+      let objectURL="";
+      const releaseSource=()=>{if(objectURL){URL.revokeObjectURL(objectURL);objectURL="";}};
       image.onload=()=>{
+        releaseSource();
         rememberAssetResourceSize(file,assetNetworkBytes(file));
         const settled=settleMapAsset(file,false);
         renderMapLoadingProgress("正在解码地图贴片…");
@@ -5919,18 +5926,31 @@
         const cache=app.mapLayerCache;
         if(!mapAsset||!cache||cache.pending.size===0)scheduleAssetRefresh(settled&&(!cache||cache.pending.size===0));
       };
-      image.onerror=()=>{const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
-      /* mapAssetSource() only chooses a localStorage data URL or the normal
-         asset URL.  Storage warming is queued after the first playable frame;
-         never refetch a decoded tile from inside renderWorld(). */
-      image.src=mapAsset?mapAssetSource(file):`/assets/${file}`;
+      image.onerror=()=>{releaseSource();image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
       assetState.images.set(file,image);
+      const source=mapAsset?mapAssetSource(file):`/assets/${file}`;
+      /* Read each image once, including actor frames, before decoding it.
+         ResourceTiming hides CDN sizes without Timing-Allow-Origin and only
+         reports completed requests; the response stream gives actual bytes
+         while a cold-cache download is still in progress. */
+      if(!source.startsWith("data:")&&typeof URL.createObjectURL==="function"){
+        fetch(source,{mode:"cors",cache:"force-cache"}).then(async response=>{
+          if(!response.ok)throw new Error(`图片资源 HTTP ${response.status}`);
+          const buffer=await readAssetResponseBytes(response,null,{});
+          rememberAssetResourceSize(file,buffer.byteLength);
+          objectURL=URL.createObjectURL(new Blob([buffer],{type:response.headers.get("Content-Type")||"image/png"}));
+          image.src=objectURL;
+        }).catch(()=>image.onerror());
+      }else image.src=source;
     }
     return image;
   }
   function mapDefinition(floor){ const id=Number(floor); if(id===200)return MAP_RENDER_OVERRIDES[200]; const manifest=assetState.manifest||{}; const definition=manifest.maps?.[String(id)]||manifest.map; return definition&&Number(definition.id)===id?definition:null; }
   async function readAssetResponseBytes(response,onProgress,progressState=assetState){
-    const advertised=Number(response?.headers?.get?.("Content-Length"))||0;
+    // Fetch exposes decoded bytes; compressed Content-Length is a different unit.
+    const encoding=response?.headers?.get?.("Content-Encoding");
+    const advertised=encoding&&encoding!=="identity"?0:Number(response?.headers?.get?.("Content-Length"))||0;
+    const received=bytes=>{assetState.receivedBytes=(Number(assetState.receivedBytes)||0)+bytes;};
     const isSpriteProgress=progressState?._spriteProgress===true;
     const bytesKey=String(progressState?._bytesKey||(isSpriteProgress?"spriteBytes":"manifestBytes"));
     const totalKey=String(progressState?._totalKey||(isSpriteProgress?"spriteTotalBytes":"manifestTotalBytes"));
@@ -5942,8 +5962,8 @@
        exposed by the platform. */
     if(!body?.getReader){
       const buffer=await response.arrayBuffer();
-      progressState[bytesKey]=buffer.byteLength;
-      if(!progressState[totalKey])progressState[totalKey]=buffer.byteLength;
+      progressState[bytesKey]=buffer.byteLength;received(buffer.byteLength);
+      progressState[totalKey]=buffer.byteLength;
       onProgress?.();
       return buffer;
     }
@@ -5951,12 +5971,13 @@
     for(;;){
       const part=await reader.read();
       if(part.done)break;
-      if(part.value?.byteLength){chunks.push(part.value);loaded+=part.value.byteLength;progressState[bytesKey]=loaded;}
+      if(part.value?.byteLength){chunks.push(part.value);loaded+=part.value.byteLength;received(part.value.byteLength);progressState[bytesKey]=loaded;
+        if(progressState[totalKey]&&loaded>progressState[totalKey])progressState[totalKey]=0;}
       const now=typeof performance?.now==="function"?performance.now():Date.now();
       if(now-lastPaint>=100){lastPaint=now;onProgress?.();}
     }
     progressState[bytesKey]=loaded;
-    if(!progressState[totalKey])progressState[totalKey]=loaded;
+    progressState[totalKey]=loaded;
     const buffer=new Uint8Array(loaded);let offset=0;
     for(const chunk of chunks){buffer.set(chunk,offset);offset+=chunk.byteLength;}
     onProgress?.();
@@ -6078,7 +6099,7 @@
     assetState.fieldSpritesFailed=false;
     assetState.fieldSpriteLoading=fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`场景动作资源 HTTP ${response.status}`);
-      return response.json();
+      return JSON.parse(new TextDecoder().decode(await readAssetResponseBytes(response,null,{})));
     }).then(payload=>{
       const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
       if(!sprites||typeof sprites!=="object")throw new Error("场景动作资源清单为空");
@@ -7771,7 +7792,7 @@
       add("    聊天设定    ",()=>{app.systemPage="chat";renderSystem();},40);
       add("    背景音乐    ",()=>{app.systemPage="bgm";renderSystem();},80);
       add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
-      add(displayMode==="crisp"?"显示：整数倍清晰":"显示：适应窗口",()=>{
+      add(displayMode==="crisp"?"倍数显示":"适应窗口",()=>{
         setDisplayMode(displayMode==="crisp"?"fit":"crisp");renderSystem();
       },160);
       const close=systemChoice("    关    闭    ",closeGameplayOverlay,212);list.append(close);

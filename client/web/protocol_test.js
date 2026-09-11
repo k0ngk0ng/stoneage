@@ -1107,7 +1107,7 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/function rememberAssetResourceEntry\([\s\S]{0,900}STATIC_RESOURCE_ROOTS/.test(script) ||
     !/function renderMapLoadingProgress\([\s\S]{0,1800}world-loading-detail/.test(script) ||
     !/if\(indeterminate\)bar\.style\.removeProperty\("width"\)/.test(script) ||
-    !/function scheduleMapLoadingProgress\(\)[\s\S]{0,1300}stats\.total>0&&stats\.pending===0&&stats\.failed===0\)renderWorld\(true\)[\s\S]{0,180}if\(app\.mapLoading\)scheduleMapLoadingProgress\(\)/.test(script) ||
+    !/function scheduleMapLoadingProgress\(\)[\s\S]{0,1800}stats\.pending===0&&stats\.failed===0\)renderWorld\(true\)[\s\S]{0,180}if\(app\.mapLoading\)scheduleMapLoadingProgress\(\)/.test(script) ||
     !/function retryMapLoading\([\s\S]{0,1200}app\.mapLayerCache=null/.test(script) ||
     !/manifestAttempts/.test(script) ||
     !/preferredStable=stable&&stable\.width\*stable\.height>current\.width\*current\.height/.test(script)) {
@@ -6229,6 +6229,7 @@ require("./login_credentials_test.js");
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sprite_loading_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sw_cache_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/resource_loading_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/resource_progress_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/connection_retry_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/server_directory_test.js"], {stdio:"inherit"});
 console.log("web protocol vectors OK");

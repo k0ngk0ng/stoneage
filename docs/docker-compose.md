@@ -201,6 +201,8 @@ GMSV 启动失败时查看 `data/gmsv/logs/gmsv.log`，SAAC 查看 `data/saac/lo
 
 ### 管理后台服务器清单与时间
 
+两个运行时镜像均安装时区数据并默认使用 `Asia/Shanghai`（UTC+8）。游戏欢迎语中的服务器时间及服务本地时间使用该时区；管理后台带时区的时间戳仍按浏览器本地时区展示。
+
 Web 选服列表和管理后台共用 `config/gateway/gateway.toml` 的服务器目录：
 
 ```toml

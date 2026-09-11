@@ -17,7 +17,10 @@ RUN sh /modern/build.sh
 
 FROM alpine:3.22
 
-RUN apk add --no-cache netcat-openbsd
+# Use local time consistently for server announcements and runtime logs.
+ENV TZ=Asia/Shanghai
+
+RUN apk add --no-cache tzdata netcat-openbsd
 
 COPY --from=build /src/gmsv/gmsvjt.exe /opt/stoneage/defaults/gmsv/gmsvjt.exe
 COPY --from=build /src/gmsv/data /opt/stoneage/defaults/gmsv/data

@@ -19,7 +19,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
 
 FROM alpine:3.22
 
-RUN apk add --no-cache bash docker-cli docker-cli-compose netcat-openbsd
+# Use local time consistently for server announcements and runtime logs.
+ENV TZ=Asia/Shanghai
+
+RUN apk add --no-cache tzdata bash docker-cli docker-cli-compose netcat-openbsd
 
 COPY --from=build /out/stoneage-gateway /opt/stoneage/bin/stoneage-gateway
 COPY --from=build /out/stoneage-admin /opt/stoneage/bin/stoneage-admin
