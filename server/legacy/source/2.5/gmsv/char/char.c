@@ -1355,18 +1355,10 @@ void CHAR_login( int clifd, char* data, int saveindex )
         char *playerName = CHAR_getChar( charaindex, CHAR_NAME );
         char message[256];
         char clockText[80];
-        struct tm localNow;
         time_t now = time( 0 );
 
-        /* ctime() is easy to mistake for UTC when a legacy runtime is
-           started outside the container's configured TZ.  Format the
-           server's local calendar value explicitly, using the same libc
-           timezone that the rest of GMSV uses through localtime(). */
-        if( localtime_r( &now, &localNow ) == NULL ||
-            strftime( clockText, sizeof( clockText ),
-                      "%Y-%m-%d %H:%M:%S", &localNow ) == 0 ) {
-            strcpy( clockText, "time unavailable" );
-        }
+        strcpy( clockText, ctime( &now ));
+        clockText[strlen( clockText ) - 1] = '\0';
 
         for( i = 0; i < playernum; i++ ) {
             if( CHAR_getCharUse( i ) == FALSE ) continue;
