@@ -23,6 +23,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/signal"
@@ -35,6 +36,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
@@ -139,6 +141,8 @@ const (
 // configured, the gateway directory supplies the selected listener address
 // and TCPUpstream remains only as a backwards-compatible single-line fallback.
 type Config struct {
+	TrustedProxies  []string
+	ForwardClientIP bool
 	ListenAddress   string
 	TCPUpstream     string
 	GatewayAPIURL   string
@@ -191,6 +195,10 @@ func DefaultConfig() Config {
 }
 
 func applyEnvironmentConfig(cfg Config) Config {
+	if value, ok := os.LookupEnv("STONEAGE_WEB_TRUSTED_PROXIES"); ok {
+		cfg.TrustedProxies = strings.Split(value, ",")
+	}
+	cfg.ForwardClientIP = strings.EqualFold(os.Getenv("STONEAGE_WEB_FORWARD_CLIENT_IP"), "true")
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_LISTEN")); value != "" {
 		cfg.ListenAddress = value
 	}
@@ -950,19 +958,20 @@ func (store *sessionStore) closeAll() {
 }
 
 type Handler struct {
-	config   Config
-	sessions *sessionStore
-	page     []byte
-	assets   http.Handler
-	maps     http.Handler
-	audio    http.Handler
-	npcDir   string
-	npcMu    sync.RWMutex
-	npcData  map[int][]npcMetadata
-	npcErr   error
-	npcDone  bool
-	stop     chan struct{}
-	stopOnce sync.Once
+	trustedProxies []netip.Prefix
+	config         Config
+	sessions       *sessionStore
+	page           []byte
+	assets         http.Handler
+	maps           http.Handler
+	audio          http.Handler
+	npcDir         string
+	npcMu          sync.RWMutex
+	npcData        map[int][]npcMetadata
+	npcErr         error
+	npcDone        bool
+	stop           chan struct{}
+	stopOnce       sync.Once
 }
 
 // npcMetadata is deliberately a description, not a second NPC protocol.
@@ -1281,6 +1290,10 @@ func loadNPCMetadata(root string) (map[int][]npcMetadata, error) {
 }
 
 func NewHandler(config Config) (*Handler, error) {
+	trustedProxies, err := clientip.ParseTrustedProxies(config.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
 	if config.ListenAddress == "" {
 		config.ListenAddress = defaultListenAddress
 	}
@@ -1329,7 +1342,7 @@ func NewHandler(config Config) (*Handler, error) {
 		   are operational rather than deployment-only metadata. */
 		publicAssetBaseURL = ossPublicBaseURL(oss)
 	}
-	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
+	handler := &Handler{trustedProxies: trustedProxies, config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository
@@ -1830,6 +1843,19 @@ func (handler *Handler) createSession(response http.ResponseWriter, request *htt
 		_ = connection.Close()
 		http.Error(response, "TCP upstream sent an invalid greeting", http.StatusBadGateway)
 		return
+	}
+	if handler.config.ForwardClientIP {
+		header, err := clientip.ProxyHeader(clientip.RequestSourceIP(request, handler.trustedProxies))
+		if err == nil {
+			_ = connection.SetWriteDeadline(time.Now().Add(handler.config.DialTimeout))
+			_, err = io.Copy(connection, bytes.NewReader(header))
+			_ = connection.SetWriteDeadline(time.Time{})
+		}
+		if err != nil {
+			_ = connection.Close()
+			http.Error(response, "cannot forward client address", http.StatusBadGateway)
+			return
+		}
 	}
 	id, err := newSessionID()
 	if err != nil {

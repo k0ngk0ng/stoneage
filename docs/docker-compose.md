@@ -45,6 +45,8 @@ cd /opt/stoneage
 
 审计来源 IP 只接受可信代理提供的 `X-Forwarded-For`（从右向左解析），没有该头时使用 `X-Real-IP`。宿主机 Nginx 经 Docker 端口转发时，在 `.env` 的 `STONEAGE_ADMIN_TRUSTED_PROXIES` 中加入管理容器看到的网关 IP；当前生产网关为 `192.0.2.1`，对应配置为 `127.0.0.1/32,::1/128,192.0.2.1/32`。不要信任整个内网网段；网关改变时同步更新该配置。此设置通过 Compose 传入管理容器，更新部署工具包时需带上新的 `docker-compose.yml`。旧审计记录保留原值。
 
+游戏登录审计（`game_login_success` / `game_login_failed`）由网关写入。Compose 为 Web 启用客户端 IP 传递：Web 使用同一可信 Nginx 列表解析来源 IP（可用 `STONEAGE_WEB_TRUSTED_PROXIES` 单独覆盖），再通过 TCP 连接的 PROXY v1 首行传递；网关只接受 Docker DNS 名 `web` 对应的连接来源，容器 IP 变化后仍可识别。该首行由网关消费，不转发给 GMSV；原生 TCP 客户端仍记录实际 TCP 对端 IP。更新时需同时发布新的 Web/网关镜像和 `docker-compose.yml`，不需要修改 Nginx 或重新上传资源。
+
 本次服务器的网页入口为 `https://sa.ichenj.com`，Nginx 配置在 `config/nginx/sa.ichenj.com.conf`，通过 `/etc/nginx/conf.d/` 的软链接加载，反代到 `127.0.0.1:8088`。Certbot 管理该域名证书，定时自动续期并重载 Nginx。维护命令：
 
 ```bash

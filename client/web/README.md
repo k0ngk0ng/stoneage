@@ -150,3 +150,5 @@ Go 测试使用本地 fake TCP upstream 覆盖握手、双向逐包转发、长�
 `connection_retry_test.js` 同时运行 `event_recovery_test.js`，覆盖确认重放、请求取消、超时、有限重试、旧服务器兼容和前端异常隔离。
 
 资源加载界面的“已读取资源”按当前页面实际读取的清单和图片响应体逐块累计，包括人物帧、兼容精灵清单及缓存返回的数据；压缩响应使用解压后大小，不等同于网络面板的传输流量。背景资源预取在首屏加载完成后开始。
+
+Docker 部署通过 `STONEAGE_WEB_FORWARD_CLIENT_IP=true` 向支持该功能的认证网关发送 PROXY v1 客户端来源信息。Web 仅从 `STONEAGE_WEB_TRUSTED_PROXIES` 中的可信 HTTP 代理接受转发头；网关通过 `STONEAGE_GATEWAY_TRUSTED_PROXY_HOSTS=web` 信任 Web 服务的 Docker DNS 地址。直接连接原版 GMSV 或旧网关时保持默认关闭。

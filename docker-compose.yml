@@ -94,6 +94,7 @@ services:
       - /data/${STONEAGE_AUTH_DB_FILE:-stoneage-auth.db}
     environment:
       STONEAGE_AUTH_DB: /data/${STONEAGE_AUTH_DB_FILE:-stoneage-auth.db}
+      STONEAGE_GATEWAY_TRUSTED_PROXY_HOSTS: web
     volumes:
       - auth-data:/data
       - ${STONEAGE_GATEWAY_CONFIG_FILE:-./config/gateway/gateway.toml}:/etc/stoneage/gateway.toml:ro
@@ -127,6 +128,8 @@ services:
     environment:
       # Environment variables are emergency/secret-safe overrides. Normal
       # Web, object-storage and CDN settings live in the mounted TOML configuration.
+      STONEAGE_WEB_FORWARD_CLIENT_IP: "true"
+      STONEAGE_WEB_TRUSTED_PROXIES: ${STONEAGE_WEB_TRUSTED_PROXIES:-${STONEAGE_ADMIN_TRUSTED_PROXIES:-127.0.0.1/32,::1/128}}
       STONEAGE_WEB_MAX_SESSIONS: ${STONEAGE_WEB_MAX_SESSIONS:-64}
       STONEAGE_WEB_CDN_BASE_URL: ${STONEAGE_WEB_CDN_BASE_URL:-}
     volumes:

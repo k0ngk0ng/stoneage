@@ -13,12 +13,14 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/auth"
+	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"github.com/k0ngk0ng/stoneage/server/go/bridge"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
@@ -30,16 +32,17 @@ const maximumPacketSize = 4 * 1024 * 1024
 const legacyStateTransitionDelay = 100 * time.Millisecond
 
 type options struct {
-	catalogAddress  string
-	servers         []gameservers.Server
-	listenAddress   string
-	upstreamAddress string
-	routes          string
-	trace           bool
-	traceBattle     bool
-	stateDelay      time.Duration
-	authDB          string
-	authRequired    bool
+	catalogAddress    string
+	servers           []gameservers.Server
+	listenAddress     string
+	upstreamAddress   string
+	routes            string
+	trace             bool
+	traceBattle       bool
+	stateDelay        time.Duration
+	authDB            string
+	authRequired      bool
+	trustedProxyHosts string
 }
 
 type gatewayRoute struct {
@@ -84,12 +87,13 @@ func main() {
 
 func configFromCommandLine(arguments []string) (options, string, error) {
 	opts := options{
-		listenAddress:   "127.0.0.1:9065",
-		upstreamAddress: "127.0.0.1:19065",
-		routes:          os.Getenv("STONEAGE_GATEWAY_ROUTES"),
-		authDB:          os.Getenv("STONEAGE_AUTH_DB"),
-		authRequired:    envBool("STONEAGE_AUTH_REQUIRED", false),
-		stateDelay:      legacyStateTransitionDelay,
+		listenAddress:     "127.0.0.1:9065",
+		upstreamAddress:   "127.0.0.1:19065",
+		routes:            os.Getenv("STONEAGE_GATEWAY_ROUTES"),
+		authDB:            os.Getenv("STONEAGE_AUTH_DB"),
+		authRequired:      envBool("STONEAGE_AUTH_REQUIRED", false),
+		trustedProxyHosts: os.Getenv("STONEAGE_GATEWAY_TRUSTED_PROXY_HOSTS"),
+		stateDelay:        legacyStateTransitionDelay,
 	}
 	var configPath string
 	flags := flag.NewFlagSet("stoneage-gateway", flag.ContinueOnError)
@@ -102,6 +106,7 @@ func configFromCommandLine(arguments []string) (options, string, error) {
 	flags.BoolVar(&opts.traceBattle, "trace-battle", opts.traceBattle, "log server battle command bytes as hex (never logs password fields)")
 	flags.StringVar(&opts.authDB, "auth-db", opts.authDB, "SQLite account database (enables login authentication)")
 	flags.BoolVar(&opts.authRequired, "auth-required", opts.authRequired, "reject game logins not accepted by the account database")
+	flags.StringVar(&opts.trustedProxyHosts, "trusted-proxy-hosts", opts.trustedProxyHosts, "comma-separated exact IP addresses or DNS names allowed to send PROXY protocol headers")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, "", fmt.Errorf("parse gateway arguments: %w", err)
 	}
@@ -329,18 +334,45 @@ func handleConnection(client net.Conn, opts options, accountStore *auth.Store, l
 	var firstClientPacket []byte
 	if opts.authRequired {
 		clientReader = bufio.NewReaderSize(client, 128*1024)
-		_ = client.SetReadDeadline(time.Now().Add(15 * time.Second))
+		loginDeadline := time.Now().Add(15 * time.Second)
+		_ = client.SetReadDeadline(loginDeadline)
 		firstClientPacket, err = readPacket(clientReader)
-		_ = client.SetReadDeadline(time.Time{})
 		if err != nil {
+			_ = client.SetReadDeadline(time.Time{})
 			return fmt.Errorf("read login packet: %w", err)
 		}
-		accepted, account, err := authenticateClientLogin(firstClientPacket, accountStore, remoteHost(client.RemoteAddr()))
+		sourceIP := remoteHost(client.RemoteAddr())
+		if bytes.HasPrefix(firstClientPacket, []byte("PROXY ")) {
+			trusted, trustErr := trustedProxyPeer(client.RemoteAddr(), opts.trustedProxyHosts)
+			if trustErr != nil {
+				_ = client.SetReadDeadline(time.Time{})
+				return trustErr
+			}
+			if !trusted {
+				_ = client.SetReadDeadline(time.Time{})
+				return fmt.Errorf("reject PROXY protocol header from untrusted peer %s", sourceIP)
+			}
+			sourceIP, err = clientip.ParseProxyHeader(firstClientPacket)
+			if err != nil {
+				_ = client.SetReadDeadline(time.Time{})
+				return fmt.Errorf("parse PROXY protocol header: %w", err)
+			}
+			// The same 15-second deadline covers both the PROXY line and the
+			// actual login packet. The reader remains buffered, so any bytes
+			// already received after the line are preserved for the translator.
+			firstClientPacket, err = readPacket(clientReader)
+			if err != nil {
+				_ = client.SetReadDeadline(time.Time{})
+				return fmt.Errorf("read login packet after PROXY header: %w", err)
+			}
+		}
+		_ = client.SetReadDeadline(time.Time{})
+		accepted, account, err := authenticateClientLogin(firstClientPacket, accountStore, sourceIP)
 		if err != nil {
 			return err
 		}
 		if !accepted {
-			logger.Printf("game login rejected account=%q source=%s", account, remoteHost(client.RemoteAddr()))
+			logger.Printf("game login rejected account=%q source=%s", account, sourceIP)
 			response, responseErr := clientLoginResponse("no")
 			if responseErr != nil {
 				return responseErr
@@ -350,7 +382,7 @@ func handleConnection(client net.Conn, opts options, accountStore *auth.Store, l
 			}
 			return nil
 		}
-		logger.Printf("game login accepted account=%q source=%s", account, remoteHost(client.RemoteAddr()))
+		logger.Printf("game login accepted account=%q source=%s", account, sourceIP)
 	}
 	var workers sync.WaitGroup
 	workers.Add(2)
@@ -492,6 +524,46 @@ func remoteHost(address net.Addr) string {
 		return host
 	}
 	return value
+}
+
+// trustedProxyPeer accepts only exact configured peer addresses. A configured
+// DNS name is resolved at connection time so a container/service name may be
+// used without implicitly trusting an entire private network range.
+func trustedProxyPeer(address net.Addr, configured string) (bool, error) {
+	peer, err := netip.ParseAddr(remoteHost(address))
+	if err != nil {
+		return false, fmt.Errorf("invalid PROXY protocol peer %q: %w", remoteHost(address), err)
+	}
+	peer = peer.Unmap()
+	for _, raw := range strings.Split(configured, ",") {
+		host := strings.TrimSpace(raw)
+		if host == "" {
+			continue
+		}
+		if candidate, parseErr := netip.ParseAddr(host); parseErr == nil {
+			if candidate.Unmap() == peer {
+				return true, nil
+			}
+			continue
+		}
+		// Prefixes are deliberately not accepted. This is an exact peer
+		// allow-list, rather than a Docker/private-network trust boundary.
+		if strings.Contains(host, "/") {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		addresses, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		cancel()
+		if lookupErr != nil {
+			continue
+		}
+		for _, candidate := range addresses {
+			if candidate.Unmap() == peer {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func envBool(name string, fallback bool) bool {
