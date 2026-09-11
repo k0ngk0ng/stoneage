@@ -310,6 +310,8 @@ services:
       - /etc/stoneage/saac/acserv.cf
       - -operator-socket
       - /run/stoneage/operator.sock
+      - -player-admin-root
+      - /run/stoneage-player-admin
     environment:
       STONEAGE_ADMIN_USER: ${STONEAGE_ADMIN_USER:-}
       STONEAGE_ADMIN_PASSWORD: ${STONEAGE_ADMIN_PASSWORD:-}
@@ -323,7 +325,9 @@ services:
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv
       - ${STONEAGE_SAAC_CONFIG_DIR:-./config/saac}:/etc/stoneage/saac
       - operator-run:/run/stoneage:ro
-      - player-admin:/run/stoneage/player-admin
+      # operator-run is read-only above, so keep this queue volume at a
+      # sibling path instead of nesting a mount below the read-only volume.
+      - player-admin:/run/stoneage-player-admin
       - ${STONEAGE_SPRITES_ROOT:-./assets/sprites}:/opt/stoneage/web-assets:ro
     ports:
       - ${STONEAGE_ADMIN_BIND:-127.0.0.1}:${STONEAGE_ADMIN_PORT:-18080}:8080

@@ -66,7 +66,10 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
         assert '${STONEAGE_CLIENT_DATA_ROOT:-./assets/client}:/game/client:ro' in compose
         assert '${STONEAGE_SPRITES_ROOT:-./assets/sprites}:/opt/stoneage/web-assets:ro' in compose
         assert compose.count(':/opt/stoneage/web-assets:ro') == 4
-        assert compose.count('- player-admin:/run/stoneage/player-admin') == 3
+        assert compose.count('- player-admin:/run/stoneage/player-admin') == 2
+        assert '- player-admin:/run/stoneage-player-admin' in compose
+        assert '      - -player-admin-root\n      - /run/stoneage-player-admin' in compose
+        assert '      - operator-run:/run/stoneage:ro\n      # operator-run is read-only above' in compose
         assert 'STONEAGE_PLAYER_ADMIN_DIR: /run/stoneage/player-admin/saac' in compose
         assert 'STONEAGE_PLAYER_ADMIN_DIR: /run/stoneage/player-admin/gmsv' in compose
         assert '${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro' in compose
