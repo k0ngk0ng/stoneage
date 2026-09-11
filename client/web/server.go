@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -44,6 +45,13 @@ import (
 //
 //go:embed index.html
 var page []byte
+
+// Injected from the release tag at build time; independent of asset revisions.
+var releaseVersion = "dev"
+
+func pageWithReleaseVersion(source []byte, version string) []byte {
+	return bytes.ReplaceAll(source, []byte("<!--STONEAGE_RELEASE_VERSION-->dev"), []byte(html.EscapeString(version)))
+}
 
 // Keep the worker beside the self-contained page so `go run ./client/web`
 // and the production binary expose the exact same cache/update behavior.
@@ -1321,7 +1329,7 @@ func NewHandler(config Config) (*Handler, error) {
 		   are operational rather than deployment-only metadata. */
 		publicAssetBaseURL = ossPublicBaseURL(oss)
 	}
-	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithCDNBase(page, publicAssetBaseURL), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
+	handler := &Handler{config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository

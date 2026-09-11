@@ -7,6 +7,8 @@ if (( $# )); then shift; fi
 case "$command" in
   init) exec "$project_root/bin/deploy.sh" --init "$@" ;;
   check) exec "$project_root/bin/deploy.sh" --check "$@" ;;
+  # Deployment pulls while services stay online, then replaces containers.
+  # Do not add a pre-stop or backup step to ordinary image-only releases.
   deploy) exec "$project_root/bin/deploy.sh" "$@" ;;
   sync-assets) exec "$project_root/bin/sync-assets.sh" "$@" ;;
   login) exec "$project_root/bin/registry-login.sh" "$@" ;;

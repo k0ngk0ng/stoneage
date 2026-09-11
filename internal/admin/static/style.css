@@ -103,13 +103,12 @@ tr:last-child td { border-bottom: 0; }
 .muted-note { opacity: .88; }
 .service-notes > .hint { margin: 15px 0 0; }
 .config-card { margin-bottom: 20px; }
-.release-card { max-width: 900px; margin-bottom: 20px; }
-.release-details { margin-bottom: 24px; }
-.release-form { padding-top: 18px; border-top: 2px solid rgba(94,116,128,.24); }
-.release-form code, .release-details code { padding: 2px 5px; border-radius: 4px; color: #48616a; background: rgba(94,116,128,.12); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
-.status-pill.preparing, .status-pill.backup, .status-pill.pulling, .status-pill.stopping, .status-pill.updating, .status-pill.verifying, .status-pill.rolling_back { color: #8a652e; border-color: #c5a25b; background: #f7e8ba; }
+.asset-sync-card { max-width: 900px; margin-bottom: 20px; }
+.asset-sync-details { margin-bottom: 24px; }
+.asset-sync-form { padding-top: 18px; border-top: 2px solid rgba(94,116,128,.24); }
+.asset-sync-form code, .asset-sync-details code { padding: 2px 5px; border-radius: 4px; color: #48616a; background: rgba(94,116,128,.12); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
 .status-pill.succeeded { color: #276946; border-color: #5a9b70; background: #dff0d9; }
-.status-pill.failed, .status-pill.rolled_back { color: #8a4d47; border-color: #bf8177; background: #f5d8c9; }
+.status-pill.failed { color: #8a4d47; border-color: #bf8177; background: #f5d8c9; }
 .config-footer { margin-top: 8px; }
 .standalone-card { max-width: 900px; }
 .form-actions { display: flex; align-items: center; gap: 8px; }

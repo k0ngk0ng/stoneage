@@ -100,6 +100,7 @@
        client uses the same fish-bone resource for every pointer state. */
     button,input,select,textarea,a,[role="button"] { cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
     #orientation-lock,#orientation-lock * { cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto !important; }
+    #release-version { position:absolute; right:12px; bottom:8px; z-index:2; color:rgba(255,255,255,.55); font:10px/1.2 sans-serif; pointer-events:none; }
     #login-screen { background:#000 url('/assets/bitmaps/bitmap_9113.png') center/100% 100% no-repeat; }
     #server-screen { background:#000 url('/assets/bitmaps/bitmap_9094.png') center/100% 100% no-repeat; }
     #login-screen h2,#server-screen h2,#character-screen h2,#world-screen h2,#battle-screen h2 { position:absolute; left:-10000px; }
@@ -1056,6 +1057,7 @@
     </section>
     <section id="login-screen">
       <h2>登录</h2>
+      <span id="release-version" aria-label="当前版本"><!--STONEAGE_RELEASE_VERSION-->dev</span>
       <img class="login-bitmap login-ok" src="/assets/bitmaps/bitmap_9114.png" alt="确定">
       <img class="login-bitmap login-quit" src="/assets/bitmaps/bitmap_9115.png" alt="退出">
       <form id="login-form" autocomplete="off">

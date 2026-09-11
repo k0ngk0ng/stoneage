@@ -58,6 +58,7 @@ func serve(arguments []string) error {
 	configPath := flags.String("config", os.Getenv("STONEAGE_SERVER_CONFIG"), "GMSV setup.cf path")
 	saacConfigPath := flags.String("saac-config", os.Getenv("STONEAGE_SAAC_CONFIG"), "SAAC acserv.cf path")
 	operatorSocket := flags.String("operator-socket", os.Getenv("STONEAGE_OPERATOR_SOCKET"), "restricted operator Unix socket")
+	trustedProxies := flags.String("trusted-proxies", envOr("STONEAGE_ADMIN_TRUSTED_PROXIES", "127.0.0.1/32,::1/128"), "comma-separated trusted reverse-proxy IPs or CIDRs")
 	cookieSecure := flags.Bool("cookie-secure", envBool("STONEAGE_ADMIN_COOKIE_SECURE", false), "set Secure on admin session cookies")
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -88,11 +89,12 @@ func serve(arguments []string) error {
 		operator = admin.UnixOperator{Socket: *operatorSocket}
 	}
 	control, err := admin.NewServer(store, admin.Options{
-		CookieSecure: *cookieSecure,
-		SetupToken:   *setupToken,
-		Operator:     operator,
-		Config:       admin.ConfigManager{Path: *configPath},
-		SAACConfig:   admin.ConfigManager{Path: *saacConfigPath, Service: "saac"},
+		CookieSecure:   *cookieSecure,
+		TrustedProxies: strings.Split(*trustedProxies, ","),
+		SetupToken:     *setupToken,
+		Operator:       operator,
+		Config:         admin.ConfigManager{Path: *configPath},
+		SAACConfig:     admin.ConfigManager{Path: *saacConfigPath, Service: "saac"},
 	})
 	if err != nil {
 		return err

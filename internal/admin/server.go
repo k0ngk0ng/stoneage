@@ -12,9 +12,8 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
-	"regexp"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -27,23 +26,25 @@ import (
 var webFiles embed.FS
 
 type Options struct {
-	CookieSecure bool
-	SetupToken   string
-	Operator     Operator
-	Config       ConfigManager
-	SAACConfig   ConfigManager
-	CSRFSecret   []byte
+	TrustedProxies []string
+	CookieSecure   bool
+	SetupToken     string
+	Operator       Operator
+	Config         ConfigManager
+	SAACConfig     ConfigManager
+	CSRFSecret     []byte
 }
 
 type Server struct {
-	store        *auth.Store
-	templates    map[string]*template.Template
-	cookieSecure bool
-	setupToken   string
-	operator     Operator
-	gmsvConfig   ConfigManager
-	saacConfig   ConfigManager
-	csrfSecret   []byte
+	trustedProxies []netip.Prefix
+	store          *auth.Store
+	templates      map[string]*template.Template
+	cookieSecure   bool
+	setupToken     string
+	operator       Operator
+	gmsvConfig     ConfigManager
+	saacConfig     ConfigManager
+	csrfSecret     []byte
 }
 
 type pageData struct {
@@ -52,52 +53,47 @@ type pageData struct {
 	OnlinePlayers    int64
 	UnknownServers   int
 
-	Title               string
-	Session             *auth.Session
-	CSRF                string
-	Error               string
-	Message             string
-	Query               string
-	FormUsername        string
-	Accounts            []auth.Account
-	Account             auth.Account
-	Events              []auth.AuditEvent
-	SetupTokenRequired  bool
-	Status              ServiceStatus
-	Config              map[string]string
-	ConfigGroups        []ConfigGroup
-	ConfigError         string
-	OperatorError       string
-	Code                int
-	ConfigService       string
-	ConfigTitle         string
-	ConfigDescription   string
-	ConfigPath          string
-	ConfigEditable      bool
-	GatewayRunning      bool
-	GatewayStopped      bool
-	GameStatus          string
-	GameStatusLabel     string
-	GameRunning         bool
-	GameStopped         bool
-	GameAnyRunning      bool
-	GameKnown           bool
-	GMSVRunning         bool
-	GMSVStopped         bool
-	SAACRunning         bool
-	SAACStopped         bool
-	AnyServiceRunning   bool
-	AllServicesKnown    bool
-	AllServicesStopped  bool
-	Deployment          DeploymentStatus
-	DeploymentError     string
-	DeploymentAvailable bool
-	AssetSync           AssetSyncStatus
-	AssetSyncError      string
-	AssetSyncAvailable  bool
+	Title              string
+	Session            *auth.Session
+	CSRF               string
+	Error              string
+	Message            string
+	Query              string
+	FormUsername       string
+	Accounts           []auth.Account
+	Account            auth.Account
+	Events             []auth.AuditEvent
+	SetupTokenRequired bool
+	Status             ServiceStatus
+	Config             map[string]string
+	ConfigGroups       []ConfigGroup
+	ConfigError        string
+	OperatorError      string
+	Code               int
+	ConfigService      string
+	ConfigTitle        string
+	ConfigDescription  string
+	ConfigPath         string
+	ConfigEditable     bool
+	GatewayRunning     bool
+	GatewayStopped     bool
+	GameStatus         string
+	GameStatusLabel    string
+	GameRunning        bool
+	GameStopped        bool
+	GameAnyRunning     bool
+	GameKnown          bool
+	GMSVRunning        bool
+	GMSVStopped        bool
+	SAACRunning        bool
+	SAACStopped        bool
+	AnyServiceRunning  bool
+	AllServicesKnown   bool
+	AllServicesStopped bool
+	AssetSync          AssetSyncStatus
+	AssetSyncError     string
+	AssetSyncAvailable bool
 }
-
-var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 
 const adminFlashCookieName = "stoneage_admin_flash"
 
@@ -111,12 +107,16 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 			return nil, fmt.Errorf("generate CSRF secret: %w", err)
 		}
 	}
+	trustedProxies, err := parseTrustedProxies(options.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
 	templates := make(map[string]*template.Template)
 	for name, file := range map[string]string{
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
-		"releases": "releases.html", "assets": "assets.html",
+		"assets": "assets.html",
 		"config": "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
@@ -126,14 +126,15 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		templates[name] = parsed
 	}
 	return &Server{
-		store:        store,
-		templates:    templates,
-		cookieSecure: options.CookieSecure,
-		setupToken:   options.SetupToken,
-		operator:     options.Operator,
-		gmsvConfig:   options.Config,
-		saacConfig:   options.SAACConfig,
-		csrfSecret:   options.CSRFSecret,
+		trustedProxies: trustedProxies,
+		store:          store,
+		templates:      templates,
+		cookieSecure:   options.CookieSecure,
+		setupToken:     options.SetupToken,
+		operator:       options.Operator,
+		gmsvConfig:     options.Config,
+		saacConfig:     options.SAACConfig,
+		csrfSecret:     options.CSRFSecret,
 	}, nil
 }
 
@@ -210,10 +211,6 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		server.audit(response, request, data)
 		return
 	}
-	if request.URL.Path == "/releases" || request.URL.Path == "/releases/deploy" {
-		server.releases(response, request, data)
-		return
-	}
 	if request.URL.Path == "/assets" || request.URL.Path == "/assets/sync" {
 		server.assets(response, request, data)
 		return
@@ -245,7 +242,7 @@ func (server *Server) login(response http.ResponseWriter, request *http.Request)
 	_ = request.ParseForm()
 	username := request.FormValue("username")
 	password := []byte(request.FormValue("password"))
-	admin, err := server.store.AuthenticateAdmin(request.Context(), username, password, requestSourceIP(request))
+	admin, err := server.store.AuthenticateAdmin(request.Context(), username, password, server.requestSourceIP(request))
 	if err != nil {
 		server.render(response, "login", &pageData{Title: "管理员登录", Error: "账号或密码错误"})
 		return
@@ -428,7 +425,7 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 			server.renderError(response, http.StatusBadGateway, err.Error())
 			return
 		}
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restarted_"+target, "", requestSourceIP(request), "")
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_restarted_"+target, "", server.requestSourceIP(request), "")
 		server.redirectWithMessage(response, request, "/server", restartMessage(target))
 	case "/server/stop", "/server/stop-game", "/server/stop-gateway", "/server/stop-gmsv", "/server/stop-saac":
 		target := "all"
@@ -445,7 +442,7 @@ func (server *Server) server(response http.ResponseWriter, request *http.Request
 			server.renderError(response, http.StatusBadGateway, err.Error())
 			return
 		}
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_stopped_"+target, "", requestSourceIP(request), "")
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_stopped_"+target, "", server.requestSourceIP(request), "")
 		server.redirectWithMessage(response, request, "/server", stopMessage(target))
 	default:
 		server.renderError(response, http.StatusNotFound, "操作不存在")
@@ -478,59 +475,12 @@ func (server *Server) notification(response http.ResponseWriter, request *http.R
 		return
 	}
 	if err := notifier.Notify(request.Context(), message); err != nil {
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_failed", "", requestSourceIP(request), err.Error())
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_failed", "", server.requestSourceIP(request), err.Error())
 		server.renderError(response, http.StatusBadGateway, err.Error())
 		return
 	}
-	_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", requestSourceIP(request), message)
+	_ = server.store.RecordAudit(request.Context(), adminID(data), "server_notification_sent", "", server.requestSourceIP(request), message)
 	server.redirectWithMessage(response, request, "/notifications", "通知已发送给在线玩家")
-}
-
-func (server *Server) releases(response http.ResponseWriter, request *http.Request, data *pageData) {
-	deployer, ok := server.operator.(DeployingOperator)
-	data.Title = "版本"
-	if request.Method == http.MethodGet {
-		data.Message = server.consumeFlash(response, request)
-	}
-	data.DeploymentAvailable = ok
-	if ok {
-		status, err := deployer.DeploymentStatus(request.Context())
-		if err != nil {
-			data.DeploymentError = err.Error()
-		} else {
-			data.Deployment = status
-		}
-	} else if server.operator == nil {
-		data.DeploymentError = "当前没有配置服务控制接口"
-	} else {
-		data.DeploymentError = "当前运维接口不支持版本下发"
-	}
-	if request.Method == http.MethodGet {
-		server.render(response, "releases", data)
-		return
-	}
-	if request.Method != http.MethodPost || request.URL.Path != "/releases/deploy" ||
-		!server.verifyCSRF(request, cookieValue(request, "stoneage_admin_session")) {
-		server.renderError(response, http.StatusForbidden, "请求无效")
-		return
-	}
-	version := strings.TrimSpace(request.FormValue("version"))
-	if !releaseVersionPattern.MatchString(version) {
-		data.DeploymentError = "版本号必须是 v1.2.3 格式"
-		server.render(response, "releases", data)
-		return
-	}
-	if !ok {
-		server.renderError(response, http.StatusServiceUnavailable, data.DeploymentError)
-		return
-	}
-	if err := deployer.DeployVersion(request.Context(), version); err != nil {
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "release_deploy_failed", "", requestSourceIP(request), version+": "+err.Error())
-		server.renderError(response, http.StatusBadGateway, err.Error())
-		return
-	}
-	_ = server.store.RecordAudit(request.Context(), adminID(data), "release_deploy_started", "", requestSourceIP(request), version)
-	server.redirectWithMessage(response, request, "/releases", "已开始下发 "+version+"，请刷新查看进度")
 }
 
 func (server *Server) assets(response http.ResponseWriter, request *http.Request, data *pageData) {
@@ -563,11 +513,11 @@ func (server *Server) assets(response http.ResponseWriter, request *http.Request
 		return
 	}
 	if err := syncer.SyncAssets(request.Context()); err != nil {
-		_ = server.store.RecordAudit(request.Context(), adminID(data), "assets_sync_failed", "", requestSourceIP(request), err.Error())
+		_ = server.store.RecordAudit(request.Context(), adminID(data), "assets_sync_failed", "", server.requestSourceIP(request), err.Error())
 		server.renderError(response, http.StatusBadGateway, err.Error())
 		return
 	}
-	_ = server.store.RecordAudit(request.Context(), adminID(data), "assets_sync_started", "", requestSourceIP(request), "")
+	_ = server.store.RecordAudit(request.Context(), adminID(data), "assets_sync_started", "", server.requestSourceIP(request), "")
 	server.redirectWithMessage(response, request, "/assets", "已开始批量同步 assets、maps、audio；请刷新查看状态")
 }
 
@@ -620,7 +570,7 @@ func (server *Server) configPage(response http.ResponseWriter, request *http.Req
 		server.renderError(response, http.StatusBadRequest, publicError(err))
 		return
 	}
-	_ = server.store.RecordAudit(request.Context(), adminID(data), service+"_config_changed", "", requestSourceIP(request), configAuditDetailsFor(values, manager.definitions()))
+	_ = server.store.RecordAudit(request.Context(), adminID(data), service+"_config_changed", "", server.requestSourceIP(request), configAuditDetailsFor(values, manager.definitions()))
 	server.redirectWithMessage(response, request, configPathForService(service), "配置已保存；重启对应服务后生效")
 }
 
@@ -959,13 +909,6 @@ func cookieValue(request *http.Request, name string) string {
 		return ""
 	}
 	return cookie.Value
-}
-
-func requestSourceIP(request *http.Request) string {
-	if host, _, err := net.SplitHostPort(request.RemoteAddr); err == nil {
-		return host
-	}
-	return request.RemoteAddr
 }
 
 func publicError(err error) string {

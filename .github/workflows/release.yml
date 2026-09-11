@@ -143,6 +143,8 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           platforms: linux/amd64
+          build-args: |
+            RELEASE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
           provenance: true

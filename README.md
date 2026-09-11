@@ -213,9 +213,9 @@ Compose 容器，所以需要只给它挂载 `/var/run/docker.sock`；不要把�
 
 生产环境把 `.env` 中的 `STONEAGE_CONTROL_IMAGE` 和 `STONEAGE_LEGACY_IMAGE` 设置为
 GHCR 的镜像仓库（不带 Tag），`STONEAGE_VERSION` 设置为已发布的 `v*` Tag，并将
-`STONEAGE_GMSV_DATA_ROOT`、`STONEAGE_SAAC_DATA_ROOT`、`STONEAGE_PROJECT_ROOT`
-设置为宿主机绝对路径。这样后台“版本”页面才会启用下发；版本更新只替换镜像和
-静态资源，不覆盖这些数据目录。不要执行 `docker compose down -v`，否则会删除
+`STONEAGE_GMSV_DATA_ROOT`、`STONEAGE_SAAC_DATA_ROOT` 设置为宿主机绝对路径。版本
+更新使用 `bin/stoneage check`、`pull`、`deploy --no-image-update` 和 `status` 完成。
+先拉镜像，再由入口切换容器；未改资源时不做备份，不覆盖这些数据目录。不要执行 `docker compose down -v`，否则会删除
 SQLite 认证卷。
 
 当前 Compose 文件只覆盖单机单线路部署。客户端启动器可以列出分别部署在其他

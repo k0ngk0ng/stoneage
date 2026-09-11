@@ -32,11 +32,13 @@ build_target() {
   for command in "${commands[@]}"; do
     local output="$bin_root/$command$suffix"
     local package="./cmd/$command"
+    local ldflags="-s -w"
     if [[ "$command" == stoneage-web ]]; then
       package="./client/web"
+      ldflags+=" -X main.releaseVersion=$RELEASE_TAG"
     fi
     CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-      go build -trimpath -ldflags='-s -w' -o "$output" "$package"
+      go build -trimpath -ldflags="$ldflags" -o "$output" "$package"
   done
 
   tar -czf "$dist/stoneage-assets-sync-${RELEASE_TAG}-${goos}-${goarch}.tar.gz" -C "$package_root" "bin/stoneage-assets-sync$suffix"

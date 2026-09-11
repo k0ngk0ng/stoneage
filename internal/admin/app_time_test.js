@@ -37,7 +37,7 @@ if (!process.argv.includes("--child")) {
     }).format(original));
   }
   assert.equal(elements[2].textContent, "unchanged");
-  for (const name of ["accounts", "account_detail", "audit", "releases", "assets", "server"]) {
+  for (const name of ["accounts", "account_detail", "audit", "assets", "server"]) {
     assert.match(fs.readFileSync(__dirname + "/templates/" + name + ".html", "utf8"), /data-local-time=/);
   }
 }

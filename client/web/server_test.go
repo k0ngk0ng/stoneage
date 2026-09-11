@@ -207,6 +207,9 @@ func TestHandlerServesPageAndHealth(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("StoneAge")) {
 		t.Fatalf("page status=%d body prefix=%q", response.StatusCode, body[:minInt(len(body), 80)])
 	}
+	if !bytes.Contains(body, []byte(`aria-label="当前版本">`+releaseVersion+`</span>`)) || bytes.Contains(body, []byte("<!--STONEAGE_RELEASE_VERSION-->")) {
+		t.Fatal("served login page does not contain the binary release version")
+	}
 	response, err = http.Get(server.URL + "/manifest.webmanifest")
 	if err != nil {
 		t.Fatal(err)

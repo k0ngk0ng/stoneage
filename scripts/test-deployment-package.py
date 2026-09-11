@@ -110,6 +110,13 @@ esac
     calls = (stage / 'calls').read_text()
     assert ' pull\n' in calls
     assert 'up -d --no-build --remove-orphans' in calls
+    assert calls.index(' pull\n') < calls.index('up -d --no-build --remove-orphans')
+    assert not any(' stop' in line or ' down' in line for line in calls.splitlines()), 'image-only deployment must not pre-stop services'
+    (stage / 'calls').write_text('')
+    subprocess.run([str(entry), 'deploy', '--no-image-update'], env=env, check=True, capture_output=True)
+    cached_calls = (stage / 'calls').read_text()
+    assert ' pull\n' not in cached_calls
+    assert 'up -d --no-build --remove-orphans' in cached_calls
     assert 'assets-sync' not in calls
     assert '-dry-run' in (stage / 'uploads').read_text()
 

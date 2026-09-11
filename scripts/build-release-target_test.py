@@ -18,6 +18,8 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='release-layout-') a
 import os, pathlib, sys
 args = sys.argv[1:]
 output = pathlib.Path(args[args.index('-o') + 1])
+if args[-1] == './client/web':
+    assert '-ldflags=-s -w -X main.releaseVersion=v0.1.99' in args
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text(os.environ['GOOS'] + '/' + os.environ['GOARCH'])
 output.chmod(0o755)

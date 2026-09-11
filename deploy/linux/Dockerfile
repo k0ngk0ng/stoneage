@@ -11,8 +11,9 @@ COPY server/go/ ./server/go/
 COPY client/web/*.go client/web/index.html client/web/sw.js ./client/web/
 
 ARG TARGETARCH=amd64
+ARG RELEASE_VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
-    go build -mod=readonly -trimpath -ldflags='-s -w' -o /out/ \
+    go build -mod=readonly -trimpath -ldflags="-s -w -X main.releaseVersion=$RELEASE_VERSION" -o /out/ \
     ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
     ./cmd/stoneage-assets-sync ./client/web && \
     mv /out/web /out/stoneage-web

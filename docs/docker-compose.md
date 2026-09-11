@@ -43,6 +43,8 @@ cd /opt/stoneage
 
 默认仅监听本机：Web `8088`、后台 `18080`、网关 `9065`。已有 Nginx 可将网页域名反代到 `127.0.0.1:8088`，后台域名反代到 `127.0.0.1:18080`。反代保留 `Host`、`X-Forwarded-For`、`X-Forwarded-Proto`；后台启用 HTTPS 后设置 `.env` 的 `STONEAGE_ADMIN_COOKIE_SECURE=true`。需要直接访问时再修改对应 `STONEAGE_*_BIND`。
 
+审计来源 IP 只接受可信代理提供的 `X-Forwarded-For`（从右向左解析），没有该头时使用 `X-Real-IP`。宿主机 Nginx 经 Docker 端口转发时，在 `.env` 的 `STONEAGE_ADMIN_TRUSTED_PROXIES` 中加入管理容器看到的网关 IP；当前生产网关为 `192.0.2.1`，对应配置为 `127.0.0.1/32,::1/128,192.0.2.1/32`。不要信任整个内网网段；网关改变时同步更新该配置。此设置通过 Compose 传入管理容器，更新部署工具包时需带上新的 `docker-compose.yml`。旧审计记录保留原值。
+
 本次服务器的网页入口为 `https://sa.ichenj.com`，Nginx 配置在 `config/nginx/sa.ichenj.com.conf`，通过 `/etc/nginx/conf.d/` 的软链接加载，反代到 `127.0.0.1:8088`。Certbot 管理该域名证书，定时自动续期并重载 Nginx。维护命令：
 
 ```bash
@@ -138,7 +140,8 @@ chmod 600 config/secrets/oss-access-key-*
 cd /opt/stoneage
 vi .env                         # 将 STONEAGE_VERSION 改为目标 tag
 ./bin/stoneage check
-./bin/stoneage deploy            # 自动认证、拉取镜像、更新容器并等待健康检查
+./bin/stoneage pull              # 保持现有服务运行，先完成镜像下载
+./bin/stoneage deploy --no-image-update  # 镜像就绪后切换容器并等待健康检查
 ./bin/stoneage status
 ```
 
@@ -195,7 +198,9 @@ cd /opt/stoneage
 
 仅镜像更新且发布说明确认数据格式兼容时，可将 `.env` 的 `STONEAGE_VERSION` 改回上一版本再部署。若本次同时改过 Compose、配置、资源或数据格式，应使用对应版本的工具和备份恢复。
 
-更新前备份 `.env`、`config/`、`data/`、`assets/` 和 Docker 命名卷 `stoneage-auth`（账号数据库）；备份数据前先 `./bin/stoneage stop`，完成后再部署启动。若自定义卷名，以 `.env` 为准。不要执行 `docker compose down -v`，它会删除账号数据库卷。
+只更新程序镜像、未改资源时不做备份，不提前手动停服。`bin/stoneage pull` 在现有服务运行时完成下载，随后 `bin/stoneage deploy --no-image-update` 负责停止旧容器、启动新容器，尽量缩短服务不可用时间。资源变更的备份需求另行明确，不能把全量备份作为普通发版的前置步骤。
+
+部署、停服、回退必须使用 `bin/stoneage`；禁止临时编写 SSH/脚本编排。流程需要调整时，只在仓库的 `bin/stoneage` 入口修改，提交并发布后使用。不要执行 `docker compose down -v`，它会删除账号数据库卷。
 
 GMSV 启动失败时查看 `data/gmsv/logs/gmsv.log`，SAAC 查看 `data/saac/logs/saac.log`。v0.1.16 修复首次初始化缺少 `data/gmsv/log/log.cf` 导致 GMSV 不健康的问题，并保留已有日志配置。
 
