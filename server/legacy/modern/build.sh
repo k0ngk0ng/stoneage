@@ -99,6 +99,11 @@ python3 /redact-legacy-password-logs.py /src/gmsv /src/saac
 # archive is not UTF-8, so this uses byte-preserving, checked substitutions.
 python3 /modernize-quiz-state.py /src/gmsv/npc/npc_quiz.c
 
+# NPC names occupy up to 63 bytes, but object broadcasts copied them into a
+# 32-byte VIP display buffer. Long arena signboard names tripped Fortify and
+# terminated GMSV as soon as a player came into view.
+python3 /modernize-object-cstring.py /src/gmsv/char/char.c
+
 # The generated RPC dispatcher always references this optional callback.
 # With the unsafe SQL lock backend disabled it is intentionally a development
 # no-op. Internet deployment must replace this account layer first.

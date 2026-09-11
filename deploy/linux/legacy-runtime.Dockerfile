@@ -10,6 +10,7 @@ COPY scripts/modernize-character-file-read.py \
      scripts/modernize-login-announcement.py \
      scripts/modernize-nu-flow-control.py \
      scripts/modernize-quiz-state.py \
+     scripts/modernize-object-cstring.py \
      scripts/redact-legacy-password-logs.py /
 
 RUN sh /modern/build.sh

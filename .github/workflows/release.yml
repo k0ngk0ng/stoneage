@@ -44,6 +44,7 @@ jobs:
           node internal/admin/app_time_test.js
       - name: Verify production deployment tools
         run: |
+          python3 scripts/modernize-object-cstring_test.py
           python3 scripts/aliyun-certificate_test.py
           bash scripts/runtime-entrypoint_test.sh
           bash bin/registry-login_test.sh
