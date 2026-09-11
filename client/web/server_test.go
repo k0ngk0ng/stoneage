@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -864,7 +865,7 @@ func TestHTTPSessionForwardsGreetingPacketsAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusCreated || created.ID == "" || created.Greeting != "TAA=" {
+	if response.StatusCode != http.StatusCreated || created.ID == "" || created.Greeting != "TAA=" || !created.EventAck {
 		t.Fatalf("create status=%d response=%+v", response.StatusCode, created)
 	}
 	packet := []byte("client-packet\n")
@@ -1044,7 +1045,7 @@ func TestHTTPSessionGracefulDeleteWaitsForPeerClose(t *testing.T) {
 	}
 }
 
-func TestHTTPSessionPollCancellationCleansSession(t *testing.T) {
+func TestHTTPSessionPollCancellationKeepsSession(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -1140,13 +1141,243 @@ func TestHTTPSessionPollCancellationCleansSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		response.Body.Close()
-		if health["sessions"] == float64(0) {
+		if health["sessions"] == float64(1) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("canceled poll leaked sessions=%v", health["sessions"])
+			t.Fatalf("canceled poll changed sessions=%v", health["sessions"])
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestHTTPSessionReliableEventsProtocol(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Post(server.URL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created createResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated || !created.EventAck {
+		t.Fatalf("create status=%d response=%+v", response.StatusCode, created)
+	}
+	session, ok := handler.sessions.get(created.ID)
+	if !ok {
+		t.Fatal("created session is missing")
+	}
+	session.enqueue(packetEvent{packet: []byte("one\n")})
+	session.enqueue(packetEvent{packet: []byte("two\n")})
+
+	type reliableResponse struct {
+		Events       []eventResponse `json:"events"`
+		Closed       bool            `json:"closed"`
+		Acknowledged bool            `json:"acknowledged"`
+	}
+	poll := func(ack uint64) (reliableResponse, int) {
+		requestURL := fmt.Sprintf("%s/api/sessions/%s/events?timeout=25&ack=%d", server.URL, created.ID, ack)
+		pollResponse, requestErr := http.Get(requestURL)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		var result reliableResponse
+		status := pollResponse.StatusCode
+		decodeErr := error(nil)
+		if status == http.StatusOK {
+			decodeErr = json.NewDecoder(pollResponse.Body).Decode(&result)
+		}
+		pollResponse.Body.Close()
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		return result, status
+	}
+
+	first, status := poll(0)
+	if status != http.StatusOK || !first.Acknowledged || first.Closed || len(first.Events) != 2 || first.Events[0].Seq != 1 || first.Events[1].Seq != 2 {
+		t.Fatalf("first reliable response status=%d response=%+v", status, first)
+	}
+	replay, status := poll(0)
+	if status != http.StatusOK || len(replay.Events) != 2 || replay.Events[0].Seq != 1 || replay.Events[1].Seq != 2 {
+		t.Fatalf("same-ack reliable response status=%d response=%+v", status, replay)
+	}
+	partial, status := poll(1)
+	if status != http.StatusOK || len(partial.Events) != 1 || partial.Events[0].Seq != 2 {
+		t.Fatalf("partial reliable ack status=%d response=%+v", status, partial)
+	}
+	if _, status = poll(99); status != http.StatusBadRequest {
+		t.Fatalf("ack-ahead status=%d want %d", status, http.StatusBadRequest)
+	}
+	cleared, status := poll(2)
+	if status != http.StatusOK || len(cleared.Events) != 0 || cleared.Closed {
+		t.Fatalf("cleared reliable response status=%d response=%+v", status, cleared)
+	}
+
+	// The EOF marker follows all queued data and is itself replayable until
+	// acknowledged.  The top-level closed bit stays false while that marker is
+	// in the response, then becomes true after the final ack removes it.
+	session.finish("upstream EOF")
+	terminal, status := poll(2)
+	if status != http.StatusOK || len(terminal.Events) != 1 || terminal.Events[0].Seq != 3 || !terminal.Events[0].Closed || terminal.Closed {
+		t.Fatalf("terminal reliable response status=%d response=%+v", status, terminal)
+	}
+	closed, status := poll(3)
+	if status != http.StatusOK || len(closed.Events) != 0 || !closed.Closed {
+		t.Fatalf("closed reliable response status=%d response=%+v", status, closed)
+	}
+	if response, err = http.Get(server.URL + "/api/sessions/" + created.ID + "/events?timeout=25"); err != nil {
+		t.Fatal(err)
+	} else {
+		response.Body.Close()
+		if response.StatusCode != http.StatusConflict {
+			t.Fatalf("legacy/reliable mode mix status=%d want %d", response.StatusCode, http.StatusConflict)
+		}
+	}
+}
+
+func TestTCPSessionReliableEventsReplayAndAcknowledge(t *testing.T) {
+	left, right := net.Pipe()
+	defer right.Close()
+	session := newTCPSession("reliable", left, 64)
+
+	session.enqueue(packetEvent{packet: []byte("one\n")})
+	session.enqueue(packetEvent{packet: []byte("two\n")})
+	events, err := session.pollReliableContext(context.Background(), time.Second, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].seq != 1 || events[1].seq != 2 {
+		t.Fatalf("first reliable delivery=%+v", events)
+	}
+	if events[0].closed || events[1].closed {
+		t.Fatalf("data events unexpectedly closed: %+v", events)
+	}
+
+	// Repeating the same acknowledgement must replay both unacknowledged
+	// events in their original order, with stable sequence numbers.
+	replay, err := session.pollReliableContext(context.Background(), time.Second, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(replay) != 2 || replay[0].seq != 1 || replay[1].seq != 2 || string(replay[0].packet) != "one\n" || string(replay[1].packet) != "two\n" {
+		t.Fatalf("same-ack replay=%+v", replay)
+	}
+
+	// Acking the first delivery removes only seq 1.  Seq 2 remains available
+	// and is returned unchanged on the next request.
+	remaining, err := session.pollReliableContext(context.Background(), time.Second, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].seq != 2 || string(remaining[0].packet) != "two\n" {
+		t.Fatalf("partial acknowledgement=%+v", remaining)
+	}
+
+	if _, err := session.pollReliableContext(context.Background(), time.Millisecond, 3); !errors.Is(err, errEventsAckAhead) {
+		t.Fatalf("ack ahead error=%v want %v", err, errEventsAckAhead)
+	}
+	// An old/repeated ack is harmless and does not make seq 2 disappear.
+	replay, err = session.pollReliableContext(context.Background(), time.Second, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(replay) != 1 || replay[0].seq != 2 {
+		t.Fatalf("old ack replay=%+v", replay)
+	}
+	if _, err := session.pollReliableContext(context.Background(), time.Millisecond, 2); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := session.pollReliableContext(context.Background(), time.Millisecond, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleared) != 0 {
+		t.Fatalf("acknowledged events remain=%+v", cleared)
+	}
+
+	if _, err := session.poll(time.Millisecond); !errors.Is(err, errEventsPollMode) {
+		t.Fatalf("legacy/reliable mode mix error=%v want %v", err, errEventsPollMode)
+	}
+}
+
+func TestTCPSessionReliableEventsCancellationAndEOF(t *testing.T) {
+	left, right := net.Pipe()
+	defer right.Close()
+	session := newTCPSession("reliable-cancel", left, 64)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	pollResult := make(chan error, 1)
+	go func() {
+		_, err := session.pollReliableContext(ctx, time.Minute, 0)
+		pollResult <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		session.mu.Lock()
+		polling := session.polling
+		session.mu.Unlock()
+		if polling {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("reliable events request did not become pending")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := <-pollResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled reliable poll error=%v", err)
+	}
+	if session.isClosed() {
+		t.Fatal("canceling one events request closed the TCP session")
+	}
+
+	session.enqueue(packetEvent{packet: []byte("still-alive\n")})
+	events, err := session.pollReliableContext(context.Background(), time.Second, 0)
+	if err != nil || len(events) != 1 || events[0].seq != 1 || string(events[0].packet) != "still-alive\n" {
+		t.Fatalf("post-cancel delivery=%+v err=%v", events, err)
+	}
+
+	// EOF is an ordered close marker.  It must be delivered after the data
+	// packet and remain replayable until its sequence is acknowledged.
+	session.finish("")
+	events, err = session.pollReliableContext(context.Background(), time.Second, 0)
+	if err != nil || len(events) != 2 || events[0].seq != 1 || events[1].seq != 2 || !events[1].closed {
+		t.Fatalf("EOF delivery=%+v err=%v", events, err)
+	}
+	replay, err := session.pollReliableContext(context.Background(), time.Second, 2)
+	if err != nil || len(replay) != 0 {
+		t.Fatalf("EOF acknowledgement result=%+v err=%v", replay, err)
+	}
+}
+
+func TestTCPSessionLegacyEventsRemainDestructive(t *testing.T) {
+	left, right := net.Pipe()
+	defer right.Close()
+	session := newTCPSession("legacy", left, 64)
+	session.enqueue(packetEvent{packet: []byte("legacy\n")})
+
+	events, err := session.poll(time.Second)
+	if err != nil || len(events) != 1 || events[0].seq != 0 || string(events[0].packet) != "legacy\n" {
+		t.Fatalf("legacy first poll=%+v err=%v", events, err)
+	}
+	if _, err := session.poll(time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.pollReliableContext(context.Background(), time.Millisecond, 0); !errors.Is(err, errEventsPollMode) {
+		t.Fatalf("reliable/legacy mode mix error=%v want %v", err, errEventsPollMode)
 	}
 }
 

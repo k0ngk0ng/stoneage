@@ -48,10 +48,13 @@ function harness(connect = async () => {throw new Error("network unavailable");}
 (async () => {
   const failed = harness();
   failed.context.handleConnectionLost("TCP closed", failed.oldTransport, 1);
+  assert.match(failed.dialogs.at(-1).message, /原因：TCP closed/);
+  assert.equal(failed.app.connectionDiagnostics[0].message, "TCP closed");
   for (let i = 0; i < 3; i++) await failed.nextTimer();
   assert.deepEqual(failed.attempts, [1000, 3000, 7000]);
   assert.equal(failed.timers.size, 0);
   assert.match(failed.dialogs.at(-1).message, /3 次未成功/);
+  assert.match(failed.dialogs.at(-1).message, /原因：TCP closed/);
   assert(failed.waits.every(options => options?.waitForPeer), "close old session before replacing it");
 
   const timeout = harness(async () => {});
@@ -98,6 +101,7 @@ function harness(connect = async () => {throw new Error("network unavailable");}
   stale.context.handleConnectionLost("late old poll", stale.oldTransport, 1);
   assert.equal(stale.app.transport, replacement, "old poll cannot close replacement connection");
   assert.equal(stale.attempts.length, 1);
+  assert.equal(stale.app.connectionDiagnostics, undefined, "stale failures cannot overwrite current diagnostics");
   stale.context.cancelConnectionRetry();
 
   const lateWrite = harness();
@@ -119,10 +123,12 @@ function harness(connect = async () => {throw new Error("network unavailable");}
   const logout = harness();logout.app.logoutPending = "in-place";
   logout.context.handleConnectionLost("expected close", logout.oldTransport, 1);
   assert.equal(logout.timers.size, 0, "intentional logout must not reconnect");
+  assert.equal(logout.app.connectionDiagnostics, undefined, "intentional logout is not an error");
   const recordLogout = harness();recordLogout.app.logoutPending = "record-point";
   recordLogout.context.handleConnectionLost("closed during logout", recordLogout.oldTransport, 1);
   assert.equal(recordLogout.app.phase, "login");
   assert.equal(recordLogout.timers.size, 0, "record-point logout must not reconnect");
   assert.match(section("  function receiveCharacterList(", "  function escapeHTML("), /cancelConnectionRetry\(\)/);
+  require("node:child_process").execFileSync(process.execPath, [__dirname + "/event_recovery_test.js"], {stdio: "inherit"});
   console.log("bounded connection retry tests passed");
 })().catch(error => {console.error(error);process.exitCode = 1;});

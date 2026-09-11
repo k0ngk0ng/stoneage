@@ -129,6 +129,10 @@ README 的 Linux Docker Compose 小节。
 
 转发 API 是 `POST /api/sessions`（建立 TCP 并返回 `L\0` 握手）、`POST /api/sessions/:id/send`（JSON `{packet: base64}`）、`GET /api/sessions/:id/events`（按 TCP 顺序长轮询 base64 包）、`DELETE /api/sessions/:id`，另有只读资源 `GET /assets/*`、`GET /maps/*` 和 `GET /audio/*`。`send?close=1` 会在写入这一包后原子关闭桥接会话，供刷新/卸载阶段的 keepalive 登出使用；即使写入失败也会清理会话。网页已经内置这套调用，不需要额外前端构建工具。
 
+新建会话返回 `event_ack: true` 时，网页使用 `events?ack=N` 确认已处理的事件序号；响应包含 `acknowledged: true` 和逐条 `seq`。后端保留未确认事件，丢失响应后可重复读取，前端按序处理并跳过已确认事件。单次轮询取消只结束该 HTTP 请求；显式登出、TCP 关闭和空闲回收仍会结束会话。轮询临时失败最多重试三次，旧服务器不支持确认时保持原有断线恢复流程。发送游戏操作的 POST 不自动重试，以免重复执行。
+
+前端数据处理异常会写入事件记录并保留连接；真正断线时，重连弹窗显示原因。浏览器控制台的 `StoneAgeWebClient.app.connectionDiagnostics` 保留最近 20 条异常摘要和堆栈，跨重连保留，用于区分网络错误和客户端异常。
+
 ## 测试
 
 ```bash
@@ -140,3 +144,5 @@ node protocol_test.js
 Go 测试使用本地 fake TCP upstream 覆盖握手、双向逐包转发、长轮询、关闭、错误握手、包大小、资源路由和并发会话上限；Node 用原版客户端捕获向量及 `LSSPROTO_CLI.H` 全量入口检查网页脚本、JEncode、Ringo、转义、base-62 和 schema。实际登录/地图/战斗仍以运行中的 GMSV/SAAC 返回为权威数据。
 
 `protocol_test.js` 是需要完整保留客户端、旧服务端和资源源码树的本地协议审计。发布 CI 运行仓库内可独立复制的 Web 回归测试（战斗目标、重连、登录、NPC、资源、线路目录、精灵加载、Service Worker 缓存和世界帧），不会把该本地审计作为唯一入口。
+
+`connection_retry_test.js` 同时运行 `event_recovery_test.js`，覆盖确认重放、请求取消、超时、有限重试、旧服务器兼容和前端异常隔离。

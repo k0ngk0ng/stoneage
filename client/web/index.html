@@ -1427,8 +1427,8 @@
   window.StoneAgeProtocol=Protocol;
 
   class HTTPTransport {
-    constructor(base="",serverID="") { this.base=base.replace(/\/$/,""); this.serverID=String(serverID||""); this.id=""; this.closed=false; this.sendChain=Promise.resolve(); }
-    async connect(serverID=this.serverID) { const selected=String(serverID||this.serverID||"").trim(); const payload=selected?JSON.stringify({server_id:selected}):null; const request={method:"POST",headers:{"Accept":"application/json"}}; if(payload){request.body=payload;request.headers["Content-Type"]="application/json";} const response=await fetch(this.base+"/api/sessions",request); if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;} const data=await response.json(); this.id=data.id; return Protocol.fromBase64(data.greeting); }
+    constructor(base="",serverID="") { this.base=base.replace(/\/$/,""); this.serverID=String(serverID||""); this.id=""; this.closed=false; this.sendChain=Promise.resolve(); this.eventAck=false; this.eventCursor=0; this.pollAbort=null; }
+    async connect(serverID=this.serverID) { const selected=String(serverID||this.serverID||"").trim(); const payload=selected?JSON.stringify({server_id:selected}):null; const request={method:"POST",headers:{"Accept":"application/json"}}; if(payload){request.body=payload;request.headers["Content-Type"]="application/json";} const response=await fetch(this.base+"/api/sessions",request); if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;} const data=await response.json(); this.id=data.id; this.eventAck=data.event_ack===true; this.eventCursor=0; return Protocol.fromBase64(data.greeting); }
     async sendToID(id,packet,options={}) {
       if(!id) throw new Error("TCP session is closed");
       const request={method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({packet:Protocol.toBase64(packet)})};
@@ -1451,7 +1451,57 @@
       this.sendChain=operation.catch(()=>{});
       return operation;
     }
-    async events(timeout=25000) { if(!this.id||this.closed) return {events:[],closed:true}; const response=await fetch(this.base+`/api/sessions/${encodeURIComponent(this.id)}/events?timeout=${timeout}`,{headers:{"Accept":"application/json"}}); if(!response.ok) throw new Error(await response.text()||`HTTP ${response.status}`); return response.json(); }
+    async events(timeout=25000) {
+      if(!this.id||this.closed)return {events:[],closed:true};
+      const id=this.id,controller=new AbortController(),delays=[250,750,1500];
+      this.pollAbort=controller;
+      try{
+        for(let attempt=0;;attempt++){
+          if(this.closed||this.id!==id||controller.signal.aborted)return {events:[],closed:true};
+          const requestController=new AbortController(),abort=()=>requestController.abort();
+          controller.signal.addEventListener("abort",abort,{once:true});
+          const timer=setTimeout(abort,timeout+5000);
+          let failure;
+          try{
+            const ack=this.eventAck?`&ack=${this.eventCursor}`:"";
+            const response=await fetch(this.base+`/api/sessions/${encodeURIComponent(id)}/events?timeout=${timeout}${ack}`,{headers:{"Accept":"application/json"},cache:"no-store",signal:requestController.signal});
+            if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;}
+            const data=await response.json();
+            if(!data||!Array.isArray(data.events))throw new Error("游戏事件响应格式无效");
+            if(data.events.some(event=>!event||typeof event!=="object"))throw new Error("游戏事件格式无效");
+            if(this.eventAck){
+              if(data.acknowledged!==true)throw new Error("服务器未确认可靠事件协议");
+              let cursor=this.eventCursor;
+              for(const event of data.events){
+                if(!Number.isSafeInteger(event?.seq)||event.seq<=0)throw new Error("游戏事件序号无效");
+                if(event.seq<=this.eventCursor)continue;
+                if(event.seq!==cursor+1)throw new Error("游戏事件序号不连续");
+                cursor=event.seq;
+              }
+            }
+            return data;
+          }catch(error){failure=error;}
+          finally{clearTimeout(timer);controller.signal.removeEventListener("abort",abort);}
+          if(this.closed||this.id!==id||controller.signal.aborted)return {events:[],closed:true};
+          const status=Number(failure?.status)||0;
+          const transient=status===408||status===429||status>=500||
+            (status===409&&String(failure.message).includes("another events poll is already pending"))||
+            (!status&&["TypeError","SyntaxError","AbortError"].includes(failure?.name));
+          // Only ACK-capable bridges retain a lost response. Retrying a legacy
+          // destructive read could silently skip map/battle packets. Writes
+          // are never replayed: a lost POST reply may already have executed.
+          if(!this.eventAck||!transient||attempt>=delays.length)throw failure;
+          await new Promise(resolve=>{
+            const done=()=>{clearTimeout(wait);controller.signal.removeEventListener("abort",done);resolve();};
+            const wait=setTimeout(done,delays[attempt]);
+            controller.signal.addEventListener("abort",done,{once:true});
+          });
+        }
+      }finally{if(this.pollAbort===controller)this.pollAbort=null;}
+    }
+    acknowledgeEvent(event) {
+      if(this.eventAck&&event.seq===this.eventCursor+1)this.eventCursor=event.seq;
+    }
     async deleteID(id,options={}) {
       if(!id)return true;
       const request={method:"DELETE"};
@@ -1477,6 +1527,7 @@
       if(!this.id||this.closed)return false;
       const id=this.id;
       this.closed=true;
+      this.pollAbort?.abort();
       this.id="";
       let sent=false;
       try { await this.sendToID(id,packet,{keepalive:true,closeAfter:true}); sent=true; }
@@ -1486,6 +1537,7 @@
     async close(options={}) {
       if(!this.id||this.closed) return true;
       this.closed=true;
+      this.pollAbort?.abort();
       const id=this.id;
       this.id="";
       return this.deleteID(id,options);
@@ -14781,6 +14833,31 @@
   }
   const CONNECTION_RETRY_DELAYS=[1000,2000,4000];
   const CONNECTION_RETRY_TIMEOUT_MS=15000;
+  function recordConnectionDiagnostic(kind,error){
+    const entry={at:new Date().toISOString(),kind,message:String(error?.message||error||"未知错误").slice(0,1000),stack:String(error?.stack||"").slice(0,4000)};
+    const history=app.connectionDiagnostics||(app.connectionDiagnostics=[]);
+    history.push(entry);if(history.length>20)history.shift();
+    // Diagnostics must survive a failed renderer and a subsequent reconnect.
+    // Keep packet contents and login credentials out of this record.
+    try{addEvent(`${kind==="client"?"客户端处理异常":"连接中断"}：${entry.message}`);}catch(_){}
+    if(kind==="client"){
+      try{setWorldState("客户端处理异常，连接仍保留；详情见事件记录。","error");}catch(_){}
+    }
+    return entry;
+  }
+  function connectionReasonText(){
+    if(!app.lastDisconnectReason)return "";
+    // The native dialog measures completed newline segments only. Keep the
+    // final reason line short enough for its existing width; the full error
+    // remains in connectionDiagnostics even on a narrow phone display.
+    let text="原因：",bytes=6;
+    for(const char of String(app.lastDisconnectReason).replace(/\s+/g," ")){
+      const size=char.charCodeAt(0)>0x7f?2:1;
+      if(bytes+size>46){text+="…";break;}
+      text+=char;bytes+=size;
+    }
+    return `\n${text}`;
+  }
   function cancelConnectionRetry(){
     connectionRetry.active=false;connectionRetry.generation++;
     window.clearTimeout(connectionRetry.timer);window.clearTimeout(connectionRetry.timeout);
@@ -14796,13 +14873,13 @@
     const closed=closePromise||closeTransport(null,{waitForPeer:true});
     app.phase="disconnected";
     if(connectionRetry.attempt>=CONNECTION_RETRY_DELAYS.length){
-      cancelConnectionRetry();showDisconnectedDialog("自动重连 3 次未成功，请稍后重新连接。");return;
+      cancelConnectionRetry();showDisconnectedDialog(`自动重连 3 次未成功，请稍后重新连接。${connectionReasonText()}`);return;
     }
     const delay=CONNECTION_RETRY_DELAYS[connectionRetry.attempt++];
     const attempt=connectionRetry.attempt,generation=connectionRetry.generation;
     const current=()=>connectionRetry.active&&connectionRetry.generation===generation&&connectionRetry.attempt===attempt;
     show(worldScreen);
-    openLocalDialog("连接中断",`服务器连接已断开。\n${delay/1000} 秒后自动重连（${attempt}/3）。`,[{label:"返回登录",kind:"no",handler:()=>returnToLogin("已取消自动重连。")}]);
+    openLocalDialog("连接中断",`服务器连接已断开。\n${delay/1000} 秒后自动重连（${attempt}/3）。${connectionReasonText()}`,[{label:"返回登录",kind:"no",handler:()=>returnToLogin("已取消自动重连。")}]);
     connectionRetry.timer=window.setTimeout(async()=>{
       if(!current())return;
       // Budget includes session cleanup, connect, authentication and CharList.
@@ -14846,6 +14923,8 @@
          expected close differently from a dropped game connection. */
       app.logoutPending="";closeTransport();app.battle=false;returnToLogin("已原地登出，当前位置已保存。");status("已原地登出","good");return;
     }
+    const diagnostic=recordConnectionDiagnostic("disconnect",reason);
+    if(!connectionRetry.active)app.lastDisconnectReason=diagnostic.message;
     const wasSelectingServer=app.phase==="connecting"||app.phase==="server-line"||app.phase==="character-list"||app.phase==="character-create"||app.phase==="login-error";
     const wasWorld=app.phase==="world"||app.battle||worldScreen?.classList.contains("hidden")===false;
     const disconnectedClose=closeTransport(sourceTransport||null,{waitForPeer:true});
@@ -14891,20 +14970,31 @@
     if(!transport||transport!==app.transport||token!==app.connectionToken)return;
     if(app.polling&&app.pollingTransport===transport)return;
     app.polling=true;app.pollingTransport=transport;
-    while(app.polling&&app.transport===transport&&app.connectionToken===token){
-      try{
-        const data=await transport.events(25000);
+    try{
+      while(app.polling&&app.transport===transport&&app.connectionToken===token){
+        let data;
+        try{data=await transport.events(25000);}
+        catch(error){
+          if(app.polling&&app.transport===transport&&app.connectionToken===token)handleConnectionLost(error.message||"转发器连接失败",transport,token);
+          return;
+        }
         if(app.transport!==transport||app.connectionToken!==token)return;
         for(const event of data.events||[]){
-          if(event.packet)handlePacket(Protocol.fromBase64(event.packet),transport,token);
+          if(transport.eventAck&&event.seq<=transport.eventCursor)continue;
+          // A packet handler can fail in UI/rendering code even though HTTP
+          // and TCP are healthy. Report it without deleting the live session
+          // or discarding the remaining packets in this response.
+          try{if(event.packet)handlePacket(Protocol.fromBase64(event.packet),transport,token);}
+          catch(error){recordConnectionDiagnostic("client",error);}
+          if(app.transport!==transport||app.connectionToken!==token)return;
+          transport.acknowledgeEvent?.(event);
           if(event.closed){handleConnectionLost(event.error||"TCP 连接已关闭",transport,token);return;}
         }
         if(data.closed){handleConnectionLost("TCP 连接已关闭",transport,token);return;}
-      }catch(error){
-        if(app.polling&&app.transport===transport&&app.connectionToken===token){handleConnectionLost(error.message||"转发器连接失败",transport,token);return;}
       }
+    }finally{
+      if(app.pollingTransport===transport){app.polling=false;app.pollingTransport=null;}
     }
-    if(app.pollingTransport===transport){app.polling=false;app.pollingTransport=null;}
   }
   function handlePacket(packet,sourceTransport=null,sourceToken=null) {
     if(sourceTransport&&(sourceTransport!==app.transport||sourceToken!==app.connectionToken))return;

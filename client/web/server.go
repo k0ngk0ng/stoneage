@@ -398,7 +398,26 @@ type packetEvent struct {
 	packet []byte
 	closed bool
 	err    string
+	// seq is assigned only after a session opts into the reliable events
+	// protocol.  Keeping it on the queued event lets a reconnecting browser
+	// replay the same packet until its acknowledgement is received, while the
+	// legacy poll path remains a destructive read.
+	seq uint64
 }
+
+type eventPollMode uint8
+
+const (
+	eventPollModeUnset eventPollMode = iota
+	eventPollModeLegacy
+	eventPollModeReliable
+)
+
+var (
+	errEventsPollPending = errors.New("another events poll is already pending")
+	errEventsPollMode    = errors.New("events poll mode cannot be changed")
+	errEventsAckAhead    = errors.New("ack must not exceed the last delivered event")
+)
 
 type tcpSession struct {
 	id     string
@@ -406,15 +425,20 @@ type tcpSession struct {
 	limit  int
 	closed chan struct{}
 
-	mu           sync.Mutex
-	writeMu      sync.Mutex
-	events       []packetEvent
-	eventBytes   int
-	lastActivity time.Time
-	closeOnce    sync.Once
-	notify       chan struct{}
-	polling      bool
-	closing      bool
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	events           []packetEvent
+	eventBytes       int
+	lastActivity     time.Time
+	closeOnce        sync.Once
+	notify           chan struct{}
+	polling          bool
+	closing          bool
+	pollMode         eventPollMode
+	nextEventSeq     uint64
+	lastDeliveredSeq uint64
+	lastAckedSeq     uint64
+	finished         bool
 }
 
 func newTCPSession(id string, conn net.Conn, packetLimit int) *tcpSession {
@@ -447,11 +471,16 @@ func (session *tcpSession) signal() {
 
 func (session *tcpSession) enqueue(event packetEvent) {
 	session.mu.Lock()
+	if session.finished {
+		session.mu.Unlock()
+		return
+	}
 	if len(session.events) >= maxQueuedEvents || session.eventBytes+len(event.packet) > maxQueuedBytes {
 		session.mu.Unlock()
 		session.finish("HTTP event queue overflow")
 		return
 	}
+	session.assignEventSequenceLocked(&event)
 	session.events = append(session.events, event)
 	session.eventBytes += len(event.packet)
 	session.touchLocked()
@@ -504,7 +533,10 @@ func (session *tcpSession) finish(reason string) {
 	session.closeOnce.Do(func() {
 		session.mu.Lock()
 		session.touchLocked()
-		session.events = append(session.events, packetEvent{closed: true, err: reason})
+		session.finished = true
+		event := packetEvent{closed: true, err: reason}
+		session.assignEventSequenceLocked(&event)
+		session.events = append(session.events, event)
 		session.mu.Unlock()
 		close(session.closed)
 		_ = session.conn.Close()
@@ -620,40 +652,151 @@ func (session *tcpSession) write(packet []byte) error {
 	return nil
 }
 
+// assignEventSequenceLocked gives reliable-mode events their stable wire
+// identity.  A session can receive its greeting before the first /events
+// request chooses a mode, so pending events are assigned lazily when reliable
+// mode is selected.
+func (session *tcpSession) assignEventSequenceLocked(event *packetEvent) {
+	if session.pollMode != eventPollModeReliable || event == nil || event.seq != 0 {
+		return
+	}
+	if session.nextEventSeq == 0 {
+		session.nextEventSeq = 1
+	}
+	event.seq = session.nextEventSeq
+	session.nextEventSeq++
+}
+
+func (session *tcpSession) assignPendingEventSequencesLocked() {
+	if session.pollMode != eventPollModeReliable {
+		return
+	}
+	for index := range session.events {
+		session.assignEventSequenceLocked(&session.events[index])
+	}
+}
+
+// acknowledgeEventsLocked removes only events that the browser has already
+// seen.  In particular, an ack cannot consume a packet that was queued after
+// the last delivered response, even if that packet already has a sequence.
+func (session *tcpSession) acknowledgeEventsLocked(ack uint64) {
+	if ack <= session.lastAckedSeq {
+		return
+	}
+	all := session.events
+	kept := all[:0]
+	bytes := 0
+	for _, event := range all {
+		if event.seq != 0 && event.seq <= ack {
+			continue
+		}
+		kept = append(kept, event)
+		bytes += len(event.packet)
+	}
+	// The compacted slice may keep references to acknowledged packet buffers in
+	// its unused capacity.  Clear those slots so a busy session does not retain
+	// megabytes of already acknowledged TCP data until its next allocation.
+	for index := len(kept); index < len(all); index++ {
+		all[index] = packetEvent{}
+	}
+	session.events = kept
+	session.eventBytes = bytes
+	session.lastAckedSeq = ack
+}
+
+// beginPollLocked fixes the session's event protocol on its first valid poll,
+// then validates the acknowledgement and reserves the single poll slot.
+func (session *tcpSession) beginPollLocked(mode eventPollMode, ack uint64) error {
+	if session.polling {
+		return errEventsPollPending
+	}
+	if session.pollMode != eventPollModeUnset && session.pollMode != mode {
+		return errEventsPollMode
+	}
+	if mode == eventPollModeReliable && ack > session.lastDeliveredSeq {
+		return errEventsAckAhead
+	}
+	if session.pollMode == eventPollModeUnset {
+		session.pollMode = mode
+	}
+	if mode == eventPollModeReliable {
+		session.assignPendingEventSequencesLocked()
+		session.acknowledgeEventsLocked(ack)
+	}
+	session.polling = true
+	session.touchLocked()
+	return nil
+}
+
+func (session *tcpSession) finishPoll() {
+	session.mu.Lock()
+	session.polling = false
+	session.mu.Unlock()
+}
+
+func (session *tcpSession) reliableClosed() bool {
+	session.mu.Lock()
+	closed := session.isClosed() && len(session.events) == 0
+	session.mu.Unlock()
+	return closed
+}
+
 // poll returns all currently queued packets, waiting at most timeout when the
 // queue is empty.  Only one outstanding poll is allowed for a session so that
 // event ordering remains exactly the TCP ordering seen by the original client.
+// This is the legacy destructive-read API used by older browsers and tests.
 func (session *tcpSession) poll(timeout time.Duration) ([]packetEvent, error) {
 	return session.pollContext(context.Background(), timeout)
 }
 
-// pollContext is the request-aware form used by the HTTP handler.  A browser
-// tab can disappear while /events is waiting; honoring that cancellation is
-// important because otherwise the bridge keeps the TCP socket (and its
-// transient legacy-account lock) alive until the idle watchdog fires.
+// pollContext is the request-aware legacy form used by the HTTP handler.  A
+// canceled request releases this poll only; the TCP session remains alive so a
+// transient browser/proxy cancellation cannot log the player out.
 func (session *tcpSession) pollContext(ctx context.Context, timeout time.Duration) ([]packetEvent, error) {
+	return session.pollModeContext(ctx, timeout, eventPollModeLegacy, 0)
+}
+
+// pollReliableContext implements the opt-in acknowledgement protocol.  Events
+// remain in the queue after delivery and are replayed until a later request
+// acknowledges them.
+func (session *tcpSession) pollReliableContext(ctx context.Context, timeout time.Duration, ack uint64) ([]packetEvent, error) {
+	return session.pollModeContext(ctx, timeout, eventPollModeReliable, ack)
+}
+
+func (session *tcpSession) pollModeContext(ctx context.Context, timeout time.Duration, mode eventPollMode, ack uint64) ([]packetEvent, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	session.mu.Lock()
-	if session.polling {
+	if err := session.beginPollLocked(mode, ack); err != nil {
 		session.mu.Unlock()
-		return nil, errors.New("another events poll is already pending")
+		return nil, err
 	}
-	session.polling = true
-	session.touchLocked()
 	session.mu.Unlock()
-	defer func() {
-		session.mu.Lock()
-		session.polling = false
-		session.mu.Unlock()
-	}()
+	defer session.finishPoll()
 
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
 		session.mu.Lock()
-		if len(session.events) > 0 {
+		if mode == eventPollModeReliable {
+			session.assignPendingEventSequencesLocked()
+			events := make([]packetEvent, 0, len(session.events))
+			for _, event := range session.events {
+				if event.seq <= session.lastAckedSeq {
+					continue
+				}
+				events = append(events, event)
+				if event.seq > session.lastDeliveredSeq {
+					session.lastDeliveredSeq = event.seq
+				}
+			}
+			if len(events) > 0 {
+				session.touchLocked()
+				session.mu.Unlock()
+				return events, nil
+			}
+		} else if len(session.events) > 0 {
 			events := append([]packetEvent(nil), session.events...)
 			session.events = nil
 			session.eventBytes = 0
@@ -664,6 +807,12 @@ func (session *tcpSession) pollContext(ctx context.Context, timeout time.Duratio
 		closed := session.isClosed()
 		session.mu.Unlock()
 		if closed {
+			if mode == eventPollModeReliable {
+				// The close marker is retained and delivered with a sequence
+				// before this point.  Once it has been acknowledged there is
+				// no synthetic second marker to assign a bogus seq=0 to.
+				return nil, nil
+			}
 			return []packetEvent{{closed: true}}, nil
 		}
 		select {
@@ -1580,6 +1729,7 @@ func (handler *Handler) listServers(response http.ResponseWriter, request *http.
 type createResponse struct {
 	ID       string `json:"id"`
 	Greeting string `json:"greeting"`
+	EventAck bool   `json:"event_ack"`
 }
 
 type createRequest struct {
@@ -1689,6 +1839,7 @@ func (handler *Handler) createSession(response http.ResponseWriter, request *htt
 	handler.writeJSON(response, http.StatusCreated, createResponse{
 		ID:       id,
 		Greeting: base64.StdEncoding.EncodeToString(greeting),
+		EventAck: true,
 	})
 }
 
@@ -1745,9 +1896,34 @@ type eventResponse struct {
 	Packet string `json:"packet,omitempty"`
 	Closed bool   `json:"closed,omitempty"`
 	Error  string `json:"error,omitempty"`
+	Seq    uint64 `json:"seq,omitempty"`
+}
+
+func parseEventsAck(request *http.Request) (uint64, bool, error) {
+	values, present := request.URL.Query()["ack"]
+	if !present {
+		return 0, false, nil
+	}
+	if len(values) != 1 {
+		return 0, true, errors.New("ack must appear exactly once")
+	}
+	raw := strings.TrimSpace(values[0])
+	if raw == "" {
+		return 0, true, errors.New("ack must be a non-negative uint64")
+	}
+	ack, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil {
+		return 0, true, errors.New("ack must be a non-negative uint64")
+	}
+	return ack, true, nil
 }
 
 func (handler *Handler) pollEvents(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	ack, reliable, err := parseEventsAck(request)
+	if err != nil {
+		http.Error(response, err.Error(), http.StatusBadRequest)
+		return
+	}
 	timeout := handler.config.PollTimeout
 	if raw := strings.TrimSpace(request.URL.Query().Get("timeout")); raw != "" {
 		milliseconds, err := strconv.Atoi(raw)
@@ -1757,13 +1933,21 @@ func (handler *Handler) pollEvents(response http.ResponseWriter, request *http.R
 		}
 		timeout = time.Duration(milliseconds) * time.Millisecond
 	}
-	events, err := session.pollContext(request.Context(), timeout)
+	var events []packetEvent
+	if reliable {
+		events, err = session.pollReliableContext(request.Context(), timeout, ack)
+	} else {
+		events, err = session.pollContext(request.Context(), timeout)
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			// The client is gone.  Remove the session before closing the TCP
-			// side so a replacement login cannot race a dead bridge entry.
-			handler.sessions.removeIf(session.id, session)
-			session.finish("HTTP events request canceled")
+			// A canceled long poll is only one lost HTTP request.  Keep the
+			// session and its TCP stream alive so a browser/proxy retry cannot
+			// turn a transient map-transition cancellation into a logout.
+			return
+		}
+		if errors.Is(err, errEventsAckAhead) {
+			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
 		}
 		http.Error(response, err.Error(), http.StatusConflict)
@@ -1772,15 +1956,29 @@ func (handler *Handler) pollEvents(response http.ResponseWriter, request *http.R
 	encoded := make([]eventResponse, 0, len(events))
 	for _, event := range events {
 		item := eventResponse{Closed: event.closed, Error: event.err}
+		if reliable {
+			item.Seq = event.seq
+		}
 		if len(event.packet) > 0 {
 			item.Packet = base64.StdEncoding.EncodeToString(event.packet)
 		}
 		encoded = append(encoded, item)
 	}
-	handler.writeJSON(response, http.StatusOK, map[string]any{
+	// Returning closed=true alongside a queued event lets a client skip the
+	// event list and lose the final packets.  Only advertise the terminal
+	// state once this response has no events left to deliver.
+	closed := session.isClosed()
+	if reliable {
+		closed = session.reliableClosed()
+	}
+	body := map[string]any{
 		"events": encoded,
-		"closed": session.isClosed(),
-	})
+		"closed": closed,
+	}
+	if reliable {
+		body["acknowledged"] = true
+	}
+	handler.writeJSON(response, http.StatusOK, body)
 }
 
 func (handler *Handler) writeJSON(response http.ResponseWriter, status int, value any) {
