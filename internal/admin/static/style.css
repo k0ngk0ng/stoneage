@@ -125,6 +125,14 @@ tr:last-child td { border-bottom: 0; }
 .confirm-copy p { margin: 0; color: #56676d; line-height: 1.55; white-space: pre-wrap; }
 .confirm-actions { grid-column: 2; display: flex; justify-content: flex-end; gap: 8px; margin-top: 3px; }
 .confirm-actions button { min-width: 78px; }
+.audit-detail-modal { position: fixed; z-index: 900; inset: 0; display: grid; place-items: center; padding: 20px; }
+.audit-detail-modal[hidden] { display: none; }
+.audit-detail-backdrop { position: absolute; inset: 0; background: rgba(31,55,64,.58); backdrop-filter: blur(2px); animation: confirm-fade-in .15s ease-out; }
+.audit-detail-dialog { position: relative; width: min(760px,100%); max-height: calc(100vh - 40px); overflow: auto; padding: 24px; border: 3px solid #536a75; border-radius: 18px 18px 8px 18px; background: linear-gradient(145deg, rgba(255,255,250,.99), rgba(247,232,194,.98)); box-shadow: 0 14px 0 rgba(39,59,67,.28), 0 20px 45px rgba(31,55,64,.35), inset 0 0 0 2px rgba(255,255,255,.72); animation: confirm-pop-in .16s ease-out; }
+.audit-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.audit-detail-heading h2 { margin: 9px 0 0; color: #3d5963; }
+.audit-detail-content { max-height: calc(100vh - 180px); overflow: auto; margin: 20px 0 0; padding: 14px; border: 2px solid rgba(94,116,128,.28); border-radius: 8px; color: #3d464c; background: rgba(255,255,255,.58); font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.audit-detail-button { padding: 5px 9px; font-size: 11px; white-space: nowrap; }
 @keyframes confirm-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes confirm-pop-in { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .restart-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -174,6 +182,9 @@ tr:last-child td { border-bottom: 0; }
   .form-footer button { width: 100%; }
   .container { padding-top: 22px; }
   .confirm-dialog { padding: 21px 18px 17px; }
+  .audit-detail-modal { padding: 12px; }
+  .audit-detail-dialog { max-height: calc(100vh - 24px); padding: 18px; }
+  .audit-detail-content { max-height: calc(100vh - 140px); }
   .confirm-actions { grid-column: 1 / -1; }
   .confirm-actions button { flex: 1; }
 }

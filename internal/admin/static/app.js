@@ -18,6 +18,52 @@
     }).format(date);
   });
 
+  const auditDetailModal = document.getElementById("audit-detail-modal");
+  if (auditDetailModal) {
+    const auditDetailContent = auditDetailModal.querySelector("#audit-detail-content");
+    const auditDetailButtons = document.querySelectorAll("[data-audit-detail]");
+    const auditDetailCancelButtons = auditDetailModal.querySelectorAll("[data-audit-detail-cancel]");
+    let auditDetailPreviousFocus = null;
+
+    function closeAuditDetail() {
+      auditDetailModal.hidden = true;
+      const confirmModal = document.getElementById("confirm-modal");
+      if (!confirmModal || confirmModal.hidden) {
+        document.body.classList.remove("modal-open");
+      }
+      if (auditDetailPreviousFocus && typeof auditDetailPreviousFocus.focus === "function") {
+        auditDetailPreviousFocus.focus();
+      }
+      auditDetailPreviousFocus = null;
+    }
+
+    function openAuditDetail(button) {
+      auditDetailPreviousFocus = document.activeElement;
+      auditDetailContent.textContent = button.dataset.auditDetail || "暂无详情";
+      auditDetailModal.hidden = false;
+      document.body.classList.add("modal-open");
+      const closeButton = auditDetailModal.querySelector("button[data-audit-detail-cancel]");
+      if (closeButton) {
+        closeButton.focus();
+      }
+    }
+
+    auditDetailButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        openAuditDetail(button);
+      });
+    });
+    auditDetailCancelButtons.forEach(function (button) {
+      button.addEventListener("click", closeAuditDetail);
+    });
+    document.addEventListener("keydown", function (event) {
+      if (!auditDetailModal.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closeAuditDetail();
+      }
+    });
+  }
+
   const modal = document.getElementById("confirm-modal");
   if (!modal) {
     return;

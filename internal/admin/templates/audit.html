@@ -2,6 +2,20 @@
 <div class="page-heading"><div><h1>审计日志</h1><p class="muted">最近 100 条管理和登录事件</p></div></div>
 <div class="table-wrap"><table>
 <thead><tr><th>时间</th><th>操作者</th><th>事件</th><th>账号</th><th>来源</th><th>详情</th></tr></thead>
-<tbody>{{range .Events}}<tr><td><time data-local-time="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</time></td><td>{{if .ActorID}}管理员 #{{.ActorID}}{{else}}系统{{end}}</td><td>{{.Event}}</td><td>{{.Username}}</td><td>{{.SourceIP}}</td><td>{{.Detail}}</td></tr>{{else}}<tr><td colspan="6" class="empty">暂无事件</td></tr>{{end}}</tbody>
+<tbody>{{range .Events}}<tr><td><time data-local-time="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</time></td><td>{{if .ActorID}}管理员 #{{.ActorID}}{{else}}系统{{end}}</td><td>{{.Event}}</td><td>{{.Username}}</td><td>{{.SourceIP}}</td><td><button class="button audit-detail-button" type="button" data-audit-detail="{{.Detail}}" aria-label="查看 {{.Event}} 详情">查看</button></td></tr>{{else}}<tr><td colspan="6" class="empty">暂无事件</td></tr>{{end}}</tbody>
 </table></div>
+
+<div class="audit-detail-modal" id="audit-detail-modal" hidden>
+  <div class="audit-detail-backdrop" data-audit-detail-cancel tabindex="-1"></div>
+  <section class="audit-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" aria-describedby="audit-detail-content" tabindex="-1">
+    <div class="audit-detail-heading">
+      <div>
+        <span class="section-kicker">审计详情</span>
+        <h2 id="audit-detail-title">事件详情</h2>
+      </div>
+      <button class="button" type="button" data-audit-detail-cancel>关闭</button>
+    </div>
+    <pre id="audit-detail-content" class="audit-detail-content"></pre>
+  </section>
+</div>
 {{end}}
