@@ -4470,7 +4470,7 @@ for (const expected of [
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
 }
 for (const expected of [
-  /const specs=\{menu:\{x:4,y:4,w:192,h:336,title:9145\}/,
+  /const specs=\{menu:\{x:4,y:4,w:192,h:384,title:9145\}/,
   /"logout-choice":\{x:224,y:144,w:192,h:192,title:9146\}/,
   /"logout-record":\{x:224,y:168,w:192,h:144,title:9146\}/,
   /chat:\{x:192,y:48,w:256,h:384,title:9148\}/,
@@ -4480,8 +4480,8 @@ for (const expected of [
 ]) {
   if (!expected.test(script)) throw new Error(`2.5 system window geometry regression: ${expected}`);
 }
-if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:336px/.test(html)){
-  throw new Error("2.5 system root menu must retain the native 3x7 (192x336) frame");
+if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:384px/.test(html)){
+  throw new Error("2.5 system root menu must use the expanded 3x8 (192x384) frame");
 }
 if(!/#system-screen #system-list \.system-choice\{[^}]*white-space:pre/.test(html) ||
    !/function systemReturn\(page,top,label="\s+回上一页\s+",left=0\)[\s\S]{0,300}systemAction\(label/.test(script)){

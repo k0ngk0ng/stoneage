@@ -2423,7 +2423,7 @@
     #social-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:440px;--content-x:12px;--content-y:42px;--content-w:248px;--content-h:380px;--toolbar-x:16px;--toolbar-y:418px}
     #album-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:448px;--content-x:14px;--content-y:38px;--content-w:244px;--content-h:390px;--toolbar-x:80px;--toolbar-y:438px}
     #titles-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:272px;--legacy-h:332px;--content-x:14px;--content-y:40px;--content-w:244px;--content-h:260px;--toolbar-x:96px;--toolbar-y:310px}
-    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:260px;--toolbar-x:56px;--toolbar-y:300px}
+    #system-screen{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:384px;--content-x:32px;--content-y:54px;--content-w:132px;--content-h:260px;--toolbar-x:56px;--toolbar-y:300px}
     #actions-screen,#events-screen,#journal-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:112px;--content-y:144px;--content-w:416px;--content-h:150px;--toolbar-x:184px;--toolbar-y:338px}
     #server-window-screen{--legacy-x:96px;--legacy-y:120px;--legacy-w:448px;--legacy-h:240px;--content-x:140px;--content-y:136px;--content-w:360px;--content-h:160px;--toolbar-x:212px;--toolbar-y:248px}
     #system-screen .toolbar-row{display:none}
@@ -2856,10 +2856,12 @@
        from MENU.CPP.  Only the compact root is pinned to (4,4); logout and
        all setting pages are centred in the 640x480 back buffer.  Treating
        their origins as root-relative put every subpage in the upper-left. */
-    /* The classic root is MakeWindowDisp(4,4,3,7).  The optional 8.5
-       _NEW_SYSTEM_MENU is the separate centred 7x8 surface; its unsupported
-       SaMenu entries remain intentionally absent from the 2.5 web client. */
-    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:336px;--system-list-x:32px;--system-list-y:58px}
+    /* The web root is expanded to a full 3x8 tile surface so the last menu
+       row and its close hit box remain inside the native-looking frame.  The
+       optional 8.5 _NEW_SYSTEM_MENU is a separate centred 7x8 surface; its
+       unsupported SaMenu entries remain intentionally absent from the 2.5
+       web client. */
+    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:384px;--system-list-x:32px;--system-list-y:58px}
     #system-screen.system-page-logout-choice{--legacy-x:224px;--legacy-y:144px;--legacy-w:192px;--legacy-h:192px;--system-list-x:262px;--system-list-y:200px}
     #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:224px;--legacy-y:168px;--legacy-w:192px;--legacy-h:144px;--system-list-x:262px;--system-list-y:224px}
     #system-screen.system-page-chat{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:104px}
@@ -3501,10 +3503,11 @@
       titles:{bitmap:9140,x:4,y:4,w:272,h:332,generic:true},
       /* System pages use the native MakeWindowDisp nine-tile surface.  The
        centre bitmap (9140) is not a complete window and must not be
-       stretched over the menu.  MENU.CPP's classic root is 3x7 tiles
-       (192x336); in-place logout lives in the centred 3x3 choice subpage.
-       Per-page geometry is set by configureSystemWindow(). */
-      system:{x:4,y:4,w:192,h:336,native:true,title:9145},
+       stretched over the menu.  The web root reserves a full 3x8 tile
+       surface (192x384) so its final row remains inside the frame; in-place
+       logout lives in the centred 3x3 choice subpage.  Per-page geometry is
+       set by configureSystemWindow(). */
+      system:{x:4,y:4,w:192,h:384,native:true,title:9145},
       /* The protocol/event panes are local wrappers around native message
          windows.  Keep their diagnostics in the same 7x5 CG_WND_G frame as
          LOGIN.CPP instead of presenting a generic web card. */
@@ -7740,7 +7743,7 @@
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
     ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry","system-page-battle-animation"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:336,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},"battle-animation":{x:192,y:48,w:256,h:304,title:0}};
+    const specs={menu:{x:4,y:4,w:192,h:384,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},"battle-animation":{x:192,y:48,w:256,h:304,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -7871,10 +7874,10 @@
     const page=app.systemPage||"menu";const settings=app.systemSettings;configureSystemWindow(page);
     $("system-summary").textContent="StoneAge 2.5 系统菜单";
     if(page==="menu"){
-      /* Keep the client-side choices inside MENU.CPP's
-         classic 3x7 (192x336) frame.  The web-only split between record-point
-         and in-place logout stays behind the first row, while unsupported
-         8.5 SaMenu server extensions remain absent. */
+      /* Keep the client-side choices inside the expanded 3x8 (192x384) frame.
+         The web-only split between record-point and in-place logout stays
+         behind the first row, while unsupported 8.5 SaMenu server extensions
+         remain absent. */
       const add=(label,handler,top)=>list.append(systemChoice(label,handler,top));
       /* MENU.CPP labels the root entry “退出游戏”; the following page is
          where the 2.5-compatible record-point logout and the web client's
