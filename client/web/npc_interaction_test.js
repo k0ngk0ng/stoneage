@@ -1,7 +1,7 @@
 const fs=require("node:fs"),assert=require("node:assert/strict");
 const html=fs.readFileSync(__dirname+"/index.html","utf8");
 function section(from,to){const start=html.indexOf(from),end=html.indexOf(to,start);assert.ok(start>=0&&end>start,from);return html.slice(start,end);}
-const rules=section("  function npcInteractionRange(","  function pendingTalkActor(");
+const rules=html.match(/  const DIRS=.*;/)[0]+html.match(/  const clientDirectionFromServer=.*;/)[0]+section("  function npcInteractionRange(","  function pendingTalkActor(");
 const talk=section("  async function talkToTarget(","  async function talkToFacingNPC(");
 const approach=section("  function approachNPC(","  async function refreshTalkServerPosition(");
 const resume=section("  function resumePendingTalk(","  function approachNPC(");
@@ -16,6 +16,19 @@ async function run(){
     assert.equal(api.npcUsesLookInteraction(nurse,1),true);
     assert.equal(api.npcUsesLookInteraction(nurse,2),false);
     assert.equal(api.npcInteractionRange({...nurse,x:18}),1,"do not infer nearby or similarly named NPC capabilities");
+  }
+  for(const template of ["npcgen_shop","npcgen_petshop"]){
+    const app={floor:1005,npcMetadataByKey:new Map()};
+    const api=new Function("app","npcMetadataKey",rules+"return {npcInteractionRange,npcUsesLookInteraction};")(app,(f,x,y)=>`${f}:${x}:${y}`);
+    const shop={x:17,y:13,npcTemplate:template,npcInteraction:"talk"};
+    assert.equal(api.npcInteractionRange(shop),2,`${template} keeps the native counter range`);
+    assert.equal(api.npcUsesLookInteraction(shop,2),false,`${template} uses TK across the counter`);
+  }
+  {
+    const app={floor:1005,npcMetadataByKey:new Map()};
+    const api=new Function("app","npcMetadataKey",rules+"return npcInteractionRange;")(app,(f,x,y)=>`${f}:${x}:${y}`);
+    assert.equal(api({x:17,y:13,npcTemplate:"npcgen_man",npcInteraction:"talk"}),1,"ordinary TALKEDFUNC NPC stays adjacent-only");
+    assert.equal(api({x:17,y:13,npcTemplate:"npcgen_shopkeeper",npcInteraction:"talk"}),1,"similarly named NPC does not inherit shop range");
   }
   for(const template of ["npcgen_winhealer","windowhealer","npcgen_signboard","npcgen_man",""])for(const distance of [1,2,3])for(const configuredRange of [undefined,1,2]){
     const healer=["npcgen_winhealer","windowhealer"].includes(template);
@@ -33,6 +46,33 @@ async function run(){
     const useTalk=target.npcInteraction==="talk"||(healer&&distance===2);
     assert.deepEqual(sends.map(row=>row[0]),!inRange?[]:useTalk?["L","TK"]:["L"],`${template} must choose the supported dispatch at distance ${distance}`);
     if(inRange&&useTalk)assert.deepEqual(sends[1][1],[17,13+distance,"P|hi",0,3]);
+  }
+  for(const template of ["npcgen_shop","npcgen_petshop"])for(const facing of [true,false]){
+    const target={id:240,name:"Shop",x:17,y:13,wireDirection:facing?4:0,npcTemplate:template,npcInteraction:"talk",direction:7};
+    const app={phase:"world",battle:false,transport:{},actors:new Map([[240,target]]),position:[17,15],serverPosition:[17,15],serverPositionReceivedAt:Date.now(),moveQueue:[],direction:0};
+    const sends=[],approaches=[];
+    const deps={app,LEGACY_TURN_SEND_WAIT_MS:0,actorIsOwn:()=>false,npcFilterForTalk:()=>true,
+      sameMovePoint:same,setWorldState:()=>{},forgetTalkTarget:()=>{},refreshTalkServerPosition:()=>{throw new Error("unexpected coordinate refresh");},
+      approachNPC:actor=>{approaches.push(actor);return true;},directionFor:()=>3,serverDirectionFromClient:()=>0,setLocalActorAction:()=>{},
+      window:{setTimeout(fn,delay){if(delay===60)fn();return 1;}},send:async(name,fields)=>{sends.push([name,fields]);},reportError:error=>{throw error;}};
+    const invoke=new Function(...Object.keys(deps),rules+talk+"return talkToTarget;")(...Object.values(deps));
+    await invoke(target);
+    assert.equal(approaches.length,facing?0:1,`${template} only talks across the counter from the facing side`);
+    assert.deepEqual(sends.map(row=>row[0]),facing?["L","TK"]:[],`${template} sends the native turn and talk pair from two cells`);
+    if(facing)assert.deepEqual(sends[1][1],[17,15,"P|hi",0,3]);
+
+    for(const direction of [undefined,0]){
+      const invalidTarget={...target};delete invalidTarget.wireDirection;
+      if(direction===undefined)delete invalidTarget.direction;
+      else invalidTarget.direction=direction;
+      const invalidApp={...app,actors:new Map([[240,invalidTarget]])};
+      const invalidSends=[],invalidApproaches=[];
+      const invalidDeps={...deps,app:invalidApp,approachNPC:actor=>{invalidApproaches.push(actor);return true;},send:async(name,fields)=>{invalidSends.push([name,fields]);}};
+      const invalidInvoke=new Function(...Object.keys(invalidDeps),rules+talk+"return talkToTarget;")(...Object.values(invalidDeps));
+      await invalidInvoke(invalidTarget);
+      assert.equal(invalidApproaches.length,1,`${template} rejects distance-two direct talk with ${direction===undefined?"missing":"wrong"} facing`);
+      assert.deepEqual(invalidSends,[],`${template} must not send L/TK from a non-facing distance-two tile`);
+    }
   }
   for(const healer of [true,false]){
     const target={id:240,name:"Nurse",x:17,y:13,npcTemplate:healer?"npcgen_winhealer":"npcgen_signboard",npcInteractionRange:2};
@@ -55,6 +95,37 @@ async function run(){
     invoke();
     assert.equal(timers.length,healer?1:0,"counter approach must resume at the same range used for routing");
     if(healer){await timers[0]();assert.equal(talks[0],target);assert.equal(app.pendingTalk,null);}
+  }
+  for(const template of ["npcgen_shop","npcgen_petshop"]){
+    const app={position:[17,15],floor:1005,npcMetadataByKey:new Map([["1005:17:13",{template,direction:4}]])};
+    const can=new Function("app","npcMetadataKey",rules+"return npcCanInteractFrom;")(app,(f,x,y)=>`${f}:${x}:${y}`);
+    const shop={x:17,y:13,npcTemplate:template,wireDirection:4};
+    assert.equal(can(shop),true,"south-facing counter accepts the south tile");
+    for(const point of [[17,11],[15,13],[19,13],[18,15],[19,15],[17,16]])assert.equal(can(shop,point),false,`reject unsupported counter position ${point}`);
+    assert.equal(can({...shop,wireDirection:undefined,direction:7}),true,"local direction fallback");
+    assert.equal(can({x:17,y:13}),true,"exact coordinate metadata supplies template and direction");
+    assert.equal(can({...shop,wireDirection:0}),false,"live facing overrides static metadata");
+    app.npcMetadataByKey.clear();
+    assert.equal(can({...shop,wireDirection:undefined}),false,"unknown facing does not guess");
+    for(const point of [[17,12],[16,13],[18,14]])assert.equal(can(shop,point),true,"adjacent behavior remains available on every side");
+    for(const facing of [true,false]){
+      const target={...shop,id:240,wireDirection:facing?4:0};
+      const routeApp={position:[20,20],cursor:{},serverPositionVersion:1};let destination=null;
+      const deps={app:routeApp,MOVE_SERVER_WALK_INTERVAL_MS:10,localCellWalkable:(x,y)=>x===17&&y===15,actorOccupiesCell:()=>false,
+        routeFromCells:(_from,to)=>[to],forgetTalkTarget:()=>{},setWorldState:()=>{},rememberTalkTarget:()=>{},setMoveTarget:point=>{destination=point;}};
+      const invoke=new Function(...Object.keys(deps),rules+approach+"return approachNPC;")(...Object.values(deps));
+      assert.equal(invoke(target),facing,"route may stop across counter only on NPC facing side");
+      assert.deepEqual(destination,facing?[17,15]:null);
+      const pending={id:240,serverPositionTarget:[17,15],serverPositionVersion:1};
+      const resumeApp={phase:"world",battle:false,pendingTalk:pending,position:[17,15],serverPosition:[17,15],serverPositionVersion:2,cursor:{}};
+      const timers=[],talks=[];
+      const resumeDeps={app:resumeApp,pendingTalkActor:()=>target,sameMovePoint:same,forgetTalkTarget:()=>{},setWorldState:()=>{},rememberTalkTarget:()=>{},
+        window:{setTimeout:fn=>timers.push(fn)},talkToTarget:async actor=>{talks.push(actor);return true;}};
+      const resumeInvoke=new Function(...Object.keys(resumeDeps),rules+resume+"return resumePendingTalk;")(...Object.values(resumeDeps));
+      resumeInvoke();
+      assert.equal(timers.length,facing?1:0,"resume uses same facing rule as routing");
+      if(facing){await timers[0]();assert.equal(talks[0],target);assert.equal(resumeApp.pendingTalk,null);}
+    }
   }
   console.log("NPC counter interaction vectors OK");
 }

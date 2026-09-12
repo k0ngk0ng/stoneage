@@ -2035,9 +2035,9 @@ for (const expected of [
      Keep the M-window guard only while that floor-wide back-buffer is still
      unavailable, otherwise long clicks can never cross the current window. */
   /const hasCompleteFloorMap=Boolean\(app\.autoMapData&&Number\(app\.autoMapData\.floor\)===Number\(app\.floor\)\);[\s\S]{0,220}app\.map&&!hasCompleteFloorMap&&!mapCellAt\(next\[0\],next\[1\]\)/,
-  /* L is adjacent-only; healer TALKEDFUNC also accepts distance 2.
+  /* L is adjacent-only; verified healer/shop TALKEDFUNC accepts distance 2.
      Approach using the verified callback range, not a global L radius. */
-  /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,1400}if\(targetDistance>npcInteractionRange\(current\)\)[\s\S]{0,220}return approachNPC\(current\)/,
+  /const targetDistance=Math\.max\(Math\.abs\(Number\(current\.x\)-Number\(app\.position\[0\]\)\),Math\.abs\(Number\(current\.y\)-Number\(app\.position\[1\]\)\)\);[\s\S]{0,1400}if\(!npcCanInteractFrom\(current\)\)[\s\S]{0,220}return approachNPC\(current\)/,
   /* A map actor may be painted underneath one of the fixed field controls.
      Native display priority gives the control the click, so keep the UI hit
      guard before actorAtTile() instead of letting the covered NPC consume
