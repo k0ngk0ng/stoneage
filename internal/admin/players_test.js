@@ -170,12 +170,30 @@ function makeHarness(fetcher) {
   panel.appendChild(accept);
   dialog.appendChild(backdrop);
   dialog.appendChild(panel);
+
+  const editorDialog = document.register("player-editor-dialog", document.createElement("div"));
+  editorDialog.hidden = true;
+  const editorBackdrop = document.createElement("div");
+  editorBackdrop.setAttribute("data-player-editor-cancel", "");
+  const editorPanel = document.createElement("section");
+  editorPanel.className = "player-dialog-panel";
+  const editorTitle = document.register("player-editor-dialog-title", document.createElement("h2"));
+  const editorClose = document.createElement("button");
+  editorClose.setAttribute("data-player-editor-cancel", "");
+  const editorContent = document.register("player-editor-dialog-content", document.createElement("div"));
+  editorPanel.appendChild(editorTitle);
+  editorPanel.appendChild(editorClose);
+  editorPanel.appendChild(editorContent);
+  editorDialog.appendChild(editorBackdrop);
+  editorDialog.appendChild(editorPanel);
+
   [characterSelect, refresh, loadState, online, snapshot, catalogForm, catalogKind,
     catalogQuery, catalogHint, catalogResults, catalogSelection].forEach(element => root.appendChild(element));
   document.body.appendChild(root);
   document.body.appendChild(dialog);
+  document.body.appendChild(editorDialog);
   const state = players.init(document, {fetch: fetcher}, fetcher);
-  return {document, root, characterSelect, catalogForm, catalogKind, catalogQuery, catalogResults, catalogSelection, dialog, accept, state};
+  return {document, root, characterSelect, catalogForm, catalogKind, catalogQuery, catalogResults, catalogSelection, dialog, accept, editorDialog, editorContent, state};
 }
 
 function jsonResponse(payload, status = 200) {
@@ -188,10 +206,24 @@ function snapshot(slot, revision = "rev-" + slot) {
     name: slot === 0 ? "阿石" : "阿木",
     revision,
     capacities: {item_inventory: 15, item_warehouse: 30, pet_inventory: 5, pet_warehouse: 5},
-    attributes: [{key: "gld", label: "随身石币", value: 100, min: 0, max: 10000000}],
+    attributes: [
+      {key: "gld", label: "随身石币", value: 100, min: 0, max: 10000000},
+      {key: "vi", label: "体力", value: 12345, min: 0, max: 2147483647},
+      {key: "str", label: "腕力", value: 1800, min: 0, max: 2147483647},
+      {key: "tou", label: "耐力", value: 2001, min: 0, max: 2147483647},
+      {key: "dx", label: "速度", value: 999, min: 0, max: 2147483647}
+    ],
     possessions: [
-      {kind: "item", location: "inventory", slot: 5, name: "石斧", id: 100, graphic_id: 200, attributes: []},
-      {kind: "pet", location: "inventory", slot: 0, name: "小石", id: 300, graphic_id: 400, attributes: [], skills: [
+      {kind: "item", location: "inventory", slot: 5, name: "石斧", id: 100, graphic_id: 200, attributes: [
+        {key: "str", label: "物品数值", value: 18, min: -100000000, max: 100000000}
+      ]},
+      {kind: "pet", location: "inventory", slot: 0, name: "小石", id: 300, graphic_id: 400, attributes: [
+        {key: "vi", label: "体力", value: 12345, min: 0, max: 2147483647},
+        {key: "str", label: "腕力", value: 1800, min: 0, max: 2147483647},
+        {key: "tou", label: "耐力", value: 2001, min: 0, max: 2147483647},
+        {key: "dx", label: "速度", value: 999, min: 0, max: 2147483647},
+        {key: "growth_vi", label: "体力成长基础", value: 123, min: 0, max: 255}
+      ], skills: [
         {slot: 0, id: -1}, {slot: 1, id: 72, name: "火焰"}
       ]},
       {kind: "pet", location: "warehouse", slot: 0, name: "仓库小石", id: 301, graphic_id: 401, attributes: [], skills: []},
@@ -245,6 +277,11 @@ async function main() {
   assert.equal(query.get("limit"), "10");
   assert.equal(players.graphicURL("a/b", "item"), "/api/player-assets/graphic/a%2Fb?kind=item");
   assert.equal(players.graphicURL(null, "pet"), "");
+  assert.equal(players.formatFixedPoint(12345), "123.45");
+  assert.equal(players.formatFixedPoint(-1200), "-12");
+  assert.deepEqual(players.parseFixedPoint("12.34"), {value: 1234});
+  assert.deepEqual(players.parseFixedPoint("-0.5"), {value: -50});
+  assert(players.parseFixedPoint("12.345").error, "more than two decimal places are rejected");
 
   const fixture = makeFetcher();
   const page = makeHarness(fixture.fetcher);
@@ -253,10 +290,44 @@ async function main() {
   assert.equal(page.state.snapshot.name, "阿石", "initial snapshot is loaded");
   assert.equal(page.root.querySelectorAll(".possession-card").length, 4, "existing possessions beyond the current capacity remain visible");
 
-  const nameInput = page.root.querySelector(".possession-name-form input");
-  assert(nameInput, "existing possession has a name editor");
+  const initialCard = page.root.querySelector(".possession-card");
+  assert(initialCard, "existing possession has a summary card");
+  assert.equal(initialCard.querySelector(".possession-name-form"), null, "list cards do not contain edit forms");
+  assert.equal(initialCard.querySelector(".attribute-editor"), null, "list cards do not contain attribute editors");
+  click(initialCard);
+  assert.equal(page.editorDialog.hidden, false, "clicking a possession opens its editor");
+  assert.equal(page.editorContent.querySelector(".possession-name-form") !== null, true, "editor contains a name form");
+  assert.equal(page.editorContent.querySelectorAll(".skill-row").length, 0, "item editor has no pet skill rows");
+  click(page.editorDialog.querySelectorAll("[data-player-editor-cancel]")[1]);
+  assert.equal(page.editorDialog.hidden, true, "editor close button closes the editor");
+
+  const characterRows = page.root.querySelectorAll(".attribute-row");
+  const vitalInput = characterRows[1].querySelector(".attribute-editor input");
+  assert.equal(vitalInput.value, "123.45", "character vital is shown in game units");
+  vitalInput.value = "12.34";
+  submit(characterRows[1].querySelector(".attribute-editor"));
+  click(page.accept);
+  await settle();
+  assert.equal(fixture.postPayload.action, "set_character");
+  assert.equal(fixture.postPayload.value, 1234, "fixed point input is sent as the exact raw integer");
+
+  let itemCard = page.root.querySelectorAll(".possession-card")[0];
+  click(itemCard);
+  let itemInputs = page.editorContent.querySelectorAll(".attribute-editor input");
+  assert.equal(itemInputs[0].value, "18", "item attributes keep their native units");
+  itemInputs[0].value = "19";
+  submit(page.editorContent.querySelector(".attribute-editor"));
+  click(page.accept);
+  await settle();
+  assert.equal(fixture.postPayload.action, "set_item");
+  assert.equal(fixture.postPayload.value, 19, "item str-like attributes are not scaled");
+
+  itemCard = page.root.querySelectorAll(".possession-card")[0];
+  click(itemCard);
+  const nameInput = page.editorContent.querySelector(".possession-name-form input");
+  assert(nameInput, "editor has a name editor");
   nameInput.value = "新石斧";
-  submit(page.root.querySelector(".possession-name-form"));
+  submit(page.editorContent.querySelector(".possession-name-form"));
   assert.equal(page.dialog.hidden, false, "name changes use the custom confirmation dialog");
   click(page.accept);
   await settle();
@@ -264,11 +335,14 @@ async function main() {
   assert.equal(fixture.postPayload.name, "新石斧");
   assert.equal(Object.prototype.hasOwnProperty.call(fixture.postPayload, "value"), false, "name changes do not send the int64 value field");
   assert.equal(fixture.postPayload.revision, "rev-0");
+  assert.equal(page.editorDialog.hidden, true, "successful edits close the stale editor");
 
   const postCountBeforeSwitch = fixture.calls.filter(call => call.options.method === "POST").length;
-  const secondNameInput = page.root.querySelector(".possession-name-form input");
+  itemCard = page.root.querySelectorAll(".possession-card")[0];
+  click(itemCard);
+  const secondNameInput = page.editorContent.querySelector(".possession-name-form input");
   secondNameInput.value = "不应写入旧角色";
-  submit(page.root.querySelector(".possession-name-form"));
+  submit(page.editorContent.querySelector(".possession-name-form"));
   page.characterSelect.value = "1";
   page.characterSelect.dispatchEvent({type: "change"});
   click(page.accept);
@@ -278,9 +352,11 @@ async function main() {
   assert.equal(page.state.snapshot.name, "阿木");
 
   fixture.mutationStatus = 409;
-  const conflictInput = page.root.querySelector(".possession-name-form input");
+  itemCard = page.root.querySelectorAll(".possession-card")[0];
+  click(itemCard);
+  const conflictInput = page.editorContent.querySelector(".possession-name-form input");
   conflictInput.value = "冲突修改";
-  submit(page.root.querySelector(".possession-name-form"));
+  submit(page.editorContent.querySelector(".possession-name-form"));
   click(page.accept);
   await settle();
   assert.equal(page.dialog.hidden, false, "a 409 opens the reload confirmation dialog");
@@ -361,8 +437,22 @@ async function main() {
   assert.equal(fixture.postPayload.action, "set_pet_skill");
   assert.equal(fixture.postPayload.skill_slot, 6, "skill slot six is accepted");
 
-  const petSkills = page.root.querySelectorAll(".skill-row");
-  assert.equal(petSkills.length, 2, "empty and occupied skill slots are both visible");
+  const petCard = page.root.querySelectorAll(".possession-card")[1];
+  click(petCard);
+  const petInputs = page.editorContent.querySelectorAll(".attribute-editor input");
+  assert.equal(petInputs[0].value, "123.45", "pet vital is shown in game units");
+  assert.equal(petInputs[4].value, "123", "pet growth bytes remain integers");
+  petInputs[1].value = "12.34";
+  submit(page.editorContent.querySelectorAll(".attribute-editor")[1]);
+  click(page.accept);
+  await settle();
+  assert.equal(fixture.postPayload.action, "set_pet");
+  assert.equal(fixture.postPayload.value, 1234, "pet fixed point attributes are sent as raw hundredths");
+
+  const refreshedPetCard = page.root.querySelectorAll(".possession-card")[1];
+  click(refreshedPetCard);
+  const petSkills = page.editorContent.querySelectorAll(".skill-row");
+  assert.equal(petSkills.length, 2, "empty and occupied skill slots are both visible in the editor");
   assert.equal(petSkills[0].querySelectorAll("button").length, 0, "empty skill slots have no delete action");
   assert.equal(petSkills[1].querySelectorAll("button").length, 1, "occupied skill slots have a delete action");
 

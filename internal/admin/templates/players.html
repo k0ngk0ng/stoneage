@@ -82,5 +82,19 @@
     </div>
   </section>
 </div>
+
+<div class="player-dialog player-editor-dialog" id="player-editor-dialog" hidden>
+  <div class="player-dialog-backdrop" data-player-editor-cancel tabindex="-1"></div>
+  <section class="player-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="player-editor-dialog-title" tabindex="-1">
+    <div class="player-editor-heading">
+      <div>
+        <span class="section-kicker">编辑资产</span>
+        <h2 id="player-editor-dialog-title">编辑物品</h2>
+      </div>
+      <button class="button player-dialog-close" type="button" data-player-editor-cancel>关闭</button>
+    </div>
+    <div id="player-editor-dialog-content" class="player-editor-content"></div>
+  </section>
+</div>
 <script src="/static/players.js" defer></script>
 {{end}}

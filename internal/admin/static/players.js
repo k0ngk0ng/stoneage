@@ -25,6 +25,7 @@
     pet_inventory: 5,
     pet_warehouse: 15
   };
+  const FIXED_POINT_KEYS = {vi: true, str: true, tou: true, dx: true};
 
   function valueText(value, fallback) {
     if (value === null || value === undefined || value === "") {
@@ -144,8 +145,78 @@
     return fallback || "请求失败，请稍后重试。";
   }
 
+  function integerParts(value) {
+    const text = String(value === undefined || value === null ? "" : value).trim();
+    if (!/^[+-]?\d+$/.test(text)) {
+      return null;
+    }
+    const negative = text.charAt(0) === "-";
+    let digits = text.replace(/^[+-]/, "").replace(/^0+/, "");
+    if (!digits) {
+      digits = "0";
+    }
+    return {negative: negative && digits !== "0", digits: digits};
+  }
+
+  function integerNumber(value) {
+    const parts = integerParts(value);
+    if (!parts) {
+      return null;
+    }
+    const number = Number((parts.negative ? "-" : "") + parts.digits);
+    return Number.isSafeInteger(number) ? number : null;
+  }
+
+  // Character and pet vi/str/tou/dx values are stored as hundredths by the
+  // game. Keep the conversion in string arithmetic so entering 12.34 always
+  // produces the exact API value 1234. Item attributes use their own units.
+  function formatFixedPoint(value) {
+    const parts = integerParts(value);
+    if (!parts) {
+      return valueText(value, "");
+    }
+    const digits = parts.digits.length <= 2 ? parts.digits.padStart(3, "0") : parts.digits;
+    const integerPart = digits.slice(0, -2) || "0";
+    const fractionPart = digits.slice(-2).replace(/0+$/, "");
+    return (parts.negative ? "-" : "") + integerPart + (fractionPart ? "." + fractionPart : "");
+  }
+
+  function parseFixedPoint(value) {
+    const text = String(value === undefined || value === null ? "" : value).trim();
+    const match = text.match(/^([+-]?)(\d+)(?:\.(\d{0,2}))?$/);
+    if (!match) {
+      return {error: "请输入整数或最多两位小数。"};
+    }
+    const whole = match[2].replace(/^0+/, "") || "0";
+    const fraction = (match[3] || "").padEnd(2, "0");
+    const digits = (whole + fraction).replace(/^0+/, "") || "0";
+    const negative = match[1] === "-" && digits !== "0";
+    const number = Number((negative ? "-" : "") + digits);
+    if (!Number.isSafeInteger(number)) {
+      return {error: "数值超出允许范围。"};
+    }
+    return {value: number};
+  }
+
+  function fixedPointAttribute(attribute, scope) {
+    return (scope === "character" || scope === "pet") &&
+      Boolean(attribute && FIXED_POINT_KEYS[attribute.key]);
+  }
+
   function numberOrString(input) {
     const value = String(input.value === undefined ? "" : input.value).trim();
+    if (input.dataset && input.dataset.fixedPoint === "true") {
+      const converted = parseFixedPoint(value);
+      if (converted.error) {
+        return converted;
+      }
+      const min = input.dataset.min === "" ? null : integerNumber(input.dataset.min);
+      const max = input.dataset.max === "" ? null : integerNumber(input.dataset.max);
+      if (min !== null && converted.value < min || max !== null && converted.value > max) {
+        return {error: "数值超出允许范围。"};
+      }
+      return converted;
+    }
     if (input.dataset && input.dataset.numeric === "true") {
       const number = Number(value);
       if (!Number.isFinite(number)) {
@@ -190,8 +261,14 @@
     const dialogMessage = dialog && dialog.querySelector("#player-dialog-message");
     const dialogAccept = dialog && dialog.querySelector("[data-player-dialog-accept]");
     const dialogCancel = dialog && dialog.querySelectorAll("[data-player-dialog-cancel]");
+    const editorDialog = document.getElementById("player-editor-dialog");
+    const editorPanel = editorDialog && editorDialog.querySelector(".player-dialog-panel");
+    const editorTitle = editorDialog && editorDialog.querySelector("#player-editor-dialog-title");
+    const editorContent = editorDialog && editorDialog.querySelector("#player-editor-dialog-content");
+    const editorCancel = editorDialog && editorDialog.querySelectorAll("[data-player-editor-cancel]");
+    const editorClose = editorDialog && editorDialog.querySelector("button[data-player-editor-cancel]");
 
-    if (!characterSelect || !snapshotElement || !catalogForm || !catalogResults || !catalogSelection || !dialog) {
+    if (!characterSelect || !snapshotElement || !catalogForm || !catalogResults || !catalogSelection || !dialog || !editorDialog || !editorContent) {
       return null;
     }
 
@@ -212,7 +289,9 @@
       catalogError: "",
       selectedEntry: null,
       dialogResolve: null,
-      previousFocus: null
+      previousFocus: null,
+      editorPossession: null,
+      editorPreviousFocus: null
     };
 
     function setLoadState(message, kind) {
@@ -239,6 +318,9 @@
       state.busy = busy;
       root.classList.toggle("busy", busy);
       root.querySelectorAll("[data-player-mutate]").forEach(function (element) {
+        element.disabled = busy;
+      });
+      editorContent.querySelectorAll("[data-player-mutate]").forEach(function (element) {
         element.disabled = busy;
       });
       const submit = catalogSelection.querySelector("[data-catalog-mutate]");
@@ -300,7 +382,9 @@
       const resolve = state.dialogResolve;
       state.dialogResolve = null;
       dialog.hidden = true;
-      document.body.classList.remove("modal-open");
+      if (editorDialog.hidden) {
+        document.body.classList.remove("modal-open");
+      }
       dialogAccept.classList.remove("danger");
       const focus = state.previousFocus;
       state.previousFocus = null;
@@ -308,6 +392,43 @@
         focus.focus();
       }
       resolve(result === true);
+    }
+
+    function closePossessionEditor() {
+      if (editorDialog.hidden) {
+        return;
+      }
+      editorDialog.hidden = true;
+      clear(editorContent);
+      state.editorPossession = null;
+      const focus = state.editorPreviousFocus;
+      state.editorPreviousFocus = null;
+      if (dialog.hidden) {
+        document.body.classList.remove("modal-open");
+      }
+      if (focus && typeof focus.focus === "function") {
+        focus.focus();
+      }
+    }
+
+    function openPossessionEditor(possession) {
+      if (!possession || state.busy) {
+        return;
+      }
+      if (!editorDialog.hidden) {
+        closePossessionEditor();
+      }
+      state.editorPossession = possession;
+      state.editorPreviousFocus = document.activeElement;
+      renderPossessionEditor(possession);
+      setText(editorTitle, (possessionKind(possession.kind) === "pet" ? "编辑宠物" : "编辑物品"));
+      editorDialog.hidden = false;
+      document.body.classList.add("modal-open");
+      if (editorClose && typeof editorClose.focus === "function") {
+        editorClose.focus();
+      } else if (editorPanel && typeof editorPanel.focus === "function") {
+        editorPanel.focus();
+      }
     }
 
     function showMutationError(error) {
@@ -358,6 +479,7 @@
         if (!nextSnapshot || typeof nextSnapshot !== "object") {
           throw new Error("服务返回的角色数据无效。");
         }
+        closePossessionEditor();
         state.snapshot = nextSnapshot;
         renderSnapshot();
         setLoadState("已保存", "success");
@@ -401,7 +523,7 @@
       snapshotElement.appendChild(makeElement(document, "div", "empty", message));
     }
 
-    function renderAttributeEditor(attribute, onSave) {
+    function renderAttributeEditor(attribute, onSave, options) {
       const row = makeElement(document, "div", "attribute-row");
       const title = makeElement(document, "dt");
       title.appendChild(makeElement(document, "strong", "", valueText(attribute.label, attribute.key)));
@@ -409,10 +531,12 @@
       const valueCell = makeElement(document, "dd");
       const form = makeElement(document, "form", "attribute-editor");
       const input = document.createElement("input");
+      const fixedPoint = fixedPointAttribute(attribute, options && options.scope);
       input.type = "text";
-      input.value = valueText(attribute.value, "");
+      input.value = fixedPoint ? formatFixedPoint(attribute.value) : valueText(attribute.value, "");
       input.setAttribute("aria-label", valueText(attribute.label, attribute.key));
-      const numeric = typeof attribute.value === "number" || attribute.min !== undefined || attribute.max !== undefined;
+      input.dataset.fixedPoint = fixedPoint ? "true" : "false";
+      const numeric = fixedPoint || typeof attribute.value === "number" || attribute.min !== undefined || attribute.max !== undefined;
       input.dataset.numeric = numeric ? "true" : "false";
       if (attribute.min !== undefined && attribute.min !== null) {
         input.dataset.min = String(attribute.min);
@@ -420,9 +544,17 @@
       if (attribute.max !== undefined && attribute.max !== null) {
         input.dataset.max = String(attribute.max);
       }
+      if (fixedPoint) {
+        input.step = "0.01";
+        input.setAttribute("inputmode", "decimal");
+      }
       const bounds = [];
-      if (attribute.min !== undefined && attribute.min !== null) bounds.push("最小 " + attribute.min);
-      if (attribute.max !== undefined && attribute.max !== null) bounds.push("最大 " + attribute.max);
+      if (attribute.min !== undefined && attribute.min !== null) {
+        bounds.push("最小 " + (fixedPoint ? formatFixedPoint(attribute.min) : attribute.min));
+      }
+      if (attribute.max !== undefined && attribute.max !== null) {
+        bounds.push("最大 " + (fixedPoint ? formatFixedPoint(attribute.max) : attribute.max));
+      }
       if (bounds.length) {
         form.appendChild(makeElement(document, "small", "", bounds.join("，")));
       }
@@ -492,22 +624,38 @@
       container.appendChild(section);
     }
 
-    function renderPossessionCard(possession) {
+    function renderPossessionSummary(possession) {
       const kind = possessionKind(possession.kind);
       const location = possessionLocation(possession.location);
       const slot = normalizeSlot(possession.slot);
-      const card = makeElement(document, "article", "possession-card");
+      const summary = makeElement(document, "div", "possession-summary");
       const header = makeElement(document, "div", "possession-card-header");
       header.appendChild(makeAssetPreview(document, possession, kind));
       const title = makeElement(document, "div", "possession-title");
       title.appendChild(makeElement(document, "strong", "", valueText(possession.name, kind === "pet" ? "未命名宠物" : "未命名物品")));
       header.appendChild(title);
-      card.appendChild(header);
+      summary.appendChild(header);
       const meta = makeElement(document, "div", "possession-meta");
       meta.appendChild(makeElement(document, "span", "", (slot === null ? "槽位 —" : "槽位 " + slot)));
       meta.appendChild(makeElement(document, "span", "", slotDescription(kind, slot)));
       meta.appendChild(makeElement(document, "span", "", LOCATION_LABELS[location]));
-      card.appendChild(meta);
+      summary.appendChild(meta);
+      return summary;
+    }
+
+    function possessionMutationAction(kind) {
+      return kind === "pet" ? "set_pet" : "set_item";
+    }
+
+    function renderPossessionEditor(possession) {
+      if (!editorContent) {
+        return;
+      }
+      const kind = possessionKind(possession.kind);
+      const location = possessionLocation(possession.location);
+      const slot = normalizeSlot(possession.slot);
+      clear(editorContent);
+      editorContent.appendChild(renderPossessionSummary(possession));
 
       const nameForm = makeElement(document, "form", "possession-name-form");
       const nameInput = document.createElement("input");
@@ -515,7 +663,7 @@
       nameInput.maxLength = 64;
       nameInput.value = valueText(possession.name, "");
       nameInput.setAttribute("aria-label", "名称");
-      const nameButton = makeElement(document, "button", "primary", "改名");
+      const nameButton = makeElement(document, "button", "primary", "保存名称");
       nameButton.type = "submit";
       nameButton.dataset.playerMutate = "true";
       nameForm.appendChild(nameInput);
@@ -527,14 +675,14 @@
           nameInput.focus();
           return;
         }
-        performMutation(kind === "pet" ? "set_pet" : "set_item", {
+        performMutation(possessionMutationAction(kind), {
           location: location,
           slot: slot,
           field: "name",
           name: nameInput.value.trim()
         }, {title: "修改名称", message: "确认把名称改为「" + nameInput.value.trim() + "」？"});
       });
-      card.appendChild(nameForm);
+      editorContent.appendChild(nameForm);
 
       const attributes = asArray(possession.attributes);
       if (attributes.length) {
@@ -542,25 +690,29 @@
         attributes.forEach(function (attribute) {
           const row = makeElement(document, "div", "possession-attribute");
           row.appendChild(makeElement(document, "span", "", valueText(attribute.label, attribute.key)));
-          row.appendChild(makeElement(document, "span", "", valueText(attribute.value)));
+          row.appendChild(makeElement(document, "span", "", fixedPointAttribute(attribute, kind === "pet" ? "pet" : "item")
+            ? formatFixedPoint(attribute.value)
+            : valueText(attribute.value)));
           list.appendChild(row);
           const edit = renderAttributeEditor(attribute, function (value) {
-            performMutation(kind === "pet" ? "set_pet" : "set_item", {
+            performMutation(possessionMutationAction(kind), {
               location: location,
               slot: slot,
               field: attribute.key,
               value: value
             }, {title: "修改属性", message: "确认修改「" + valueText(attribute.label, attribute.key) + "」？"});
-          });
+          }, {scope: kind === "pet" ? "pet" : "item"});
           list.appendChild(edit);
         });
-        card.appendChild(list);
+        editorContent.appendChild(list);
+      } else {
+        editorContent.appendChild(makeElement(document, "p", "muted", "没有可编辑属性。"));
       }
       if (kind === "pet") {
-        renderPetSkills(card, possession);
+        renderPetSkills(editorContent, possession);
       }
       const actions = makeElement(document, "div", "possession-actions");
-      const remove = makeElement(document, "button", "danger", "删除");
+      const remove = makeElement(document, "button", "danger", "删除" + KIND_LABELS[kind]);
       remove.type = "button";
       remove.dataset.playerMutate = "true";
       remove.addEventListener("click", function () {
@@ -572,7 +724,28 @@
         });
       });
       actions.appendChild(remove);
-      card.appendChild(actions);
+      editorContent.appendChild(actions);
+    }
+
+    function renderPossessionCard(possession) {
+      const kind = possessionKind(possession.kind);
+      const location = possessionLocation(possession.location);
+      const slot = normalizeSlot(possession.slot);
+      const card = makeElement(document, "article", "possession-card");
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("data-possession-edit", "true");
+      card.setAttribute("aria-label", "编辑" + KIND_LABELS[kind] + "「" + valueText(possession.name, kind === "pet" ? "未命名宠物" : "未命名物品") + "」");
+      card.appendChild(renderPossessionSummary(possession));
+      card.addEventListener("click", function () {
+        openPossessionEditor(possession);
+      });
+      card.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openPossessionEditor(possession);
+        }
+      });
       return card;
     }
 
@@ -671,7 +844,7 @@
               title: "修改角色属性",
               message: "确认修改「" + valueText(attribute.label, attribute.key) + "」？"
             });
-          }));
+          }, {scope: "character"}));
         });
         attributesSection.appendChild(list);
       }
@@ -895,6 +1068,7 @@
       if (state.busy && !force) return;
       state.characterSlot = normalizedSlot;
       characterSelect.value = String(normalizedSlot);
+      closePossessionEditor();
       const requestID = ++state.snapshotRequest;
       state.snapshot = null;
       setOnlineStatus(null);
@@ -1014,10 +1188,16 @@
     });
     dialogAccept.addEventListener("click", function () { closeDialog(true); });
     dialogCancel.forEach(function (button) { button.addEventListener("click", function () { closeDialog(false); }); });
+    editorCancel.forEach(function (button) { button.addEventListener("click", function () { closePossessionEditor(); }); });
     document.addEventListener("keydown", function (event) {
       if (!dialog.hidden && event.key === "Escape") {
         event.preventDefault();
         closeDialog(false);
+        return;
+      }
+      if (!editorDialog.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closePossessionEditor();
       }
     });
     if (dialogPanel) {
@@ -1025,6 +1205,14 @@
         if (event.key === "Enter" && event.target === dialogPanel) {
           event.preventDefault();
           closeDialog(true);
+        }
+      });
+    }
+    if (editorPanel) {
+      editorPanel.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && event.target === editorPanel) {
+          event.preventDefault();
+          closePossessionEditor();
         }
       });
     }
@@ -1042,6 +1230,8 @@
     playersURL: playersURL,
     catalogKind: catalogKind,
     numberOrString: numberOrString,
+    formatFixedPoint: formatFixedPoint,
+    parseFixedPoint: parseFixedPoint,
     valueText: valueText
   };
 }));
