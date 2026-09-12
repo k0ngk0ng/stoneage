@@ -1587,6 +1587,11 @@
      clock.  The later 8.5 _OPTIMIZATIONFLIP_ build uses 8ms, but applying it
      here makes a 2.5 attack and death movie run at roughly double speed. */
   const BATTLE_PROC_TICK_MS=1000/60;
+  /* Battle animation speed is a client presentation setting.  Keep it out of
+     the battle wire state so it can never alter server turn deadlines,
+     protocol actions, or result packets. */
+  const BATTLE_ANIMATION_SPEED_KEY="stoneage:web:battle-animation-speed";
+  const BATTLE_ANIMATION_SPEED_OPTIONS=Object.freeze([1,1.5,2,3]);
   /* Field-character Action rows also advance from the 2.5 60 Hz ProcTime. */
   const LEGACY_FIELD_ANIMATION_TICK_MS=1000/60;
   /* Keep the optimized process clock only for field movement interpolation. */
@@ -1668,7 +1673,38 @@
      so MyChatBuffer.color is never reduced to a browser-only four-colour
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false,battleAnimationSpeed:1}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  function battleAnimationSpeedValue(value){
+    const number=Number(value);
+    return BATTLE_ANIMATION_SPEED_OPTIONS.includes(number)?number:1;
+  }
+  function battleAnimationSpeedLabel(value){return `${battleAnimationSpeedValue(value)}x`;}
+  function battleAnimationSpeed(){return battleAnimationSpeedValue(app.systemSettings?.battleAnimationSpeed);}
+  function battleAnimationScale(value,speed=battleAnimationSpeed()){
+    const number=Math.max(0,Number(value)||0),factor=battleAnimationSpeedValue(speed);
+    return number?Math.max(1,number/factor):0;
+  }
+  function battleAnimationOffset(value,speed=battleAnimationSpeed()){
+    const number=Math.max(0,Number(value)||0),factor=battleAnimationSpeedValue(speed);
+    return number/factor;
+  }
+  function battleAnimationStorage(){try{return globalThis.localStorage||null;}catch(_){return null;}}
+  function loadBattleAnimationSpeed(storage=battleAnimationStorage()){
+    if(!storage)return 1;
+    try{return battleAnimationSpeedValue(storage.getItem(BATTLE_ANIMATION_SPEED_KEY));}catch(_){return 1;}
+  }
+  function saveBattleAnimationSpeed(value=app.systemSettings?.battleAnimationSpeed,storage=battleAnimationStorage()){
+    const normalized=battleAnimationSpeedValue(value);if(!storage)return normalized;
+    try{storage.setItem(BATTLE_ANIMATION_SPEED_KEY,String(normalized));}catch(_){/* optional local storage */}
+    return normalized;
+  }
+  function setBattleAnimationSpeed(value){
+    const normalized=battleAnimationSpeedValue(value);
+    if(app.systemSettings)app.systemSettings.battleAnimationSpeed=normalized;
+    saveBattleAnimationSpeed(normalized);
+    return normalized;
+  }
+  app.systemSettings.battleAnimationSpeed=loadBattleAnimationSpeed();
   /* partyMoveProc() keeps a private movement buffer for every party member.
      Keep the browser equivalent outside the wire/status object so N updates
      can replace party slots without discarding an in-flight follower step. */
@@ -2829,6 +2865,8 @@
     #system-screen.system-page-chat{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:104px}
     #system-screen.system-page-bgm{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:112px}
     #system-screen.system-page-se{--legacy-x:192px;--legacy-y:96px;--legacy-w:256px;--legacy-h:288px;--system-list-x:248px;--system-list-y:160px}
+    #system-screen.system-page-battle-animation{--system-list-x:248px;--system-list-y:96px}
+    #system-screen.system-page-battle-animation .system-subpage .system-action{width:160px}
     #system-screen.system-page-chat .system-subpage,
     #system-screen.system-page-bgm .system-subpage,
     #system-screen.system-page-se .system-subpage{left:0;top:0;width:220px}
@@ -7697,8 +7735,8 @@
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
-    ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:336,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0}};
+    ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry","system-page-battle-animation"].forEach(name=>screen.classList.remove(name));
+    const specs={menu:{x:4,y:4,w:192,h:336,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},"battle-animation":{x:192,y:48,w:256,h:304,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -7846,7 +7884,8 @@
       add(displayMode==="crisp"?"    倍数显示    ":"    适应窗口    ",()=>{
         setDisplayMode(displayMode==="crisp"?"fit":"crisp");renderSystem();
       },160);
-      const close=systemChoice("    关    闭    ",closeGameplayOverlay,212);list.append(close);
+      add(`    战斗动画 ${battleAnimationSpeedLabel(settings.battleAnimationSpeed)}    `,()=>{app.systemPage="battle-animation";renderSystem();},200);
+      const close=systemChoice("    关    闭    ",closeGameplayOverlay,252);list.append(close);
       return;
     }
     if(page==="logout-choice"){
@@ -7895,6 +7934,16 @@
       sub.append(systemAction("     减     少     ",()=>{settings.seVolumeLevel=Math.max(1,audioSettingLevel(settings.seVolumeLevel)-1);renderSystem();},80));
       sub.append(systemAction(settings.seStereo?"       立体声       ":"       单声道       ",()=>{settings.seStereo=!settings.seStereo;renderSystem();},120));
       systemReturn(sub,172);list.append(sub);return;
+    }
+    if(page==="battle-animation"){
+      const current=battleAnimationSpeed(),sub=systemSubpage(""),options=BATTLE_ANIMATION_SPEED_OPTIONS;
+      sub.append(systemValue(`◆ 目前速度 ${battleAnimationSpeedLabel(current)} ◆`,0,-8));
+      options.forEach((speed,index)=>{
+        const action=systemAction(`${battleAnimationSpeedLabel(speed)}${speed===current?"  ◆":""}`,()=>{setBattleAnimationSpeed(speed);app.systemPage="menu";renderSystem();},40+index*40);
+        if(speed===current)action.classList.add("selected");
+        sub.append(action);
+      });
+      systemReturn(sub,216);list.append(sub);return;
     }
     if(page==="registry"){
       const registry=document.createElement("div");registry.className="system-registry";registry.style.background="url('/assets/bitmaps/bitmap_9288.png') center/272px 430px no-repeat";
@@ -11002,7 +11051,7 @@
   function battlePushEffect(effects,target,text,kind="",extra={}){
     if(!Number.isFinite(Number(target))||target<0||!String(text||"")&&!extra.graphic)return;
     const value=String(text||"");
-    const duration=Math.max(700,Number(extra.duration)||1100),now=Date.now();
+    const duration=Math.max(700,Number(extra.duration)||1100),now=Date.now(),speed=battlePlaybackSpeed(extra),playbackDuration=battleAnimationScale(duration,speed);
     const startsAt=Math.max(now,Number(extra.startsAt)||now);
     /* oft.cpp::damage_num() selects these CG_ICON_* records instead of
        drawing a browser string. Keep the string as a cold-cache fallback;
@@ -11032,7 +11081,7 @@
       Math.abs(Number(item.startsAt||0)-startsAt)<80
     );
     if(duplicate)return;
-    effects.push({target:Number(target),text:value,kind,startsAt,until:startsAt+duration,...extra});
+    effects.push({target:Number(target),text:value,kind,...extra,startsAt,duration,playbackSpeed:speed,playbackDuration,until:startsAt+playbackDuration});
   }
   /* The 2.5 server packs the special-skill result into BCF_* bits on the
      ordinary BH/Bf/Bb/BY/BO tuple.  The old web renderer displayed only the
@@ -11119,6 +11168,7 @@
      driven by the movie records that follow it.  Keep those records as a
      small presentation queue.  This is deliberately visual state only: the
      server remains authoritative for HP, MP and roster membership. */
+  function battlePlaybackSpeed(item){return battleAnimationSpeedValue(item?.playbackSpeed??battleAnimationSpeed());}
   function battlePushMotion(motions,motion){
     if(!motion||!Number.isFinite(Number(motion.actor??motion.target)))return;
     /* Most browser presentation records need at least 120 ms so one decoded
@@ -11126,8 +11176,12 @@
        master action commits the revive and returns to command state in one
        BattleProc tick.  Let that one explicitly marked record retain its
        exact tick duration instead of stretching it into a fake animation. */
-    const now=Date.now(),minimumDuration=motion.nativeTick?BATTLE_PROC_TICK_MS:120,duration=Math.max(minimumDuration,Number(motion.duration)||360),delay=Math.max(0,Number(motion.delay)||0),startedAt=Number(motion.startedAt)||now;
-    const entry={...motion,startedAt,delay,until:Number(motion.until)||startedAt+delay+duration,duration};
+    const now=Date.now(),minimumDuration=motion.nativeTick?BATTLE_PROC_TICK_MS:120,duration=Math.max(minimumDuration,Number(motion.duration)||360),delay=Math.max(0,Number(motion.delay)||0),startedAt=Number(motion.startedAt)||now,speed=battlePlaybackSpeed(motion),explicitStart=Number(motion.playbackStartAt),playbackStartAt=Number.isFinite(explicitStart)&&explicitStart>0?explicitStart:startedAt+battleAnimationOffset(delay,speed),playbackDuration=battleAnimationScale(duration,speed);
+    /* Keep the native phase fields in their original process-tick units.  The
+       renderer consumes a logical elapsed value (wall time multiplied by the
+       captured speed), while these wall-clock fields release the queue and
+       pending callbacks at the same accelerated deadline. */
+    const entry={...motion,startedAt,delay,playbackSpeed:speed,playbackStartAt,playbackDuration,until:playbackStartAt+playbackDuration,duration};
     motions.push(entry);
     /* A single 2.5 B movie can contain five formation rows, multi-hit BH,
        counters, guard reactions and VCT250 corpse tails at once.  The old
@@ -11151,13 +11205,13 @@
   function battlePushProjectile(state,projectile){
     if(!state||!projectile)return;
     const from=Array.isArray(projectile.from)?projectile.from:[0,0],to=Array.isArray(projectile.to)?projectile.to:from;
-    const now=Date.now(),requestedStart=Number(projectile.startAt),hasRequestedStart=Number.isFinite(requestedStart)&&requestedStart>0,preserveSharedTimeline=String(projectile.kind||"")==="model",startAt=hasRequestedStart?(preserveSharedTimeline?requestedStart:Math.max(now,requestedStart)):now,duration=Math.max(100,Number(projectile.duration)||260),endAt=Math.max(startAt+duration,Number(projectile.endAt)||startAt+duration);
+    const now=Date.now(),requestedStart=Number(projectile.startAt),hasRequestedStart=Number.isFinite(requestedStart)&&requestedStart>0,preserveSharedTimeline=String(projectile.kind||"")==="model",startAt=hasRequestedStart?(preserveSharedTimeline?requestedStart:Math.max(now,requestedStart)):now,requestedDuration=Number(projectile.duration),requestedEnd=Number(projectile.endAt),duration=Math.max(100,Number.isFinite(requestedDuration)&&requestedDuration>0?requestedDuration:Number.isFinite(requestedEnd)&&requestedEnd>startAt?requestedEnd-startAt:260),speed=battlePlaybackSpeed(projectile),playbackDuration=battleAnimationScale(duration,speed),endAt=startAt+playbackDuration;
     /* BATTLE_BattleModel() uses the `a` tuple value as ATR_CHR_NO: it is the
        graphic number of the temporary T_PRIO_BOW action, not a character
        animation action.  Keep both spellings on the queued projectile so a
        model effect can resolve the extracted bitmap just like the native
        temporary action. */
-    const entry={...projectile,from:[Number(from[0])||0,Number(from[1])||0],to:[Number(to[0])||0,Number(to[1])||0],startedAt:startAt,duration:endAt-startAt,until:endAt};
+    const entry={...projectile,from:[Number(from[0])||0,Number(from[1])||0],to:[Number(to[0])||0,Number(to[1])||0],startedAt:startAt,duration,playbackSpeed:speed,playbackDuration,playbackStartAt:startAt,until:endAt};
     if(!Array.isArray(state.projectiles))state.projectiles=[];
     state.projectiles.push(entry);
     /* A multi-target/model movie is parsed in one pass.  Keep every future
@@ -11425,16 +11479,16 @@
     return {actor:id,direction:facing,duration,endOffset:duration,samples,turns:BATTLE_PET_NIX_TURNS};
   }
   function battleProjectileValue(projectile,now=Date.now()){
-    const start=Number(projectile?.startedAt)||now,end=Number(projectile?.until)||start+Math.max(1,Number(projectile?.duration)||1),progress=battleNativeTickProgress(now-start,end-start),from=projectile?.from||[0,0],to=projectile?.to||from,kind=String(projectile?.kind||"arrow");
+    const speed=battlePlaybackSpeed(projectile),start=Number.isFinite(Number(projectile?.playbackStartAt))&&Number(projectile.playbackStartAt)>0?Number(projectile.playbackStartAt):Number(projectile?.startedAt)||now,duration=Math.max(1,Number(projectile?.duration)||1),elapsed=Math.max(0,(now-start)*speed),progress=battleNativeTickProgress(elapsed,duration),from=projectile?.from||[0,0],to=projectile?.to||from,kind=String(projectile?.kind||"arrow");
     const sx=Number(from[0])||0,sy=Number(from[1])||0,tx=Number(to[0])||sx,ty=Number(to[1])||sy;
     let x=sx+(tx-sx)*progress,y=sy+(ty-sy)*progress,angle=Math.atan2(ty-sy,tx-sx)*180/Math.PI;
     let nativeSample=null;
     if(Array.isArray(projectile?.samples)&&projectile.samples.length){
-      const elapsed=Math.max(0,Math.min(end-start,now-start)),samples=projectile.samples;let sample=samples[0];
+      const samples=projectile.samples;let sample=samples[0];
       for(let index=1;index<samples.length;index++){if(Number(samples[index].offset)>elapsed)break;sample=samples[index];}
       nativeSample=sample;x=Number(sample.x)||0;y=Number(sample.y)||0;angle=Number.isFinite(Number(sample.angle))?Number(sample.angle):angle;
     }else if(Array.isArray(projectile?.waypoints)&&projectile.waypoints.length>1){
-      const points=projectile.waypoints,offsets=Array.isArray(projectile.waypointOffsets)&&projectile.waypointOffsets.length===points.length?projectile.waypointOffsets:points.map((_,index)=>(end-start)*index/(points.length-1)),elapsed=Math.max(0,Math.min(end-start,now-start));
+      const points=projectile.waypoints,offsets=Array.isArray(projectile.waypointOffsets)&&projectile.waypointOffsets.length===points.length?projectile.waypointOffsets:points.map((_,index)=>duration*index/(points.length-1));
       let segment=points.length-2;
       for(let index=0;index<points.length-1;index++){if(elapsed<=Number(offsets[index+1])){segment=index;break;}}
       const segmentStart=Number(offsets[segment])||0,segmentEnd=Math.max(segmentStart+1,Number(offsets[segment+1])||segmentStart+1),part=battleNativeTickProgress(elapsed-segmentStart,segmentEnd-segmentStart),a=points[segment]||[sx,sy],b=points[segment+1]||[tx,ty],dx=(Number(b[0])||0)-(Number(a[0])||0),dy=(Number(b[1])||0)-(Number(a[1])||0),length=Math.max(1,Math.hypot(dx,dy)),arc=Math.sin(part*Math.PI)*Math.min(12,length*.08);
@@ -11448,7 +11502,7 @@
       else{x=tx-dx*returnProgress;y=ty-dy*returnProgress;angle=Math.atan2(-dy,-dx)*180/Math.PI;}
       x+=(-dy/length)*arc;y+=(dx/length)*arc;
     }
-    return {x,y,angle,progress,opacity:kind==="model"?1:Math.max(.15,1-Math.max(0,progress-.92)/.08),...(nativeSample||{})};
+    return {x,y,angle,progress,playbackSpeed:speed,opacity:kind==="model"?1:Math.max(.15,1-Math.max(0,progress-.92)/.08),...(nativeSample||{})};
   }
   /* radar() expresses a missile course as 0=up, 8=right, 16=down and
      24=left.  ATT_BOW uses course/2 to select one of the sixteen pre-drawn
@@ -11477,7 +11531,7 @@
        actorFrame() to take its generic bitmap fallback paints that pet as a
        missile.  Only enter this path when an actual animated SPR exists. */
     if(!spriteEntryForActor({graphic,graphicKey:String(graphic)}))return null;
-    const elapsed=Math.max(0,Number(now||Date.now())-(Number(projectile?.startedAt)||Number(now)||Date.now()));
+    const start=Number.isFinite(Number(projectile?.playbackStartAt))&&Number(projectile.playbackStartAt)>0?Number(projectile.playbackStartAt):(Number(projectile?.startedAt)||Number(now)||Date.now()),elapsed=Math.max(0,(Number(now||Date.now())-start)*battlePlaybackSpeed(projectile));
     const frame=actorFrame({battle:true,graphic,graphicKey:String(graphic),direction,action:Number(action)||0,animationStartedAt:performance.now()-elapsed,animationLoop:true});
     if(!frame?.image?.complete||!frame.image.naturalWidth)return null;
     return {image:frame.image,x:Number(frame.x)||0,y:(Number(frame.y)||0)+Number(verticalOffset||0)};
@@ -11861,14 +11915,14 @@
   }
   function battleQueueRevive(state,target,hp,startsAt=Date.now()){
     if(!state||!Number.isFinite(Number(target))||Number(target)<0)return null;
-    const id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now),duration=BATTLE_PROC_TICK_MS,list=Array.isArray(state.motions)?state.motions:(state.motions=[]);
+    const id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now),duration=BATTLE_PROC_TICK_MS,speed=battleAnimationSpeed(),playbackDuration=battleAnimationScale(duration,speed),list=Array.isArray(state.motions)?state.motions:(state.motions=[]);
     /* BL is an EntrySort action, not an eager roster patch.  Keep the corpse
        authoritative until this action reaches the head of the movie, then
        perform the exact ATT_LIFE state change on that process tick. */
-    battlePushMotion(list,{kind:"revive",target:id,startedAt:now,delay:startAt-now,duration,nativeTick:true});
-    state.motionQueueAt=Math.max(Number(state.motionQueueAt)||now,startAt+duration);
+    battlePushMotion(list,{kind:"revive",target:id,startedAt:now,delay:startAt-now,playbackStartAt:startAt,playbackSpeed:speed,duration,nativeTick:true});
+    state.motionQueueAt=Math.max(Number(state.motionQueueAt)||now,startAt+playbackDuration);
     battleScheduleDamage(state,startAt,()=>battleCommitRevive(state,id,hp));
-    return {startAt,endAt:startAt+duration,duration};
+    return {startAt,endAt:startAt+playbackDuration,duration:playbackDuration,playbackSpeed:speed};
   }
   function battleQueueDeath(state,target,duration=1000,startsAt=Date.now(),directionHint=null){
     if(!state||!Number.isFinite(Number(target))||Number(target)<0)return;
@@ -11900,12 +11954,13 @@
        the knockback endpoint.  During VCT250 battleMotionValue owns the
        moving return; once this timestamp is reached the final VCT252 corpse
        remains at the exact formation coordinates. */
+    const speed=battleAnimationSpeed();
     state.deathOffsets.set(id,finalOffset);
-    if(!state.deathStartedAt.has(id))state.deathStartedAt.set(id,startAt+deadStartOffset);
+    if(!state.deathStartedAt.has(id))state.deathStartedAt.set(id,startAt+battleAnimationOffset(deadStartOffset,speed));
     /* monster() changes VCT251 to VCT252 only after the non-looping DEAD row
        finishes, then plays SE 6 at the corpse's horizontal position.  Queue
        it at that exact boundary instead of playing it when HP first hits 0. */
-    const deathSoundAt=startAt+deadStartOffset+deadDuration;
+    const deathSoundAt=startAt+battleAnimationOffset(deadStartOffset+deadDuration,speed);
     battleScheduleSound(state,deathSoundAt,()=>{const point=battleSlotPoint(id);playSoundEffect(6,Number(point[0])||320,240);});
     /* VCT250..252 is a per-actor presentation tail after the DEAD transition.
        It must remain paintable through the final frame, but it is not the
@@ -11914,7 +11969,7 @@
        still carry the old `returnDuration:0` shape, so battleMotionValue also
        accepts that fallback; new deaths expose the native return duration in
        both aliases for callers that inspect the motion directly. */
-    battlePushMotion(list,{kind:"death",target:id,direction,hurtDirection,startedAt:now,delay:startAt-now,duration:totalDuration,fixedPosition:profile.fixedPosition,slowSlide:profile.slowSlide,decelAnimationLoop:profile.decelAnimationLoop,vct10Duration,knockbackDuration,decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX:Math.cos(angle)*profile.knockbackStepDistance,knockbackStepY:Math.sin(angle)*profile.knockbackStepDistance,pauseDuration,returnDuration,returnToOriginDuration:returnDuration,returnSpeed,returnStopDistance,deathStartOffset,deadStartOffset,deadDuration,knockbackDistance,decelDistance,knockbackX:Math.cos(angle)*knockbackDistance,knockbackY:Math.sin(angle)*knockbackDistance,decelX:Math.cos(angle)*decelDistance,decelY:Math.sin(angle)*decelDistance,displacedOffsetX:displacedOffset.dx,displacedOffsetY:displacedOffset.dy,finalOffsetX:finalOffset.dx,finalOffsetY:finalOffset.dy,blocking:false,presentationTail:true});
+    battlePushMotion(list,{kind:"death",target:id,direction,hurtDirection,startedAt:now,delay:startAt-now,playbackStartAt:startAt,playbackSpeed:speed,duration:totalDuration,fixedPosition:profile.fixedPosition,slowSlide:profile.slowSlide,decelAnimationLoop:profile.decelAnimationLoop,vct10Duration,knockbackDuration,decelDuration,decelSpeeds:profile.decelSpeeds,knockbackAlternates:profile.knockbackAlternates,knockbackStepX:Math.cos(angle)*profile.knockbackStepDistance,knockbackStepY:Math.sin(angle)*profile.knockbackStepDistance,pauseDuration,returnDuration,returnToOriginDuration:returnDuration,returnSpeed,returnStopDistance,deathStartOffset,deadStartOffset,deadDuration,knockbackDistance,decelDistance,knockbackX:Math.cos(angle)*knockbackDistance,knockbackY:Math.sin(angle)*knockbackDistance,decelX:Math.cos(angle)*decelDistance,decelY:Math.sin(angle)*decelDistance,displacedOffsetX:displacedOffset.dx,displacedOffsetY:displacedOffset.dy,finalOffsetX:finalOffset.dx,finalOffsetY:finalOffset.dy,blocking:false,presentationTail:true});
     if(state.result)queueBattleResult(state);else if(state.exitPending)queueBattleWorldExit(state);
   }
   /* ATT_DAMAGE (BD) uses VCT78/79 rather than DAMAGE()'s VCT10..14 chain.
@@ -11924,19 +11979,19 @@
      tail, while the 60-tick status phase still blocks the next movie batch. */
   function battleQueueDirectDeath(state,target,startsAt=Date.now()){
     if(!state||!Number.isFinite(Number(target))||Number(target)<0)return;
-    const id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now);
+    const id=Number(target),now=Date.now(),startAt=Math.max(now,Number(startsAt)||now),speed=battleAnimationSpeed();
     if(state.deathStartedAt instanceof Map&&state.deathStartedAt.has(id))return;
     const item=battleFindParticipant(id);if(item){item.dead=true;item.hp=0;}
     const deadTiming=battleActorAnimationTiming(id,battleSlotDirection(id),2),deadDuration=Math.max(180,Number(deadTiming?.duration)||240),bdDuration=60*BATTLE_PROC_TICK_MS;
     if(!(state.deathStartedAt instanceof Map))state.deathStartedAt=new Map();
     if(!(state.deathOffsets instanceof Map))state.deathOffsets=new Map();
-    state.deathStartedAt.set(id,startAt+bdDuration);
+    state.deathStartedAt.set(id,startAt+battleAnimationOffset(bdDuration,speed));
     state.deathOffsets.set(id,{dx:0,dy:0});
-    battleScheduleSound(state,startAt+bdDuration+deadDuration,()=>{const point=battleSlotPoint(id);playSoundEffect(6,Number(point[0])||320,240);});
-    battlePushMotion(state.motions|| (state.motions=[]),{kind:"death-direct",target:id,startedAt:now,delay:startAt-now,duration:bdDuration+deadDuration,bdDuration,deadStartOffset:bdDuration,deadDuration,blocking:false,presentationTail:true});
+    battleScheduleSound(state,startAt+battleAnimationOffset(bdDuration+deadDuration,speed),()=>{const point=battleSlotPoint(id);playSoundEffect(6,Number(point[0])||320,240);});
+    battlePushMotion(state.motions|| (state.motions=[]),{kind:"death-direct",target:id,startedAt:now,delay:startAt-now,playbackStartAt:startAt,playbackSpeed:speed,duration:bdDuration+deadDuration,bdDuration,deadStartOffset:bdDuration,deadDuration,blocking:false,presentationTail:true});
     /* The corpse's DEAD presentation tail may overlap the next speed-sorted
        actor, but its 60-tick ATT_DAMAGE phase is still the action barrier. */
-    state.motionQueueAt=Math.max(Number(state.motionQueueAt)||now,startAt+bdDuration);
+    state.motionQueueAt=Math.max(Number(state.motionQueueAt)||now,startAt+battleAnimationOffset(bdDuration,speed));
     if(state.result)queueBattleResult(state);else if(state.exitPending)queueBattleWorldExit(state);
   }
   /* Native master_500() gives one ACTION a single VCT state at a time.  A
@@ -11975,7 +12030,7 @@
     const value={dx:0,dy:0,opacity:1,action:3,attack:false,hit:false,fade:false,escape:false,direction:null,animationStartedAt:0,animationLoop:true};
     const active=[];
     for(const [index,motion] of (Array.isArray(state?.motions)?state.motions:[]).entries()){
-      const startedAt=Number(motion?.startedAt||now),delay=Math.max(0,Number(motion?.delay)||0),motionStart=startedAt+delay,elapsedRaw=now-motionStart;
+      const startedAt=Number(motion?.startedAt||now),delay=Math.max(0,Number(motion?.delay)||0),speed=battlePlaybackSpeed(motion),motionStart=Number.isFinite(Number(motion?.playbackStartAt))&&Number(motion.playbackStartAt)>0?Number(motion.playbackStartAt):startedAt+delay,elapsedRaw=now-motionStart;
       if(elapsedRaw<0)continue;
       if(Number(motion?.until)>0&&Number(motion.until)<=now)continue;
       const priority=battleMotionRenderPriority(motion,id);if(priority<0)continue;
@@ -11983,8 +12038,8 @@
     }
     active.sort((left,right)=>right.priority-left.priority||right.motionStart-left.motionStart||right.index-left.index);
     for(const selected of active.slice(0,1)){
-      const motion=selected.motion,actor=Number(motion.actor),target=Number(motion.target),motionStart=selected.motionStart;
-      const elapsed=Math.max(0,now-motionStart),progress=Math.max(0,Math.min(1,elapsed/Math.max(1,Number(motion.duration)||1)));
+      const motion=selected.motion,actor=Number(motion.actor),target=Number(motion.target),motionStart=selected.motionStart,speed=battlePlaybackSpeed(motion);
+      const elapsed=Math.max(0,(now-motionStart)*speed),progress=Math.max(0,Math.min(1,elapsed/Math.max(1,Number(motion.duration)||1)));
       const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
       if(motion.kind==="revive"&&target===Number(id)){
         /* ATT_LIFE has no hit/heal animation of its own.  It restores the
@@ -12034,12 +12089,17 @@
            12-frame player attack in half, so consume the explicit phase
            durations stored on the motion. */
         const total=Math.max(1,Number(motion.duration)||1),approach=Math.max(0,Number(motion.approachDuration)||0),attackDuration=Math.max(1,Number(motion.attackDuration)||Math.max(1,total*.26)),hold=Math.max(0,Number(motion.postAttackHold)||0),returnDuration=Math.max(1,Number(motion.returnDuration)||Math.max(1,total-approach-attackDuration-hold));
-        const attackStart=motionStart+approach,returnStart=attackStart+attackDuration+hold;
+        /* `elapsed` is the native animation clock.  It already includes the
+           captured playback multiplier, while every phase duration below is
+           kept in native milliseconds.  Comparing a wall-clock `now` with
+           these raw offsets would make the attack pose and return walk run at
+           1x after the movement itself had been accelerated. */
+        const attackStart=approach,returnStart=attackStart+attackDuration+hold;
         const distance=Math.hypot(Number(motion.toX||0),Number(motion.toY||0)),stop=distance>64?Math.max(0,Math.min(1,1-64/distance)):0,contactX=Number.isFinite(Number(motion.contactX))?Number(motion.contactX):Number(motion.toX||0)*stop,contactY=Number.isFinite(Number(motion.contactY))?Number(motion.contactY):Number(motion.toY||0)*stop;
         let travel=0;
         if(elapsed<approach)travel=battleNativeTickProgress(elapsed,Math.max(1,approach));
-        else if(now<returnStart)travel=1;
-        else travel=1-battleNativeTickProgress(now-returnStart,returnDuration);
+        else if(elapsed<returnStart)travel=1;
+        else travel=1-battleNativeTickProgress(elapsed-returnStart,returnDuration);
         const amount=Math.max(0,Math.min(1,travel));
         value.dx+=contactX*amount;value.dy+=contactY*amount;
         /* monster() calls radar() at the start of every attack, including
@@ -12052,11 +12112,11 @@
            on its final decoded frame. */
         if(elapsed<approach){
           value.action=4;
-          value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+          value.animationStartedAt=performance.now()-Math.max(0,elapsed);
           value.animationLoop=true;
-        }else if(now<returnStart){
+        }else if(elapsed<returnStart){
           value.action=Number(motion.attackAction??0);
-          const frameElapsed=battleAnimationElapsedWithHolds(Math.max(0,now-attackStart),motion.animationHolds);
+          const frameElapsed=battleAnimationElapsedWithHolds(Math.max(0,elapsed-attackStart),motion.animationHolds);
           value.animationStartedAt=performance.now()-frameElapsed;
           value.animationLoop=false;
         }else if(Number(motion.returnDuration)>0){
@@ -12065,13 +12125,13 @@
              performance.now() every repaint (which froze the sprite on its
              first return frame after each attack). */
           value.direction=battleSlotDirection(id);
-          value.animationStartedAt=performance.now()-Math.max(0,now-returnStart);
+          value.animationStartedAt=performance.now()-Math.max(0,elapsed-returnStart);
           value.animationLoop=true;
         }else{
           /* A counter begins and ends at the contact point established by
              the original attack/dodge chain.  Its actor does not perform a
              second formation-to-formation approach or a private return. */
-          value.action=3;value.animationStartedAt=performance.now()-Math.max(0,now-returnStart);value.animationLoop=true;
+          value.action=3;value.animationStartedAt=performance.now()-Math.max(0,elapsed-returnStart);value.animationLoop=true;
         }
         value.attack=true;
       }else if(motion.kind==="hit"&&target===Number(id)){
@@ -12109,7 +12169,7 @@
         }else{
           /* Compatibility for an old restored motion that predates the
              explicit VCT10..14 phase fields. */
-          const pulse=Math.max(0,1-progress),shake=Math.sin(elapsed/18)*3*pulse;value.dx+=shake;value.dy-=Math.abs(shake)*.35;value.action=1;value.hit=true;value.direction=hurtDirection;value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);value.animationLoop=false;
+          const pulse=Math.max(0,1-progress),shake=Math.sin(elapsed/18)*3*pulse;value.dx+=shake;value.dy-=Math.abs(shake)*.35;value.action=1;value.hit=true;value.direction=hurtDirection;value.animationStartedAt=performance.now()-Math.max(0,elapsed);value.animationLoop=false;
         }
       }else if(motion.kind==="dodge"&&target===Number(id)){
         const outDuration=Math.max(BATTLE_PROC_TICK_MS,Number(motion.outDuration)||20*BATTLE_PROC_TICK_MS),waitDuration=Math.max(0,Number(motion.waitDuration)||0),backDuration=Math.max(BATTLE_PROC_TICK_MS,Number(motion.backDuration)||20*BATTLE_PROC_TICK_MS),backStart=outDuration+waitDuration;
@@ -12120,7 +12180,7 @@
         value.action=4;value.animationLoop=true;value.hit=true;
         /* Native dodge walks with DAMAGE_ANG+4, i.e. away from the hit. */
         const incoming=Number(motion.direction);value.direction=Number.isFinite(incoming)?(incoming+4)&7:value.direction;
-        value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+        value.animationStartedAt=performance.now()-Math.max(0,elapsed);
       }else if((motion.kind==="escape"||motion.kind==="escape-fail")&&(actor===Number(id)||target===Number(id))){
         /* BE is the native escape movie.  A successful BE (f1) runs the
            actor off its side of the field; a failed BE (f0) only plays the
@@ -12128,7 +12188,7 @@
            idle pose.  Treating both forms as BF/BE fade-out made a failed
            escape disappear and then pop back in on the next BC refresh. */
         value.escape=true;value.action=4;
-        value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);value.animationLoop=true;
+        value.animationStartedAt=performance.now()-Math.max(0,elapsed);value.animationLoop=true;
         if(motion.kind==="escape"){
           const run=Math.min(1,progress/.88),easeRun=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
           const amount=easeRun(run);value.dx+=Number(motion.toX||0)*amount;value.dy+=Number(motion.toY||0)*amount;value.opacity=Math.max(.02,1-progress);value.fade=true;
@@ -12202,14 +12262,14 @@
            no-action.  It advances the turn counter but does not fire a
            weapon; keep the actor in its standing pose until the later BH/BB
            packet rather than borrowing the throw animation. */
-        value.action=3;value.animationLoop=true;value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+        value.action=3;value.animationLoop=true;value.animationStartedAt=performance.now()-Math.max(0,elapsed);
       }else if(motion.kind==="catch"&&actor===Number(id)){
         /* boomerang() VCT72 switches the thrower to looping ANIM_HAND when
            the returning missile comes within 80 pixels, then keeps it for
            the native sixteen-tick catch tail. */
         if(Number.isFinite(Number(motion.direction)))value.direction=Number(motion.direction);
         value.action=6;value.attack=true;value.animationLoop=true;
-        value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+        value.animationStartedAt=performance.now()-Math.max(0,elapsed);
       }else if(motion.kind==="boomerang-track"&&actor===Number(id)){
         /* master_500 VCT71 is a standing loop whose course is updated by
            radar2(...,2) toward the live boomerang ACTION on every process
@@ -12220,14 +12280,14 @@
         if(Number.isFinite(Number(sample?.direction)))value.direction=Number(sample.direction);
         else if(Number.isFinite(Number(motion.direction)))value.direction=Number(motion.direction);
         value.action=3;value.attack=true;value.animationLoop=true;
-        value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+        value.animationStartedAt=performance.now()-Math.max(0,elapsed);
       }else if(motion.kind==="cast"&&actor===Number(id)){
         if(Number.isFinite(Number(motion.direction)))value.direction=Number(motion.direction);
         /* PROSKILL values e=0/1 keep the caster in VCT0/standing while the
            pre-cast sprite runs.  Other cast records (BJ/B$/BN) retain their
            native one-shot attack pose. */
         value.action=motion.standingCast?3:Number(motion.attackAction??0);value.attack=!motion.standingCast;value.animationLoop=Boolean(motion.standingCast);
-        value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+        value.animationStartedAt=performance.now()-Math.max(0,elapsed);
       }else if(motion.kind==="guard"&&(actor===Number(id)||target===Number(id))){
         /* BG/X-style guard records are a single pose.  A guard reaction
            attached to a damage tuple carries the same explicit VCT phases as
@@ -12245,20 +12305,29 @@
           else{value.action=4;value.direction=Number.isFinite(Number(motion.direction))?(Number(motion.direction)+4)&7:hurtDirection;value.animationLoop=true;value.animationStartedAt=performance.now()-Math.max(0,returnDuration);}
         }else{
           value.action=10;value.attack=false;value.animationLoop=false;if(Number.isFinite(Number(motion.direction)))value.direction=Number(motion.direction);
-          value.animationStartedAt=performance.now()-Math.max(0,now-motionStart);
+          value.animationStartedAt=performance.now()-Math.max(0,elapsed);
         }
       }
     }
     /* A BC death flag is authoritative even after the one-second death movie
        has left the transient queue. Keep the final dead frame on screen until
        BU/RS closes the battle instead of looping back to a standing sprite. */
-    const deadAt=state?.deathStartedAt instanceof Map?state.deathStartedAt.get(Number(id)):0;
-    if(deadAt&&now>=Number(deadAt)){
+    const deadAt=state?.deathStartedAt instanceof Map?state.deathStartedAt.get(Number(id)):0,terminalMotionActive=active.some(({motion})=>(motion?.kind==="death"||motion?.kind==="death-direct")&&Number(motion.target)===Number(id)&&Number(motion.until)>now);
+    /* While a queued death motion is still alive it owns VCT250..252.  The
+       deathStartedAt map marks the beginning of the terminal phase, so
+       applying the held-corpse fallback here would skip the return/dead
+       animation immediately at that boundary. */
+    if(deadAt&&now>=Number(deadAt)&&!terminalMotionActive){
       const deathOffset=state?.deathOffsets instanceof Map?state.deathOffsets.get(Number(id)):null;
       if(deathOffset){value.dx=Number(deathOffset.dx)||0;value.dy=Number(deathOffset.dy)||0;}
       value.action=2;value.animationLoop=false;
       value.hit=false;
-      value.animationStartedAt=performance.now()-Math.max(0,now-Number(deadAt));
+      /* The terminal map timestamp is the wall-clock moment at which the
+         native DEAD action starts.  Once the transient motion is gone, keep
+         the non-looping action past its final frame so a 2x/3x setting cannot
+         replay the corpse from the accelerated boundary at 1x. */
+      const corpseElapsed=1e9;
+      value.animationStartedAt=performance.now()-corpseElapsed;
       /* VCT_NO_DIE+2 keeps the final corpse frame in the back buffer.  It is
          not a fade-out record; BU/RS owns removal of the battle surface. */
       value.opacity=1;value.fade=false;
@@ -12352,13 +12421,13 @@
        queue, so there is no need for a timeout-based reset here. */
     if(!Number.isFinite(Number(state.motionQueueAt)))state.motionQueueAt=now;
     const queueMotion=(motion,duration=motion?.duration||420,blockingDuration=duration)=>{
-      const queuedNow=Date.now(),start=Math.max(queuedNow,Number(state.motionQueueAt)||queuedNow),length=Math.max(120,Number(duration)||360),blockingLength=Math.max(0,Math.min(length,Number(blockingDuration)||0));
-      battlePushMotion(state.motions,{...motion,startedAt:queuedNow,delay:Math.max(0,start-queuedNow),duration:length});
+      const queuedNow=Date.now(),speed=battleAnimationSpeed(),rawLength=Math.max(120,Number(duration)||360),rawBlockingLength=Math.max(0,Math.min(rawLength,Number(blockingDuration)||0)),length=battleAnimationScale(rawLength,speed),blockingLength=battleAnimationScale(rawBlockingLength,speed),start=Math.max(queuedNow,Number(state.motionQueueAt)||queuedNow);
+      battlePushMotion(state.motions,{...motion,startedAt:queuedNow,delay:Math.max(0,start-queuedNow),playbackStartAt:start,playbackSpeed:speed,duration:rawLength});
       /* EntrySort() already serializes ordinary movie actions.  The native
          next ACTION becomes runnable as soon as the current action_inf is
          complete; there is no extra wall-clock spacer between records. */
       state.motionQueueAt=start+blockingLength;
-      const timing={startAt:start,endAt:start+length,duration:length,direction:motion?.direction,attackStartAt:start+Math.max(0,Number(motion?.attackStartOffset)||0),attackDuration:Math.max(0,Number(motion?.attackDuration)||0),contactAt:start+Math.max(0,Number(motion?.contactOffset)||0),contactOffsets:(motion?.contactOffsets||[]).map(offset=>start+Math.max(0,Number(offset)||0)),nativeContact:Boolean(motion?.nativeContact)};
+      const timing={startAt:start,endAt:start+length,duration:length,playbackSpeed:speed,direction:motion?.direction,attackStartAt:start+battleAnimationOffset(motion?.attackStartOffset,speed),attackDuration:battleAnimationScale(motion?.attackDuration,speed),contactAt:start+battleAnimationOffset(motion?.contactOffset,speed),contactOffsets:(motion?.contactOffsets||[]).map(offset=>start+battleAnimationOffset(offset,speed)),nativeContact:Boolean(motion?.nativeContact)};
       /* PATTERN.CPP plays SoundNo<10000 when that exact frame becomes
          current.  Schedule those events once with the movie rather than
          trying to infer them from render cadence (which can skip frames in
@@ -12366,19 +12435,19 @@
       const point=Number.isFinite(Number(motion?.actor))?battleSlotPoint(Number(motion.actor)):[320,240];
       for(const event of motion?.soundEvents||[]){
         if(Number(event?.sound)<=0||Number(event.sound)>=10000)continue;
-        battleScheduleDamage(state,start+Math.max(0,Number(event.offset)||0),()=>playSoundEffect(Number(event.sound),Number(point[0])||320,Number(point[1])||240));
+        battleScheduleDamage(state,start+battleAnimationOffset(event.offset,speed),()=>playSoundEffect(Number(event.sound),Number(point[0])||320,Number(point[1])||240));
       }
       return timing;
     };
     const timedMotion=(motion,startAt=Date.now(),duration=motion?.duration||260)=>{
-      const queuedNow=Date.now(),start=Math.max(queuedNow,Number(startAt)||queuedNow),minimum=motion?.nativeTiming?BATTLE_PROC_TICK_MS:120,length=Math.max(minimum,Number(duration)||360),end=start+length;
-      battlePushMotion(state.motions,{...motion,nativeTick:Boolean(motion?.nativeTiming),startedAt:queuedNow,delay:Math.max(0,start-queuedNow),duration:length});
+      const queuedNow=Date.now(),speed=battleAnimationSpeed(),start=Math.max(queuedNow,Number(startAt)||queuedNow),minimum=motion?.nativeTiming?BATTLE_PROC_TICK_MS:120,rawLength=Math.max(minimum,Number(duration)||360),length=battleAnimationScale(rawLength,speed),end=start+length;
+      battlePushMotion(state.motions,{...motion,nativeTick:Boolean(motion?.nativeTiming),startedAt:queuedNow,delay:Math.max(0,start-queuedNow),playbackStartAt:start,playbackSpeed:speed,duration:rawLength});
       /* BD/BM/BL are standalone movie records and therefore also consume a
          slot in the same native action timeline.  A hit embedded in BH/BY
          normally ends before the already queued attack, so max() keeps that
          contact frame in-place without inventing an inter-record delay. */
       state.motionQueueAt=Math.max(Number(state.motionQueueAt)||queuedNow,end);
-      return {startAt:start,endAt:end,duration:length};
+      return {startAt:start,endAt:end,duration:length,playbackSpeed:speed};
     };
     /* ATT_DAMAGE (BD) batches belong to this concrete B movie.  Keeping
        these helpers beside the movie's queue/timedMotion closures is also a
@@ -12389,7 +12458,7 @@
     const bdProjectedHp=new Map();
     const resetBDBatch=()=>{lastBDKey="";lastBDStart=0;lastBDEnd=0;bdProjectedHp.clear();};
     const scheduleBDMotion=(target,kind,sign,amount,petAmount,fatalHint=null)=>{
-      const key=`${Number(kind)||0}:${Number(sign)||0}`,current=Date.now(),duration=60*BATTLE_PROC_TICK_MS;
+      const key=`${Number(kind)||0}:${Number(sign)||0}`,current=Date.now(),duration=60*BATTLE_PROC_TICK_MS,speed=battleAnimationSpeed(),playbackDuration=battleAnimationScale(duration,speed);
       /* Consecutive ATT_DAMAGE records with the same kind/sign are consumed
          by one native VCT78/79 action and therefore start together.  A new
          kind/sign is the next action batch and starts after the previous
@@ -12399,12 +12468,12 @@
       let timing;
       if(fatal){
         battleQueueDirectDeath(state,target,start);
-        timing={startAt:start,endAt:start+duration,duration,contactAt:start,direction:battleSlotDirection(target),nativeContact:false,fatal:true};
+        timing={startAt:start,endAt:start+playbackDuration,duration:playbackDuration,playbackSpeed:speed,contactAt:start,direction:battleSlotDirection(target),nativeContact:false,fatal:true};
       }else{
         timing=timedMotion({kind:damaging?"bd-damage":"bd",target,bdKind:Number(kind)||0,bdSign:Number(sign)||0,amount:Number(amount)||0,petAmount:Number(petAmount)||0},start,duration);
         timing.fatal=false;
       }
-      lastBDKey=key;lastBDStart=start;lastBDEnd=start+duration;
+      lastBDKey=key;lastBDStart=start;lastBDEnd=Number(timing?.endAt)||start+playbackDuration;
       return timing;
     };
     /* BD belongs to one concrete movie event.  A B string can contain a
@@ -12425,7 +12494,8 @@
     const scheduleAttackSequenceSpec=(spec,blockingDuration=spec?.duration)=>{
       if(!spec||Number(spec.actor)<0)return null;
       const timing=queueMotion(spec,spec.duration,blockingDuration);
-      return {...timing,hits:(spec.hits||[]).map(hit=>({...hit,startAt:timing.startAt+Number(hit.startOffset||0),endAt:timing.startAt+Number(hit.endOffset||0),duration:Math.max(1,Number(hit.endOffset||0)-Number(hit.startOffset||0)),attackStartAt:timing.startAt+Number(hit.attackStartOffset||0),contactAt:timing.startAt+Number(hit.contactOffset||0),direction:hit.direction,nativeContact:Boolean(hit.nativeContact),target:hit.target,tupleIndex:hit.tupleIndex}))};
+      const speed=battleAnimationSpeedValue(timing.playbackSpeed);
+      return {...timing,hits:(spec.hits||[]).map(hit=>({...hit,startAt:timing.startAt+battleAnimationOffset(hit.startOffset,speed),endAt:timing.startAt+battleAnimationOffset(hit.endOffset,speed),duration:Math.max(1,battleAnimationOffset(Number(hit.endOffset||0)-Number(hit.startOffset||0),speed)),attackStartAt:timing.startAt+battleAnimationOffset(hit.attackStartOffset,speed),contactAt:timing.startAt+battleAnimationOffset(hit.contactOffset,speed),direction:hit.direction,nativeContact:Boolean(hit.nativeContact),target:hit.target,tupleIndex:hit.tupleIndex}))};
     };
     const scheduleAttackSequence=(attacker,targets,attackAction=0,flags=[],damageValues=[],petValues=[])=>{
       if(Number(attacker)<0)return null;
@@ -12564,17 +12634,17 @@
         let normalSequence,counterTimings=[];
         if(exchange){
           normalSequence=scheduleAttackSequenceSpec(exchange.normal,exchange.counterStartOffset);
-          const counterWaitUntil=Number(normalSequence?.startAt||Date.now())+Number(exchange.normalAttackEndOffset||0);
+          const normalSpeed=battleAnimationSpeedValue(normalSequence?.playbackSpeed),counterWaitUntil=Number(normalSequence?.startAt||Date.now())+battleAnimationOffset(exchange.normalAttackEndOffset,normalSpeed);
           for(const hit of normalSequence?.hits||[]){hit.counterPending=true;hit.counterWaitUntil=counterWaitUntil;}
           counterTimings=exchange.counters.map(plan=>{
-            state.motionQueueAt=Math.max(Number(state.motionQueueAt)||0,Number(normalSequence.startAt||0)+Number(plan.startOffset||0));
+            state.motionQueueAt=Math.max(Number(state.motionQueueAt)||0,Number(normalSequence.startAt||0)+battleAnimationOffset(plan.startOffset,normalSpeed));
             const queued=queueMotion(plan.motion,plan.motion.duration);
             return {...plan,timing:{...queued,targetOriginX:Number(plan.targetOrigin?.x)||0,targetOriginY:Number(plan.targetOrigin?.y)||0}};
           });
           /* The reverse VCT2 records become runnable before the original
              attacker's deferred VCT4.  The following speed-sorted action,
              however, must wait until that final return has completed. */
-          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||0,Number(normalSequence.startAt||0)+Number(exchange.normal.duration||0));
+          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||0,Number(normalSequence.startAt||0)+battleAnimationOffset(exchange.normal.duration,normalSpeed));
         }else normalSequence=scheduleAttackSequence(attacker,normalTargets,0,normalFlags,normalDamageValues,normalPetValues);
         const timing=normalSequence?.hits?.find(hit=>Number(hit.tupleIndex)===0)||null;
         const impactStart=timingContactAt(timing);
@@ -12758,12 +12828,12 @@
              which made this skill look like a no-op and could leave the
              battle roster out of sync until the next BC. */
           const attacker=battleSegmentNumber(segment,"a",0,-1),targets=segmentValues(segment,"r").map(battleNumber),flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),guardianValues=segmentValues(segment,"g").map(battleNumber),fireMagicCount=Math.max(0,battleSegmentNumber(segment,"n",0,0)),fireMagicResults=Array.isArray(segment.fireMagicResults)?segment.fireMagicResults:[];
-          const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null;
+          const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null,castSpeed=battleAnimationSpeedValue(castTiming?.playbackSpeed??battleAnimationSpeed());
           for(let index=0;index<targets.length;index++){
             const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1;
             if(target<0)continue;
-            const impactStart=castTiming?Number(castTiming.startAt)+360+index*180:Date.now()+220;
-            const timing={startAt:impactStart-135,duration:260,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
+            const impactStart=castTiming?Number(castTiming.startAt)+battleAnimationOffset(360+index*180,castSpeed):Date.now()+battleAnimationOffset(220,castSpeed);
+            const timing={startAt:impactStart-battleAnimationOffset(135,castSpeed),duration:260,playbackSpeed:castSpeed,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
             battleApplyFlagEffects(effects,target,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
             if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing);}
             else if(flags&BATTLE_FLAG.vanish)battlePushEffect(effects,target,"消失","miss",{startsAt:impactStart});
@@ -12794,8 +12864,8 @@
           for(const [index,result] of fireMagicResults.entries()){
             const target=battleNumber(result.target),amount=battleNumber(result.damage),petAmount=battleNumber(result.petDamage);
             if(target<0)continue;
-            const impactStart=castTiming?Number(castTiming.startAt)+760+index*180:Date.now()+520+index*180;
-            const timing={startAt:impactStart-135,duration:260,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
+            const impactStart=castTiming?Number(castTiming.startAt)+battleAnimationOffset(760+index*180,castSpeed):Date.now()+battleAnimationOffset(520+index*180,castSpeed);
+            const timing={startAt:impactStart-battleAnimationOffset(135,castSpeed),duration:260,playbackSpeed:castSpeed,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
             if(amount||petAmount){
               addDirectDamage(target,amount,petAmount,0,0,timing);
             }else{
@@ -12829,7 +12899,7 @@
                index and is not a bitmap or an animation id.  The old port
                read `i` as a graphic and then scheduled action 0, which made
                model attacks use the wrong pose and hid the model object. */
-            flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),guardianValues=segmentValues(segment,"g").map(battleNumber),objectValues=segmentValues(segment,"i").map(battleNumber),modelTuples=targets.map((target,index)=>({target,flags:flagValues[index]??0,amount:damageValues[index]??0,petAmount:petValues[index]??0,graphic:modelGraphics[index]??modelGraphics[modelGraphics.length-1]??0,objectIndex:objectValues[index]??index})),planStart=Math.max(Date.now(),Number(state.motionQueueAt)||Date.now()),modelPlan=battleModelPlan(attacker,modelTuples,planStart,battleGraphicAnimationTiming,(tuple,direction)=>{
+            flagValues=segmentValues(segment,"f").map(battleNumber),damageValues=segmentValues(segment,"d").map(battleNumber),petValues=segmentValues(segment,"p").map(battleNumber),guardianValues=segmentValues(segment,"g").map(battleNumber),objectValues=segmentValues(segment,"i").map(battleNumber),modelTuples=targets.map((target,index)=>({target,flags:flagValues[index]??0,amount:damageValues[index]??0,petAmount:petValues[index]??0,graphic:modelGraphics[index]??modelGraphics[modelGraphics.length-1]??0,objectIndex:objectValues[index]??index})),modelSpeed=battleAnimationSpeed(),planStart=Math.max(Date.now(),Number(state.motionQueueAt)||Date.now()),modelPlan=battleModelPlan(attacker,modelTuples,planStart,battleGraphicAnimationTiming,(tuple,direction)=>{
               if(Number(tuple?.flags)&BATTLE_FLAG.dodge)return 50*BATTLE_PROC_TICK_MS;
               if(Number(tuple?.flags)&(BATTLE_FLAG.death|BATTLE_FLAG.ultimate1|BATTLE_FLAG.ultimate2))return 0;
               if(Math.max(0,Number(tuple?.amount)||0)>0||Math.max(0,Number(tuple?.petAmount)||0)>0||(Number(tuple?.flags)&BATTLE_FLAG.guard))return battleHitMotionSpec(Number(tuple.target),direction,Number(tuple.flags)||0).duration;
@@ -12838,14 +12908,15 @@
           /* One projectile now represents one native p_missile[i] ACTION.
              Its samples contain every approach, stationary attack and exit
              phase, so repeated targets never respawn the same model. */
+          const modelAt=rawAt=>modelPlan.startAt+battleAnimationOffset(Math.max(0,Number(rawAt)-Number(modelPlan.startAt)),modelSpeed);
           for(const object of modelPlan.objects){
             const firstHit=modelPlan.hits.find(hit=>hit&&Number(hit.objectIndex)===Number(object.objectIndex));
-            battlePushProjectile(state,{kind:"model",graphic:Number(object.graphic)>0?Number(object.graphic):0,graphicKey:object.graphic===undefined||object.graphic===null?"":String(object.graphic),from:object.from,to:object.to,samples:object.samples,phases:object.phases,startAt:modelPlan.startAt,endAt:modelPlan.startAt+Number(object.endOffset||0),actor:attacker,target:object.firstTarget,direction:firstHit?.direction??battleSlotDirection(attacker),objectIndex:object.objectIndex,contactAt:firstHit?.contactAt||0});
+            battlePushProjectile(state,{kind:"model",graphic:Number(object.graphic)>0?Number(object.graphic):0,graphicKey:object.graphic===undefined||object.graphic===null?"":String(object.graphic),from:object.from,to:object.to,samples:object.samples,phases:object.phases,startAt:modelPlan.startAt,endAt:modelPlan.startAt+Number(object.endOffset||0),actor:attacker,target:object.firstTarget,direction:firstHit?.direction??battleSlotDirection(attacker),objectIndex:object.objectIndex,contactAt:firstHit?modelAt(firstHit.contactAt):0});
           }
-          for(const sound of modelPlan.sounds)battleScheduleDamage(state,sound.at,()=>{const point=battleSlotPoint(sound.target);playSoundEffect(sound.sound,Number(point[0])||320,Number(point[1])||240);});
-          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||planStart,Number(modelPlan.endAt)||planStart);
+          for(const sound of modelPlan.sounds)battleScheduleDamage(state,modelAt(sound.at),()=>{const point=battleSlotPoint(sound.target);playSoundEffect(sound.sound,Number(point[0])||320,Number(point[1])||240);});
+          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||planStart,modelAt(modelPlan.endAt));
           for(let index=0;index<targets.length;index++){
-            const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1,timing=modelPlan.hits[index]||null,impactStart=timingContactAt(timing);
+            const target=targets[index],flags=flagValues[index]??0,amount=damageValues[index]??0,petAmount=petValues[index]??0,guardianTarget=(flags&BATTLE_FLAG.guardian)?(guardianValues[index]??-1):-1,rawTiming=modelPlan.hits[index]||null,timing=rawTiming?{...rawTiming,startAt:modelAt(rawTiming.startAt),endAt:modelAt(rawTiming.endAt),duration:battleAnimationScale(rawTiming.duration,modelSpeed),attackStartAt:modelAt(rawTiming.attackStartAt),contactAt:modelAt(rawTiming.contactAt),contactOffsets:(rawTiming.contactOffsets||[]).map(modelAt),playbackSpeed:modelSpeed}:null,impactStart=timingContactAt(timing);
             if(target<0)continue;
             battleApplyFlagEffects(effects,target,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
             if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing);}
@@ -12912,9 +12983,9 @@
                    SoundNo frame, not 220ms before it.  The child owns the
                    damage/contact timeline and remains in the queue through
                    the native hit-stop/release tail. */
-                const visualTarget=guardianTarget>=0?guardianTarget:target,from=battleSlotPoint(attacker),to=battleSlotPoint(visualTarget),releaseAt=timingContactAt(timing),targetItem=battleFindParticipant(visualTarget),targetHp=targetItem?.hp??null,targetDead=Boolean(targetItem?.dead),kind=weaponType===1?"axe":weaponType===2?"stone":weaponType===3?"firecracker":"arrow",plan=weaponType===1?battleAxePlan(attacker,visualTarget,flags,amount,petAmount,targetHp,targetDead):battleBowPlan(attacker,visualTarget,flags,amount,petAmount,targetHp,targetDead),endAt=releaseAt+Math.max(BATTLE_PROC_TICK_MS,Number(plan.endOffset)||BATTLE_PROC_TICK_MS),contactAt=releaseAt+Math.max(0,Number(plan.contactOffset)||0);
+                const visualTarget=guardianTarget>=0?guardianTarget:target,from=battleSlotPoint(attacker),to=battleSlotPoint(visualTarget),releaseAt=timingContactAt(timing),projectileSpeed=battleAnimationSpeed(),targetItem=battleFindParticipant(visualTarget),targetHp=targetItem?.hp??null,targetDead=Boolean(targetItem?.dead),kind=weaponType===1?"axe":weaponType===2?"stone":weaponType===3?"firecracker":"arrow",plan=weaponType===1?battleAxePlan(attacker,visualTarget,flags,amount,petAmount,targetHp,targetDead):battleBowPlan(attacker,visualTarget,flags,amount,petAmount,targetHp,targetDead),endAt=releaseAt+battleAnimationScale(Math.max(BATTLE_PROC_TICK_MS,Number(plan.endOffset)||BATTLE_PROC_TICK_MS),projectileSpeed),contactAt=releaseAt+battleAnimationOffset(Number(plan.contactOffset)||0,projectileSpeed);
                 impactTiming={...timing,startAt:releaseAt,endAt,duration:endAt-releaseAt,contactAt,direction:Number(plan.direction),nativeContact:true};
-                battlePushProjectile(state,{kind,from:[Number(from[0]),Number(from[1])],to:[Number(to[0]),Number(to[1])],samples:plan.samples,startAt:releaseAt,endAt,actor:attacker,target:visualTarget,direction:Number(plan.direction),contactAt});
+                battlePushProjectile(state,{kind,from:[Number(from[0]),Number(from[1])],to:[Number(to[0]),Number(to[1])],samples:plan.samples,duration:Math.max(BATTLE_PROC_TICK_MS,Number(plan.endOffset)||BATTLE_PROC_TICK_MS),playbackSpeed:projectileSpeed,startAt:releaseAt,endAt,actor:attacker,target:visualTarget,direction:Number(plan.direction),contactAt});
                 /* The native master action waits for p_missile to finish
                    before the next EntrySort record.  Do not expose the next
                    command/action while the arrow/axe is still in its tail. */
@@ -13002,7 +13073,7 @@
            keyed form. */
         const attacker=battleSegmentNumber(segment,"a",0,-1),targets=segmentValues(segment,"r").map(battleNumber),effectValues=segmentValues(segment,"e").map(battleNumber),magicValues=values.map(battleNumber),magicResults=Array.isArray(segment.attackMagicResults)?segment.attackMagicResults:[],
           casterGraphic=effectValues[0]||magicValues[0]||0,targetGraphic=effectValues[1]||effectValues[0]||magicValues[1]||magicValues[0]||0,postGraphic=magicValues[2]||0;
-        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,targets.find(target=>target>=0)??-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null;
+        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,targets.find(target=>target>=0)??-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null,castSpeed=battleAnimationSpeedValue(castTiming?.playbackSpeed??battleAnimationSpeed());
         if(attacker===Number(state.myNo)&&fields.m!==undefined)state.myMp=battleNumber(fields.m);
         if(attacker>=0){
           if(casterGraphic)battlePushEffect(effects,attacker,"","skill",{graphic:casterGraphic,graphicKey:String(casterGraphic),duration:950,offsetY:-40});
@@ -13020,8 +13091,8 @@
           for(const [index,result] of magicResults.entries()){
             const target=battleNumber(result.target),amount=battleNumber(result.damage),petAmount=battleNumber(result.petDamage);
             if(target<0)continue;
-            const impactStart=castTiming?Number(castTiming.startAt)+420+index*slice:Date.now()+260+index*slice;
-            const timing={startAt:impactStart-135,duration:260,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
+            const impactStart=castTiming?Number(castTiming.startAt)+battleAnimationOffset(420+index*slice,castSpeed):Date.now()+battleAnimationOffset(260+index*slice,castSpeed);
+            const timing={startAt:impactStart-battleAnimationOffset(135,castSpeed),duration:260,playbackSpeed:castSpeed,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
             if(amount||petAmount){
               addDirectDamage(target,amount,petAmount,0,0,timing);
             }else{
@@ -13048,7 +13119,7 @@
              use the wrong cadence/simultaneity mode. */
           attackType=battleSegmentNumber(segment,"s",0,0),sliceTime=battleSegmentNumber(segment,"t",0,0);
         if(attacker===Number(state.myNo)&&fields.m!==undefined)state.myMp=battleNumber(fields.m);
-        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null;
+        const castSpec=attacker>=0?battleAttackMotionSpec(attacker,-1,"cast",0):null,castTiming=castSpec?queueMotion(castSpec,castSpec.duration):null,castSpeed=battleAnimationSpeedValue(castTiming?.playbackSpeed??battleAnimationSpeed());
         if(attacker>=0){
           if(preGraphic)battlePushEffect(effects,attacker,"","skill",{graphic:preGraphic,graphicKey:String(preGraphic),duration:850,offsetY:-40});
         }
@@ -13061,11 +13132,11 @@
            the displayed damage out of sync. */
         if(magicResults.length){
           const slice=Math.max(120,Math.min(1200,Number(sliceTime)||220)),simultaneous=attackType===2||attackType===4;
-          const impactBase=castTiming?Number(castTiming.startAt)+420:Date.now()+260;
+          const impactBase=castTiming?Number(castTiming.startAt)+battleAnimationOffset(420,castSpeed):Date.now()+battleAnimationOffset(260,castSpeed);
           for(const [index,result] of magicResults.entries()){
             const target=battleNumber(result.target),amount=battleNumber(result.damage),petAmount=battleNumber(result.petDamage);
             if(target<0)continue;
-            const impactStart=impactBase+(simultaneous?0:index*slice),timing={startAt:impactStart-135,duration:260,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
+            const impactStart=impactBase+(simultaneous?0:battleAnimationOffset(index*slice,castSpeed)),timing={startAt:impactStart-battleAnimationOffset(135,castSpeed),duration:260,playbackSpeed:castSpeed,contactAt:impactStart,direction:attacker>=0?battleFacingDirection(attacker,target):null};
             if(amount||petAmount)addDirectDamage(target,amount,petAmount,0,0,timing);
             else{battlePushEffect(effects,target,"闪避","dodge",{startsAt:impactStart});queueDodge(target,timing);}
           }
@@ -13305,16 +13376,16 @@
             if(item&&entry.amount>0&&!(value&(BATTLE_FLAG.absorb|BATTLE_FLAG.dodge|BATTLE_FLAG.vanish))&&Number(item.hp)<=entry.amount)value|=BATTLE_FLAG.death;
             return value;
           });
-          const plan=battleBoomerangPlan(attacker,boomerangEntries.map(entry=>entry.target),planFlags,boomerangEntries.map(entry=>entry.amount),boomerangEntries.map(entry=>entry.petAmount),Number(state.fieldNo??state.field)||0),startAt=timingContactAt(throwTiming),endAt=startAt+Math.max(BATTLE_PROC_TICK_MS,Number(plan.duration)||BATTLE_PROC_TICK_MS),origin=battleSlotPoint(attacker);
-          battlePushProjectile(state,{kind:"boomerang",from:origin,to:battleSlotPoint(firstTarget),samples:plan.samples,contactOffsets:plan.contactOffsets,startAt,endAt,actor:attacker,target:firstTarget});
-          const catchAt=startAt+Math.max(0,Number(plan.catchOffset)||0),catchDuration=16*BATTLE_PROC_TICK_MS;
-          const trackAt=Math.max(startAt,Number(throwTiming.endAt)||startAt),trackDuration=Math.max(0,catchAt-trackAt);
-          if(trackDuration>=BATTLE_PROC_TICK_MS)timedMotion({kind:"boomerang-track",actor:attacker,samples:plan.actorSamples,sampleOffset:trackAt-startAt,direction:plan.actorSamples?.[0]?.direction},trackAt,trackDuration);
+          const plan=battleBoomerangPlan(attacker,boomerangEntries.map(entry=>entry.target),planFlags,boomerangEntries.map(entry=>entry.amount),boomerangEntries.map(entry=>entry.petAmount),Number(state.fieldNo??state.field)||0),projectileSpeed=battleAnimationSpeed(),startAt=timingContactAt(throwTiming),rawPlanDuration=Math.max(BATTLE_PROC_TICK_MS,Number(plan.duration)||BATTLE_PROC_TICK_MS),endAt=startAt+battleAnimationScale(rawPlanDuration,projectileSpeed),origin=battleSlotPoint(attacker);
+          battlePushProjectile(state,{kind:"boomerang",from:origin,to:battleSlotPoint(firstTarget),samples:plan.samples,contactOffsets:plan.contactOffsets,duration:rawPlanDuration,playbackSpeed:projectileSpeed,startAt,endAt,actor:attacker,target:firstTarget});
+          const rawCatchOffset=Math.max(0,Number(plan.catchOffset)||0),catchAt=startAt+battleAnimationOffset(rawCatchOffset,projectileSpeed),catchDuration=16*BATTLE_PROC_TICK_MS;
+          const trackAt=Math.max(startAt,Number(throwTiming.endAt)||startAt),rawTrackOffset=Math.max(0,(trackAt-startAt)*projectileSpeed),trackDuration=Math.max(0,rawCatchOffset-rawTrackOffset);
+          if(battleAnimationScale(trackDuration,projectileSpeed)>=BATTLE_PROC_TICK_MS)timedMotion({kind:"boomerang-track",actor:attacker,samples:plan.actorSamples,sampleOffset:rawTrackOffset,direction:plan.actorSamples?.[0]?.direction},trackAt,trackDuration);
           timedMotion({kind:"catch",actor:attacker,direction:plan.catchDirection},catchAt,catchDuration);
           battleScheduleSound(state,catchAt,()=>{const point=battleSlotPoint(attacker);playSoundEffect(14,Number(point[0])||320,Number(point[1])||240);});
-          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||Date.now(),endAt,catchAt+catchDuration);
+          state.motionQueueAt=Math.max(Number(state.motionQueueAt)||Date.now(),endAt,catchAt+battleAnimationScale(catchDuration,projectileSpeed));
           for(let index=0;index<boomerangEntries.length;index++){
-            const entry=boomerangEntries[index],target=entry.target,flags=entry.flags,amount=entry.amount,petAmount=entry.petAmount,guardianTarget=(flags&BATTLE_FLAG.guardian)&&entry.guardian>=0?entry.guardian:-1,visualTarget=guardianTarget>=0?guardianTarget:target,contact=plan.contacts[index],impactStart=startAt+Math.max(0,Number(contact?.offset)||0);
+            const entry=boomerangEntries[index],target=entry.target,flags=entry.flags,amount=entry.amount,petAmount=entry.petAmount,guardianTarget=(flags&BATTLE_FLAG.guardian)&&entry.guardian>=0?entry.guardian:-1,visualTarget=guardianTarget>=0?guardianTarget:target,contact=plan.contacts[index],impactStart=startAt+battleAnimationOffset(Number(contact?.offset)||0,projectileSpeed);
             const impactTiming={startAt:impactStart,endAt:impactStart+BATTLE_PROC_TICK_MS,duration:BATTLE_PROC_TICK_MS,contactAt:impactStart,direction:Number.isFinite(Number(contact?.direction))?Number(contact.direction):battleFacingDirection(attacker,target),nativeContact:true};
             battleApplyFlagEffects(effects,visualTarget,flags,impactStart,{skillNo:(flags&(BATTLE_FLAG.attackDouble|BATTLE_FLAG.modify))?battleSegmentNumber(segment,"g",index,0):undefined});
             if(flags&BATTLE_FLAG.dodge){battlePushEffect(effects,visualTarget,"闪避","dodge",{startsAt:impactStart});queueDodge(visualTarget,impactTiming);}
@@ -13593,11 +13664,13 @@
          also held CHAR_IN open for an unnecessary entrance timeout. */
       if((item.flags&BATTLE_BC_FRESH)&&!old&&!item.dead){
         const appearDuration=520;
-        battlePushMotion(state.motions,{kind:"appear",actor:item.battleId,fromX:side===1?-300:300,fromY:side===1?-300:300,duration:appearDuration});
-        freshEntryReadyAt=Math.max(freshEntryReadyAt,Date.now()+appearDuration);
+        const speed=battleAnimationSpeed(),startAt=Date.now();
+        battlePushMotion(state.motions,{kind:"appear",actor:item.battleId,fromX:side===1?-300:300,fromY:side===1?-300:300,startedAt:startAt,playbackStartAt:startAt,playbackSpeed:speed,duration:appearDuration});
+        freshEntryReadyAt=Math.max(freshEntryReadyAt,startAt+battleAnimationScale(appearDuration,speed));
       }
       if((item.flags&BATTLE_BC_FADE_OUT)&&!(old?.flags&BATTLE_BC_FADE_OUT)){
-        battlePushMotion(state.motions,{kind:"fade",target:item.battleId,toX:side===1?-300:300,toY:side===1?-300:300,duration:620});
+        const speed=battleAnimationSpeed(),startAt=Date.now();
+        battlePushMotion(state.motions,{kind:"fade",target:item.battleId,toX:side===1?-300:300,toY:side===1?-300:300,startedAt:startAt,playbackStartAt:startAt,playbackSpeed:speed,duration:620});
       }
       if(item.dead&&!old?.dead){
         item.hp=0;
@@ -18750,7 +18823,7 @@
          paint it at the moving missile position.  If the optional resource
          is unavailable, the `.model` CSS fallback remains visible. */
       if(projectile.graphic||projectile.graphicKey){
-        const modelKey=projectile.graphicKey??projectile.graphic,phaseStart=Number(projectile.startedAt||now)+Math.max(0,Number(value.phaseStartOffset)||0),action=Number.isFinite(Number(value.action))?Number(value.action):(Number(projectile.contactAt)>0&&now>=Number(projectile.contactAt)?0:4),rawElapsed=Math.max(0,now-phaseStart),animationElapsed=action===0?battleAnimationElapsedWithHolds(rawElapsed,value.animationHolds):rawElapsed,modelActor={battle:true,graphic:Number(projectile.graphic)||0,graphicKey:String(modelKey||""),direction:Number.isFinite(Number(value.direction))?Number(value.direction):Number(projectile.direction)||0,action,animationStartedAt:performance.now()-animationElapsed,animationLoop:value.animationLoop!==false},frame=actorFrame(modelActor);
+        const modelKey=projectile.graphicKey??projectile.graphic,speed=battlePlaybackSpeed(projectile),projectileStart=Number.isFinite(Number(projectile.playbackStartAt))&&Number(projectile.playbackStartAt)>0?Number(projectile.playbackStartAt):Number(projectile.startedAt||now),phaseStart=projectileStart+battleAnimationOffset(value.phaseStartOffset,speed),rawElapsed=Math.max(0,(now-phaseStart)*speed),action=Number.isFinite(Number(value.action))?Number(value.action):(Number(projectile.contactAt)>0&&now>=Number(projectile.contactAt)?0:4),animationElapsed=action===0?battleAnimationElapsedWithHolds(rawElapsed,value.animationHolds):rawElapsed,modelActor={battle:true,graphic:Number(projectile.graphic)||0,graphicKey:String(modelKey||""),direction:Number.isFinite(Number(value.direction))?Number(value.direction):Number(projectile.direction)||0,action,animationStartedAt:performance.now()-animationElapsed,animationLoop:value.animationLoop!==false},frame=actorFrame(modelActor);
         if(frame?.image?.complete&&frame.image.naturalWidth){
           /* A model bitmap may have a full REALBIN action table.  Use that
              table while moving/attacking and retain the plain bitmap fallback
@@ -18793,7 +18866,7 @@
          startsAt/until clock instead; each newly-created node is painted at
          its current frame and does not depend on a CSS animation lifetime. */
       {
-        const effectStart=Math.max(0,Number(effect.startsAt)||now),effectEnd=Math.max(effectStart+1,Number(effect.until)||effectStart+900),effectProgress=Math.max(0,Math.min(1,(now-effectStart)/(effectEnd-effectStart))),rise=Math.max(0,Math.min(1,effectProgress/.2)),fade=Math.max(0,(effectProgress-.2)/.8);
+        const effectStart=Math.max(0,Number(effect.startsAt)||now),speed=battlePlaybackSpeed(effect),rawDuration=Math.max(1,Number(effect.duration)||900),effectEnd=Math.max(effectStart+1,effectStart+battleAnimationScale(rawDuration,speed)),effectProgress=Math.max(0,Math.min(1,(now-effectStart)/(effectEnd-effectStart))),rise=Math.max(0,Math.min(1,effectProgress/.2)),fade=Math.max(0,(effectProgress-.2)/.8);
         node.style.animation="none";
         if(effect.nativeStatic){
           node.style.opacity="1";

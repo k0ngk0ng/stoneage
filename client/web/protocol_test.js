@@ -1611,7 +1611,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,212\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,252\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -2241,7 +2241,7 @@ for (const expected of [
      every segment to one timeline instead of assigning all of them now.
      ATT_COUNTER is the one native overlap: its reverse VCT2 becomes runnable
      while the first attacker's visual motion is still parked at contact. */
-  /const queueMotion=\(motion,duration=motion\?\.duration\|\|420,blockingDuration=duration\)=>[\s\S]{0,700}state\.motionQueueAt=start\+blockingLength;/,
+  /const queueMotion=\(motion,duration=motion\?\.duration\|\|420,blockingDuration=duration\)=>[\s\S]{0,1200}state\.motionQueueAt=start\+blockingLength;/,
   /if\(!Number\.isFinite\(Number\(state\.motionQueueAt\)\)\)state\.motionQueueAt=now;/,
   /pendingBattleControls/,
   /* A late BP must join an already buffered BC/BA group even after the
@@ -3824,8 +3824,8 @@ for(const expected of [
 if(/battle-actor\.battle-dead \.battle-sprite \{[^}]*grayscale|battle-actor\.battle-dead \.battle-sprite \{[^}]*brightness/.test(html)){
   throw new Error("native VCT252 corpse must retain its unfiltered final DEAD bitmap");
 }
-if(!/const deathSoundAt=startAt\+deadStartOffset\+deadDuration;[\s\S]{0,280}battleScheduleSound\(state,deathSoundAt,[\s\S]{0,180}playSoundEffect\(6,/.test(script)||
-   !/battleScheduleSound\(state,startAt\+bdDuration\+deadDuration,[\s\S]{0,180}playSoundEffect\(6,/.test(script)){
+if(!/const deathSoundAt=startAt\+battleAnimationOffset\(deadStartOffset\+deadDuration,[\s\S]{0,320}battleScheduleSound\(state,deathSoundAt,[\s\S]{0,180}playSoundEffect\(6,/.test(script)||
+   !/battleScheduleSound\(state,startAt\+battleAnimationOffset\(bdDuration\+deadDuration,[\s\S]{0,180}playSoundEffect\(6,/.test(script)){
   throw new Error("native death SE 6 must play only when the DEAD row reaches VCT252");
 }
 /* CheckGroupSelect() outlines all actors that carry the clicked grouped
@@ -4464,7 +4464,7 @@ for (const expected of [
   /add\("\s+聊天设定\s+",[\s\S]{0,120}systemPage="chat"/,
   /add\("\s+背景音乐\s+",[\s\S]{0,120}systemPage="bgm"/,
   /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
-  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,212\);list\.append\(close\)/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,252\);list\.append\(close\)/,
   /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
@@ -4890,7 +4890,7 @@ if (!plainCounterPlan || !plainPrimaryHit.counterTakeover ||
   throw new Error(`plain-hit counter did not exchange at VCT11: ${JSON.stringify(plainCounterExchange)}`);
 }
 const battleMovieSource = script.slice(script.indexOf("  function battleMovieEffects"), script.indexOf("  const pendingBattlePacketTTL"));
-if (/\.52/.test(battleMovieSource) || !/contactAt:start\+Math\.max\(0,Number\(motion\?\.contactOffset\)\|\|0\)/.test(battleMovieSource) || !/normalSequence=scheduleAttackSequence\(attacker,normalTargets,0,normalFlags,normalDamageValues,normalPetValues\)/.test(battleMovieSource)) {
+if (/\.52/.test(battleMovieSource) || !/contactAt:start\+battleAnimationOffset\(motion\?\.contactOffset,speed\)/.test(battleMovieSource) || !/normalSequence=scheduleAttackSequence\(attacker,normalTargets,0,normalFlags,normalDamageValues,normalPetValues\)/.test(battleMovieSource)) {
   throw new Error("battle attacks still guess the impact frame instead of using SPR SoundNo");
 }
 if (!/amount>=hp&&amount>0\)value\|=BATTLE_FLAG\.death/.test(battleMovieSource) || !/projectedHp=new Map\(\)/.test(battleMovieSource)) {
@@ -4943,13 +4943,14 @@ if (guardMotion.kind !== "guard" || hurtMotion.kind !== "hit" || hurtMotion.knoc
 const counterMotionRuntimeStart = script.indexOf("  function battleMotionRenderPriority");
 const counterMotionRuntimeEnd = script.indexOf("  function battleNamesVisible", counterMotionRuntimeStart);
 if (counterMotionRuntimeStart < 0 || counterMotionRuntimeEnd <= counterMotionRuntimeStart) throw new Error("battle counter runtime helper boundary missing");
-const counterMotionRuntime = new Function("BATTLE_PROC_TICK_MS","battleSlotDirection","battleNativeTickProgress","battleAnimationElapsedWithHolds","battleNativeSpeedProgress","battleNativeAlternatingOffset",`${script.slice(counterMotionRuntimeStart,counterMotionRuntimeEnd)}; return {battleMotionRenderPriority,battleMotionValue};`)(
+const counterMotionRuntime = new Function("BATTLE_PROC_TICK_MS","battleSlotDirection","battleNativeTickProgress","battleAnimationElapsedWithHolds","battleNativeSpeedProgress","battleNativeAlternatingOffset","battlePlaybackSpeed",`${script.slice(counterMotionRuntimeStart,counterMotionRuntimeEnd)}; return {battleMotionRenderPriority,battleMotionValue};`)(
   nativeProcTickMs,
   id=>Number(id)<10?3:7,
   battleContactTiming.battleNativeTickProgress,
   battleContactTiming.battleAnimationElapsedWithHolds,
   battleContactTiming.battleNativeSpeedProgress,
   battleContactTiming.battleNativeAlternatingOffset,
+  item=>[1,1.5,2,3].includes(Number(item?.playbackSpeed))?Number(item.playbackSpeed):1,
 );
 const slowRuntimeStart=1_500_000,slowRuntimeMotion={...slowHurtMotion,startedAt:slowRuntimeStart,delay:0,until:slowRuntimeStart+slowHurtMotion.duration},slowDecelStart=slowRuntimeStart+slowHurtMotion.vct10Duration+slowHurtMotion.knockbackDuration,slowDecelValue=counterMotionRuntime.battleMotionValue({motions:[slowRuntimeMotion]},12,slowDecelStart+1.5*nativeProcTickMs),fixedRuntimeMotion={...fixedHurtMotion,startedAt:slowRuntimeStart,delay:0,until:slowRuntimeStart+fixedHurtMotion.duration},fixedDecelValue=counterMotionRuntime.battleMotionValue({motions:[fixedRuntimeMotion]},11,slowRuntimeStart+fixedHurtMotion.vct10Duration+fixedHurtMotion.knockbackDuration+7.5*nativeProcTickMs);
 if(!slowDecelValue.hit||slowDecelValue.action!==1||slowDecelValue.animationLoop!==true||!nearlyEqual(Math.hypot(slowDecelValue.dx,slowDecelValue.dy),7,.02)||Math.hypot(fixedDecelValue.dx,fixedDecelValue.dy)>.001){
@@ -5058,7 +5059,7 @@ if (!/warriorEffect=battleSegmentNumber\(segment,"e",0,0\)/.test(battleProSkillS
 }
 for (const expected of [
   /marker==="BP"[\s\S]{0,500}scheduleAttack\(segment,target,"attack",0,flags\)/,
-  /String\(segment\.rawMarker\|\|""\)==="Bb"[\s\S]{0,3000}modelPlan=battleModelPlan\(attacker,modelTuples[\s\S]{0,2200}timing=modelPlan\.hits\[index\]/,
+  /String\(segment\.rawMarker\|\|""\)==="Bb"[\s\S]{0,3000}modelPlan=battleModelPlan\(attacker,modelTuples[\s\S]{0,2600}rawTiming=modelPlan\.hits\[index\]/,
   /String\(segment\.rawMarker\|\|""\)==="Bd"[\s\S]{0,900}scheduleAttack\(segment,target,"attack",0,flags\|BATTLE_FLAG\.death\)/,
   /marker==="BY"[\s\S]{0,1800}scheduleAttackPair\(attacker,target,"attack",0,flags\)/,
   /* EarthRound is two native records: BC_FLG_HIDE/BF followed by BI.  The
@@ -5427,7 +5428,11 @@ const projectileEnd = script.indexOf("  function battleQueueDeath", projectileVa
 if (projectilePushStart < 0 || projectileValueStart <= projectilePushStart || projectileEnd <= projectileValueStart) throw new Error("battle projectile helper boundary missing");
 const motionPushStart = script.indexOf("  function battlePushMotion");
 if (motionPushStart < 0 || motionPushStart >= projectilePushStart) throw new Error("battle motion queue helper boundary missing");
-const battlePushMotion = new Function(`${script.slice(motionPushStart, projectilePushStart)}; return battlePushMotion;`)();
+const testBattleSpeedValue=value=>[1,1.5,2,3].includes(Number(value))?Number(value):1;
+const testBattleSpeedScale=(value,speed=1)=>{const number=Math.max(0,Number(value)||0);return number?Math.max(1,number/testBattleSpeedValue(speed)):0;};
+const testBattleSpeedOffset=(value,speed=1)=>Math.max(0,Number(value)||0)/testBattleSpeedValue(speed);
+const testBattlePlaybackSpeed=item=>testBattleSpeedValue(item?.playbackSpeed);
+const battlePushMotion = new Function("BATTLE_PROC_TICK_MS","battlePlaybackSpeed","battleAnimationOffset","battleAnimationScale",`${script.slice(motionPushStart, projectilePushStart)}; return battlePushMotion;`)(nativeProcTickMs,testBattlePlaybackSpeed,testBattleSpeedOffset,testBattleSpeedScale);
 const futureMotionNow = Date.now(), futureMotions = [];
 for (let index = 0; index < 140; index++) {
   battlePushMotion(futureMotions,{kind:"attack",actor:index,startedAt:futureMotionNow+60000+index*10,duration:300});
@@ -5440,7 +5445,7 @@ battlePushMotion(futureMotions,{kind:"attack",actor:140,startedAt:futureMotionNo
 if (futureMotions.length !== 141 || futureMotions.some(item=>item.actor===-1) || futureMotions.at(-1)?.actor !== 140) {
   throw new Error("battle motion cleanup must remove only completed records and preserve all future records");
 }
-const projectileFns = new Function("BATTLE_PROC_TICK_MS", `${script.slice(projectilePushStart, projectileEnd)}; return {battlePushProjectile,battleProjectileValue};`)(nativeProcTickMs);
+const projectileFns = new Function("BATTLE_PROC_TICK_MS","battlePlaybackSpeed","battleAnimationScale", `${script.slice(projectilePushStart, projectileEnd)}; return {battlePushProjectile,battleProjectileValue};`)(nativeProcTickMs,testBattlePlaybackSpeed,testBattleSpeedScale);
 const projectileState = {}, projectileNow = Date.now();
 const pastProjectileStart=projectileNow-500,pastModelState={},pastArrowState={};
 projectileFns.battlePushProjectile(pastModelState,{kind:"model",from:[0,0],to:[1,1],startAt:pastProjectileStart,duration:100});
