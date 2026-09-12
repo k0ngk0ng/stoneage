@@ -37,11 +37,14 @@ jobs:
           node client/web/login_credentials_test.js
           node client/web/npc_interaction_test.js
           node client/web/resource_loading_test.js
+          node client/web/resource_progress_test.js
+          node client/web/asset_cache_test.js
           node client/web/server_directory_test.js
           node client/web/sprite_loading_test.js
           node client/web/sw_cache_test.js
           node client/web/world_frame_test.js
           node internal/admin/app_time_test.js
+          node internal/admin/audit_test.js
           node internal/admin/players_test.js
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py

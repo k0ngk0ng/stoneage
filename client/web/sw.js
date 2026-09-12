@@ -24,6 +24,8 @@ let previousChangedAll = true;
 let previousDeltaFrom = "";
 let previousChanged = new Set();
 let previousRemoved = new Set();
+let assetProgressSequence = 0;
+let storedStatePromise = null;
 /* A repaint, prefetch, and media/image loader can all ask for one immutable
    object before the first response has reached Cache Storage.  Keep one
    network operation per strategy/URL until it settles; each fetch event gets
@@ -170,8 +172,11 @@ function responseCloneForCache(response) {
 
 function responseKey(request, strategy) {
   /* A preload (no-cors) and a JSON fetch (cors) must never share an opaque
-     response. Revision and request headers are also part of its identity. */
-  return JSON.stringify([strategy,activeRevision,request.method,request.url,request.mode,request.credentials,request.cache,request.redirect,Array.from(request.headers.entries())]);
+     response. Keep mode/credentials in the key, while browser cache hints and
+     Accept negotiation are intentionally ignored for immutable objects so a
+     prefetch and the real image request can share one in-flight download. */
+  const headers = Array.from(request.headers.entries()).filter(([name]) => !["accept", "cache-control", "pragma"].includes(name.toLowerCase()));
+  return JSON.stringify([strategy,activeRevision,request.method,request.url,request.mode,request.credentials,request.redirect,headers]);
 }
 
 function coalescedResponse(request, strategy, operation) {
@@ -210,10 +215,110 @@ async function cachePutBestEffort(cache, request, response) {
 async function cacheMatchBestEffort(cache, request) {
   if (!cache) return null;
   try {
-    return await cache.match(request, {ignoreVary: true});
+    const response = await cache.match(request, {ignoreVary: true});
+    /* A no-cors prefetch can leave an opaque response under the same URL.  A
+       subsequent anonymous CORS <img> cannot decode that entry; treat it as
+       a miss so the readable response replaces it instead of surfacing
+       ERR_FAILED from the compositor. */
+    if (response?.type === "opaque" && request?.mode === "cors") return null;
+    return response;
   } catch (_) {
     return null;
   }
+}
+
+function responseBodyLength(response) {
+  if (!response || response.type === "opaque") return 0;
+  const encoding = response.headers?.get?.("Content-Encoding");
+  if (encoding && encoding !== "identity") return 0;
+  return Number(response.headers?.get?.("Content-Length")) || 0;
+}
+
+async function postAssetProgress(clientId, message) {
+  if (!clientId) return;
+  try {
+    if (typeof self.clients?.get === "function") {
+      const client = await self.clients.get(clientId);
+      if (client?.postMessage) {
+        client.postMessage(message);
+        return;
+      }
+    }
+    const clients = await self.clients?.matchAll?.({type: "window", includeUncontrolled: true}) || [];
+    const client = clients.find(item => item?.id === clientId);
+    client?.postMessage?.(message);
+  } catch (_) {
+    /* Progress is optional; the image response must remain usable. */
+  }
+}
+
+function reportsAssetProgress(request) {
+  return request?.destination === "image";
+}
+
+function reportCachedAsset(request, response, clientId) {
+  if (!clientId || !reportsAssetProgress(request) || !response || response.type === "opaque") return Promise.resolve();
+  const url = request.url;
+  const known = responseBodyLength(response);
+  if (known > 0) {
+    return postAssetProgress(clientId, {type: "asset-progress", url, network: false, phase: "cache", loaded: known, size: known, done: true});
+  }
+  let copy;
+  try { copy = response.clone(); } catch (_) { return Promise.resolve(); }
+  return (async () => {
+    try {
+      if (!copy.body?.getReader) {
+        const buffer = await copy.arrayBuffer();
+        const size = buffer.byteLength;
+        if (size > 0) await postAssetProgress(clientId, {type: "asset-progress", url, network: false, phase: "cache", loaded: size, size, done: true});
+        return;
+      }
+      const reader = copy.body.getReader();
+      let loaded = 0;
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        loaded += part.value?.byteLength || 0;
+      }
+      if (loaded > 0) await postAssetProgress(clientId, {type: "asset-progress", url, network: false, phase: "cache", loaded, size: loaded, done: true});
+    } catch (_) { /* a cache hit without readable headers still remains usable */ }
+  })();
+}
+
+function reportNetworkAsset(request, response, clientId) {
+  if (!clientId || !reportsAssetProgress(request) || !response || response.type === "opaque") return Promise.resolve();
+  let copy;
+  try { copy = response.clone(); } catch (_) { return Promise.resolve(); }
+  const requestId = `${Date.now().toString(36)}-${++assetProgressSequence}`;
+  const url = request.url;
+  const total = responseBodyLength(response);
+  return (async () => {
+    let loaded = 0, lastReport = 0;
+    const notify = (phase, done = false, force = false) => {
+      const now = Date.now();
+      if (!force && !done && now - lastReport < 100) return;
+      lastReport = now;
+      void postAssetProgress(clientId, {type: "asset-progress", url, network: true, requestId, phase, loaded, total, size: done ? loaded : 0, done});
+    };
+    notify("start", false, true);
+    try {
+      if (!copy.body?.getReader) {
+        const buffer = await copy.arrayBuffer();
+        loaded = buffer.byteLength;
+      } else {
+        const reader = copy.body.getReader();
+        for (;;) {
+          const part = await reader.read();
+          if (part.done) break;
+          loaded += part.value?.byteLength || 0;
+          notify("progress");
+        }
+      }
+      notify("complete", true, true);
+    } catch (_) {
+      notify("complete", true, true);
+    }
+  })();
 }
 
 async function globalCacheMatchBestEffort(request) {
@@ -222,6 +327,13 @@ async function globalCacheMatchBestEffort(request) {
   } catch (_) {
     return null;
   }
+}
+
+function ensureStoredState() {
+  if (!storedStatePromise) {
+    storedStatePromise = loadStoredState().catch(() => {}).then(() => true);
+  }
+  return storedStatePromise;
 }
 
 async function removeOldCaches() {
@@ -233,7 +345,8 @@ async function removeOldCaches() {
     .map(name => caches.delete(name)));
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, clientId, waitUntil) {
+  await ensureStoredState();
   return coalescedResponse(request, "network-first", async () => {
     let cache = null;
     try { cache = await caches.open(cacheName()); } catch (_) { /* network remains usable */ }
@@ -253,12 +366,17 @@ async function networkFirst(request) {
   });
 }
 
-async function cacheFirst(request) {
+async function cacheFirst(request, clientId, waitUntil) {
+  await ensureStoredState();
   return coalescedResponse(request, "cache-first", async () => {
     let cache = null;
     try { cache = await caches.open(cacheName()); } catch (_) { /* network remains usable */ }
     const hit = await cacheMatchBestEffort(cache, request);
-    if (hit) return hit;
+    if (hit) {
+      const progress = reportCachedAsset(request, hit, clientId);
+      if (waitUntil) waitUntil(progress);
+      return hit;
+    }
     /* When a publication revision changes, unchanged objects are safe to reuse
        from the previous namespace because the uploader compared their SHA-256.
        Changed/removed objects are excluded and must be fetched from the new
@@ -271,6 +389,8 @@ async function cacheFirst(request) {
           const previousHit = await cacheMatchBestEffort(previousCache, request);
           if (previousHit) {
             await cachePutBestEffort(cache, request, previousHit);
+            const progress = reportCachedAsset(request, previousHit, clientId);
+            if (waitUntil) waitUntil(progress);
             return previousHit;
           }
         } catch (_) {
@@ -281,6 +401,8 @@ async function cacheFirst(request) {
     try {
       const response = await fetch(request);
       if (response && (response.ok || response.type === "opaque")) {
+        const progress = reportNetworkAsset(request, response, clientId);
+        if (waitUntil) waitUntil(progress);
         await cachePutBestEffort(cache, request, response);
       }
       return response;
@@ -329,7 +451,7 @@ self.addEventListener("install", event => {
 
 self.addEventListener("activate", event => {
   event.waitUntil((async () => {
-    await loadStoredState();
+    await ensureStoredState();
     await removeOldCaches();
     await self.clients.claim();
   })());
@@ -341,44 +463,84 @@ self.addEventListener("message", event => {
     const revision = validRevision(data.revision);
     if (!revision) return;
     event.waitUntil((async () => {
-      if (revision !== activeRevision) {
-        previousRevision = activeRevision;
-        previousDeltaKnown = data.deltaKnown === true;
-        previousDeltaFrom = validRevision(data.deltaFrom);
-        /* Reuse is valid only when the publisher compared this revision
-           against the exact namespace currently in the browser.  A missing
-           or mismatched base deliberately falls back to network loading. */
-        previousChangedAll = data.changedAll === true || !previousDeltaKnown || !previousDeltaFrom || previousDeltaFrom !== previousRevision;
-        previousChanged = new Set(Array.isArray(data.changed) ? data.changed.map(normalizedObjectKey) : []);
-        previousRemoved = new Set(Array.isArray(data.removed) ? data.removed.map(normalizedObjectKey) : []);
-        await writeMeta(PREVIOUS_STATE_KEY, JSON.stringify({
-          revision: previousRevision,
-          deltaFrom: previousDeltaFrom,
-          deltaKnown: previousDeltaKnown,
-          changedAll: previousChangedAll,
-          changed: [...previousChanged],
-          removed: [...previousRemoved],
-        }));
-        activeRevision = revision;
-      }
-      await writeMeta(REVISION_KEY, revision);
-      await caches.open(cacheName());
-      await removeOldCaches();
+      let ok = false;
+      try {
+        await ensureStoredState();
+        if (revision !== activeRevision) {
+          previousRevision = activeRevision;
+          previousDeltaKnown = data.deltaKnown === true;
+          previousDeltaFrom = validRevision(data.deltaFrom);
+          /* Reuse is valid only when the publisher compared this revision
+             against the exact namespace currently in the browser.  A missing
+             or mismatched base deliberately falls back to network loading. */
+          previousChangedAll = data.changedAll === true || !previousDeltaKnown || !previousDeltaFrom || previousDeltaFrom !== previousRevision;
+          previousChanged = new Set(Array.isArray(data.changed) ? data.changed.map(normalizedObjectKey) : []);
+          previousRemoved = new Set(Array.isArray(data.removed) ? data.removed.map(normalizedObjectKey) : []);
+          await writeMeta(PREVIOUS_STATE_KEY, JSON.stringify({
+            revision: previousRevision,
+            deltaFrom: previousDeltaFrom,
+            deltaKnown: previousDeltaKnown,
+            changedAll: previousChangedAll,
+            changed: [...previousChanged],
+            removed: [...previousRemoved],
+          }));
+          activeRevision = revision;
+        }
+        await writeMeta(REVISION_KEY, revision);
+        await caches.open(cacheName());
+        await removeOldCaches();
+        ok = true;
+      } catch (_) { /* a storage failure leaves the normal network path */ }
+      const port = event.ports?.[0];
+      if (port?.postMessage) port.postMessage({type: "asset-config-result", ok});
     })());
     return;
   }
   if (data.type === "set-asset-roots") {
     const roots = Array.isArray(data.roots) ? data.roots.filter(value => typeof value === "string").slice(0, 8) : [];
-    assetRoots = roots;
-    event.waitUntil(writeMeta(ROOTS_KEY, JSON.stringify(roots)));
+    event.waitUntil((async () => {
+      let ok = false;
+      try {
+        await ensureStoredState();
+        assetRoots = roots;
+        await writeMeta(ROOTS_KEY, JSON.stringify(roots));
+        ok = true;
+      } catch (_) { /* optional metadata storage */ }
+      const port = event.ports?.[0];
+      if (port?.postMessage) port.postMessage({type: "asset-config-result", ok});
+    })());
+    return;
+  }
+  if (data.type === "migrate-asset") {
+    event.waitUntil((async () => {
+      let ok = false;
+      try {
+        await ensureStoredState();
+        const url = new URL(String(data.url || ""));
+        const dataURL = String(data.dataURL || "");
+        if (!/^data:image\//i.test(dataURL) || !isStaticRequest(new Request(url.href, {method: "GET"}))) throw new Error("invalid asset migration");
+        const cache = await caches.open(cacheName());
+        const request = new Request(url.href, {method: "GET"});
+        const existing = await cacheMatchBestEffort(cache, request);
+        if (existing) ok = true;
+        else {
+          const response = await fetch(dataURL);
+          if (!response.ok) throw new Error("local asset migration failed");
+          ok = await cachePutBestEffort(cache, request, response);
+        }
+      } catch (_) { /* stale localStorage entries are safe to discard later */ }
+      const port = event.ports?.[0];
+      if (port?.postMessage) port.postMessage({type: "asset-migration-result", ok});
+    })());
     return;
   }
   if (data.type === "prefetch-assets" && Array.isArray(data.urls)) {
     const urls = data.urls.filter(value => typeof value === "string").slice(0, 32);
+    const clientId = event.source?.id || "";
     event.waitUntil(Promise.all(urls.map(url => {
       try {
         const request = new Request(url, {method: "GET"});
-        return isStaticRequest(request) ? cacheFirst(request).catch(() => null) : null;
+        return isStaticRequest(request) ? cacheFirst(request, clientId, promise => event.waitUntil(promise)).catch(() => null) : null;
       } catch (_) {
         return null;
       }
@@ -401,5 +563,7 @@ self.addEventListener("fetch", event => {
     return;
   }
   const url = new URL(request.url);
-  event.respondWith(isPublishedMarker(url) || isIndexRequest(url) ? networkFirst(request) : cacheFirst(request));
+  const strategy = isPublishedMarker(url) || isIndexRequest(url) ? networkFirst : cacheFirst;
+  const keepAlive = promise => { try { event.waitUntil?.(promise); } catch (_) {} };
+  event.respondWith(strategy(request, event.clientId || "", keepAlive));
 });

@@ -5217,15 +5217,11 @@
       return bytes;
     }catch(_){return 0;}
   }
-  function assetCachedBytes(file){
-    const source=readMapAssetCache(file);
-    if(!source)return 0;
-    const comma=source.indexOf(",");
-    if(comma<0)return 0;
-    const header=source.slice(0,comma),payload=source.slice(comma+1);
-    if(!/;base64(?:;|$)/i.test(header))return 0;
-    const padding=(payload.match(/=*$/)||[""])[0].length;
-    return Math.max(0,Math.floor(payload.length*3/4)-padding);
+  function assetCachedBytes(){
+    /* Image bytes are owned by the Service Worker CacheStorage namespace.
+       The old localStorage data URLs sit outside that revision namespace, and
+       their encoded length is not a network byte count. */
+    return 0;
   }
   function mapLoadingProgress(){
     const cache=app.mapLayerCache;
@@ -5571,7 +5567,17 @@
      It is intentionally separate from the multi-megabyte object manifest so
      a normal page load can select a cache namespace with one small request. */
   const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE);
-  const assetState={receivedBytes:0,manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldBootstrapSprites:null,fieldBootstrapSpritesReady:false,fieldBootstrapSpritesFailed:false,fieldBootstrapSpriteLoading:null,fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  function assetURL(file){
+    const relative=String(file||"").trim().replace(/^\/+/,"");
+    if(!relative)return "";
+    /* Keep one immutable URL for every bitmap.  A shared Image is copied into
+       field, battle, pet, and projectile nodes, so its src must remain valid
+       for the lifetime of the page.  The server rewrites ASSET_RESOURCE_ROOT
+       to the configured CDN root before this script is served. */
+    return new URL(relative,ASSET_RESOURCE_ROOT).href;
+  }
+  const assetState={receivedBytes:0,manifest:null,manifestReady:false,manifestFailed:false,manifestBytes:0,manifestTotalBytes:0,manifestStartedAt:0,manifestAttempts:0,manifestError:"",loading:null,creationSprites:null,creationSpritesReady:false,creationSpritesFailed:false,creationSpriteLoading:null,fieldBootstrapSprites:null,fieldBootstrapSpritesReady:false,fieldBootstrapSpritesFailed:false,fieldBootstrapSpriteLoading:null,fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0,fieldSprites:null,fieldSpritesReady:false,fieldSpritesFailed:false,fieldSpriteLoading:null,sprites:null,spritesReady:false,spritesFailed:false,spriteBytes:0,spriteTotalBytes:0,spriteLoading:null,clientVersion:null,clientVersionReady:false,assetWorker:null,assetWorkerReady:false,assetWorkerConfigKey:"",assetWorkerConfigPromise:null,assetTransfers:new Map(),images:new Map(),mapFetches:new Map(),byteSizes:new Map(),resourceObserver:null};
+  let assetWorkerReadyPromise=Promise.resolve(false),assetVersionPromise=Promise.resolve(null);
   function assetWorkerTarget(){
     try{return navigator.serviceWorker?.controller||assetState.assetWorker?.active||assetState.assetWorker?.waiting||assetState.assetWorker?.installing||null;}catch(_){return null;}
   }
@@ -5579,43 +5585,77 @@
     const target=assetWorkerTarget();if(!target)return false;
     try{target.postMessage(message);return true;}catch(_){return false;}
   }
-  function sendAssetWorkerConfig(){
-    if(!assetState.assetWorkerReady)return;
-    postAssetWorker({type:"set-asset-roots",roots:STATIC_RESOURCE_ROOTS.map(root=>root.href)});
-    const revision=String(assetState.clientVersion?.revision||"");
-    if(revision){
-      const version=assetState.clientVersion||{};
-      postAssetWorker({type:"set-asset-version",revision,
-        deltaFrom:String(version.delta_from||""),
-        deltaKnown:version.delta_known===true,
-        changedAll:version.changed_all===true,
-        changed:Array.isArray(version.changed_objects)?version.changed_objects:[],
-        removed:Array.isArray(version.removed_objects)?version.removed_objects:[]});
+  function sendAssetWorkerRequest(message){
+    const target=assetWorkerTarget();if(!target)return Promise.resolve(false);
+    if(typeof MessageChannel!=="function"){
+      try{target.postMessage(message);return Promise.resolve(true);}catch(_){return Promise.resolve(false);}
     }
+    return new Promise(resolve=>{
+      const channel=new MessageChannel();let settled=false,timeout=0;
+      const finish=ok=>{if(settled)return;settled=true;window.clearTimeout(timeout);try{channel.port1.close();}catch(_){}resolve(Boolean(ok));};
+      timeout=window.setTimeout(()=>finish(false),3000);
+      channel.port1.onmessage=event=>finish(event.data?.type==="asset-config-result"&&event.data.ok===true);
+      try{target.postMessage(message,[channel.port2]);}catch(_){finish(false);}
+    });
+  }
+  function sendAssetWorkerConfig(){
+    if(!assetState.assetWorkerReady)return Promise.resolve(false);
+    const revision=String(assetState.clientVersion?.revision||""),version=assetState.clientVersion||{},key=`${STATIC_RESOURCE_ROOTS.map(root=>root.href).join("|")}|${revision}`;
+    if(assetState.assetWorkerConfigKey===key&&assetState.assetWorkerConfigPromise)return assetState.assetWorkerConfigPromise;
+    const rootsMessage={type:"set-asset-roots",roots:STATIC_RESOURCE_ROOTS.map(root=>root.href)};
+    const versionMessage=revision?{type:"set-asset-version",revision,
+      deltaFrom:String(version.delta_from||""),
+      deltaKnown:version.delta_known===true,
+      changedAll:version.changed_all===true,
+      changed:Array.isArray(version.changed_objects)?version.changed_objects:[],
+      removed:Array.isArray(version.removed_objects)?version.removed_objects:[]}:null;
+    const promise=sendAssetWorkerRequest(rootsMessage).then(rootsReady=>versionMessage?sendAssetWorkerRequest(versionMessage).then(versionReady=>rootsReady&&versionReady):rootsReady);
+    assetState.assetWorkerConfigKey=key;assetState.assetWorkerConfigPromise=promise;return promise;
+  }
+  function waitForAssetWorkerControl(registration){
+    if(navigator.serviceWorker?.controller)return Promise.resolve(true);
+    return new Promise(resolve=>{
+      let settled=false;
+      const finish=value=>{if(settled)return;settled=true;window.clearTimeout(timeout);navigator.serviceWorker.removeEventListener?.("controllerchange",changed);resolve(Boolean(value));};
+      const changed=()=>finish(Boolean(navigator.serviceWorker?.controller));
+      const timeout=window.setTimeout(()=>finish(Boolean(navigator.serviceWorker?.controller)),3000);
+      navigator.serviceWorker.addEventListener?.("controllerchange",changed);
+      if(navigator.serviceWorker?.controller)finish(true);
+    });
   }
   function registerAssetWorker(){
-    if(!navigator.serviceWorker?.register)return;
-    navigator.serviceWorker.register("/sw.js",{scope:"/"}).then(registration=>{
-      assetState.assetWorker=registration;assetState.assetWorkerReady=true;sendAssetWorkerConfig();
-      navigator.serviceWorker.ready.then(ready=>{assetState.assetWorker=ready;assetState.assetWorkerReady=true;sendAssetWorkerConfig();}).catch(()=>{});
-    }).catch(()=>{/* unsupported/file:///embedded WebViews simply use HTTP cache */});
-    navigator.serviceWorker.addEventListener?.("controllerchange",()=>{assetState.assetWorkerReady=true;sendAssetWorkerConfig();});
+    if(!navigator.serviceWorker?.register)return Promise.resolve(false);
+    const bounded=(promise,limit=5000)=>Promise.race([promise,new Promise(resolve=>window.setTimeout(()=>resolve(null),limit))]);
+    assetWorkerReadyPromise=bounded((async()=>{
+      const registration=await bounded(navigator.serviceWorker.register("/sw.js",{scope:"/"}));
+      if(!registration)return false;
+      assetState.assetWorker=registration;
+      const ready=await bounded(navigator.serviceWorker.ready);if(!ready)return false;
+      assetState.assetWorker=ready;assetState.assetWorkerReady=true;
+      await assetVersionPromise.catch(()=>null);
+      const controlled=await waitForAssetWorkerControl(registration),configured=await sendAssetWorkerConfig();
+      return Boolean(controlled&&configured);
+    })(),8000).catch(()=>false); /* unsupported/file:///embedded WebViews use HTTP cache */
+    navigator.serviceWorker.addEventListener?.("controllerchange",()=>{assetState.assetWorkerConfigKey="";assetState.assetWorkerConfigPromise=null;assetState.assetWorkerReady=true;sendAssetWorkerConfig();});
+    return assetWorkerReadyPromise;
   }
   function loadClientVersion(){
     if(assetState.clientVersionReady)return Promise.resolve(assetState.clientVersion);
-    return fetch(ASSET_VERSION_URL.href,{cache:"no-cache",mode:"cors"}).then(response=>{
+    const controller=typeof AbortController==="function"?new AbortController():null;
+    const timeout=window.setTimeout(()=>controller?.abort(),5000);
+    return fetch(ASSET_VERSION_URL.href,{cache:"no-cache",mode:"cors",signal:controller?.signal}).then(response=>{
       if(!response.ok)throw new Error(`资源版本 HTTP ${response.status}`);
       return response.json();
     }).then(version=>{
       if(!version||typeof version!=="object"||!String(version.revision||"").trim())throw new Error("资源版本清单为空");
       assetState.clientVersion=version;assetState.clientVersionReady=true;sendAssetWorkerConfig();return version;
-    }).catch(()=>null);
+    }).catch(()=>null).finally(()=>window.clearTimeout(timeout));
   }
+  assetVersionPromise=loadClientVersion();
   registerAssetWorker();
   /* Version lookup is deliberately best-effort: local development trees do
      not contain the uploader's marker yet, while the worker still provides a
      useful bootstrap cache. */
-  loadClientVersion();
   function rememberAssetResourceSize(file,entryOrSize){
     const key=String(file||"").replace(/^\//,"");if(!key)return 0;
     const size=typeof entryOrSize==="number"
@@ -5636,6 +5676,36 @@
       }
     }catch(_){/* malformed resource entries are not progress-critical */}
   }
+  function assetFileFromURL(value){
+    try{
+      const url=new URL(String(value||""),window.location.href);
+      for(const root of STATIC_RESOURCE_ROOTS){
+        if(url.origin!==root.origin||!url.pathname.startsWith(root.pathname))continue;
+        const relative=decodeURIComponent(url.pathname.slice(root.pathname.length));
+        return root===ASSET_RESOURCE_ROOT?relative:`${root.pathname.includes("/maps/")?"maps":"audio"}/${relative}`;
+      }
+    }catch(_){/* malformed worker messages are ignored */}
+    return "";
+  }
+  function receiveAssetWorkerMessage(event){
+    const data=event?.data||{};
+    if(data.type!=="asset-progress")return;
+    const file=assetFileFromURL(data.url),size=Number(data.size)||0;
+    if(file&&size>0)rememberAssetResourceSize(file,size);
+    /* CacheStorage hits describe a known object size but never add to the
+       network receive counter.  Only a worker cache miss owns a transfer id. */
+    if(data.network!==true)return;
+    const id=String(data.requestId||"");if(!id)return;
+    if(!(assetState.assetTransfers instanceof Map))assetState.assetTransfers=new Map();
+    const transfer=assetState.assetTransfers.get(id)||{loaded:0};
+    const loaded=Math.max(Number(transfer.loaded)||0,Number(data.loaded)||0);
+    const delta=loaded-(Number(transfer.loaded)||0);
+    if(delta>0)assetState.receivedBytes=(Number(assetState.receivedBytes)||0)+delta;
+    transfer.loaded=loaded;
+    if(data.done===true||data.phase==="complete")assetState.assetTransfers.delete(id);else assetState.assetTransfers.set(id,transfer);
+    if(app.mapLoading&&typeof renderMapLoadingProgress==="function")renderMapLoadingProgress("正在下载地图资源…");
+  }
+  navigator.serviceWorker?.addEventListener?.("message",receiveAssetWorkerMessage);
   /* Observe entries as they finish so the byte total survives ResourceTiming
      eviction and works for an image served from the HTTP cache as well. */
   if(typeof PerformanceObserver==="function"){
@@ -5774,6 +5844,9 @@
       try{const value=JSON.parse(localStorage.getItem(key)||"null");if(!value||Number(value.floor)!==wantedFloor)continue;const left=Number(value.x1),top=Number(value.y1),right=left+Number(value.width),bottom=top+Number(value.height);if(Number(x)>=left&&Number(x)<right&&Number(y)>=top&&Number(y)<bottom&&Array.isArray(value.tiles)){return {...value,image:null,asset:null};}}catch(_){/* ignore a stale/corrupt local entry */}
     }return null;
   }
+  /* CacheStorage is the single binary resource cache.  Keep reading the old
+     localStorage value only long enough to migrate it into the worker's
+     fixed-URL entry; it is never assigned to an image element. */
   function readMapAssetCache(file){
     if(!file||typeof localStorage==="undefined")return null;
     try{const value=localStorage.getItem(mapCacheKey(file));return value&&value.startsWith("data:image/")?value:null;}catch(_){return null;}
@@ -5782,37 +5855,27 @@
     if(!file||typeof localStorage==="undefined")return;
     try{localStorage.removeItem(mapCacheKey(file));}catch(_){/* optional cache */}
   }
-  function rememberMapAsset(file,blob){
-    if(!file||!blob||blob.size>MAP_TILE_CACHE_MAX_BYTES||typeof FileReader==="undefined"||typeof localStorage==="undefined")return;
-    const reader=new FileReader();reader.onload=()=>{try{localStorage.setItem(mapCacheKey(file),String(reader.result||""));}catch(_){/* quota is optional; HTTP cache remains the fallback */}};reader.readAsDataURL(blob);
+  function rememberMapAsset(){}
+  function warmMapAsset(){return Promise.resolve(null);}
+  function scheduleMapStorageWarm(){/* The Service Worker owns cache warming. */}
+  const mapAssetMigrationPromises=new Map();
+  function migrateMapAssetCache(file,source){
+    const cached=readMapAssetCache(file),target=assetWorkerTarget();
+    if(!cached||!source||!target||typeof MessageChannel!=="function")return Promise.resolve(false);
+    const key=String(source),previous=mapAssetMigrationPromises.get(key);if(previous)return previous;
+    const promise=new Promise(resolve=>{
+      const channel=new MessageChannel();let finished=false,timeout=0;
+      const finish=ok=>{if(finished)return;finished=true;window.clearTimeout(timeout);try{channel.port1.close();}catch(_){}if(ok)forgetMapAssetCache(file);resolve(Boolean(ok));};
+      timeout=window.setTimeout(()=>finish(false),2000);
+      channel.port1.onmessage=event=>finish(event.data?.type==="asset-migration-result"&&event.data.ok===true);
+      try{target.postMessage({type:"migrate-asset",url:key,dataURL:cached},[channel.port2]);}
+      catch(_){finish(false);}
+    }).finally(()=>mapAssetMigrationPromises.delete(key));
+    mapAssetMigrationPromises.set(key,promise);return promise;
   }
-  function warmMapAsset(file){
-    if(!file||assetState.mapFetches.has(file))return assetState.mapFetches.get(file);
-    const promise=fetch(`/assets/${file}`,{cache:"force-cache"}).then(response=>{if(!response.ok)throw new Error(`地图贴片 HTTP ${response.status}`);return response.blob();}).then(blob=>{rememberMapAsset(file,blob);return blob;}).catch(()=>null).finally(()=>assetState.mapFetches.delete(file));
-    assetState.mapFetches.set(file,promise);return promise;
-  }
-  function scheduleMapStorageWarm(cache){
-    if(!cache||cache.storageWarmScheduled||typeof localStorage==="undefined")return;
-    cache.storageWarmScheduled=true;
-    /* Storage warming is deliberately post-first-frame and idle-paced.  The
-       map is playable as soon as its decoded Image objects are ready; filling
-       localStorage must not compete with the first paint, screenshots, or
-       input handling.  Two requests per idle slice also keep the bridge from
-       seeing a burst of hundreds of duplicate cache reads. */
-    const files=[...cache.required];let cursor=0;
-    const pump=()=>{
-      if(app.mapLayerCache!==cache||cursor>=files.length)return;
-      const batch=files.slice(cursor,cursor+2);cursor+=batch.length;
-      for(const file of batch)if(!readMapAssetCache(file))warmMapAsset(file);
-      const schedule=typeof window.requestIdleCallback==="function"
-        ?(fn=>window.requestIdleCallback(fn,{timeout:1200}))
-        :(fn=>window.setTimeout(fn,180));
-      schedule(pump);
-    };
-    const first=typeof window.requestIdleCallback==="function"
-      ?(fn=>window.requestIdleCallback(fn,{timeout:10000}))
-      :(fn=>window.setTimeout(fn,10000));
-    first(pump);
+  function prepareAssetSource(file){
+    const source=assetURL(file);
+    return Promise.resolve(assetWorkerReadyPromise).catch(()=>false).then(()=>migrateMapAssetCache(file,source)).then(()=>source);
   }
   let backgroundAssetWarmupTimer=0;
   function scheduleBackgroundAssetWarmup(){
@@ -5838,14 +5901,10 @@
     },7000);
   }
   function mapAssetSource(file){
-    const cached=readMapAssetCache(file);
-    /* Let the <img> request be the first request for a tile.  Starting a
-       second fetch here (the old implementation did that for every cell)
-       doubled traffic for a freshly entered map and could keep Chrome's
-       compositor busy for tens of seconds.  loadAsset() warms localStorage
-       after the image has decoded, so browser HTTP cache still supplies the
-       same bytes without delaying the first frame. */
-    return cached||`/assets/${file}`;
+    /* Every consumer receives the same stable URL.  Service Worker
+       CacheStorage handles the cache-first lookup; returning a data URL here
+       would bypass that shared cache and create per-page copies. */
+    return assetURL(file);
   }
   function scheduleAssetRefresh(force=false){
     if(force)app._assetRefreshForce=true;
@@ -5911,10 +5970,7 @@
          deployment CORS rule therefore pairs with anonymous image loading;
          same-origin development assets continue to work unchanged. */
       image=new Image();image.crossOrigin="anonymous";image.decoding="async";
-      let objectURL="";
-      const releaseSource=()=>{if(objectURL){URL.revokeObjectURL(objectURL);objectURL="";}};
       image.onload=()=>{
-        releaseSource();
         rememberAssetResourceSize(file,assetNetworkBytes(file));
         const settled=settleMapAsset(file,false);
         renderMapLoadingProgress("正在解码地图贴片…");
@@ -5928,22 +5984,15 @@
         const cache=app.mapLayerCache;
         if(!mapAsset||!cache||cache.pending.size===0)scheduleAssetRefresh(settled&&(!cache||cache.pending.size===0));
       };
-      image.onerror=()=>{releaseSource();image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
+      image.onerror=()=>{image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
       assetState.images.set(file,image);
-      const source=mapAsset?mapAssetSource(file):`/assets/${file}`;
-      /* Read each image once, including actor frames, before decoding it.
-         ResourceTiming hides CDN sizes without Timing-Allow-Origin and only
-         reports completed requests; the response stream gives actual bytes
-         while a cold-cache download is still in progress. */
-      if(!source.startsWith("data:")&&typeof URL.createObjectURL==="function"){
-        fetch(source,{mode:"cors",cache:"force-cache"}).then(async response=>{
-          if(!response.ok)throw new Error(`图片资源 HTTP ${response.status}`);
-          const buffer=await readAssetResponseBytes(response,null,{});
-          rememberAssetResourceSize(file,buffer.byteLength);
-          objectURL=URL.createObjectURL(new Blob([buffer],{type:response.headers.get("Content-Type")||"image/png"}));
-          image.src=objectURL;
-        }).catch(()=>image.onerror());
-      }else image.src=source;
+      /* Keep the old localStorage tile cache useful by migrating it into the
+         worker's fixed-URL CacheStorage entry before the browser can request
+         the CDN URL.  No temporary URL is ever assigned to an image. */
+      prepareAssetSource(file).then(source=>{
+        if(assetState.images.get(file)!==image||image._assetFailed)return;
+        image.src=source;
+      }).catch(()=>{image.src=assetURL(file);});
     }
     return image;
   }
@@ -6221,7 +6270,7 @@
     for(const pet of app.petSlots||[])if(markAlbumPet(pet))changed=true;
     if(changed&&persist)saveAlbumState();
   }
-  function attachMapImage(){ if(!app.map)return; const definition=mapDefinition(app.map.floor),node=$("world-map"); app.map.asset=definition||null; app.map.image=null; app.map.staticFailed=false; if(!definition||!definition.image){if(node){node.removeAttribute("src");node.style.display="none";}renderWorld(true);maybeFinishMapLoading();return;} const source=mapAssetSource(definition.image); document.documentElement.style.setProperty("--scene-backdrop",`url('${source}')`); if(node){node.onload=()=>{app.map.staticFailed=false;renderWorld(true);renderWorldOverlay();maybeFinishMapLoading();};node.onerror=()=>{app.map.staticFailed=true;renderWorld(true);maybeFinishMapLoading();};node.src=source;node.style.display="block";} app.map.image=node;renderWorld(true); }
+  function attachMapImage(){ if(!app.map)return; const definition=mapDefinition(app.map.floor),node=$("world-map"); app.map.asset=definition||null; app.map.image=null; app.map.staticFailed=false; if(!definition||!definition.image){if(node){node.removeAttribute("src");node.style.display="none";}renderWorld(true);maybeFinishMapLoading();return;} const file=String(definition.image),source=mapAssetSource(file); if(node){node.onload=()=>{app.map.staticFailed=false;renderWorld(true);renderWorldOverlay();maybeFinishMapLoading();};node.onerror=()=>{app.map.staticFailed=true;renderWorld(true);maybeFinishMapLoading();};node.removeAttribute("src");node.style.display="block";} app.map.image=node;prepareAssetSource(file).then(stableSource=>{if(app.map?.asset!==definition)return;document.documentElement.style.setProperty("--scene-backdrop",`url('${stableSource}')`);if(node)node.src=stableSource;}).catch(()=>{if(app.map?.asset!==definition)return;document.documentElement.style.setProperty("--scene-backdrop",`url('${source}')`);if(node)node.src=source;});renderWorld(true); }
   function assetManifestKeys(value){
     const raw=String(value??"").trim(),keys=[];
     if(raw){keys.push(raw,raw.toUpperCase(),raw.toLowerCase());}
@@ -18439,7 +18488,9 @@
             mapNode.dataset.battleRequestedFile=requestedBattleFile;
             mapNode.dataset.battleFallback="1";
             mapNode.classList.remove("battle-map-missing");
-            mapNode.src=fallbackSource;mapNode.style.display=rasterBattleMap?"none":"block";
+            const useFallbackSource=stableSource=>{if(app.battleState===state&&app.battle&&mapNode.dataset.battleRequestedFile===requestedBattleFile)mapNode.src=stableSource;};
+            prepareAssetSource("battle/battle_00.png").then(useFallbackSource).catch(()=>{if(app.battleState===state&&app.battle&&mapNode.dataset.battleRequestedFile===requestedBattleFile){mapNode.src=fallbackSource;}});
+            mapNode.style.display=rasterBattleMap?"none":"block";
           }else{
             /* Keep a warm dark surface rather than hiding the node and
                revealing the page-wide black background if even the fallback
@@ -18447,7 +18498,9 @@
             mapNode.classList.add("battle-map-missing");mapNode.style.display=rasterBattleMap?"none":"block";
           }
         };
-        mapNode.src=source;mapNode.style.display=rasterBattleMap?"none":"block";
+        mapNode.removeAttribute("src");
+        prepareAssetSource(requestedBattleFile).then(stableSource=>{if(app.battleState===state&&app.battle&&mapNode.dataset.battleRequestedFile===requestedBattleFile)mapNode.src=stableSource;}).catch(()=>{if(app.battleState===state&&app.battle&&mapNode.dataset.battleRequestedFile===requestedBattleFile)mapNode.src=source;});
+        mapNode.style.display=rasterBattleMap?"none":"block";
       }else mapNode.style.display=rasterBattleMap?"none":"block";
     }
     if(mapCanvas){

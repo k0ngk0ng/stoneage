@@ -5,13 +5,15 @@ const vm = require('node:vm');
 const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
 function section(start, end) { return html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start))); }
 (async () => {
-  const state = {images: new Map()}, samples = [], urls = [], revoked = [];
+  const state = {images: new Map()}, samples = [];
   let requestCount = 0;
   const context = {
-    assetState: state, Uint8Array, Blob, performance: {now: () => 1000},
-    Image: class {}, URL: {createObjectURL(blob) {assert.equal(blob.size, 5);urls.push('blob:test');return 'blob:test';}, revokeObjectURL(url) {revoked.push(url);}},
+    assetState: state, Uint8Array, performance: {now: () => 1000},
+    Image: class {},
     fetch: async () => {requestCount++;return new Response(new Uint8Array([1,2,3,4,5]));},
     app: {}, rememberAssetResourceSize() {}, assetNetworkBytes() {return 0;},
+    assetURL: file => `https://cdn.example/stoneage/assets/${file}`,
+    prepareAssetSource: async file => `https://cdn.example/stoneage/assets/${file}`,
     settleMapAsset() {return false;}, renderMapLoadingProgress() {}, scheduleAssetRefresh() {},
   };
   vm.createContext(context);
@@ -27,10 +29,10 @@ function section(start, end) { return html.slice(html.indexOf(start), html.index
   const image = context.loadAsset('actor.png');
   assert.equal(context.loadAsset('actor.png'), image, 'concurrent actor requests share the same image');
   for(let i=0;i<30;i++) await Promise.resolve();
-  assert.equal(requestCount, 1, 'image progress must not require a second download');
-  assert.equal(state.receivedBytes, 3077, 'actor image bytes are included');
-  assert.equal(image.src, 'blob:test');
+  assert.equal(requestCount, 0, 'fixed image URLs must not require a page-side fetch for byte accounting');
+  assert.equal(state.receivedBytes, 3072, 'fixed image URLs must not trigger a duplicate page download');
+  assert.equal(image.src, 'https://cdn.example/stoneage/assets/actor.png');
+  assert.equal(image.src.startsWith('blob:'), false, 'shared images must never use temporary Blob URLs');
   image.onload();
-  assert.deepEqual(revoked, ['blob:test'], 'decoded image must release its temporary object URL');
-  console.log('resource progress: streaming bytes, compressed totals, actor images, deduplication and URL cleanup passed');
+  console.log('resource progress: streaming bytes, compressed totals, fixed actor URLs and no duplicate image fetch passed');
 })().catch(error => {console.error(error);process.exitCode=1;});

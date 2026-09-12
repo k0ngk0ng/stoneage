@@ -1102,7 +1102,7 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/id="world-loading-retry"/.test(html) ||
     !/main\.field-loading-active #field-ui[\s\S]{0,260}visibility:hidden/.test(html) ||
     !/function mapLoadingProgress\([\s\S]{0,1800}assetNetworkBytes/.test(script) ||
-    !/function assetCachedBytes\([\s\S]{0,900}base64/.test(script) ||
+    !/function assetCachedBytes\([\s\S]{0,900}return 0/.test(script) ||
     !/function assetNetworkBytes\([\s\S]{0,900}new URL\(relative,ASSET_RESOURCE_ROOT\)/.test(script) ||
     !/function rememberAssetResourceEntry\([\s\S]{0,900}STATIC_RESOURCE_ROOTS/.test(script) ||
     !/function renderMapLoadingProgress\([\s\S]{0,1800}world-loading-detail/.test(script) ||
@@ -1112,6 +1112,13 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/manifestAttempts/.test(script) ||
     !/preferredStable=stable&&stable\.width\*stable\.height>current\.width\*current\.height/.test(script)) {
   throw new Error("map loading must show progress/received bytes and hide field controls while blocked");
+}
+const assetLoaderSource=script.slice(script.indexOf("  function loadAsset(file"),script.indexOf("  function mapDefinition(",script.indexOf("  function loadAsset(file")));
+if (!/function assetURL\(file\)[\s\S]{0,900}new URL\(relative,ASSET_RESOURCE_ROOT\)\.href/.test(script) ||
+    !/function mapAssetSource\(file\)[\s\S]{0,260}return assetURL\(file\)/.test(script) ||
+    !/function assetCachedBytes\(\)[\s\S]{0,260}return 0/.test(script) ||
+    /URL\.createObjectURL|new Blob|blob:/.test(assetLoaderSource)) {
+  throw new Error("shared images must use stable CDN URLs without Blob lifetimes or data URL estimates");
 }
 if (!/if\(!loading\)\{[\s\S]{0,420}app\.mapLoadingStats\.phase="地图已就绪"[\s\S]{0,120}app\.mapLoadingStats\.progress=100/.test(script)) {
   throw new Error("completed map loading must publish an explicit ready phase");
@@ -4402,7 +4409,7 @@ if (!/#battle-map-image\s*\{[^}]*width:640px; height:480px/.test(html) ||
     !/rasterBattleMap\?"none":"block"/.test(battleWorldSource) ||
     !/fallbackBattleFile=battleMapInRange\?`battle\/battle_\$\{String\(battleId\)\.padStart\(2,"0"\)\}\.png`/.test(battleWorldSource) ||
     !/mapNode\.dataset\.battleFallback!=="1"[\s\S]{0,700}battle\/battle_00\.png/.test(battleWorldSource) ||
-    !/battleRequestedFile=requestedBattleFile[\s\S]{0,320}battleFallback="1"[\s\S]{0,180}mapNode\.src=fallbackSource/.test(battleWorldSource) ||
+    !/battleRequestedFile=requestedBattleFile[\s\S]{0,320}battleFallback="1"[\s\S]{0,700}(?:mapNode\.src=fallbackSource|prepareAssetSource\([^)]*battle_00\.png)/.test(battleWorldSource) ||
     !/const rasterNeedsPaint=rasterActive&&rasterReady&&Number\(state\.rasterPaintPhase\)!==rasterPhase/.test(script) ||
     !/transient\|\|rasterNeedsPaint/.test(script) ||
     /transient\|\|rasterActive\)/.test(script)) {
