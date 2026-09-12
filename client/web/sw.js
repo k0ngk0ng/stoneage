@@ -179,20 +179,35 @@ function responseKey(request, strategy) {
   return JSON.stringify([strategy,activeRevision,request.method,request.url,request.mode,request.credentials,request.redirect,headers]);
 }
 
-function coalescedResponse(request, strategy, operation) {
+function coalescedResponse(request, strategy, operation, waitUntil) {
   const key = responseKey(request, strategy);
-  let pending = inflightResponses.get(key);
-  if (!pending) {
-    pending = Promise.resolve().then(operation);
-    inflightResponses.set(key, pending);
+  let entry = inflightResponses.get(key);
+  if (!entry) {
+    const operationPromise = Promise.resolve().then(operation);
+    /* An operation returns its response as soon as fetch() has produced it.
+       Its optional completion promise covers work that must keep this request
+       coalesced, such as the asynchronous Cache Storage write. */
+    const responsePromise = operationPromise.then(result => {
+      const response = result && result.response;
+      return response === undefined ? result : response;
+    });
+    const completionPromise = operationPromise.then(result => {
+      const completion = result && result.completion;
+      return completion ? Promise.resolve(completion).catch(() => {}) : Promise.resolve();
+    }, () => Promise.resolve());
+    entry = {responsePromise, completionPromise};
+    inflightResponses.set(key, entry);
     const clear = () => {
-      if (inflightResponses.get(key) === pending) inflightResponses.delete(key);
+      if (inflightResponses.get(key) === entry) inflightResponses.delete(key);
     };
-    /* Attach both branches so a rejected network operation is still observed
-       while the caller receives the original rejection below. */
-    pending.then(clear, clear);
+    /* Keep the operation coalesced until all background work finishes.  The
+       rejection handler also observes an unexpected completion failure. */
+    completionPromise.then(clear, clear);
   }
-  return pending.then(responseClone);
+  if (waitUntil) {
+    try { waitUntil(entry.completionPromise); } catch (_) {}
+  }
+  return entry.responsePromise.then(responseClone);
 }
 
 async function cachePutBestEffort(cache, request, response) {
@@ -353,17 +368,18 @@ async function networkFirst(request, clientId, waitUntil) {
     try {
       const response = await fetch(request);
       if (response && (response.ok || response.type === "opaque")) {
-        await cachePutBestEffort(cache, request, response);
+        const completion = cachePutBestEffort(cache, request, response);
+        return {response, completion};
       }
-      return response;
+      return {response};
     } catch (error) {
       const current = await cacheMatchBestEffort(cache, request);
-      if (current) return current;
+      if (current) return {response: current};
       const fallback = await globalCacheMatchBestEffort(request);
-      if (fallback) return fallback;
+      if (fallback) return {response: fallback};
       throw error;
     }
-  });
+  }, waitUntil);
 }
 
 async function cacheFirst(request, clientId, waitUntil) {
@@ -375,7 +391,7 @@ async function cacheFirst(request, clientId, waitUntil) {
     if (hit) {
       const progress = reportCachedAsset(request, hit, clientId);
       if (waitUntil) waitUntil(progress);
-      return hit;
+      return {response: hit, completion: progress};
     }
     /* When a publication revision changes, unchanged objects are safe to reuse
        from the previous namespace because the uploader compared their SHA-256.
@@ -388,10 +404,10 @@ async function cacheFirst(request, clientId, waitUntil) {
           const previousCache = await caches.open(cacheName(previousRevision));
           const previousHit = await cacheMatchBestEffort(previousCache, request);
           if (previousHit) {
-            await cachePutBestEffort(cache, request, previousHit);
+            const completion = cachePutBestEffort(cache, request, previousHit);
             const progress = reportCachedAsset(request, previousHit, clientId);
             if (waitUntil) waitUntil(progress);
-            return previousHit;
+            return {response: previousHit, completion};
           }
         } catch (_) {
           /* Storage failures fall through to the normal network path. */
@@ -403,15 +419,16 @@ async function cacheFirst(request, clientId, waitUntil) {
       if (response && (response.ok || response.type === "opaque")) {
         const progress = reportNetworkAsset(request, response, clientId);
         if (waitUntil) waitUntil(progress);
-        await cachePutBestEffort(cache, request, response);
+        const completion = cachePutBestEffort(cache, request, response);
+        return {response, completion};
       }
-      return response;
+      return {response};
     } catch (error) {
       const fallback = await globalCacheMatchBestEffort(request);
-      if (fallback) return fallback;
+      if (fallback) return {response: fallback};
       throw error;
     }
-  });
+  }, waitUntil);
 }
 
 async function loadStoredState() {
