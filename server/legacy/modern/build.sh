@@ -58,6 +58,12 @@ if ! grep -q 'STONEAGE_SAFE_SAME_IP_SCAN' /src/gmsv/net.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0004-safe-same-ip-scan.patch
 fi
 
+# The private gateway multiplexes browser sessions behind one source IPv4.
+# Keep direct-client same-IP protection, with an explicit exact-host exception.
+if ! grep -q 'STONEAGE_TRUSTED_GATEWAY_SAME_IP' /src/gmsv/net.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0005-trusted-gateway-same-ip.patch
+fi
+
 # fgetc() returns int, but the archive stored it in a plain char. On ARM64,
 # EOF consequently became 255 and character loading wrote past its 64 KiB
 # buffer until SAAC crashed. Preserve EOF and reject oversized save files.

@@ -2046,10 +2046,62 @@ void CONNECT_SysEvent_Loop( void)
 }
 
 // Nuke 0126: Resource protection
+/* STONEAGE_TRUSTED_GATEWAY_SAME_IP
+ * A browser connection reaches GMSV through the private protocol gateway, so
+ * every browser has the gateway's source address. Keep the historic same-IP
+ * resource guard for direct clients, but allow the one explicitly configured
+ * gateway address to serve concurrent browser sessions.
+ *
+ * Cache DNS briefly so startup ordering or a recreated gateway cannot leave
+ * a stale trust decision. The value is operator-controlled and is
+ * deliberately limited to one exact IPv4 address; an absent or invalid value
+ * leaves the original guard enabled.
+ */
+static time_t trustedGatewayIPRefreshAt = 0;
+static unsigned long trustedGatewayIP = 0;
+
+static BOOL isTrustedGatewayIP( unsigned long ip )
+{
+  const char *configuredHost;
+  struct in_addr address;
+  struct hostent *hoste;
+
+  if ( time(NULL) >= trustedGatewayIPRefreshAt ) {
+    unsigned long previousAddress = trustedGatewayIP;
+    trustedGatewayIPRefreshAt = time(NULL) + 5;
+    trustedGatewayIP = 0;
+    configuredHost = getenv( "STONEAGE_GMSV_TRUSTED_GATEWAY_HOST" );
+    if ( configuredHost == NULL || configuredHost[0] == '\0' )
+      return FALSE;
+
+    memset( &address, 0, sizeof( address ) );
+    if ( inet_aton( configuredHost, &address ) == 0 ) {
+      hoste = gethostbyname( configuredHost );
+      if ( hoste == NULL || hoste->h_addrtype != AF_INET ||
+           hoste->h_length != sizeof( address ) ||
+           hoste->h_addr_list == NULL || hoste->h_addr_list[0] == NULL ) {
+        print( "Trusted gateway host %s could not be resolved; same-IP guard remains enabled\n",
+               configuredHost );
+        return FALSE;
+      }
+      memcpy( &address, hoste->h_addr_list[0], sizeof( address ) );
+    }
+
+    trustedGatewayIP = address.s_addr;
+    if ( previousAddress != trustedGatewayIP )
+      print( "Trusted gateway source %s (%s); same-IP guard bypassed for this address\n",
+           configuredHost, inet_ntoa( address ) );
+  }
+
+  return trustedGatewayIP != 0 && trustedGatewayIP == (ip & 0xffffffffUL);
+}
+
 int isThereThisIP(unsigned long ip)
 {
   int i;
-  unsigned long ipa;
+  unsigned long ipa = 0;
+
+  if ( isTrustedGatewayIP( ip ) ) return 0;
 
   /* STONEAGE_SAFE_SAME_IP_SCAN */
   for ( i = 0; i < ConnectLen ; i++ ) {
@@ -2059,7 +2111,7 @@ int isThereThisIP(unsigned long ip)
          Connect[ i ].state == WHILEDOWNLOADCHARLIST ) {
       memcpy( &ipa, &Connect[ i ].sin.sin_addr, 4 );
 
-      if ( ipa == ip ) return 1;
+      if ( ipa == (ip & 0xffffffffUL) ) return 1;
     }
   }
 

@@ -51,6 +51,7 @@ jobs:
           node internal/admin/players_test.js
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
+          python3 server/legacy/modern/tests/test-gmsv-trusted-gateway.py
       - name: Verify production deployment tools
         run: |
           python3 scripts/modernize-object-cstring_test.py

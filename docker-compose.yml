@@ -60,6 +60,8 @@ services:
       STONEAGE_RUNTIME_ROLE: gmsv
       STONEAGE_PLAYER_ADMIN_DIR: /run/stoneage/player-admin/gmsv
       STONEAGE_GMSV_CONFIG: /etc/stoneage/gmsv/setup.cf
+      # Only this exact internal gateway may multiplex pre-login clients.
+      STONEAGE_GMSV_TRUSTED_GATEWAY_HOST: gateway
       STONEAGE_SAAC_HOST: saac
       STONEAGE_SAAC_PORT: 9300
     volumes:
