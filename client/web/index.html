@@ -9232,14 +9232,28 @@
        RS_LIST_MAX).  The item list follows the fifth comma; using four here
        shifted the item field one slot to the right and silently dropped all
        battle loot from the result window. */
-    const fields=value.split(","),count=5;for(let i=0;i<count;i++){const row=String(fields[i]||"").split("|");if(!row.length)continue;result.characters.push({petNo:decimal(row[0],-1),levelUp:Boolean(decimal(row[1])),exp:battleBase62(row[2])});}
+    const fields=value.split(","),count=5;for(let i=0;i<count;i++){
+      const row=String(fields[i]||"").split("|");
+      if(row.length<3||!/^\s*-?\d+\s*$/.test(row[0]))continue;
+      const petNo=decimal(row[0],-1);
+      if(petNo!==-2&&(petNo<0||petNo>=5))continue;
+      result.characters.push({petNo,levelUp:Boolean(decimal(row[1])),exp:battleBase62(row[2])});
+    }
     result.items=String(fields[count]||"").split("|").map(item=>item.trim()).filter(Boolean);return result;
   }
   function renderBattleResult(){
     const node=$("battle-result-body"),screen=$("battle-result-screen"),result=app.battleState.result;if(!node||!screen||!result)return;screen.classList.toggle("result-duel",Boolean(result.duel));node.replaceChildren();
     if(result.duel){for(const [index,label] of ["经验", "宠物经验"].entries()){const row=document.createElement("div");row.className="result-line";const exp=result.characters[index]?.exp??0;row.textContent=`${label}  ${exp>=0?"+":""}${exp}`;node.append(row);}return;}
-    const names=[app.character,...app.petSlots.map(pet=>pet?.name||pet?.freeName||"")];for(const [index,entry] of result.characters.entries()){if(index>0&&!names[index])continue;const row=document.createElement("div");row.className="result-line";const name=document.createElement("span");name.className="result-name";name.textContent=names[index]||`成员 ${entry.petNo}`;const level=document.createElement("span");level.className="result-level";level.textContent=entry.levelUp?"升级":"";const exp=document.createElement("span");exp.className="result-exp";exp.textContent=`Exp ${entry.exp>=0?"+":""}${entry.exp}`;row.append(name,level,exp);node.append(row);}
+    /* RS rows are compact rewards, not positions in the pet inventory.
+       -2 identifies the player; every other valid petNo is the actual
+       zero-based pet slot, including gaps left by resting pets. */
+    for(const entry of result.characters){const row=document.createElement("div");row.className="result-line";row.dataset.petSlot=String(entry.petNo);const name=document.createElement("span");name.className="result-name";name.textContent=entry.petNo===-2?(app.character||"角色"):(petDisplayName(app.petSlots[entry.petNo])||`宠物 ${entry.petNo+1}`);const level=document.createElement("span");level.className="result-level";level.textContent=entry.levelUp?"LvUp!":"";if(entry.levelUp)level.setAttribute("aria-label","升级");const exp=document.createElement("span");exp.className="result-exp";exp.textContent=`Exp ${entry.exp>=0?"+":""}${entry.exp}`;row.append(name,level,exp);node.append(row);}
     const items=document.createElement("div");items.className="result-items";items.textContent=`获得物品：\n${result.items.length?result.items.join("\n"):"没有获得物品。"}`;node.append(items);
+  }
+  function battleResultSound(result){
+    /* MENU.CPP::BattleResultWnd uses SE 211 for an authoritative level-up
+       flag, otherwise SE 202. RD never carries a level-up flag. */
+    return result&&!result.duel&&result.characters.some(entry=>entry.levelUp)?211:202;
   }
   function finishBattleResult(state){
     if(!state||!state.result||app.battleState!==state)return;
@@ -9263,7 +9277,7 @@
        post-victory scene until the next map packet arrived.  Keep the result
        surface silent and restore the room track only when its close action
        actually returns to the field. */
-    app.music.mode="battle-result";stopBackgroundMusic();playSoundEffect(215,320,240);
+    app.music.mode="battle-result";stopBackgroundMusic();playSoundEffect(battleResultSound(state.result),320,240);
     renderBattleResult();show(battleResultScreen);status("战斗结果","good");
   }
   function queueBattleResult(state){
@@ -15193,7 +15207,7 @@
         }
         break;
       }
-      case "RS": case "RD": openBattleResult(message.function,values[0]||"");addChat("战斗结果",values[0]||""); $("battle-log").textContent+=`\n${message.function}：${values[0]||""}`; break;
+      case "RS": case "RD": openBattleResult(message.function,values[0]||""); $("battle-log").textContent+=`\n${message.function}：${values[0]||""}`; break;
       case "B": receiveBattlePacket(values[0]); $("battle-log").textContent+=`\n服务器：${values[0]||""}`; $("battle-log").scrollTop=$("battle-log").scrollHeight; break;
       case "FS": { const flags=Number(values[0])||0;setStatus("etcFlag",flags);setStatus("partyAllowed",Boolean(flags&1));setStatus("duelAllowed",Boolean(flags&4));renderFieldSettings();break; }
       case "HL": { const help=Number(values[0])?1:0;setStatus("helpFlag",help);addChat("战斗",help?"队伍求助已开启":"队伍求助已关闭");break; }
@@ -19897,7 +19911,7 @@
     clearPendingBattlePackets();app.battle=false;app.phase="world";
     battleResetCommandLocks(state);battleCancelPendingUi(state);battleCancelPendingDamage(state);state.result=null;
     state.motions=[];state.projectiles=[];state.effects=[];app.ignoreBattlePacketsUntil=0;
-    restoreMapMusic();show(worldScreen);setWorldState("战斗结束","good");
+    playSoundEffect(203,320,240);restoreMapMusic();show(worldScreen);setWorldState("战斗结束","good");
   });
   function closeWorldPanelFromUi(){
     /* Do not let a hidden local close button steal ownership from a visible

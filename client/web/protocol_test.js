@@ -2139,9 +2139,9 @@ for (const expected of [
   /* A stale generated manifest must not override that height-derived origin
      when its render.origin_y came from the old width-based script. */
   /const definitionHeight=Math\.trunc\(Number\(definition\.source_height\)\|\|0\);[\s\S]{0,180}render\.origin_y=\(definitionHeight-1\)\*24\+256/,
-  /* The native battle result window stops BGM, plays SE 215, and only
+  /* The native battle result window stops BGM, selects its result SE, and only
      restores the room track after the result is closed. */
-  /app\.music\.mode="battle-result";stopBackgroundMusic\(\);playSoundEffect\(215,320,240\);[\s\S]{0,220}renderBattleResult\(\);show\(battleResultScreen\)/,
+  /app\.music\.mode="battle-result";stopBackgroundMusic\(\);playSoundEffect\(battleResultSound\(state\.result\),320,240\);[\s\S]{0,220}renderBattleResult\(\);show\(battleResultScreen\)/,
   /function battleCountdownAsset\(digit\)[\s\S]{0,900}battle_countdown\?\.digits/,
   /const text=String\(Math\.min\(30,seconds\)\)\.padStart\(2," "\);/,
   /image\.dataset\.logicalBitmap=String\(BATTLE_COUNTDOWN_LOGICAL_BASE\+digit\)/,
