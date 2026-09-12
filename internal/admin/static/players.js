@@ -61,7 +61,7 @@
     if (graphicID === null || graphicID === undefined || String(graphicID) === "") {
       return "";
     }
-    const assetKind = kind === "pet" ? "pet" : "item";
+    const assetKind = kind === "character" ? "character" : kind === "pet" ? "pet" : "item";
     return "/api/player-assets/graphic/" + encodeURIComponent(String(graphicID)) + "?kind=" + encodeURIComponent(assetKind);
   }
 
@@ -301,6 +301,7 @@
     }
 
     function setOnlineStatus(online) {
+      if (!onlineStatus) return;
       onlineStatus.classList.remove("ok", "off", "unknown");
       if (online === true) {
         onlineStatus.classList.add("ok");
@@ -420,8 +421,13 @@
       }
       state.editorPossession = possession;
       state.editorPreviousFocus = document.activeElement;
-      renderPossessionEditor(possession);
-      setText(editorTitle, (possessionKind(possession.kind) === "pet" ? "编辑宠物" : "编辑物品"));
+      if (possession.kind === "character") {
+        renderCharacterEditor();
+        setText(editorTitle, "编辑角色");
+      } else {
+        renderPossessionEditor(possession);
+        setText(editorTitle, (possessionKind(possession.kind) === "pet" ? "编辑宠物" : "编辑物品"));
+      }
       editorDialog.hidden = false;
       document.body.classList.add("modal-open");
       if (editorClose && typeof editorClose.focus === "function") {
@@ -633,6 +639,7 @@
       header.appendChild(makeAssetPreview(document, possession, kind));
       const title = makeElement(document, "div", "possession-title");
       title.appendChild(makeElement(document, "strong", "", valueText(possession.name, kind === "pet" ? "未命名宠物" : "未命名物品")));
+      if (kind === "pet") title.appendChild(makeElement(document, "small", "asset-level", levelLabel(possession)));
       header.appendChild(title);
       summary.appendChild(header);
       const meta = makeElement(document, "div", "possession-meta");
@@ -812,22 +819,39 @@
       return section;
     }
 
-    function renderSnapshot() {
-      clear(snapshotElement);
-      if (!state.snapshot) {
-        setOnlineStatus(null);
-        snapshotElement.appendChild(makeElement(document, "div", "empty", "选择角色后显示资产。"));
-        renderCatalogSelection();
-        return;
-      }
-      setOnlineStatus(state.snapshot.online === true ? true : state.snapshot.online === false ? false : null);
-      const summary = makeElement(document, "div", "player-summary");
-      const copy = makeElement(document, "div");
-      copy.appendChild(makeElement(document, "h3", "", valueText(state.snapshot.name, "未命名角色")));
-      copy.appendChild(makeElement(document, "p", "", "角色槽位 " + valueText(state.characterSlot, "—") + " · " + (state.snapshot.online === true ? "当前在线" : "当前离线")));
-      summary.appendChild(copy);
-      snapshotElement.appendChild(summary);
+    function levelLabel(entry) {
+      const level = asArray(entry && entry.attributes).find(function (attribute) { return attribute.key === "lv"; });
+      return "等级 " + valueText(level && level.value);
+    }
 
+    function renderCharacterSummary() {
+      const header = makeElement(document, "div", "possession-card-header");
+      header.appendChild(makeAssetPreview(document, state.snapshot, "character"));
+      const title = makeElement(document, "div", "possession-title");
+      title.appendChild(makeElement(document, "strong", "", valueText(state.snapshot.name, "未命名角色")));
+      title.appendChild(makeElement(document, "small", "asset-level", levelLabel(state.snapshot)));
+      header.appendChild(title);
+      return header;
+    }
+
+    function renderCharacterCard() {
+      const card = makeElement(document, "article", "character-card");
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", "编辑角色「" + valueText(state.snapshot.name, "未命名角色") + "」");
+      card.appendChild(renderCharacterSummary());
+      const open = function () { openPossessionEditor({kind: "character"}); };
+      card.addEventListener("click", open);
+      card.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+      });
+      return card;
+    }
+
+    function renderCharacterEditor() {
+      clear(editorContent);
+      editorContent.appendChild(renderCharacterSummary());
+      editorContent.appendChild(makeElement(document, "p", "muted", "角色槽位 " + valueText(state.characterSlot, "—") + " · " + (state.snapshot.online ? "当前在线" : "当前离线")));
       const attributesSection = makeElement(document, "section", "player-section");
       const attributesTitle = makeElement(document, "div", "player-section-title");
       attributesTitle.appendChild(makeElement(document, "h3", "", "金钱与角色属性"));
@@ -848,7 +872,20 @@
         });
         attributesSection.appendChild(list);
       }
-      snapshotElement.appendChild(attributesSection);
+      editorContent.appendChild(attributesSection);
+    }
+
+    function renderSnapshot() {
+      clear(snapshotElement);
+      if (!state.snapshot) {
+        setOnlineStatus(null);
+        snapshotElement.appendChild(makeElement(document, "div", "empty", "选择角色后显示资产。"));
+        renderCatalogSelection();
+        return;
+      }
+      setOnlineStatus(state.snapshot.online === true ? true : state.snapshot.online === false ? false : null);
+      snapshotElement.appendChild(renderCharacterCard());
+
       snapshotElement.appendChild(renderPossessions(asArray(state.snapshot.possessions)));
       renderCatalogSelection();
     }

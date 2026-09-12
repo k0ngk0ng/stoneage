@@ -28,6 +28,7 @@ func TestUsesWebAliasesAndRestrictsManifestPaths(t *testing.T) {
 	}{
 		{"/api/player-assets/graphic/20033?kind=item", "item.png", 200},
 		{"/api/player-assets/graphic/100250?kind=pet", "pet.png", 200},
+		{"/api/player-assets/graphic/100250?kind=character", "pet.png", 200},
 		{"/api/player-assets/graphic/100251?kind=pet", "", 404},
 		{"/api/player-assets/graphic/999?kind=item", "", 404},
 		{"/api/player-assets/graphic/../../manifest.json?kind=item", "", 404},

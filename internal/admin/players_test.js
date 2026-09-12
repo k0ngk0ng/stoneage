@@ -203,6 +203,7 @@ function jsonResponse(payload, status = 200) {
 function snapshot(slot, revision = "rev-" + slot) {
   return {
     online: slot === 0,
+    graphic_id: 100020,
     name: slot === 0 ? "阿石" : "阿木",
     revision,
     capacities: {item_inventory: 15, item_warehouse: 30, pet_inventory: 5, pet_warehouse: 5},
@@ -211,7 +212,8 @@ function snapshot(slot, revision = "rev-" + slot) {
       {key: "vi", label: "体力", value: 12345, min: 0, max: 2147483647},
       {key: "str", label: "腕力", value: 1800, min: 0, max: 2147483647},
       {key: "tou", label: "耐力", value: 2001, min: 0, max: 2147483647},
-      {key: "dx", label: "速度", value: 999, min: 0, max: 2147483647}
+      {key: "dx", label: "速度", value: 999, min: 0, max: 2147483647},
+      {key: "lv", label: "等级", value: 25, min: 1, max: 140}
     ],
     possessions: [
       {kind: "item", location: "inventory", slot: 5, name: "石斧", id: 100, graphic_id: 200, attributes: [
@@ -222,7 +224,8 @@ function snapshot(slot, revision = "rev-" + slot) {
         {key: "str", label: "腕力", value: 1800, min: 0, max: 2147483647},
         {key: "tou", label: "耐力", value: 2001, min: 0, max: 2147483647},
         {key: "dx", label: "速度", value: 999, min: 0, max: 2147483647},
-        {key: "growth_vi", label: "体力成长基础", value: 123, min: 0, max: 255}
+        {key: "growth_vi", label: "体力成长基础", value: 123, min: 0, max: 255},
+        {key: "lv", label: "等级", value: 7, min: 1, max: 140}
       ], skills: [
         {slot: 0, id: -1}, {slot: 1, id: 72, name: "火焰"}
       ]},
@@ -301,7 +304,17 @@ async function main() {
   click(page.editorDialog.querySelectorAll("[data-player-editor-cancel]")[1]);
   assert.equal(page.editorDialog.hidden, true, "editor close button closes the editor");
 
-  const characterRows = page.root.querySelectorAll(".attribute-row");
+  const characterCard = page.root.querySelector(".character-card");
+  assert(characterCard, "character is a clickable summary");
+  assert.equal(characterCard.querySelector("img").src, "/api/player-assets/graphic/100020?kind=character");
+  assert.equal(characterCard.querySelector(".asset-level").textContent, "等级 25");
+  assert.equal(page.root.querySelector(".attribute-row"), null, "character attributes are not on the list");
+  assert.equal(characterCard.querySelector("input"), null, "level on the card is read-only");
+  assert.equal(page.root.querySelectorAll(".possession-card")[1].querySelector(".asset-level").textContent, "等级 7");
+  characterCard.focus();
+  characterCard.dispatchEvent({type: "keydown", key: "Enter"});
+  assert.equal(page.editorDialog.hidden, false, "keyboard opens character editor");
+  const characterRows = page.editorContent.querySelectorAll(".attribute-row");
   const vitalInput = characterRows[1].querySelector(".attribute-editor input");
   assert.equal(vitalInput.value, "123.45", "character vital is shown in game units");
   vitalInput.value = "12.34";

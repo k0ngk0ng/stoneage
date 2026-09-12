@@ -347,6 +347,7 @@ func TestOnlineSnapshotExpandsPackedPetGrowth(t *testing.T) {
 		"pet.inventory.0.name":       "Pet",
 		"pet.inventory.0.user_name":  "",
 		"pet.inventory.0.graphic_id": "123",
+		"character.graphic_id":       "100020",
 		"pet.inventory.0.field.lvup": "-760981768",
 		"pet.inventory.0.field.llt":  "5",
 		"pet.inventory.0.field.slt":  "3",
@@ -360,6 +361,9 @@ func TestOnlineSnapshotExpandsPackedPetGrowth(t *testing.T) {
 	}, "alice", 0)
 	if err != nil {
 		t.Fatalf("onlineSnapshot() error = %v", err)
+	}
+	if snapshot.GraphicID != 100020 {
+		t.Fatalf("online character graphic = %d", snapshot.GraphicID)
 	}
 	if len(snapshot.Possessions) != 1 {
 		t.Fatalf("possessions = %d, want 1", len(snapshot.Possessions))

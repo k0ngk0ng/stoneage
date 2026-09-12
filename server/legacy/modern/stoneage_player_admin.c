@@ -1030,6 +1030,7 @@ static void StoneAgePA_snapshot( StoneAgePAResponse *response,
     StoneAgePA_responseOK(response, request, index);
     StoneAgePA_writeEncoded(response, "account", CHAR_getChar(index, CHAR_CDKEY));
     StoneAgePA_writeEncoded(response, "character", CHAR_getChar(index, CHAR_NAME));
+    StoneAgePA_writeInt(response, "character.graphic_id", CHAR_getInt(index, CHAR_BASEIMAGENUMBER));
     StoneAgePA_writeEncoded(response, "save_status", "not_requested");
     StoneAgePA_writeCharacterAttributes(response, index);
     for( i = 0; i < CHAR_MAXITEMHAVE; i++ ) {

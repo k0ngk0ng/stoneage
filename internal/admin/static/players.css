@@ -38,8 +38,8 @@
 .possession-kind:first-of-type { margin-top: 0; }
 .possession-kind h5 { margin: 0 0 8px; color: #68777c; font-size: 12px; }
 .possession-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
-.possession-card { min-width: 0; padding: 10px; border: 2px solid rgba(94,116,128,.27); border-radius: 11px 11px 5px 11px; background: rgba(255,255,255,.42); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
-.possession-card:hover, .possession-card:focus { border-color: #2187ad; background: rgba(223,241,243,.78); outline: 0; box-shadow: 0 0 0 3px rgba(46,157,192,.16); }
+.possession-card, .character-card { min-width: 0; padding: 10px; border: 2px solid rgba(94,116,128,.27); border-radius: 11px 11px 5px 11px; background: rgba(255,255,255,.42); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.possession-card:hover, .possession-card:focus, .character-card:hover, .character-card:focus { border-color: #2187ad; background: rgba(223,241,243,.78); outline: 0; box-shadow: 0 0 0 3px rgba(46,157,192,.16); }
 .possession-summary { min-width: 0; }
 .possession-card-header { display: grid; grid-template-columns: 58px minmax(0,1fr); align-items: center; gap: 9px; min-width: 0; }
 .asset-preview { display: grid; place-items: center; width: 58px; height: 58px; overflow: hidden; border: 2px solid #718791; border-radius: 10px 10px 4px 10px; background: rgba(224,237,230,.7); }

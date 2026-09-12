@@ -236,3 +236,26 @@ func TestSaveCapacityCheckedAfterEscaping(t *testing.T) {
 		t.Fatal("accepted oversized escaped save")
 	}
 }
+
+func TestSnapshotCharacterGraphic(t *testing.T) {
+	for _, test := range []struct {
+		fields string
+		want   int64
+	}{
+		{"bi=100020\nbbi=100022", 100020},
+		{"bi=0\nbbi=100022", 100022},
+		{"bbi=100022", 100022},
+	} {
+		doc, err := ParseSave([]byte("Hero|lv=1|" + test.fields + "\nname=Hero\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := doc.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.GraphicID != test.want {
+			t.Fatalf("%s: graphic %d, want %d", test.fields, snapshot.GraphicID, test.want)
+		}
+	}
+}

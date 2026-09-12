@@ -33,6 +33,7 @@ type PetSkillSlot struct {
 }
 
 type Snapshot struct {
+	GraphicID   int64          `json:"graphic_id"`
 	Online      bool           `json:"online"`
 	Name        string         `json:"name"`
 	Revision    string         `json:"revision"`
@@ -191,6 +192,10 @@ func (d *Document) Snapshot() (Snapshot, error) {
 	result.Name, err = d.Character.Text("name")
 	if err != nil {
 		return result, err
+	}
+	result.GraphicID, _ = d.Character.Integer("bi")
+	if result.GraphicID == 0 {
+		result.GraphicID, _ = d.Character.Integer("bbi")
 	}
 	result.Attributes, err = attributes(d.Character, characterAttributes)
 	if err != nil {

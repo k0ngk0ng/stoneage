@@ -90,7 +90,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := r.URL.Query().Get("kind")
-	if kind != "pet" && kind != "item" {
+	if kind != "pet" && kind != "item" && kind != "character" {
 		http.NotFound(w, r)
 		return
 	}
@@ -100,10 +100,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	asset, ok := manifest.ResolveItem(id)
-	if kind == "pet" {
+	if kind == "pet" || kind == "character" {
 		asset, ok, err = h.petAsset(id)
 		if err != nil {
-			http.Error(w, "宠物外观资源暂时不可用", 503)
+			http.Error(w, "角色外观资源暂时不可用", 503)
 			return
 		}
 	}

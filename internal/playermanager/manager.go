@@ -230,6 +230,11 @@ func onlineSnapshot(fields map[string]string, account string, slot int) (playerd
 	if err != nil {
 		return result, err
 	}
+	if graphic := fields["character.graphic_id"]; graphic != "" {
+		if err = record.SetRaw("bi", []byte(graphic)); err != nil {
+			return result, err
+		}
+	}
 	for _, a := range playerdata.Definitions("character") {
 		if value, ok := fields["attribute."+a.Key]; ok {
 			if err = record.SetRaw(a.Key, []byte(value)); err != nil {
