@@ -38,6 +38,7 @@ jobs:
           node client/web/battle_resource_test.js
           node client/web/connection_retry_test.js
           node client/web/login_credentials_test.js
+          node client/web/mobile_interaction_test.js
           node client/web/npc_interaction_test.js
           node client/web/resource_loading_test.js
           node client/web/resource_progress_test.js

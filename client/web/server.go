@@ -1607,10 +1607,8 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		/* The pagehide/beforeunload path uses close=1.  That request must be
-		   self-contained: browsers may stop running promise continuations as
-		   soon as the document is gone, so a second DELETE request is not a
-		   reliable way to perform the native client's close-button cleanup. */
+		/* Keep send-and-close atomic for compatible callers. Page unload uses
+		   DELETE instead, preserving the native in-place disconnect behavior. */
 		handler.sendPacket(response, request, session, request.URL.Query().Get("close") == "1")
 	case "events":
 		if request.Method != http.MethodGet {

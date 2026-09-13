@@ -7,7 +7,7 @@
 
 网页里的 `StoneAgeProtocol` 是根据 PE 机器码中 `LSSPROTO_CLI/LSSPROTO_UTIL` 的调用路径实现的：消息号/函数名头、空格转义、0–61 base-62 整数、JEncode、`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-` 64 表、9 位 Ringo 字典压缩和换行分帧都在网页中完成。`LSSPROTO_CLI.H` 中 50 个客户端发送入口和 36 个服务端回调均有字段 schema；页面提供对应的通用协议控制台，并对登录、角色、地图、移动、库存、宠物、通讯录/邮件、事件、服务器窗口、聊天和战斗提供专用状态与操作。
 
-网页按 `sa_2903.exe` 与 Linux 2.5 GMSV 的命名协议编码无参数 `CharLogout`。“回记录点”发送这个包，由 2.5 GMSV 在保存前改写为记录点；“原地登出”先停止尚未发送的长距离路线并排空已经排队的写入，再用 2.5 原生 `S("c")` 状态请求核对 GMSV 实际持有的楼层与坐标。若战斗退出或乐观行走造成最后一两步尚未被服务端接受，页面会通过单步 `W` 与新的 `S("c")` 回包完成校正；只有坐标一致后才半关闭当前 TCP 会话。本仓库的 2.5 运行补丁会让 EOF 连接停留在 `WHILELOGOUTSAVE`，等 `saacproto_ACCharSave_recv()` 收到人物档落盘回执后才关闭 GMSV socket；桥接端另保留一个短暂的持久化排空期，以兼容未安装该补丁的原始 2.5 服务端。页面刷新/卸载时会用一次 `fetch(..., {keepalive:true})` 尝试发送合法的无参数登出包，桥接端在同一请求中完成 TCP 会话清理；发送失败仍会走 DELETE 兜底，不伪造 8.5 独有的 `CharLogout(Flg)` 扩展。
+网页按 `sa_2903.exe` 与 Linux 2.5 GMSV 的命名协议编码无参数 `CharLogout`。“回记录点”发送这个包，由 2.5 GMSV 在保存前改写为记录点；“原地登出”先停止尚未发送的长距离路线并排空已经排队的写入，再用 2.5 原生 `S("c")` 状态请求核对 GMSV 实际持有的楼层与坐标。若战斗退出或乐观行走造成最后一两步尚未被服务端接受，页面会通过单步 `W` 与新的 `S("c")` 回包完成校正；只有坐标一致后才半关闭当前 TCP 会话。本仓库的 2.5 运行补丁会让 EOF 连接停留在 `WHILELOGOUTSAVE`，等 `saacproto_ACCharSave_recv()` 收到人物档落盘回执后才关闭 GMSV socket；桥接端另保留一个短暂的持久化排空期，以兼容未安装该补丁的原始 2.5 服务端。页面刷新/卸载时通过 `DELETE` 与 `{keepalive:true}` 关闭连接，走原生断线保存路径，保留服务端已确认的当前位置；不发送会回记录点的 `CharLogout`。浏览器进程被强制终止而未触发页面事件时，由服务端断线或会话过期处理。
 
 网页只借用 8.5 客户端的视觉、按钮位置和输入习惯；线协议严格以本仓库的 2.5 GMSV 头文件及 `server/go/bridge/translator.go` 的数字桥接表为准。`protocol_test.js` 会逐项对比网页 schema、桥接表和本地 2.5 `lssproto_serv.h` 的函数编号/字段，防止把 8.5 的函数或字段顺序带进 2.5。左上角的角色卡按钮只发送 2.5 支持的 `AAB` 查看前方玩家；第四格轮胎图标使用 2.5 的 `TD("D|D")` 查找正前方玩家，不再误走 NPC 的 `TK` 对话；点击有效 NPC 后才走原版 `TK(P|hi)`，服务器返回的 `TK`/`WN` 仍进入游戏内聊天和窗口层。8.5 的 `SaMenu`、`RideQuery`、签到和摆摊等可选入口不加入 2.5 schema，相关视觉按钮不会向服务器发未知封包。
 
@@ -129,7 +129,7 @@ control-plane 镜像内的 `assets/original`，并以只读方式挂载
 浏览器。首次部署可直接运行 `./scripts/deploy.sh --init`，详见根目录
 README 的 Linux Docker Compose 小节。
 
-转发 API 是 `POST /api/sessions`（建立 TCP 并返回 `L\0` 握手）、`POST /api/sessions/:id/send`（JSON `{packet: base64}`）、`GET /api/sessions/:id/events`（按 TCP 顺序长轮询 base64 包）、`DELETE /api/sessions/:id`，另有只读资源 `GET /assets/*`、`GET /maps/*` 和 `GET /audio/*`。`send?close=1` 会在写入这一包后原子关闭桥接会话，供刷新/卸载阶段的 keepalive 登出使用；即使写入失败也会清理会话。网页已经内置这套调用，不需要额外前端构建工具。
+转发 API 是 `POST /api/sessions`（建立 TCP 并返回 `L\0` 握手）、`POST /api/sessions/:id/send`（JSON `{packet: base64}`）、`GET /api/sessions/:id/events`（按 TCP 顺序长轮询 base64 包）、`DELETE /api/sessions/:id`，另有只读资源 `GET /assets/*`、`GET /maps/*` 和 `GET /audio/*`。`send?close=1` 会在写入这一包后原子关闭桥接会话，保留给需要发送后关闭的兼容调用，页面卸载使用 DELETE 原地断线；即使写入失败也会清理会话。网页已经内置这套调用，不需要额外前端构建工具。
 
 新建会话返回 `event_ack: true` 时，网页使用 `events?ack=N` 确认已处理的事件序号；响应包含 `acknowledged: true` 和逐条 `seq`。后端保留未确认事件，丢失响应后可重复读取，前端按序处理并跳过已确认事件。单次轮询取消只结束该 HTTP 请求；显式登出、TCP 关闭和空闲回收仍会结束会话。轮询临时失败最多重试三次，旧服务器不支持确认时保持原有断线恢复流程。发送游戏操作的 POST 不自动重试，以免重复执行。
 

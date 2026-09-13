@@ -3078,6 +3078,9 @@
        without stretching the PC scene or leaving black side bars. */
     html,body { width:100%; height:100%; height:100dvh; min-height:100%; overflow:hidden; overscroll-behavior:none; background:#000; cursor:url('/assets/bitmaps/bitmap_8827.png') 0 0,auto; }
     body { display:block; padding:0; }
+    #app,#app * { -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+    #app input,#app textarea,#app [contenteditable="true"],#app [contenteditable="true"] * { -webkit-user-select:text; user-select:text; }
+
     #app { width:100%; height:100%; height:100dvh; min-height:100%; position:fixed; inset:0; overflow:hidden; }
     /* The native mouse is an OS surface and is allowed to extend over the
        field window's bottom task bar.  The Web fish is a sibling portal of
@@ -4076,6 +4079,7 @@
     const field=$("field-ui"),tools=$("world-tools"),actions=$("world-actions"),worldWrap=$("world-wrap"),worldOverlay=$("world-overlay");
     const worldVisible=screen===worldScreen;
     if(!worldVisible){setWorldTaskbarVisible(false);app.taskbarRevealPointerId=null;}
+    else setWorldTaskbarVisible(app.taskbarVisible);
     if(!worldVisible&&app.pointerMoveHeld&&typeof cancelHeldWorldPointer==="function")cancelHeldWorldPointer();
     if(!worldVisible){app.pointerLookTargetId=null;app.pointerLookPointerId=null;}
     for(const node of [field,tools,actions,worldWrap,worldOverlay])if(node)node.style.display=worldVisible?"":"none";
@@ -15142,12 +15146,9 @@
     if(!input||app.phase!=="login"||loginScreen?.classList.contains("hidden"))return;
     try{input.focus({preventScroll:true});}catch(_){try{input.focus();}catch(__){}}
   }
-  /* A normal in-page logout awaits the server response.  Refreshing or
-     unloading cannot await a promise, so send one no-argument 2.5
-     CharLogout with fetch keepalive; the bridge's close=1 path writes that
-     packet and closes its TCP session atomically.  pagehide is the primary
-     signal; beforeunload covers WebViews that omit pagehide.  The guard makes
-     the two events idempotent. */
+  /* Closing or refreshing the browser is a native disconnect, which saves
+     the server's current position. Never send CharLogout here: stock 2.5
+     interprets that packet as an explicit return to the record point. */
   let pageUnloadLogoutSent=false;
   function shouldConfirmPageUnload(){
     return Boolean(app.transport&&!app.logoutPending&&!pageUnloadLogoutSent&&
@@ -15167,26 +15168,12 @@
     pageUnloadLogoutSent=true;
     app.transport=null;
     app.polling=false;
-    let packet;
-    try {
-      packet=Protocol.packetMessage(app.messageID++,"CharLogout",[]);
-      if(app.messageID>0xffffffff)app.messageID=1;
-    } catch (_) {
-      transport.close({keepalive:true}).catch(()=>{});
-      return;
-    }
-    /* HTTPTransport.logoutAndClose() already issues the DELETE fallback when
-       its keepalive POST cannot be written.  Keep the second guard here as
-       well: an embedded WebView may provide a transport shim that reports a
-       false result (or throws synchronously) without implementing that
-       cleanup.  In both cases the result is the same as clicking the native
-       client's close button: tear down the bridge session. */
-    const closeFallback=()=>{try{const result=transport.close?.({keepalive:true});if(result?.catch)result.catch(()=>{});}catch(_) {}}
     try{
-      const result=transport.logoutAndClose(packet);
-      Promise.resolve(result).then(sent=>{if(sent===false)closeFallback();},closeFallback);
-    }catch(_){closeFallback();}
+      const result=transport.close({keepalive:true});
+      if(result?.catch)result.catch(()=>{});
+    }catch(_){} /* Abrupt process termination falls back to server disconnect handling. */
   }
+
   window.addEventListener("pagehide",logoutBeforePageUnload,{capture:true});
   window.addEventListener("beforeunload",confirmPageUnload,{capture:true});
   function returnToLogin(message="已返回标题。"){
@@ -17747,10 +17734,13 @@
      translated below the 640x480 surface preserves its native auto-hide
      behaviour and, importantly, leaves a bottom building doorway clickable
      when the pointer is elsewhere. */
+  function mobileWorldTaskbarPinned(){
+    return typeof window.matchMedia==="function"&&window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  }
   function setWorldTaskbarVisible(visible){
     const tools=$("world-tools");
     if(!tools)return;
-    const next=Boolean(visible);
+    const next=Boolean(visible)||(app.phase==="world"&&!app.battle&&mobileWorldTaskbarPinned());
     tools.classList.toggle("taskbar-visible",next);
     tools.classList.toggle("taskbar-hidden",!next);
     app.taskbarVisible=next;
@@ -19821,6 +19811,11 @@
   worldScreen.addEventListener("pointerleave",()=>{if(app.phase==="world"){setWorldTaskbarVisible(false);app.cursor.visible=true;renderWorldOverlay();}});
   /* Listen at document level so a ground press remains tracked even when the
      pointer crosses from #world into a sibling toolbar or the task bar. */
+  /* A finger tap need not produce pointermove. Paint the physical contact
+     position before routing the press, including taps on sibling controls. */
+  document.addEventListener("pointerdown",event=>{
+    if(event.isPrimary!==false)updateWorldPointer(event);
+  },true);
   document.addEventListener("pointerdown",handleWorldPointerDown,true);
   document.addEventListener("pointerup",handleWorldPointerUp,true);
   document.addEventListener("pointercancel",event=>{if(app.phase==="world")endHeldWorldPointer(event,false);},true);

@@ -136,9 +136,9 @@ func newFakeTCP(t *testing.T, greeting []byte, reply []byte) *fakeTCP {
 }
 
 // newGreetingThenCloseTCP models the upstream disappearing between the
-// gateway handshake and the unload-time CharLogout write.  The HTTP bridge
+// gateway handshake and a legacy send-and-close write.  The HTTP bridge
 // must still remove the browser session when the close=1 write cannot reach
-// the socket; otherwise a refresh would leak a session until idle expiry.
+// the socket; otherwise the request would leak a session until idle expiry.
 func newGreetingThenCloseTCP(t *testing.T, greeting []byte) *fakeTCP {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
