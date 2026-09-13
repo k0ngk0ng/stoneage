@@ -9,6 +9,30 @@ const same=(a,b)=>a[0]===b[0]&&a[1]===b[1];
 
 async function run(){
   {
+    const app={floor:1005,npcMetadataByKey:new Map(),actors:new Map(),npcMetadataRequest:0};
+    const deps={app,stateNumber:Number,unescapeCharacterOption:x=>x,isInsideFloor:()=>true,
+      actorIsOwn:()=>false,ensureFieldActorAnimation:()=>{},renderWorld:()=>{},updateHUD:()=>{},clientDirectionFromServer:x=>x};
+    const merge=new Function(...Object.keys(deps),section("  function npcMetadataKey(","  function removeStaticNPCAt(")+"return mergeStaticNPCMetadata;")(...Object.values(deps));
+    const dragon={id:-1,floor:5511,x:17,y:12,graphic:100373,name:"龙王"};
+    merge([dragon],1005);
+    assert.equal(app.actors.size,0,"another floor's dragon must not appear in a shop");
+    assert.equal(app.npcMetadataByKey.size,0,"wrong-floor metadata must not rename live shopkeepers");
+    merge([{...dragon,id:-2,floor:1005,name:"Shopkeeper"}],1005);
+    assert.equal(app.actors.get(-2).name,"Shopkeeper","valid same-floor NPC still renders");
+    const fetches=[];let payload={floor:5511,npcs:[dragon]};
+    const fetch=async()=>{fetches.push(1);return {ok:true,json:async()=>payload};};
+    const request=new Function("app","fetch","mergeStaticNPCMetadata",section("  function requestNPCMetadata(","  function applyMaskedFields(")+"return requestNPCMetadata;")(app,fetch,merge);
+    request(1005);for(let i=0;i<12;i++)await Promise.resolve();
+    assert.equal(app.npcMetadataReady,false,"wrong-floor response must remain retryable");
+    assert.equal(app.actors.get(-2).name,"Shopkeeper","wrong-floor response leaves valid shop metadata intact");
+    payload={floor:1005,npcs:null};request(1005);for(let i=0;i<12;i++)await Promise.resolve();
+    assert.equal(app.npcMetadataReady,true,"an empty floor is a valid response");
+    assert.equal(app.actors.size,0);
+    app.floor=5511;payload={floor:5511,npcs:[dragon]};request(5511);for(let i=0;i<12;i++)await Promise.resolve();
+    assert.equal(app.actors.get(-1).name,"龙王","dragon remains present on its legitimate floor");
+  }
+
+  {
     const app={floor:1005,npcMetadataByKey:new Map([["1005:17:13",{template:"npcgen_winhealer",interactionRange:2}]])};
     const api=new Function("app","npcMetadataKey",rules+"return {npcInteractionRange,npcUsesLookInteraction};")(app,(f,x,y)=>`${f}:${x}:${y}`);
     const nurse={x:17,y:13,npcInteraction:"look"};

@@ -8151,6 +8151,8 @@
     if(Number(floor)!==Number(app.floor)||!Array.isArray(records))return;
     const wanted=new Set();
     for(const record of records){
+      // The response may be stale independently of the active request.
+      if(record?.floor===undefined||Number(record.floor)!==Number(floor))continue;
       if(npcMetadataIsDynamic(record))continue;
       const id=Number(record?.id);if(!Number.isFinite(id)||id>=0)continue;
       const x=stateNumber(record.x),y=stateNumber(record.y),graphic=stateNumber(record.graphic),name=unescapeCharacterOption(record.name||"");
@@ -8223,7 +8225,8 @@
     const request=++app.npcMetadataRequest;app.npcMetadataFloor=targetFloor;app.npcMetadataLoading=true;app.npcMetadataReady=false;
     fetch(`/api/npcs?floor=${encodeURIComponent(targetFloor)}`,{headers:{"Accept":"application/json"},cache:"no-store"}).then(response=>{if(!response.ok)throw new Error(`NPC metadata HTTP ${response.status}`);return response.json();}).then(data=>{
       if(request!==app.npcMetadataRequest||Number(app.floor)!==targetFloor)return;
-      mergeStaticNPCMetadata(data?.npcs||[],targetFloor);app.npcMetadataReady=true;
+      if(data?.floor===undefined||Number(data.floor)!==targetFloor||(data.npcs!=null&&!Array.isArray(data.npcs)))throw new Error("NPC metadata floor mismatch");
+      mergeStaticNPCMetadata(data.npcs||[],targetFloor);app.npcMetadataReady=true;
     }).catch(()=>{if(request===app.npcMetadataRequest)app.npcMetadataReady=false;}).finally(()=>{if(request===app.npcMetadataRequest)app.npcMetadataLoading=false;});
   }
   function applyMaskedFields(parts,target,fields){
