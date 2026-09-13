@@ -37,6 +37,113 @@ function chunkedResponse() {
   };
 }
 
+/* A small Response test double that mirrors clone()'s tee semantics while
+   counting branches that finish or are cancelled.  A leaked tee branch stays
+   active forever, which makes response ownership leaks observable in tests. */
+function trackedResponse(body, state) {
+  const source = body instanceof ReadableStream ? body : new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(String(body || "network")));
+      controller.close();
+    },
+  });
+  const track = stream => {
+    const reader = stream.getReader();
+    let settled = false;
+    state.activeBranches++;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        state.activeBranches--;
+      }
+    };
+    return new ReadableStream({
+      async pull(controller) {
+        try {
+          const part = await reader.read();
+          if (part.done) {
+            settle();
+            controller.close();
+          } else {
+            controller.enqueue(part.value);
+          }
+        } catch (error) {
+          settle();
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        settle();
+        try { await reader.cancel(reason); } catch (_) {}
+      },
+    });
+  };
+  class TrackedResponse {
+    constructor(stream) {
+      this.body = stream;
+      this.ok = true;
+      this.status = 200;
+      this.statusText = "";
+      this.type = "default";
+      this.headers = new Headers({"Content-Type": "image/png"});
+    }
+    clone() {
+      state.cloneCalls++;
+      const [left, right] = this.body.tee();
+      this.body = track(left);
+      return new TrackedResponse(track(right));
+    }
+    async arrayBuffer() { return (await consumeResponse(this)).buffer; }
+    async text() { return new TextDecoder().decode(await this.arrayBuffer()); }
+  }
+  return new TrackedResponse(track(source));
+}
+
+async function consumeResponse(response) {
+  if (!response) return new Uint8Array();
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      if (part.value?.byteLength) {
+        chunks.push(part.value);
+        size += part.value.byteLength;
+      }
+    }
+    const result = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
+  }
+  if (typeof response.arrayBuffer === "function") return new Uint8Array(await response.arrayBuffer());
+  return new Uint8Array();
+}
+
+function storedResponse(response, bytes) {
+  if (response?.type === "opaque") return {type: "opaque"};
+  return {
+    body: new Uint8Array(bytes),
+    status: response?.status || 200,
+    statusText: response?.statusText || "",
+    headers: [...(response?.headers?.entries?.() || [])],
+  };
+}
+
+function restoreResponse(record) {
+  if (record?.type === "opaque") return {type: "opaque"};
+  return new Response(record?.body || "", {
+    status: record?.status || 200,
+    statusText: record?.statusText || "",
+    headers: record?.headers || {},
+  });
+}
+
 function timeout(label, milliseconds = 250) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), milliseconds));
 }
@@ -49,6 +156,7 @@ function harness(options = {}) {
   let putCalls = 0;
   const fetchFactory = options.fetchFactory || (() => new Response("network", {status: 200}));
   const pendingPuts = [];
+  const clientMessages = [];
 
   function storeFor(name) {
     let store = stores.get(name);
@@ -77,7 +185,8 @@ function harness(options = {}) {
           }
           if (options.deferPuts) await wait.promise;
         }
-        store.set(keyOf(request), response);
+        const bytes = await consumeResponse(response);
+        store.set(keyOf(request), restoreResponse(storedResponse(response, bytes)));
       },
     };
   }
@@ -97,7 +206,10 @@ function harness(options = {}) {
 
   const self = {
     location: {origin: "https://game.test"},
-    clients: {claim: async () => {}},
+    clients: {
+      claim: async () => {},
+      get: async id => id ? {id, postMessage(message) { clientMessages.push(message); }} : null,
+    },
     skipWaiting: async () => {},
     addEventListener(type, listener) { listeners.set(type, listener); },
   };
@@ -127,8 +239,12 @@ function harness(options = {}) {
   vm.runInContext(serviceWorker, context, {filename: "sw.js"});
 
   function startDispatch(url, requestOptions = {}) {
+    const {clientId = "", destination = "", ...requestInit} = requestOptions;
+    const request = new Request(url, {method: "GET", ...requestInit});
+    if (destination) Object.defineProperty(request, "destination", {value: destination});
     const event = {
-      request: new Request(url, {method: "GET", ...requestOptions}),
+      request,
+      clientId,
       waitPromises: [],
       respondWith(value) { this.responsePromise = Promise.resolve(value); },
       waitUntil(value) { this.waitPromises.push(Promise.resolve(value)); },
@@ -171,6 +287,7 @@ function harness(options = {}) {
     releasePuts() {
       for (const pending of pendingPuts.splice(0)) pending.wait.resolve();
     },
+    messages() { return [...clientMessages]; },
     stats() { return {fetchCalls, putCalls}; },
   };
 }
@@ -207,6 +324,33 @@ async function assertNetworkResponseIsStreamedBeforeCacheWrite(url) {
   await h.waitBackground();
 }
 
+async function assertAllNetworkBranchesAreConsumed() {
+  const state = {activeBranches: 0, cloneCalls: 0};
+  const h = harness({fetchFactory: () => trackedResponse("streamed", state)});
+  const event = h.startDispatch("https://game.test/assets/tracked.png", {clientId: "client-1", destination: "image"});
+  const response = await Promise.race([event.responsePromise, timeout("tracked response")]);
+  assert.equal(await response.text(), "streamed", "the fetch event must receive its own readable branch");
+  await h.waitBackground();
+  assert.equal(state.cloneCalls, 2, "cache and progress must each receive one branch");
+  assert.equal(state.activeBranches, 0, "every generated response branch must be consumed or cancelled");
+  assert.equal(h.messages().some(message => message.type === "asset-progress" && message.done), true, "network progress branch must complete");
+}
+
+async function assertCloneFailureSettlesSubscribers() {
+  const state = {activeBranches: 0, cloneCalls: 0};
+  const response = trackedResponse("unshareable", state);
+  response.clone = () => {
+    state.cloneCalls++;
+    throw new TypeError("clone failed");
+  };
+  const h = harness({fetchFactory: () => response});
+  const event = h.startDispatch("https://game.test/assets/clone-failure.png");
+  await assert.rejects(event.responsePromise, /response body cannot be shared/);
+  await h.waitBackground();
+  assert.equal(state.cloneCalls, 1, "branch allocation should stop at the first clone failure");
+  assert.equal(state.activeBranches, 0, "clone failure must cancel the original body and settle all subscribers");
+}
+
 async function assertInFlightSurvivesDeferredCacheWrite() {
   const firstNetwork = chunkedResponse();
   const h = harness({deferPuts: true, fetchFactory: () => firstNetwork.response});
@@ -214,13 +358,13 @@ async function assertInFlightSurvivesDeferredCacheWrite() {
   const firstEvent = h.startDispatch("https://game.test/assets/dedup.png");
   const firstResponse = await Promise.race([firstEvent.responsePromise, timeout("deduplicated response")]);
   const secondEvent = h.startDispatch("https://game.test/assets/dedup.png");
-  const secondResponse = await Promise.race([secondEvent.responsePromise, timeout("deduplicated second response")]);
   assert.equal(h.stats().fetchCalls, 1, "a request arriving during Cache.put() must share the network response");
   assert.equal((await firstResponse.body.getReader().read()).value[0], 9);
-  assert.equal((await secondResponse.body.getReader().read()).value[0], 9);
   assert.equal(h.stats().putCalls, 1, "coalesced requests must write the cache once");
   firstNetwork.close();
   h.releasePuts();
+  const secondResponse = await Promise.race([secondEvent.responsePromise, timeout("deduplicated second response")]);
+  assert.deepEqual([...new Uint8Array(await secondResponse.arrayBuffer())], [9]);
   await h.waitBackground();
 }
 
@@ -275,6 +419,8 @@ async function assertPreviousCacheMigrationIsBackgrounded() {
 
   await assertNetworkResponseIsStreamedBeforeCacheWrite("https://game.test/assets/stream.png");
   await assertNetworkResponseIsStreamedBeforeCacheWrite("https://game.test/assets/stream.json");
+  await assertAllNetworkBranchesAreConsumed();
+  await assertCloneFailureSettlesSubscribers();
   await assertInFlightSurvivesDeferredCacheWrite();
   await assertPreviousCacheMigrationIsBackgrounded();
 

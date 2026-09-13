@@ -553,11 +553,11 @@ if (!/<link rel="icon" href="data:,">/.test(html)) {
   throw new Error("page must suppress Chromium's synthetic /favicon.ico 404");
 }
 for (const expected of [
-  'fetch(ASSET_MANIFEST_URL,{cache:"no-cache"',
-  'fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"',
-  'fetch(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"',
-  'fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"',
-  'fetch(`${SPRITE_MANIFEST_URL}`,{cache:"no-cache"',
+  'fetchAssetIndex(ASSET_MANIFEST_URL,{cache:"no-cache"',
+  'fetchAssetIndex(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"',
+  'fetchAssetIndex(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"',
+  'fetchAssetIndex(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"',
+  'fetchAssetIndex(SPRITE_MANIFEST_URL,{cache:"no-cache"',
 ]) {
   if (!script.includes(expected)) {
     throw new Error(`asset manifest must revalidate across deployments: ${expected}`);
@@ -6241,6 +6241,7 @@ require("./login_credentials_test.js");
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sprite_loading_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/sw_cache_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/resource_loading_test.js"], {stdio:"inherit"});
+require("node:child_process").execFileSync(process.execPath, [__dirname + "/asset_index_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/resource_progress_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/connection_retry_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/server_directory_test.js"], {stdio:"inherit"});

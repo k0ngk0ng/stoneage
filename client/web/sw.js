@@ -154,20 +154,56 @@ async function writeMeta(key, value) {
   }
 }
 
-function responseClone(response) {
-  try {
-    return response && typeof response.clone === "function" ? response.clone() : response;
-  } catch (_) {
-    return response;
-  }
-}
-
 function responseCloneForCache(response) {
   try {
     return response && typeof response.clone === "function" ? response.clone() : null;
   } catch (_) {
     return null;
   }
+}
+
+function cancelResponseBody(response) {
+  try {
+    const cancel = response?.body?.cancel;
+    if (typeof cancel === "function") return Promise.resolve(cancel.call(response.body)).catch(() => {});
+  } catch (_) {}
+  return Promise.resolve();
+}
+
+/* Response.clone() tees a body.  If the original branch is never consumed or
+   cancelled, a browser may keep buffering it while another branch is read.
+   Allocate a chain of branches instead: each branch is
+   handed to exactly one consumer, and the final branch goes to the fetch
+   event.  No original body branch is left behind. */
+function responseBranches(response, count) {
+  const branches = [];
+  let current = response;
+  try {
+    for (let index = 0; index < count - 1; index++) {
+      const next = responseCloneForCache(current);
+      if (!next) throw new TypeError("response body cannot be shared");
+      branches.push(current);
+      current = next;
+    }
+    if (count > 0) branches.push(current);
+    return branches;
+  } catch (error) {
+    /* A clone can fail when a platform has already disturbed the stream.
+       Cancel every branch that was created before surfacing the failure so a
+       failed response cannot leave another tee buffering in the worker. */
+    void Promise.all([...branches, current].map(cancelResponseBody));
+    throw error;
+  }
+}
+
+function deferredPromise() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolveValue, rejectValue) => {
+    resolve = resolveValue;
+    reject = rejectValue;
+  });
+  return {promise, resolve, reject};
 }
 
 function responseKey(request, strategy) {
@@ -179,50 +215,102 @@ function responseKey(request, strategy) {
   return JSON.stringify([strategy,activeRevision,request.method,request.url,request.mode,request.credentials,request.redirect,headers]);
 }
 
+function runResponseConsumer(consumer, response) {
+  try {
+    return Promise.resolve(consumer(response)).catch(() => cancelResponseBody(response));
+  } catch (_) {
+    return cancelResponseBody(response);
+  }
+}
+
 function coalescedResponse(request, strategy, operation, waitUntil) {
   const key = responseKey(request, strategy);
   let entry = inflightResponses.get(key);
   if (!entry) {
-    const operationPromise = Promise.resolve().then(operation);
-    /* An operation returns its response as soon as fetch() has produced it.
-       Its optional completion promise covers work that must keep this request
-       coalesced, such as the asynchronous Cache Storage write. */
-    const responsePromise = operationPromise.then(result => {
-      const response = result && result.response;
-      return response === undefined ? result : response;
-    });
-    const completionPromise = operationPromise.then(result => {
-      const completion = result && result.completion;
-      return completion ? Promise.resolve(completion).catch(() => {}) : Promise.resolve();
-    }, () => Promise.resolve());
-    entry = {responsePromise, completionPromise};
+    const completion = deferredPromise();
+    entry = {subscribers: [], completionPromise: completion.promise, completion, settled: false, lateResponse: null};
     inflightResponses.set(key, entry);
-    const clear = () => {
+    /* Start the operation immediately, but keep every caller's subscription
+       until the response arrives.  The network body is split into a finite
+       chain of dedicated branches below.  Once those branches are assigned,
+       a later caller can wait for the cache write and read a fresh CacheStorage
+       Response; it never attaches a new tee to an already consumed body. */
+    Promise.resolve().then(operation).then(result => {
+      entry.settled = true;
+      const response = result && Object.prototype.hasOwnProperty.call(result, "response") ? result.response : result;
+      const consumers = Array.isArray(result?.consumers) ? result.consumers.filter(consumer => typeof consumer === "function") : [];
+      entry.lateResponse = typeof result?.lateResponse === "function" ? result.lateResponse : null;
+      const subscribers = entry.subscribers;
+      if (!response) throw new TypeError("static resource response is empty");
+      const branches = responseBranches(response, consumers.length + subscribers.length);
+      let branchIndex = 0;
+      const background = consumers.map(consumer => runResponseConsumer(consumer, branches[branchIndex++]));
+      entry.subscribers.splice(0).forEach(subscriber => subscriber.resolve(branches[branchIndex++]));
+      const finish = () => {
+        if (inflightResponses.get(key) === entry) inflightResponses.delete(key);
+        entry.completion.resolve();
+      };
+      Promise.all(background).then(finish, finish);
+    }, error => {
+      entry.settled = true;
       if (inflightResponses.get(key) === entry) inflightResponses.delete(key);
-    };
-    /* Keep the operation coalesced until all background work finishes.  The
-       rejection handler also observes an unexpected completion failure. */
-    completionPromise.then(clear, clear);
+      entry.subscribers.splice(0).forEach(subscriber => subscriber.reject(error));
+      entry.completion.resolve();
+    }).catch(error => {
+      /* Branch allocation can fail after the operation itself succeeded.  It
+         must reject all waiting fetch events and still settle waitUntil. */
+      entry.settled = true;
+      if (inflightResponses.get(key) === entry) inflightResponses.delete(key);
+      entry.subscribers.splice(0).forEach(subscriber => subscriber.reject(error));
+      entry.completion.resolve();
+    });
   }
+  /* A response has already been assigned to the requests that were present
+     when the operation completed.  Do not attach a new request to a consumed
+     body.  For cache-backed operations, wait for the write and use a fresh
+     cache response so a delayed duplicate still avoids a second CDN fetch. */
+  if (entry.settled) {
+    if (!entry.lateResponse) {
+      if (inflightResponses.get(key) === entry) inflightResponses.delete(key);
+      return coalescedResponse(request, strategy, operation, waitUntil);
+    }
+    const late = entry.completionPromise.then(async () => {
+      let response = null;
+      try { response = await entry.lateResponse(); } catch (_) {}
+      if (response) return response;
+      if (inflightResponses.get(key) === entry) inflightResponses.delete(key);
+      return coalescedResponse(request, strategy, operation, waitUntil);
+    });
+    if (waitUntil) {
+      try { waitUntil(entry.completionPromise); } catch (_) {}
+    }
+    return late;
+  }
+  const subscriber = deferredPromise();
+  entry.subscribers.push(subscriber);
   if (waitUntil) {
     try { waitUntil(entry.completionPromise); } catch (_) {}
   }
-  return entry.responsePromise.then(responseClone);
+  return subscriber.promise;
 }
 
 async function cachePutBestEffort(cache, request, response) {
-  if (!cache || !response || response.type === "error") return false;
+  if (!cache || !response || response.type === "error") {
+    await cancelResponseBody(response);
+    return false;
+  }
   try {
-    /* Cache Storage rejects some valid network responses (for example a
-       206/range response or a response whose body became a network error).
-       The fetch response remains usable because this is a separate clone. */
-    const clone = responseCloneForCache(response);
-    if (!clone) return false;
-    await cache.put(request, clone);
+    /* This Response is a dedicated branch allocated by coalescedResponse.
+       Cache.put() consumes it directly, so no original/clone tee is left
+       buffering behind the network response. */
+    await cache.put(request, response);
     return true;
   } catch (_) {
     /* Cache Storage is an optional optimization.  Never turn a successful
-       network response into a failed fetch event because storage rejected it. */
+       network response into a failed fetch event because storage rejected it.
+       A rejected Cache.put() is allowed to leave its body untouched on some
+       engines, so cancel the dedicated branch explicitly. */
+    await cancelResponseBody(response);
     return false;
   }
 }
@@ -271,6 +359,10 @@ function reportsAssetProgress(request) {
   return request?.destination === "image";
 }
 
+function assetProgressNeedsBody(request, response, clientId) {
+  return Boolean(clientId && reportsAssetProgress(request) && response && response.type !== "opaque" && responseBodyLength(response) <= 0);
+}
+
 function reportCachedAsset(request, response, clientId) {
   if (!clientId || !reportsAssetProgress(request) || !response || response.type === "opaque") return Promise.resolve();
   const url = request.url;
@@ -278,17 +370,16 @@ function reportCachedAsset(request, response, clientId) {
   if (known > 0) {
     return postAssetProgress(clientId, {type: "asset-progress", url, network: false, phase: "cache", loaded: known, size: known, done: true});
   }
-  let copy;
-  try { copy = response.clone(); } catch (_) { return Promise.resolve(); }
   return (async () => {
+    let reader = null;
     try {
-      if (!copy.body?.getReader) {
-        const buffer = await copy.arrayBuffer();
+      if (!response.body?.getReader) {
+        const buffer = await response.arrayBuffer();
         const size = buffer.byteLength;
         if (size > 0) await postAssetProgress(clientId, {type: "asset-progress", url, network: false, phase: "cache", loaded: size, size, done: true});
         return;
       }
-      const reader = copy.body.getReader();
+      reader = response.body.getReader();
       let loaded = 0;
       for (;;) {
         const part = await reader.read();
@@ -296,19 +387,21 @@ function reportCachedAsset(request, response, clientId) {
         loaded += part.value?.byteLength || 0;
       }
       if (loaded > 0) await postAssetProgress(clientId, {type: "asset-progress", url, network: false, phase: "cache", loaded, size: loaded, done: true});
-    } catch (_) { /* a cache hit without readable headers still remains usable */ }
+    } catch (_) {
+      try { await reader?.cancel(); } catch (_) {}
+      /* A cache hit without readable headers still remains usable. */
+    }
   })();
 }
 
 function reportNetworkAsset(request, response, clientId) {
   if (!clientId || !reportsAssetProgress(request) || !response || response.type === "opaque") return Promise.resolve();
-  let copy;
-  try { copy = response.clone(); } catch (_) { return Promise.resolve(); }
   const requestId = `${Date.now().toString(36)}-${++assetProgressSequence}`;
   const url = request.url;
   const total = responseBodyLength(response);
   return (async () => {
     let loaded = 0, lastReport = 0;
+    let reader = null;
     const notify = (phase, done = false, force = false) => {
       const now = Date.now();
       if (!force && !done && now - lastReport < 100) return;
@@ -317,11 +410,11 @@ function reportNetworkAsset(request, response, clientId) {
     };
     notify("start", false, true);
     try {
-      if (!copy.body?.getReader) {
-        const buffer = await copy.arrayBuffer();
+      if (!response.body?.getReader) {
+        const buffer = await response.arrayBuffer();
         loaded = buffer.byteLength;
       } else {
-        const reader = copy.body.getReader();
+        reader = response.body.getReader();
         for (;;) {
           const part = await reader.read();
           if (part.done) break;
@@ -331,6 +424,7 @@ function reportNetworkAsset(request, response, clientId) {
       }
       notify("complete", true, true);
     } catch (_) {
+      try { await reader?.cancel(); } catch (_) {}
       notify("complete", true, true);
     }
   })();
@@ -368,8 +462,9 @@ async function networkFirst(request, clientId, waitUntil) {
     try {
       const response = await fetch(request);
       if (response && (response.ok || response.type === "opaque")) {
-        const completion = cachePutBestEffort(cache, request, response);
-        return {response, completion};
+        const consumers = cache ? [branch => cachePutBestEffort(cache, request, branch)] : [];
+        const lateResponse = cache ? () => cacheMatchBestEffort(cache, request) : null;
+        return {response, consumers, lateResponse};
       }
       return {response};
     } catch (error) {
@@ -389,9 +484,14 @@ async function cacheFirst(request, clientId, waitUntil) {
     try { cache = await caches.open(cacheName()); } catch (_) { /* network remains usable */ }
     const hit = await cacheMatchBestEffort(cache, request);
     if (hit) {
-      const progress = reportCachedAsset(request, hit, clientId);
-      if (waitUntil) waitUntil(progress);
-      return {response: hit, completion: progress};
+      const consumers = assetProgressNeedsBody(request, hit, clientId) ? [branch => reportCachedAsset(request, branch, clientId)] : [];
+      if (consumers.length === 0 && clientId && reportsAssetProgress(request)) {
+        /* A cached response with a trustworthy Content-Length can report its
+           completed size without creating another body branch. */
+        void reportCachedAsset(request, hit, clientId);
+      }
+      const lateResponse = cache ? () => cacheMatchBestEffort(cache, request) : null;
+      return {response: hit, consumers, lateResponse};
     }
     /* When a publication revision changes, unchanged objects are safe to reuse
        from the previous namespace because the uploader compared their SHA-256.
@@ -404,10 +504,12 @@ async function cacheFirst(request, clientId, waitUntil) {
           const previousCache = await caches.open(cacheName(previousRevision));
           const previousHit = await cacheMatchBestEffort(previousCache, request);
           if (previousHit) {
-            const completion = cachePutBestEffort(cache, request, previousHit);
-            const progress = reportCachedAsset(request, previousHit, clientId);
-            if (waitUntil) waitUntil(progress);
-            return {response: previousHit, completion};
+            const consumers = [];
+            if (cache) consumers.push(branch => cachePutBestEffort(cache, request, branch));
+            if (assetProgressNeedsBody(request, previousHit, clientId)) consumers.push(branch => reportCachedAsset(request, branch, clientId));
+            else if (clientId && reportsAssetProgress(request)) void reportCachedAsset(request, previousHit, clientId);
+            const lateResponse = cache ? () => cacheMatchBestEffort(cache, request) : null;
+            return {response: previousHit, consumers, lateResponse};
           }
         } catch (_) {
           /* Storage failures fall through to the normal network path. */
@@ -417,10 +519,11 @@ async function cacheFirst(request, clientId, waitUntil) {
     try {
       const response = await fetch(request);
       if (response && (response.ok || response.type === "opaque")) {
-        const progress = reportNetworkAsset(request, response, clientId);
-        if (waitUntil) waitUntil(progress);
-        const completion = cachePutBestEffort(cache, request, response);
-        return {response, completion};
+        const consumers = [];
+        if (cache) consumers.push(branch => cachePutBestEffort(cache, request, branch));
+        if (clientId && reportsAssetProgress(request) && response.type !== "opaque") consumers.push(branch => reportNetworkAsset(request, branch, clientId));
+        const lateResponse = cache ? () => cacheMatchBestEffort(cache, request) : null;
+        return {response, consumers, lateResponse};
       }
       return {response};
     } catch (error) {
@@ -557,7 +660,7 @@ self.addEventListener("message", event => {
     event.waitUntil(Promise.all(urls.map(url => {
       try {
         const request = new Request(url, {method: "GET"});
-        return isStaticRequest(request) ? cacheFirst(request, clientId, promise => event.waitUntil(promise)).catch(() => null) : null;
+        return isStaticRequest(request) ? cacheFirst(request, clientId, promise => event.waitUntil(promise)).then(response => cancelResponseBody(response)).catch(() => null) : null;
       } catch (_) {
         return null;
       }

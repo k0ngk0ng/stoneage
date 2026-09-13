@@ -13,23 +13,25 @@ function harness() {
   let fail = true;
   const state = {images: new Map(), manifestReady: true};
   const context = {
-    assetState: state, Promise, TextDecoder,
+    assetState: state, Promise, TextDecoder, URL, Response, Blob, Request, Headers, ReadableStream, DOMException, AbortController, assetVersionPromise: Promise.resolve({revision: "test-resources"}),
     app: {phase: "world", mapLoading: true, mapLoadingStats: {}, map: {tiles: [1]}},
     FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL: "bootstrap", FIELD_SPRITE_MANIFEST_URL: "field", SPRITE_MANIFEST_URL: "full",
-    fetch: async url => {
-      calls.push(url);
+    fetch: async (url, options) => {
+      if(options?.method === "HEAD") return new Response(null, {headers: {"Content-Length": "100"}});
+      assert.equal(new URL(url).searchParams.get("v"), "test-resources");
+      calls.push(new URL(url).pathname.slice(1));
       if (fail) throw new Error("network unavailable");
       return {ok: true};
     },
     readAssetResponseBytes: async () => new TextEncoder().encode('{"sprites":{"100025":{}}}'),
     addEvent() {}, renderBattleWorld() {}, renderMapLoadingProgress() {}, syncMapLoadingVisibility() {}, scheduleMapLoadingProgress() {},
-    window: {setTimeout: fn => timers.push(fn), clearTimeout() {}},
+    window: {location: {href: "https://game.example/"}, setTimeout: fn => {timers.push(fn);return fn;}, clearTimeout(fn) {const i=timers.indexOf(fn);if(i>=0)timers.splice(i,1);}},
     fieldBootstrapFrameReadiness: () => ({ready: false, total: 1, pending: 1}),
     $: () => null, mapPaletteNumber: () => -1, mapPaletteIsPending: () => false,
     renderWorld() {context.maybeFinishMapLoading();},
   };
   vm.createContext(context);
-  vm.runInContext(section("  function setMapLoading(", "  function fieldBootstrapFrameReadiness(") + section("  function loadFieldBootstrapSpriteManifest(", "  function albumStorageKey(") + section("  function maybeFinishMapLoading(", "  function send("), context);
+  vm.runInContext(section("  /* Resource index transport. */", "  function loadAssetManifest(") + section("  function setMapLoading(", "  function fieldBootstrapFrameReadiness(") + section("  function loadFieldBootstrapSpriteManifest(", "  function albumStorageKey(") + section("  function maybeFinishMapLoading(", "  function send("), context);
   return {context, state, calls, timers, recover() {fail = false;}};
 }
 function emptyMapProgressHarness() {
@@ -47,7 +49,7 @@ function emptyMapProgressHarness() {
   vm.runInContext(`let mapLoadingProgressTimer=0;${section("  function scheduleMapLoadingProgress(", "  function renderMapLoadingProgress(")}`, context);
   return {context, timers, get renders() {return renders;}};
 }
-async function settle() {for (let i = 0; i < 20; i++) await Promise.resolve();}
+async function settle() {await new Promise(resolve => setImmediate(resolve));}
 (async () => {
   const h = harness();
   h.context.setMapLoading(true);
@@ -74,6 +76,7 @@ async function settle() {for (let i = 0; i < 20; i++) await Promise.resolve();}
   const fallback = harness();
   await fallback.context.loadFieldSpriteManifest();
   await fallback.context.loadFieldSpriteManifest();
+  await settle();
   assert.deepEqual(fallback.calls, ["field", "full", "bootstrap"], "failed action table is not fetched on each render");
   const emptyMap = emptyMapProgressHarness();
   emptyMap.context.scheduleMapLoadingProgress();

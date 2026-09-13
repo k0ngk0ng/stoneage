@@ -5510,7 +5510,7 @@
        Failed/unresolved assets stay blocked instead of revealing a half-map. */
     const manifestReady=!dynamicReady||assetState.manifestReady;
     if(dynamicReady&&!manifestReady){
-      setMapLoading(true,assetState.manifestFailed?"地图资源清单加载失败，正在重试…":"正在读取地图资源清单…");
+      setMapLoading(true,assetState.manifestFailed?"地图资源清单加载失败，请点击重试":"正在读取地图资源清单…");
       return;
     }
     const bootstrapReady=assetState.fieldBootstrapSpritesReady||assetState.spritesReady||Boolean(assetState.manifest?.sprites);
@@ -6042,7 +6042,7 @@
     // Fetch exposes decoded bytes; compressed Content-Length is a different unit.
     const encoding=response?.headers?.get?.("Content-Encoding");
     const advertised=encoding&&encoding!=="identity"?0:Number(response?.headers?.get?.("Content-Length"))||0;
-    const received=bytes=>{assetState.receivedBytes=(Number(assetState.receivedBytes)||0)+bytes;};
+    const received=bytes=>{if(!response?._assetFromCache)assetState.receivedBytes=(Number(assetState.receivedBytes)||0)+bytes;};
     const isSpriteProgress=progressState?._spriteProgress===true;
     const bytesKey=String(progressState?._bytesKey||(isSpriteProgress?"spriteBytes":"manifestBytes"));
     const totalKey=String(progressState?._totalKey||(isSpriteProgress?"spriteTotalBytes":"manifestTotalBytes"));
@@ -6075,8 +6075,112 @@
     onProgress?.();
     return buffer.buffer;
   }
+  /* Resource index transport. */
+  const assetIndexWrites=new Map();
+  async function fetchAssetIndex(path,options={}){
+    const version=await assetVersionPromise.catch(()=>null);
+    const url=new URL(path,window.location.href);
+    const revision=String(version?.revision||assetState.clientVersion?.revision||"").trim();
+    if(revision)url.searchParams.set("v",revision);
+    const key=url.href;
+    let cache=null;
+    /* Indexes have versioned keys; an unchanged publication needs no CDN
+       request. Keep this separate from immutable image caches. */
+    if(revision){
+      const cached=await new Promise((resolve,reject)=>{
+        let settled=false,timer=0;
+        const finish=(value,error)=>{if(settled)return;settled=true;window.clearTimeout(timer);options.signal?.removeEventListener("abort",abort);error?reject(error):resolve(value);};
+        const abort=()=>finish(null,new DOMException("下载已取消","AbortError"));
+        if(options.signal?.aborted){abort();return;}
+        options.signal?.addEventListener("abort",abort,{once:true});
+        timer=window.setTimeout(()=>finish(null),2000);
+        Promise.resolve().then(async()=>{
+          await assetIndexWrites.get(key);
+          const store=await window.caches.open("stoneage-index-v1");
+          return {store,hit:await store.match(key)};
+        }).then(value=>finish(value),()=>finish(null));
+      });
+      cache=cached?.store||null;
+      if(cached?.hit){cached.hit._assetFromCache=true;return cached.hit;}
+    }
+    const controller=new AbortController();
+    const abort=()=>controller.abort();
+    if(options.signal?.aborted)abort();
+    options.signal?.addEventListener("abort",abort,{once:true});
+    const cleanup=()=>options.signal?.removeEventListener("abort",abort);
+    const requestOptions={...options,cache:"no-cache",signal:controller.signal};
+    let head=null;
+    try{head=await fetch(key,{...requestOptions,method:"HEAD"});}
+    catch(error){if(controller.signal.aborted){cleanup();throw error;}}
+    const length=head?.ok?Number(head.headers.get("Content-Length")):0;
+    const encoding=head?.headers?.get("Content-Encoding");
+    if(length>128*1024*1024){cleanup();throw new Error("资源清单超过大小限制");}
+    const chunkSize=1024*1024;
+    const ranged=Number.isSafeInteger(length)&&length>chunkSize&&(!encoding||encoding==="identity");
+    const modified=head?.headers?.get("Last-Modified")||"";
+    let headers,reader=null,offset=0,finished=false,cancelled=false;
+    try{
+      if(ranged){
+        headers=new Headers(head.headers);
+        headers.delete("Content-Encoding");headers.delete("Content-Range");
+        headers.set("Content-Length",String(length));
+      }else{
+        const response=await fetch(key,requestOptions);
+        if(!response.ok||!response.body){cleanup();return response;}
+        headers=new Headers(response.headers);reader=response.body.getReader();
+      }
+    }catch(error){cleanup();throw error;}
+    const chunks=[];
+    const save=()=>{
+      if(!cache)return;
+      /* Write only after the final byte, using owned bytes rather than an
+         unread network Response clone. Quota errors never fail the page. */
+      const task=Promise.resolve().then(()=>cache.put(key,new Response(new Blob(chunks),{headers}))).catch(()=>{});
+      assetIndexWrites.set(key,task);
+      task.finally(()=>{if(assetIndexWrites.get(key)===task)assetIndexWrites.delete(key);});
+    };
+    const stream=new ReadableStream({
+      async pull(target){
+        if(finished||cancelled)return;
+        try{
+          if(controller.signal.aborted)throw new DOMException("下载已取消","AbortError");
+          if(reader){
+            const part=await reader.read();
+            if(part.done){finished=true;cleanup();save();target.close();return;}
+            if(cache)chunks.push(part.value);target.enqueue(part.value);return;
+          }
+          if(offset>=length){finished=true;cleanup();save();target.close();return;}
+          const end=Math.min(length-1,offset+chunkSize-1);
+          const rangeHeaders=new Headers(options.headers);rangeHeaders.set("Range",`bytes=${offset}-${end}`);
+          const response=await fetch(key,{...requestOptions,headers:rangeHeaders});
+          /* Older local servers may ignore Range. Only a first full response
+             is usable; a later full response must not be appended to a prefix. */
+          if(response.status===200&&offset===0){
+            headers=new Headers(response.headers);reader=response.body.getReader();
+            const part=await reader.read();
+            if(part.done){finished=true;cleanup();save();target.close();return;}
+            if(cache)chunks.push(part.value);target.enqueue(part.value);return;
+          }
+          if(response.status!==206){void response.body?.cancel();throw new Error(`资源分段 HTTP ${response.status}`);}
+          const range=response.headers.get("Content-Range");
+          if(range&&range!==`bytes ${offset}-${end}/${length}`){void response.body?.cancel();throw new Error("资源分段范围不一致");}
+          if(modified&&response.headers.get("Last-Modified")!==modified){void response.body?.cancel();throw new Error("资源更新中，请重试");}
+          const bytes=new Uint8Array(await response.arrayBuffer());
+          if(bytes.byteLength!==end-offset+1)throw new Error("资源分段不完整");
+          if(controller.signal.aborted)throw new DOMException("下载已取消","AbortError");
+          offset+=bytes.byteLength;if(cache)chunks.push(bytes);target.enqueue(bytes);
+        }catch(error){finished=true;controller.abort();cleanup();chunks.length=0;target.error(error);}
+      },
+      cancel(){cancelled=true;controller.abort();cleanup();chunks.length=0;return reader?.cancel().catch(()=>{});}
+    });
+    return new Response(stream,{status:200,headers});
+  }
   function loadAssetManifest(){
     if(assetState.loading)return assetState.loading;
+    /* A failed multi-megabyte response must not be downloaded repeatedly by
+       timers or screen transitions. retryMapLoading clears this latch only
+       after the player explicitly requests another attempt. */
+    if(assetState.manifestFailed)return Promise.resolve(null);
     assetState.manifestStartedAt=Date.now();
     assetState.manifestBytes=0;assetState.manifestTotalBytes=0;
     assetState.manifestAttempts=(Number(assetState.manifestAttempts)||0)+1;
@@ -6084,11 +6188,9 @@
     let timeout=0;
     const armTimeout=()=>{window.clearTimeout(timeout);timeout=window.setTimeout(()=>controller?.abort(),20000);};
     armTimeout();
-    /* Manifests keep stable URLs across an MVP deploy while their logical
-       ADRN aliases can change (for example when the item pack is extended).
-       Revalidate the small index on each page load; the much larger PNG/WAV
-       payloads still retain their normal long-lived browser cache. */
-    assetState.loading=fetch(ASSET_MANIFEST_URL,{cache:"no-cache",signal:controller?.signal}).then(async response=>{
+    /* Resource revisions invalidate indexes independently of program releases.
+       Bitmap URLs and their cache-first policy remain unchanged. */
+    assetState.loading=fetchAssetIndex(ASSET_MANIFEST_URL,{cache:"no-cache",signal:controller?.signal}).then(async response=>{
       if(!response.ok)throw new Error(`资源清单 HTTP ${response.status}`);
       const buffer=await readAssetResponseBytes(response,()=>{
         /* The timeout is a no-progress watchdog, not a total download limit;
@@ -6116,10 +6218,9 @@
     }).catch(error=>{
       assetState.manifest=null;assetState.manifestReady=false;assetState.manifestFailed=true;
       assetState.manifestError=String(error?.name==="AbortError"?"下载超时":error?.message||error);
-      if(app.phase==="world"&&app.mapLoading)setMapLoading(true,`资源清单${assetState.manifestError}，正在重试…`);
+      if(app.phase==="world"&&app.mapLoading)setMapLoading(true,`资源清单${assetState.manifestError}，请点击重试`);
       addEvent(`资源清单加载失败：${assetState.manifestError}`);
       assetState.loading=null;
-      window.setTimeout(()=>{if(!assetState.manifestReady)loadAssetManifest();},1500);
     }).finally(()=>{
       window.clearTimeout(timeout);
     });
@@ -6130,7 +6231,7 @@
     if(assetState.creationSpritesReady)return Promise.resolve(assetState.creationSprites);
     if(assetState.creationSpriteLoading)return assetState.creationSpriteLoading;
     assetState.creationSpritesFailed=false;
-    assetState.creationSpriteLoading=fetch(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
+    assetState.creationSpriteLoading=fetchAssetIndex(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`人物精灵资源 HTTP ${response.status}`);
       return response.json();
     }).then(payload=>{
@@ -6155,7 +6256,7 @@
     if(assetState.fieldBootstrapSpritesFailed)return Promise.resolve(null);
     assetState.fieldBootstrapSpritesFailed=false;assetState.fieldBootstrapBytes=0;assetState.fieldBootstrapTotalBytes=0;
     const progress={_bytesKey:"fieldBootstrapBytes",_totalKey:"fieldBootstrapTotalBytes",fieldBootstrapBytes:0,fieldBootstrapTotalBytes:0};
-    assetState.fieldBootstrapSpriteLoading=fetch(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
+    assetState.fieldBootstrapSpriteLoading=fetchAssetIndex(FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`首屏人物资源 HTTP ${response.status}`);
       const buffer=await readAssetResponseBytes(response,()=>{
         assetState.fieldBootstrapBytes=Number(progress.fieldBootstrapBytes)||0;
@@ -6189,7 +6290,7 @@
     if(assetState.fieldSpriteLoading)return assetState.fieldSpriteLoading;
     if(assetState.fieldSpritesFailed)return Promise.resolve(null);
     assetState.fieldSpritesFailed=false;
-    assetState.fieldSpriteLoading=fetch(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
+    assetState.fieldSpriteLoading=fetchAssetIndex(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`场景动作资源 HTTP ${response.status}`);
       return JSON.parse(new TextDecoder().decode(await readAssetResponseBytes(response,null,{})));
     }).then(payload=>{
@@ -6226,7 +6327,7 @@
     if(assetState.spritesFailed)return Promise.resolve(null);
     assetState.spriteBytes=0;assetState.spriteTotalBytes=0;assetState.spritesFailed=false;
     const progress={_spriteProgress:true,spriteBytes:0,spriteTotalBytes:0};
-    assetState.spriteLoading=fetch(`${SPRITE_MANIFEST_URL}`,{cache:"no-cache"}).then(async response=>{
+    assetState.spriteLoading=fetchAssetIndex(SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`精灵资源 HTTP ${response.status}`);
       const buffer=await readAssetResponseBytes(response,()=>{
         assetState.spriteBytes=Number(progress.spriteBytes)||0;

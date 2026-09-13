@@ -42,6 +42,7 @@ jobs:
           node client/web/resource_loading_test.js
           node client/web/resource_progress_test.js
           node client/web/asset_cache_test.js
+          node client/web/asset_index_test.js
           node client/web/server_directory_test.js
           node client/web/sprite_loading_test.js
           node client/web/sw_cache_test.js
