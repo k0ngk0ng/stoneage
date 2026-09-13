@@ -1623,7 +1623,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,292\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,240\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -4476,12 +4476,25 @@ for (const expected of [
   /add\("\s+聊天设定\s+",[\s\S]{0,120}systemPage="chat"/,
   /add\("\s+背景音乐\s+",[\s\S]{0,120}systemPage="bgm"/,
   /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
-  /systemChoice\("\s+适应窗口\s+",\(\)=>\{setDisplayMode\("fit"\);renderSystem\(\);\},160\)/,
-  /systemChoice\("\s+倍数显示\s+",\(\)=>\{setDisplayMode\("crisp"\);renderSystem\(\);\},200\)/,
-  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,292\);list\.append\(close\)/,
+  /add\("\s+画面设定\s+",[\s\S]{0,120}systemPage="display"/,
+  /add\("\s+游戏速度\s+",[\s\S]{0,120}systemPage="game-speed"/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,240\);list\.append\(close\)/,
   /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
+}
+const displaySettingsPageSource = systemMenuSource.slice(systemMenuSource.indexOf('if(page==="display")'), systemMenuSource.indexOf('if(page==="game-speed")'));
+if (!/setDisplayMode\("fit"\);renderSystem\(\)/.test(displaySettingsPageSource) ||
+    !/setDisplayMode\("crisp"\);renderSystem\(\)/.test(displaySettingsPageSource) ||
+    !/systemReturn\(sub,136\)/.test(displaySettingsPageSource)) {
+  throw new Error("display settings must contain fit/scaled choices and a system-menu return");
+}
+const gameSpeedPageSource = systemMenuSource.slice(systemMenuSource.indexOf('if(page==="game-speed")'), systemMenuSource.indexOf('if(page==="registry")'));
+if (!/options=BATTLE_ANIMATION_SPEED_OPTIONS/.test(gameSpeedPageSource) ||
+    !/column=index%2,row=Math\.floor\(index\/2\)/.test(gameSpeedPageSource) ||
+    !/setBattleAnimationSpeed\(speed\);app\.systemPage="game-speed";renderSystem\(\)/.test(gameSpeedPageSource) ||
+    !/systemReturn\(sub,264\)/.test(gameSpeedPageSource)) {
+  throw new Error("game speed must render the shared speed options in two columns and stay open after selection");
 }
 for (const expected of [
   /const specs=\{menu:\{x:4,y:4,w:192,h:384,title:9145\}/,
@@ -4490,6 +4503,8 @@ for (const expected of [
   /chat:\{x:192,y:48,w:256,h:384,title:9148\}/,
   /bgm:\{x:192,y:48,w:256,h:384,title:9149\}/,
   /se:\{x:192,y:96,w:256,h:288,title:9150\}/,
+  /display:\{x:192,y:48,w:256,h:240,title:0\}/,
+  /"game-speed":\{x:192,y:48,w:256,h:384,title:0\}/,
   /registry:\{x:184,y:25,w:272,h:430,title:0\}/,
 ]) {
   if (!expected.test(script)) throw new Error(`2.5 system window geometry regression: ${expected}`);

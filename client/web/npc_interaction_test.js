@@ -79,7 +79,7 @@ async function run(){
     assert.equal(api.npcUsesLookInteraction(nurse,2),false);
     assert.equal(api.npcInteractionRange({...nurse,x:18}),1,"do not infer nearby or similarly named NPC capabilities");
   }
-  for(const template of ["npcgen_shop","npcgen_petshop"]){
+  for(const template of ["npcgen_shop","npcgen_petshop","changeevent"]){
     const app={floor:1005,npcMetadataByKey:new Map()};
     const api=new Function("app","npcMetadataKey",rules+"return {npcInteractionRange,npcUsesLookInteraction};")(app,(f,x,y)=>`${f}:${x}:${y}`);
     const shop={x:17,y:13,npcTemplate:template,npcInteraction:"talk"};
@@ -109,7 +109,7 @@ async function run(){
     assert.deepEqual(sends.map(row=>row[0]),!inRange?[]:useTalk?["L","TK"]:["L"],`${template} must choose the supported dispatch at distance ${distance}`);
     if(inRange&&useTalk)assert.deepEqual(sends[1][1],[17,13+distance,"P|hi",0,3]);
   }
-  for(const template of ["npcgen_shop","npcgen_petshop"])for(const facing of [true,false]){
+  for(const template of ["npcgen_shop","npcgen_petshop","changeevent"])for(const facing of [true,false]){
     const target={id:240,name:"Shop",x:17,y:13,wireDirection:facing?4:0,npcTemplate:template,npcInteraction:"talk",direction:7};
     const app={phase:"world",battle:false,transport:{},actors:new Map([[240,target]]),position:[17,15],serverPosition:[17,15],serverPositionReceivedAt:Date.now(),moveQueue:[],direction:0};
     const sends=[],approaches=[];
@@ -136,6 +136,33 @@ async function run(){
       assert.deepEqual(invalidSends,[],`${template} must not send L/TK from a non-facing distance-two tile`);
     }
   }
+  {
+    // Karutana ticket seller: the server accepts hi two cells along dir 2.
+    // Run the actual NPC pointer-release branch twice, as a double click does.
+    const target={id:240,kind:"character",charType:29,name:"门票贩卖员",x:82,y:67,
+      wireDirection:2,npcTemplate:"changeevent",npcInteraction:"talk"};
+    const app={phase:"world",battle:false,transport:{},floor:4000,npcMetadataByKey:new Map(),
+      actors:new Map([[240,target]]),position:[84,67],serverPosition:[84,67],
+      serverPositionReceivedAt:Date.now(),moveQueue:[],direction:0,pointerLookTargetId:240,pointerLookPointerId:1};
+    const sends=[],tasks=[];
+    const deps={app,LEGACY_TURN_SEND_WAIT_MS:500,actorIsOwn:()=>false,npcFilterForTalk:()=>true,
+      sameMovePoint:same,setWorldState:()=>{},forgetTalkTarget:()=>{},
+      refreshTalkServerPosition:()=>{throw new Error("unexpected refresh");},
+      approachNPC:()=>{throw new Error("ticket seller is already in native talk range");},
+      directionFor:()=>1,serverDirectionFromClient:()=>6,setLocalActorAction:()=>{},npcMetadataKey:(f,x,y)=>`${f}:${x}:${y}`,
+      window:{setTimeout(fn,delay){if(delay===60)fn();return 1;}},send:async(...args)=>sends.push(args),reportError:error=>{throw error;}};
+    const talkToTarget=new Function(...Object.keys(deps),rules+talk+"return talkToTarget;")(...Object.values(deps));
+    const releaseSource=section('    if(event.button===0&&app.pointerLookTargetId!==null){','    /* A held move is a continuous');
+    const release=new Function("app","worldPointerIsUiTarget","worldTileFromPointer","actorAtPointer","isTalkableActor","talkToTarget","reportError",
+      'return function(event){'+releaseSource+'};')(app,()=>false,()=>[82,67],()=>target,()=>true,
+        target=>{const task=talkToTarget(target);tasks.push(task);return task;},deps.reportError);
+    for(let click=0;click<2;click++){
+      app.pointerLookTargetId=240;app.pointerLookPointerId=1;
+      release({button:0,pointerId:1});await tasks[tasks.length-1];
+    }
+    assert.deepEqual(sends,[["L",[6]],["TK",[84,67,"P|hi",0,3]]],
+      "double clicking the ticket seller turns and sends hi once without a spurious walk");
+  }
   for(const healer of [true,false]){
     const target={id:240,name:"Nurse",x:17,y:13,npcTemplate:healer?"npcgen_winhealer":"npcgen_signboard",npcInteractionRange:2};
     const app={position:[20,20],cursor:{},serverPositionVersion:1};let destination=null;
@@ -158,7 +185,7 @@ async function run(){
     assert.equal(timers.length,healer?1:0,"counter approach must resume at the same range used for routing");
     if(healer){await timers[0]();assert.equal(talks[0],target);assert.equal(app.pendingTalk,null);}
   }
-  for(const template of ["npcgen_shop","npcgen_petshop"]){
+  for(const template of ["npcgen_shop","npcgen_petshop","changeevent"]){
     const app={position:[17,15],floor:1005,npcMetadataByKey:new Map([["1005:17:13",{template,direction:4}]])};
     const can=new Function("app","npcMetadataKey",rules+"return npcCanInteractFrom;")(app,(f,x,y)=>`${f}:${x}:${y}`);
     const shop={x:17,y:13,npcTemplate:template,wireDirection:4};

@@ -1591,7 +1591,7 @@
      the battle wire state so it can never alter server turn deadlines,
      protocol actions, or result packets. */
   const BATTLE_ANIMATION_SPEED_KEY="stoneage:web:battle-animation-speed";
-  const BATTLE_ANIMATION_SPEED_OPTIONS=Object.freeze([1,1.5,2,3]);
+  const BATTLE_ANIMATION_SPEED_OPTIONS=Object.freeze([1,1.5,2,3,4,5,6,7,8,9,10]);
   /* Field-character Action rows also advance from the 2.5 60 Hz ProcTime. */
   const LEGACY_FIELD_ANIMATION_TICK_MS=1000/60;
   /* Keep the optimized process clock only for field movement interpolation. */
@@ -2867,8 +2867,11 @@
     #system-screen.system-page-chat{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:104px}
     #system-screen.system-page-bgm{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:112px}
     #system-screen.system-page-se{--legacy-x:192px;--legacy-y:96px;--legacy-w:256px;--legacy-h:288px;--system-list-x:248px;--system-list-y:160px}
-    #system-screen.system-page-battle-animation{--system-list-x:248px;--system-list-y:96px}
-    #system-screen.system-page-battle-animation .system-subpage .system-action{width:160px}
+    #system-screen.system-page-display{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:240px;--system-list-x:248px;--system-list-y:96px}
+    #system-screen.system-page-display .system-subpage{width:220px}
+    #system-screen.system-page-game-speed{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:96px}
+    #system-screen.system-page-game-speed .system-subpage{width:256px}
+    #system-screen.system-page-game-speed .system-subpage .system-action{width:108px}
     #system-screen.system-page-chat .system-subpage,
     #system-screen.system-page-bgm .system-subpage,
     #system-screen.system-page-se .system-subpage{left:0;top:0;width:220px}
@@ -7899,8 +7902,8 @@
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
-    ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry","system-page-battle-animation"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:384,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},"battle-animation":{x:192,y:48,w:256,h:304,title:0}};
+    ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry","system-page-display","system-page-game-speed"].forEach(name=>screen.classList.remove(name));
+    const specs={menu:{x:4,y:4,w:192,h:384,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},display:{x:192,y:48,w:256,h:240,title:0},"game-speed":{x:192,y:48,w:256,h:384,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -8045,15 +8048,9 @@
       add("    聊天设定    ",()=>{app.systemPage="chat";renderSystem();},40);
       add("    背景音乐    ",()=>{app.systemPage="bgm";renderSystem();},80);
       add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
-      const fitChoice=systemChoice("    适应窗口    ",()=>{setDisplayMode("fit");renderSystem();},160);
-      const crispChoice=systemChoice("    倍数显示    ",()=>{setDisplayMode("crisp");renderSystem();},200);
-      fitChoice.classList.add("display-mode-choice");
-      crispChoice.classList.add("display-mode-choice");
-      fitChoice.setAttribute("aria-pressed",displayMode==="fit"?"true":"false");
-      crispChoice.setAttribute("aria-pressed",displayMode==="crisp"?"true":"false");
-      list.append(fitChoice,crispChoice);
-      add(`    战斗动画 ${battleAnimationSpeedLabel(settings.battleAnimationSpeed)}    `,()=>{app.systemPage="battle-animation";renderSystem();},240);
-      const close=systemChoice("    关    闭    ",closeGameplayOverlay,292);list.append(close);
+      add("    画面设定    ",()=>{app.systemPage="display";renderSystem();},160);
+      add("    游戏速度    ",()=>{app.systemPage="game-speed";renderSystem();},200);
+      const close=systemChoice("    关    闭    ",closeGameplayOverlay,240);list.append(close);
       return;
     }
     if(page==="logout-choice"){
@@ -8103,15 +8100,31 @@
       sub.append(systemAction(settings.seStereo?"       立体声       ":"       单声道       ",()=>{settings.seStereo=!settings.seStereo;renderSystem();},120));
       systemReturn(sub,172);list.append(sub);return;
     }
-    if(page==="battle-animation"){
-      const current=battleAnimationSpeed(),sub=systemSubpage(""),options=BATTLE_ANIMATION_SPEED_OPTIONS;
-      sub.append(systemValue(`◆ 目前速度 ${battleAnimationSpeedLabel(current)} ◆`,0,-8));
+    if(page==="display"){
+      const current=displayMode==="crisp"?"倍数显示":"适应窗口",sub=systemSubpage("画面设定",-8);
+      sub.append(systemValue(`◆ 目前模式 ${current} ◆`,32,-8));
+      const fitChoice=systemAction("    适应窗口    ",()=>{setDisplayMode("fit");renderSystem();},64);
+      const crispChoice=systemAction("    倍数显示    ",()=>{setDisplayMode("crisp");renderSystem();},96);
+      fitChoice.classList.add("display-mode-choice");
+      crispChoice.classList.add("display-mode-choice");
+      fitChoice.setAttribute("aria-pressed",displayMode==="fit"?"true":"false");
+      crispChoice.setAttribute("aria-pressed",displayMode==="crisp"?"true":"false");
+      if(displayMode==="fit")fitChoice.classList.add("selected");
+      else crispChoice.classList.add("selected");
+      sub.append(fitChoice,crispChoice);
+      systemReturn(sub,136);list.append(sub);return;
+    }
+    if(page==="game-speed"){
+      const current=battleAnimationSpeed(),sub=systemSubpage("游戏速度",-8),options=BATTLE_ANIMATION_SPEED_OPTIONS;
+      sub.append(systemValue(`◆ 战斗动画 ${battleAnimationSpeedLabel(current)} ◆`,32,-8));
       options.forEach((speed,index)=>{
-        const action=systemAction(`${battleAnimationSpeedLabel(speed)}${speed===current?"  ◆":""}`,()=>{setBattleAnimationSpeed(speed);app.systemPage="menu";renderSystem();},40+index*40);
+        const column=index%2,row=Math.floor(index/2);
+        const action=systemAction(`${battleAnimationSpeedLabel(speed)}${speed===current?"  ◆":""}`,()=>{setBattleAnimationSpeed(speed);app.systemPage="game-speed";renderSystem();},64+row*32,column?112:0);
+        action.setAttribute("aria-pressed",speed===current?"true":"false");
         if(speed===current)action.classList.add("selected");
         sub.append(action);
       });
-      systemReturn(sub,216);list.append(sub);return;
+      systemReturn(sub,264);list.append(sub);return;
     }
     if(page==="registry"){
       const registry=document.createElement("div");registry.className="system-registry";registry.style.background="url('/assets/bitmaps/bitmap_9288.png') center/272px 430px no-repeat";
@@ -14756,11 +14769,11 @@
      also a safe wire fallback for generated Msg/SignBoard objects when a
      deployment has no static metadata file. */
   function npcInteractionRange(actor){
-    /* Healers use their configured range; stock shops accept two-cell
-       face-to-face TALK. LOOK still dispatches only one cell. */
+    /* Healers use their configured range; shops and ExChangeMan ticket
+       sellers accept two-cell face-to-face TALK. LOOK is one cell only. */
     const metadata=app.npcMetadataByKey?.get(npcMetadataKey(app.floor,actor?.x,actor?.y));
     const template=String(actor?.npcTemplate||metadata?.template||"").trim().toLowerCase();
-    if(template==="npcgen_shop"||template==="npcgen_petshop")return 2;
+    if(template==="npcgen_shop"||template==="npcgen_petshop"||template==="changeevent")return 2;
     return template==="npcgen_winhealer"||template==="windowhealer"?Math.max(1,Math.min(2,Number(metadata?.interactionRange??actor?.npcInteractionRange)||1)):1;
   }
   function npcUsesLookInteraction(actor,distance=1){
@@ -14777,7 +14790,7 @@
     if(distance<=1)return true;
     const metadata=app.npcMetadataByKey?.get(npcMetadataKey(app.floor,actor.x,actor.y));
     const template=String(actor.npcTemplate||metadata?.template||"").trim().toLowerCase();
-    if(template!=="npcgen_shop"&&template!=="npcgen_petshop")return true;
+    if(template!=="npcgen_shop"&&template!=="npcgen_petshop"&&template!=="changeevent")return true;
     /* NPC_Util_isFaceToFace(...,2) requires the player to stand on the
        shopkeeper's facing ray. The existing L/TK pair turns the player back
        toward the NPC. Apply this to routing as well as direct clicks so a

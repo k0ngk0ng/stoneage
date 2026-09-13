@@ -1,7 +1,7 @@
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
 const source=fs.readFileSync(__dirname+'/index.html','utf8');
 function fn(name){const start=source.indexOf('  function '+name+'(');assert(start>=0,name);const lineEnd=source.indexOf('\n',start);if(source.slice(start,lineEnd).endsWith('}'))return source.slice(start,lineEnd);return source.slice(start,source.indexOf('\n  }',lineEnd)+4);}
-const context={app:{systemSettings:{battleAnimationSpeed:1}}, BATTLE_ANIMATION_SPEED_OPTIONS:[1,1.5,2,3],BATTLE_PROC_TICK_MS:1000/60,performance:{now:()=>10000},Date:{now:()=>1000},Map,battleSide:()=>0,battleSlotDirection:()=>5};
+const context={app:{systemSettings:{battleAnimationSpeed:1}}, BATTLE_ANIMATION_SPEED_OPTIONS:JSON.parse(source.match(/BATTLE_ANIMATION_SPEED_OPTIONS=Object\.freeze\((\[[^\]]+\])\)/)[1]),BATTLE_PROC_TICK_MS:1000/60,performance:{now:()=>10000},Date:{now:()=>1000},Map,battleSide:()=>0,battleSlotDirection:()=>5};
 vm.createContext(context);
 for(const name of ['battleAnimationSpeedValue','battleAnimationSpeed','battlePlaybackSpeed','battleMotionRenderPriority','battleNativeTickProgress','battleNativeSpeedProgress','battleNativeAlternatingOffset','battleAnimationElapsedWithHolds','battleMotionValue'])vm.runInContext(fn(name),context);
 const base={actor:0,target:0,startedAt:1000,playbackStartAt:1000,duration:1000,direction:5,toX:100,toY:50,approachDuration:100,attackDuration:300,postAttackHold:100,returnDuration:200,deadStartOffset:600,deadDuration:400,knockbackDuration:100,decelDuration:100,pauseDuration:100,deathStartOffset:300};
@@ -9,7 +9,7 @@ let samples=0;
 for(const kind of ['attack','counter-attack','hit','death','death-direct','cast','charge','appear','fade','escape','escape-fail','guard','dodge','bd-damage','catch']){
  for(const elapsed of [50,150,350,550,750,950]){
   const render=speed=>context.battleMotionValue({motions:[{...base,kind,playbackSpeed:speed,until:1000+1000/speed}]},0,1000+elapsed/speed);
-  assert.deepEqual(JSON.parse(JSON.stringify(render(2))),JSON.parse(JSON.stringify(render(1))),kind+' '+elapsed);samples++;
+  for(const speed of [2,5,10]){assert.deepEqual(JSON.parse(JSON.stringify(render(speed))),JSON.parse(JSON.stringify(render(1))),kind+' '+elapsed+' at '+speed+'x');samples++;}
  }
 }
 const death={...base,kind:'death',playbackSpeed:2,until:1500};
@@ -34,12 +34,12 @@ context.playSoundEffect=sound=>played.push(sound);
 context.window={setTimeout(callback,delay){const id=++nextTimer;timers.set(id,{callback,at:now+delay});return id;},clearTimeout(id){timers.delete(id);}};
 function advance(at){now=at;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.callback();}}
 for(const name of ['battleAnimationScale','battleAnimationOffset','battleAnimationStorage','loadBattleAnimationSpeed','saveBattleAnimationSpeed','setBattleAnimationSpeed','battlePushMotion','battlePushProjectile','battleProjectileValue','battlePushEffect','battleScheduleDamage','armBattlePlayerChoiceTimer','battleChoiceDeadline','battleChoiceRemaining'])vm.runInContext(fn(name),context);
-for(const invalid of [undefined,null,0,-1,4,'bad',Infinity])assert.equal(context.battleAnimationSpeedValue(invalid),1);
+for(const invalid of [undefined,null,0,-1,11,2.5,'bad',Infinity])assert.equal(context.battleAnimationSpeedValue(invalid),1);
 assert.equal(context.loadBattleAnimationSpeed(null),1);
 const storage=new Map();
 context.localStorage={getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)};
 assert.equal(context.loadBattleAnimationSpeed(),1);
-for(const speed of [1,1.5,2,3]){context.setBattleAnimationSpeed(speed);assert.equal(context.loadBattleAnimationSpeed(),speed);}
+for(const speed of [1,1.5,2,3,4,5,6,7,8,9,10]){context.setBattleAnimationSpeed(speed);assert.equal(context.loadBattleAnimationSpeed(),speed);}
 assert.equal(context.loadBattleAnimationSpeed({getItem(){throw Error('blocked');}}),1);
 assert.equal(context.saveBattleAnimationSpeed(3,{setItem(){throw Error('quota');}}),3);
 
@@ -49,7 +49,7 @@ const queueStart=source.indexOf('    const queueMotion=',movieStart);
 const queueEnd=source.indexOf('    const timedMotion=',queueStart);
 assert(queueEnd>queueStart);
 vm.runInContext('function queueForTest(state,motion){'+source.slice(queueStart,queueEnd)+'return queueMotion(motion);}',context);
-for(const speed of [1,1.5,2,3]){
+for(const speed of [1,1.5,2,3,4,5,6,7,8,9,10]){
  now=1000;timers.clear();played=[];context.setBattleAnimationSpeed(speed);
  const state={motions:[],projectiles:[],effects:[],motionQueueAt:1300};context.app.battle=true;context.app.battleState=state;
  const timing=context.queueForTest(state,{kind:'attack',actor:0,duration:1200,attackStartOffset:150,attackDuration:600,contactOffset:600,soundEvents:[{sound:9,offset:600}]});
