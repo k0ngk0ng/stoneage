@@ -47,11 +47,12 @@ function harness(settings = {}) {
         // CDN CORS does not expose Content-Range. The normal case must work without it.
         return new Response(bytes, {status: 206, headers});
       }
+      const body = settings.truncateFull ? data.subarray(0, data.length - 1) : data;
       let position = 0;
       return new Response(new ReadableStream({pull(controller) {
-        if(position >= data.length) return controller.close();
+        if(position >= body.length) return controller.close();
         if(position >= 4 * MiB) return controller.error(new TypeError("Load failed at 4 MiB"));
-        const chunk = data.subarray(position, position + 65536);position += chunk.length;controller.enqueue(chunk);
+        const chunk = body.subarray(position, position + 65536);position += chunk.length;controller.enqueue(chunk);
       }}), {headers});
     },
   };
@@ -73,7 +74,9 @@ async function flush(h) {for(let i = 0; i < 20; i++) await Promise.resolve();awa
   await (await h.context.fetchAssetIndex("/assets/manifest.json")).arrayBuffer();
   assert(h.calls.length > count, "new resource revision must invalidate the old index");
   assert(h.calls.at(-1).url.includes("v=resources-0002"));
-  for(const settings of [{truncate: true}, {changeDuringDownload: true}]) {
+  for(const settings of [{truncate: true}, {changeDuringDownload: true},
+    {small: true, truncateFull: true}, {small: true, headFails: true, truncateFull: true},
+    {medium: true, ignoreRange: true, truncateFull: true}]) {
     const broken = harness(settings);
     await assert.rejects(async () => (await broken.context.fetchAssetIndex("/assets/manifest.json")).arrayBuffer());
     await flush(broken);

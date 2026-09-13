@@ -85,3 +85,24 @@ async function settle() {await new Promise(resolve => setImmediate(resolve));}
   assert.equal(emptyMap.renders, 1, "an empty map must still repaint after bootstrap actor decoding");
   console.log("sprite loading regression tests passed");
 })().catch(error => {console.error(error); process.exitCode = 1;});
+
+// First reveal waits for the requested frame even when actorFrame returns a
+// previously decoded fallback. Missing/failed graphics must not deadlock it.
+{
+  const actor={x:1,y:1,own:true,sprite:true};
+  const ctx={app:{actors:new Map([[1,actor]]),position:[1,1]},
+    fieldActorInAnimationRange:()=>true,actorIsOwn:a=>a.own,
+    ensureFieldActorAnimation:()=>{},spriteEntryForActor:a=>a.sprite,
+    actorFrame:a=>a.frame};
+  vm.createContext(ctx);
+  vm.runInContext(section('  function fieldBootstrapFrameReadiness()', '  function maybeFinishMapLoading()'),ctx);
+  actor.frame={direct:true,image:{complete:true,naturalWidth:32}};
+  actor._pendingFrameFile='sprite.png';actor._pendingFrameImage={complete:false,naturalWidth:0};
+  assert.equal(ctx.fieldBootstrapFrameReadiness().ready,false,'decoded fallback must not reveal a pending sprite');
+  actor._pendingFrameImage={complete:true,naturalWidth:32};
+  assert.equal(ctx.fieldBootstrapFrameReadiness().ready,true,'decoded requested sprite permits reveal');
+  actor._pendingFrameImage={complete:true,naturalWidth:0,_assetFailed:true};
+  assert.equal(ctx.fieldBootstrapFrameReadiness().ready,true,'failed image must not leave the curtain stuck');
+  actor.sprite=false;actor.frame=null;actor._pendingFrameFile='';actor._pendingFrameImage=null;
+  assert.equal(ctx.fieldBootstrapFrameReadiness().ready,true,'unknown graphic must not block all gameplay');
+}

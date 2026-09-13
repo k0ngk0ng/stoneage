@@ -48,10 +48,18 @@ def main() -> int:
         char *playerName = CHAR_getChar( charaindex, CHAR_NAME );
         char message[256];
         char clockText[80];
+        struct tm localNow;
         time_t now = time( 0 );
 
-        strcpy( clockText, ctime( &now ));
-        clockText[strlen( clockText ) - 1] = '\\0';
+        /* Format the welcome timestamp through the runtime's local timezone.
+           ctime() is local too, but its English layout and implicit static
+           buffer made UTC output easy to mistake for the intended value when
+           the legacy process was started without the container timezone. */
+        if( localtime_r( &now, &localNow ) == NULL ||
+            strftime( clockText, sizeof( clockText ),
+                      "%Y-%m-%d %H:%M:%S", &localNow ) == 0 ) {
+            strcpy( clockText, "time unavailable" );
+        }
 
         for( i = 0; i < playernum; i++ ) {
             if( CHAR_getCharUse( i ) == FALSE ) continue;

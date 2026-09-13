@@ -146,8 +146,18 @@ for (let battle = 0; battle < BATTLE_MAP_FILES_25; battle++) {
 }
 
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const webReadme = fs.readFileSync(__dirname + "/README.md", "utf8");
 const serviceWorker = fs.readFileSync(__dirname + "/sw.js", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+if (!/^# StoneAge 2\.5 Web\n/.test(webReadme) || /^# sa_2903 web$/im.test(webReadme) ||
+    !/<title>StoneAge 2\.5<\/title>/.test(html) || /<title>[^<]*sa_2903 web/i.test(html)) {
+  throw new Error("web page title must not expose the legacy executable name");
+}
+const loginAnnouncementSource = fs.readFileSync(__dirname + "/../../server/legacy/source/2.5/gmsv/char/char.c", "latin1");
+if (!/localtime_r\(\s*&now\s*,\s*&localNow\s*\)/.test(loginAnnouncementSource) ||
+    !/strftime\(\s*clockText\s*,\s*sizeof\s*\(\s*clockText\s*\)/.test(loginAnnouncementSource)) {
+  throw new Error("login welcome time must use the server local timezone");
+}
 if(!/<input id="chat-input"[^>]*aria-label="聊天输入"[^>]*maxlength="70"[^>]*>/.test(html)||
    /<input id="chat-input"[^>]*placeholder=/.test(html)||
    !/#chat-form \{[^}]*left:8px; top:432px; bottom:auto[^}]*width:560px; height:16px/.test(html)||
@@ -1102,6 +1112,8 @@ if (!/id="world-loading-progress"[^>]*role="progressbar"/.test(html) ||
     !/id="world-loading-retry"/.test(html) ||
     !/main\.field-loading-active #field-ui[\s\S]{0,260}visibility:hidden/.test(html) ||
     !/function mapLoadingProgress\([\s\S]{0,1800}assetNetworkBytes/.test(script) ||
+    !/const trackProgress=progressState!==null/.test(script) ||
+    !/if\(trackProgress&&advertised>0\)progressState\[totalKey\]=advertised/.test(script) ||
     !/function assetCachedBytes\([\s\S]{0,900}return 0/.test(script) ||
     !/function assetNetworkBytes\([\s\S]{0,900}new URL\(relative,ASSET_RESOURCE_ROOT\)/.test(script) ||
     !/function rememberAssetResourceEntry\([\s\S]{0,900}STATIC_RESOURCE_ROOTS/.test(script) ||
@@ -1611,7 +1623,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,252\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,292\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -4464,7 +4476,9 @@ for (const expected of [
   /add\("\s+聊天设定\s+",[\s\S]{0,120}systemPage="chat"/,
   /add\("\s+背景音乐\s+",[\s\S]{0,120}systemPage="bgm"/,
   /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
-  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,252\);list\.append\(close\)/,
+  /systemChoice\("\s+适应窗口\s+",\(\)=>\{setDisplayMode\("fit"\);renderSystem\(\);\},160\)/,
+  /systemChoice\("\s+倍数显示\s+",\(\)=>\{setDisplayMode\("crisp"\);renderSystem\(\);\},200\)/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,292\);list\.append\(close\)/,
   /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
@@ -5810,7 +5824,8 @@ const finishMapLoadingStart=script.indexOf("  function fieldBootstrapFrameReadin
 const finishMapLoadingEnd=script.indexOf("  function send(functionName,values)",finishMapLoadingStart);
 const finishMapLoadingSource=script.slice(finishMapLoadingStart,finishMapLoadingEnd);
 if(finishMapLoadingStart<0||finishMapLoadingEnd<=finishMapLoadingStart||
-   !/expectsSprite&&frame\?\.direct/.test(finishMapLoadingSource)||
+   !/const pendingImage=actor\?\._pendingFrameImage\|\|null/.test(finishMapLoadingSource)||
+   !/pendingFrame\|\|\(expectsSprite&&frame\?\.direct&&Boolean\(actor\?\._pendingFrameFile\)/.test(finishMapLoadingSource)||
    !/const bootstrapReady=assetState\.fieldBootstrapSpritesReady\|\|assetState\.spritesReady/.test(finishMapLoadingSource)||
    !/if\(dynamicReady&&!actorFrames\.ready\)[\s\S]{0,260}setMapLoading\(true,`正在解码首屏人物/.test(finishMapLoadingSource)||
    finishMapLoadingSource.indexOf("if(dynamicReady&&!actorFrames.ready)")>finishMapLoadingSource.indexOf("setMapLoading(false)")) {

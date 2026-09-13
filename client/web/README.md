@@ -1,4 +1,4 @@
-# sa_2903 web
+# StoneAge 2.5 Web
 
 这里是 `runtime/legacy-client/sa_2903.exe` 的浏览器端移植，运行时只有两个产物：
 
