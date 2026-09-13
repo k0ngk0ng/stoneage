@@ -8284,8 +8284,8 @@
            are re-seeded below. */
         if(!sameFloor||partyFollowLeaderMember())clearPartyFollow();
         /* S("c") is a status sample, not a visibility-table reset.  The
-           2.5 server's C/CA/CD stream is incremental: CHAR_sendCSpecifiedObjindex
-           only sends objects that changed since the server's last view.  If a
+           2.5 server's C/CA/CD stream is incremental: movement updates
+           only send objects that changed since the server's last view.  If a
            same-floor coordinate sample replaced the whole browser map and
            cleared actors, the next C packet could contain only a pet/vehicle
            delta and every stationary NPC would disappear permanently.  Keep
@@ -8295,7 +8295,7 @@
         /* netproc.cpp starts warpEffectProc() as soon as a real S:C floor
            change arrives.  Start the horizontal center-press before replacing
            the old map object so the previous back-buffer remains behind the
-           collapsing curtain; login C(0) and same-floor corrections stay
+           collapsing curtain; login and same-floor corrections stay
            ordinary updates. */
         /* EV starts the fold before the server answers.  The 2.5 server can
            answer that event with a same-floor S:C, so bind the destination
@@ -8328,18 +8328,10 @@
         }else{
           app.map={floor,x1:0,y1:0,width:safeWidth,height:safeHeight,fullWidth:Math.max(1,maxx||safeWidth),fullHeight:Math.max(1,maxy||safeHeight),fullDimensionsFloor:floor,name:app.map?.name||"",tiles:[],objects:[],events:[],image:null,asset:null};app.actors.clear();setWorldState(`地图 ${floor}，正在读取区域…`,`good`);updateHUD();renderWorld();
         }
-        if(app.transport){
-          /* S:C is the server's authoritative floor/position refresh.  It
-             also resets the native client's visible-object table; the next
-             C(0) fills that table again before the first M window arrives.
-             Without this request a warp left the web table empty forever, so
-             every NPC on the destination map appeared to disappear. */
-          send("C",[0]).catch(reportError);
-          /* NETPROC.CPP::lssproto_S_recv(C) calls setMap/createMap/resetMap,
-             but deliberately does not send M.  GMSV follows with MC and only
-             mapCheckSum() may request bytes.  Sending here as well made login
-             decode and repaint the same 37x37 window twice. */
-        }break;
+        /* GMSV pushes visible C records after a warp. C(id) requests one
+           object by ID; zero is a real object, never a scene refresh.
+           Leave map-window requests to the following MC checksum. */
+        break;
       }
       case "D": {
         /* netproc.cpp receives D<pcId>|<serverTime>, anchors FirstTime to
@@ -14936,10 +14928,8 @@
       if(!pending.serverSyncRequestedAt){
         pending.serverSyncRequestedAt=Date.now();
         setWorldState("等待服务器确认位置…");
-        /* C(0) asks the 2.5 server for the current visible-object delta.  It
-           is the same harmless refresh used after login and gives the server
-           a chance to publish the completed W before we retry TK. */
-        send("C",[0]).catch(reportError);
+        /* S:c requests the player's authoritative floor and position. */
+        send("S",["c"]).catch(reportError);
       }
       const deadline=Number(pending.deadline)||Number(pending.startedAt||0)+15000;
       if(Date.now()<deadline)return;
@@ -15823,7 +15813,7 @@
     characterStatus(`正在登入 ${name}…`);
     try { await send("CharLogin",[name]); } catch(error) { characterStatus(error.message,"error"); }
   }
-  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear(); resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; clearChatBuffer(); /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); if(!assetState.manifestReady&&!assetState.loading)loadAssetManifest(); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0);send("C",[0]).catch(reportError); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
+  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear(); resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; clearChatBuffer(); /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); if(!assetState.manifestReady&&!assetState.loading)loadAssetManifest(); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
   /* enterWorld() replaces the battle state for a fresh field session.  Keep
      the watchdogs from a just-closed battle from firing against that new
      state, including logout/reconnect paths that do not pass through BU. */
@@ -20255,9 +20245,9 @@
   ["inventory-close","pets-close","status-close","party-close","map-close","social-close","titles-close","album-close","protocol-close","events-close","journal-close","help-exit"].forEach(id=>$(id)?.addEventListener("click",closeWorldPanelFromUi));
   $("help-prev")?.addEventListener("click",()=>{if(Number(app.helpPage)>0){app.helpPage--;renderHelp();}});
   $("help-next")?.addEventListener("click",()=>{const max=Math.max(0,Math.ceil((app.taskLog?.length||0)/10)-1);if(Number(app.helpPage)<max){app.helpPage++;renderHelp();}});
-  $("request-inventory").addEventListener("click",()=>send("C",[0]).catch(reportError));
+  $("request-inventory").addEventListener("click",()=>send("S",["i"]).catch(reportError));
   $("inventory-pickup").addEventListener("click",()=>send("PI",[app.position[0],app.position[1],serverDirectionFromClient(app.direction)]).catch(reportError));
-  $("request-pets").addEventListener("click",()=>{send("C",[0]).catch(reportError);send("KS",[-1]).catch(reportError);});
+  $("request-pets").addEventListener("click",()=>{for(let slot=0;slot<5;slot++)send("S",[`k${slot}`]).catch(reportError);send("KS",[-1]).catch(reportError);});
   $("pet-follow").addEventListener("click",()=>toggleStandbyPet(app.selectedPet<0?0:app.selectedPet));
   $("pet-name-submit").addEventListener("click",()=>{const index=app.selectedPet<0?0:app.selectedPet;openLocalDialog("宠物改名","请输入新的宠物名称：",[{label:"确定",kind:"yes",handler:value=>{const name=String(value||"").trim();if(!name)return;closeLocalDialog();send("KN",[index,name]).catch(reportError);}},{label:"取消",kind:"no",handler:closeLocalDialog}],app.petSlots[index]?.name||"");});
   $("request-status").addEventListener("click",()=>{send("ProcGet",[]).catch(reportError);send("PlayerNumGet",[]).catch(reportError);send("Echo",["web-status"]).catch(reportError);});

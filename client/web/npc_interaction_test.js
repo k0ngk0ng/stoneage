@@ -9,6 +9,44 @@ const same=(a,b)=>a[0]===b[0]&&a[1]===b[1];
 
 async function run(){
   {
+    // Exercise the real S:C map transition with a connected transport. A warp
+    // must clear the old scene without requesting any arbitrary object ID.
+    const app={floor:5511,position:[17,12],map:{floor:5511},transport:{},
+      actors:new Map([[0,{name:"龙王"}]]),actorDetailRequests:new Set(),
+      mapWindowRevisionByKey:new Map(),npcMetadataByKey:new Map(),status:{},mapDimensionsByFloor:new Map()};
+    const sends=[];
+    const deps={app,stateNumber:Number,MAX_LIVE_MAP_WINDOW:37,
+      send:async(...args)=>sends.push(args),reportError:error=>{throw error;}};
+    for(const name of ["localMovePredictionActive","partyFollowLeaderMember","clearPartyFollow",
+      "bindMapFloorTransitionTarget","startMapFloorTransition","recordServerPosition","cancelPendingMove",
+      "syncPartyFollowMembership","clearInitialMapChecksum","clearMapWindowRequest","requestNPCMetadata",
+      "autoMapRequestAllowed","setStatus","setWorldState","updateHUD","renderWorld"])deps[name]=()=>false;
+    const source=section('  function receiveSystemState(data){','      case "D": {')+'}}';
+    const receive=new Function(...Object.keys(deps),source+';return receiveSystemState;')(...Object.values(deps));
+    receive("C4004|30|30|15|20");
+    assert.equal(app.floor,4004);
+    assert.equal(app.actors.size,0,"entering the meat shop clears the previous floor's dragon");
+    assert.deepEqual(sends,[],"map entry must rely on server visibility pushes, never C(0)");
+    app.actors.set(1943,{name:"卡鲁它那的肉店"});
+    receive("C4004|30|30|16|20");
+    assert.equal(app.actors.get(1943).name,"卡鲁它那的肉店","position refresh preserves the shopkeeper");
+    assert.deepEqual(sends,[],"position status must not cause a refresh request loop");
+    assert.ok(!/send\("C",\[0\]\)/.test(html),"login, inventory and pets must not request object zero as a refresh");
+    const details=new Function("app","send","reportError",section("  function requestActorDetails(id){","  function receiveActions(text)")+"return requestActorDetails;")(app,deps.send,deps.reportError);
+    assert.equal(details(0),true,"object zero is still valid when explicitly observed in an actor update");
+    assert.deepEqual(sends,[["C",[0]]]);
+    const handlers=new Map();
+    const bind=id=>({addEventListener:(_event,handler)=>handlers.set(id,handler)});
+    for(const id of ["request-inventory","request-pets"]){
+      const line=html.split("\n").find(line=>line.includes(`$("${id}").addEventListener`));
+      new Function("$","send","reportError",line)(bind,deps.send,deps.reportError);
+    }
+    sends.length=0;handlers.get("request-inventory")();handlers.get("request-pets")();
+    assert.deepEqual(sends,[["S",["i"]],...[0,1,2,3,4].map(slot=>["S",[`k${slot}`]]),["KS",[-1]]],
+      "refresh controls request player status categories instead of an unrelated actor");
+  }
+
+  {
     const app={floor:1005,npcMetadataByKey:new Map(),actors:new Map(),npcMetadataRequest:0};
     const deps={app,stateNumber:Number,unescapeCharacterOption:x=>x,isInsideFloor:()=>true,
       actorIsOwn:()=>false,ensureFieldActorAnimation:()=>{},renderWorld:()=>{},updateHUD:()=>{},clientDirectionFromServer:x=>x};
