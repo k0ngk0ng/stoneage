@@ -1,8 +1,8 @@
 # 运维访问说明
 
-- 生产 StoneAge 主机：`root@192.0.2.10`
+- 生产 StoneAge 主机 IP 需要向用户询问，不得猜测或使用示例地址；用户在本次会话提供后可持续使用，无需重复询问。
 - SSH 私钥仅引用本机路径 `~/.ssh/id_ed25519_sa`，不得复制私钥内容到仓库。
-- 示例：`ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_sa root@192.0.2.10`
+- 登录方式：`ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_sa root@<用户提供的生产IP>`
 - 排障优先执行只读日志和容器状态检查；重启、部署或配置修改须取得用户当次明确授权。
 
 # 发版原则
