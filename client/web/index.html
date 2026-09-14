@@ -2727,7 +2727,7 @@
     #album-screen .legacy-album-row:not(:disabled):hover .album-name,#album-screen .legacy-album-row:not(:disabled):focus .album-name{color:#ffe88b;text-shadow:0 0 3px #ffe88b,1px 1px #080706;outline:0}
     #album-screen .legacy-album-row .album-no{position:absolute;left:46px;top:1px;width:52px}.legacy-album-row .album-name{position:absolute;left:112px;top:1px;width:144px;overflow:hidden;white-space:nowrap}
     #album-screen .legacy-album-empty{position:absolute;left:20px;top:215px;width:232px;color:#b8ad8e;text-align:center;pointer-events:none}
-    #album-screen .album-prev,#album-screen .album-next{position:absolute;width:16px;height:14px;padding:0;border:0;background-size:16px 14px;box-shadow:none;color:transparent}
+    #album-screen .album-prev,#album-screen .album-next{position:absolute;width:16px;height:14px;padding:0;border:0;background-size:16px 14px;box-shadow:none;color:transparent;pointer-events:auto}
     #album-screen .album-prev{left:24px;top:413px;background-image:url('/assets/bitmaps/bitmap_9183.png')}
     #album-screen .album-next{left:76px;top:413px;background-image:url('/assets/bitmaps/bitmap_9185.png')}
     #album-screen .album-prev:hover,#album-screen .album-prev:focus{background-image:url('/assets/bitmaps/bitmap_9184.png');outline:0}
@@ -2741,9 +2741,9 @@
     #album-screen .album-detail-str{left:112px;top:71px;width:34px;text-align:right}
     #album-screen .album-detail-quick{left:40px;top:95px;width:42px;text-align:right}
     #album-screen .album-detail-def{left:112px;top:95px;width:34px;text-align:right}
-    #album-screen .album-detail-face{position:absolute;left:199px;top:117px;width:56px;height:64px;object-fit:contain;image-rendering:pixelated}
-    #album-screen .album-attr{position:absolute;left:38px;height:8px;box-shadow:1px 1px #ddd8,2px 2px #2228}
-    #album-screen .album-attr.earth{top:149px}.album-attr.water{top:169px}.album-attr.fire{top:189px}.album-attr.wind{top:209px}
+    #album-screen .album-detail-face{position:absolute;image-rendering:pixelated}
+    #album-screen .album-attr{position:absolute;left:34px;height:8px;box-shadow:1px 1px #ddd8,2px 2px #2228}
+    #album-screen .album-attr.earth{top:127px}.album-attr.water{top:147px}.album-attr.fire{top:167px}.album-attr.wind{top:187px}
     #album-screen #album-close{left:96px;top:432px}
     #pets-screen .pet-visibility-fallback{width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;background:url('/assets/bitmaps/bitmap_9176.png') center/100% 100% no-repeat;box-shadow:none}
     /* PET_WND_VIEW (MENU.CPP) is a fixed five-row bitmap.  Live values are
@@ -6407,7 +6407,7 @@
     return `stoneage25.album.v1.${encodeURIComponent(account)}`;
   }
   function saveAlbumState(){
-    if(!app.albumCatalogReady||typeof localStorage==="undefined")return;
+    if(!app.albumCatalogReady||app.albumStorageIdentity!==albumStorageKey()||typeof localStorage==="undefined")return;
     const state={};
     for(const entry of app.album||[]){
       if(!entry?.valid||Number(entry.flag||0)<2)continue;
@@ -6420,30 +6420,46 @@
     if(!Array.isArray(source)||!source.length)return;
     let saved={};
     try{if(typeof localStorage!=="undefined")saved=JSON.parse(localStorage.getItem(albumStorageKey())||"{}")||{};}catch(_){saved={};}
-    const previous=new Map((app.album||[]).map(entry=>[Number(entry.index),entry]));
+    const identity=albumStorageKey();
+    const previous=new Map((app.albumStorageIdentity===identity?app.album||[]:[]).map(entry=>[Number(entry.index),entry]));
     app.album=source.map((row,index)=>{
       const old=previous.get(index)||{},stored=saved[String(index)]||{};
-      return {...row,...old,...stored,index,valid:Boolean(row.valid),flag:Number(stored.flag??old.flag??0)||0};
+      const snapshot={};
+      for(const key of ["freeName","level","maxHp","str","quick","def","earth","water","fire","wind"]){
+        const value=stored[key]??old[key];if(value!==undefined)snapshot[key]=value;
+      }
+      const entry={...row,...snapshot,index,valid:Boolean(row.valid),flag:Number(stored.flag??old.flag??0)||0};
+      // The catalog owns species/portrait identity; saved status owns only
+      // the discovered pet's measurements and nickname.
+      entry.faceGraNo=row.graphic;
+      return entry;
     });
+    app.albumStorageIdentity=identity;
     app.albumCatalogReady=true;
     const pageCount=Math.max(1,Math.ceil(app.album.length/8));
     app.albumPage=Math.max(0,Math.min(pageCount-1,Number(app.albumPage)||0));
-    syncAlbumFromPets(false);
+    // Credential selection happens before enterWorld clears the previous
+    // character's pet slots. Only merge roster data from an active game.
+    if(app.phase==="world"||app.phase==="battle")syncAlbumFromPets(false);
   }
   function markAlbumPet(pet){
     if(!app.albumCatalogReady||!pet)return false;
     const graphic=Number(pet.graphic??pet.graNo??pet.faceGraNo??0);
     if(!graphic)return false;
-    const entry=app.album.find(row=>row.valid&&Number(row.graphic)===graphic);
+    const entry=app.album.find(row=>row.valid&&(Number(row.graphic)===graphic||Number(row.spriteGraphic)===graphic));
     if(!entry)return false;
-    const wasDiscovered=Number(entry.flag||0)>=2;
+    let changed=Number(entry.flag||0)<2;
     entry.flag=Math.max(2,Number(entry.flag||0));
-    for(const key of ["faceGraNo","level","maxHp","str","quick","def","earth","water","fire","wind"]){
-      const value=Number(pet[key]);
-      if(Number.isFinite(value)&&value>=0)entry[key]=value;
+    for(const key of ["level","maxHp","str","quick","def","earth","water","fire","wind"]){
+      const value=Number(key==="str"?(pet.atk??pet.str):pet[key]);
+      if(Number.isFinite(value)&&value>=0&&entry[key]!==value){entry[key]=value;changed=true;}
     }
-    if(pet.freeName||pet.userPetName)entry.freeName=String(pet.freeName||pet.userPetName);
-    return !wasDiscovered;
+    // K pet status uses an animated SPR id. It must not replace the album
+    // portrait's logical CG id (e.g. 100872 versus 28196 for 佩露夏).
+    if(entry.spriteGraphic)entry.faceGraNo=entry.graphic;
+    else if(Number.isFinite(Number(pet.faceGraNo))&&Number(pet.faceGraNo)>=0)entry.faceGraNo=Number(pet.faceGraNo);
+    if(pet.freeName||pet.userPetName){const name=String(pet.freeName||pet.userPetName);if(entry.freeName!==name){entry.freeName=name;changed=true;}}
+    return changed;
   }
   function syncAlbumFromPets(persist=true){
     if(!app.albumCatalogReady)return;
@@ -7872,7 +7888,13 @@
         const bar=document.createElement("i");bar.className=`album-attr ${key}`;bar.style.backgroundColor=color;bar.style.width=`${Math.max(0,Math.min(100,Number(selected[key])||0)*.8)}px`;detail.append(bar);
       }
       const faceInfo=resolveBitmapInfo(selected.faceGraNo||selected.graphic);
-      if(faceInfo?.file){const face=document.createElement("img");face.className="album-detail-face";face.alt="";face.src=`/assets/${faceInfo.file}`;detail.append(face);}
+      if(faceInfo?.file){
+        const face=document.createElement("img");face.className="album-detail-face";face.alt=selected.name||"宠物照片";face.src=`/assets/${faceInfo.file}`;
+        // MENU.CPP draws the portrait at (199,117); REALBIN offsets place
+        // its top-left inside the album's 96×104 photo frame.
+        face.style.left=`${199+(Number(faceInfo.xoffset)||0)}px`;face.style.top=`${117+(Number(faceInfo.yoffset)||0)}px`;
+        face.style.width=`${faceInfo.width}px`;face.style.height=`${faceInfo.height}px`;detail.append(face);
+      }
     }
     list.append(detail);
     for(let i=0;i<rows.length;i++){

@@ -133021,6 +133021,19 @@
       "hit_y": 1,
       "hit": 0,
       "prio_type": 0
+    },
+    "126325": {
+      "file": "bitmaps/bitmap_126325.png",
+      "physical": 126325,
+      "width": 96,
+      "height": 104,
+      "xoffset": -48,
+      "yoffset": -52,
+      "bmp_number": 28196,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 0,
+      "prio_type": 0
     }
   },
   "ui": {
@@ -147788,7 +147801,8 @@
     "25664": "8792",
     "25665": "8793",
     "25785": "8671",
-    "25786": "8672"
+    "25786": "8672",
+    "28196": "126325"
   },
   "faces": {
     "30000": {
@@ -183571,6 +183585,15 @@
       "albumNo": 102,
       "name": "梅尔顿 ",
       "graphic": 28147,
+      "valid": true
+    },
+    {
+      "name": "佩露夏",
+      "albumNo": 125,
+      "graphic": 28196,
+      "spriteGraphic": 100872,
+      "templateId": 777,
+      "index": 224,
       "valid": true
     }
   ],
@@ -224157,7 +224180,8 @@
     "28118": "bitmaps/bitmap_126312.png",
     "28145": "bitmaps/bitmap_126313.png",
     "28146": "bitmaps/bitmap_126314.png",
-    "28147": "bitmaps/bitmap_126315.png"
+    "28147": "bitmaps/bitmap_126315.png",
+    "28196": "bitmaps/bitmap_126325.png"
   },
   "map_visual_bitmap_count": 6076,
   "map": {

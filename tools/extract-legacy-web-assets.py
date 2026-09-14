@@ -208,7 +208,8 @@ FACE_BITMAPS = range(30000, 31000)
 # directly into ``PetAlbumTbl``.  Export the first 224 records (including the
 # deliberate empty slots) beside the bitmap manifest so the browser can use
 # the same page numbering and species/graphic mapping without parsing C++ at
-# runtime or importing a later 8.5-only album extension.
+# runtime. Explicitly enabled pets are appended after these stable slots;
+# never insert them into the base table or invalidate existing album saves.
 ALBUM_4_SIZE = 224
 
 
@@ -237,6 +238,11 @@ def album_catalog():
     # for unused PetAlbum slots.
     while len(rows) < ALBUM_4_SIZE:
         rows.append({"index": len(rows), "albumNo": -1, "name": "", "graphic": 0, "valid": False})
+    extensions = json.loads((REPO / "client" / "web" / "album-extensions.json").read_text(encoding="utf-8"))
+    for pet in extensions:
+        if any(row["graphic"] == pet["graphic"] for row in rows):
+            raise ValueError(f"duplicate album graphic {pet['graphic']}")
+        rows.append({**pet, "index": len(rows), "valid": True})
     return rows
 
 # NPCs and field objects sent in C packets are ordinary REALBIN graphics, not
@@ -881,6 +887,7 @@ def main() -> int:
     parser.add_argument("--battles-only", action="store_true", help="refresh battle PNGs in an existing browser asset pack")
     parser.add_argument("--ui-only", action="store_true", help="refresh UI PNGs and aliases in an existing browser asset pack")
     parser.add_argument("--items-only", action="store_true", help="refresh 2.5 item PNGs and logical ADRN aliases in an existing browser asset pack")
+    parser.add_argument("--album-only", action="store_true", help="refresh the pet album and portraits in an existing browser asset pack")
     parser.add_argument(
         "--map-origins-only",
         action="store_true",
@@ -944,6 +951,23 @@ def main() -> int:
         if args.all_battles
         else [args.battle]
     )
+    if args.album_only:
+        manifest_path = args.output / "manifest.json"
+        if not manifest_path.is_file():
+            parser.error("--album-only requires an existing manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["album"] = album_catalog()
+        if not manifest["album"]:
+            parser.error("pet album source is missing")
+        album_pack(records, by_number, real_path, palette, args.output, manifest)
+        missing = [row["graphic"] for row in manifest["album"] if row.get("spriteGraphic") and str(row["graphic"]) not in manifest.get("album_graphics", {})]
+        if missing:
+            parser.error(f"missing enabled pet portraits: {missing}")
+        temporary_manifest = manifest_path.with_name(manifest_path.name + ".tmp")
+        temporary_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary_manifest.replace(manifest_path)
+        print(json.dumps({"output": str(args.output), "album": len(manifest["album"])}, ensure_ascii=False))
+        return 0
     if args.ui_only:
         manifest_path = args.output / "manifest.json"
         if not manifest_path.is_file():
