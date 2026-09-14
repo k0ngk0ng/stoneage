@@ -901,7 +901,7 @@
       button.appendChild(makeAssetPreview(document, normalized, entryGraphicKind(normalized)));
       const copy = makeElement(document, "span", "catalog-entry-copy");
       copy.appendChild(makeElement(document, "strong", "", valueText(normalized.name, "未命名")));
-      copy.appendChild(makeElement(document, "small", "", KIND_LABELS[entryKind(normalized)]));
+      copy.appendChild(makeElement(document, "small", "", KIND_LABELS[entryKind(normalized)] + " · ID " + valueText(entryTemplateID(normalized), "未知")));
       button.appendChild(copy);
       button.addEventListener("click", function () {
         state.selectedEntry = normalized;
@@ -980,7 +980,7 @@
       const heading = makeElement(document, "div", "catalog-selection-heading");
       heading.appendChild(makeAssetPreview(document, entry, entryGraphicKind(entry)));
       const headingCopy = makeElement(document, "div");
-      headingCopy.appendChild(makeElement(document, "h3", "", valueText(entry.name, "未命名")));
+      headingCopy.appendChild(makeElement(document, "h3", "", valueText(entry.name, "未命名") + "（ID " + valueText(entryTemplateID(entry), "未知") + "）"));
       if (entry.description) {
         headingCopy.appendChild(makeElement(document, "p", "", entry.description));
       }
@@ -1034,7 +1034,7 @@
               slot: normalizeSlot(selected[1]),
               skill_slot: skillSlotValue,
               skill_id: entry.id === undefined ? entryTemplateID(entry) : entry.id
-            }, {title: "设置宠物技能", message: "确认把「" + valueText(entry.name, "技能") + "」设置到所选宠物？"});
+            }, {title: "设置宠物技能", message: "确认把「" + valueText(entry.name, "技能") + "」（ID " + valueText(entryTemplateID(entry), "未知") + "）设置到所选宠物？"});
           });
         }
       } else {
@@ -1093,7 +1093,7 @@
             location: location.value === "warehouse" ? "warehouse" : "inventory",
             template_id: templateID,
             quantity: count
-          }, {title: "赠送" + KIND_LABELS[kind], message: "确认赠送「" + valueText(entry.name, KIND_LABELS[kind]) + "」×" + count + "？"});
+          }, {title: "赠送" + KIND_LABELS[kind], message: "确认赠送「" + valueText(entry.name, KIND_LABELS[kind]) + "」（ID " + templateID + "）×" + count + "？"});
         });
       }
       catalogSelection.appendChild(form);
