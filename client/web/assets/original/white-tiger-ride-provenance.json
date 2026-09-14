@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "mappings": [
+    {
+      "source": 110048,
+      "destination": 104025
+    },
+    {
+      "source": 110049,
+      "destination": 104026
+    },
+    {
+      "source": 110050,
+      "destination": 104027
+    },
+    {
+      "source": 110051,
+      "destination": 104028
+    },
+    {
+      "source": 110052,
+      "destination": 104029
+    },
+    {
+      "source": 110053,
+      "destination": 104030
+    },
+    {
+      "source": 110054,
+      "destination": 104031
+    },
+    {
+      "source": 110055,
+      "destination": 104032
+    },
+    {
+      "source": 110056,
+      "destination": 104033
+    },
+    {
+      "source": 110057,
+      "destination": 104034
+    },
+    {
+      "source": 110058,
+      "destination": 104035
+    },
+    {
+      "source": 110059,
+      "destination": 104036
+    }
+  ],
+  "unique_bitmaps": 3072,
+  "offsets": "original ADRN; all indexed RD headers validated",
+  "source_sha256": {
+    "real.bin": "aaae0135b8d806da05599c065ef33d1f8e984e55511a083acae9aba279ef9dcf",
+    "spr.bin": "e120c6f95e03b7b11469d4d94e54fdcb630f90f5ada81da2d3b3611040f6e19e",
+    "spradrn.bin": "95cda3e64859597f158f1c690ad9cbe3c34bd379c9ef3efc54f431bcbb4806d2"
+  },
+  "adrn_sha256": "7c82127038d6989031892b33979a4cf06153bdd63b3ad4df301956df735f2fa6"
+}

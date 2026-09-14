@@ -103,6 +103,13 @@ if ! grep -q 'STONEAGE_SAFE_RIDELEVEL_GUARD' /src/gmsv/char/family.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0010-safe-ride-level-guard.patch
 fi
 
+# The 8.5 pet table includes Perusha (100872), but the archived C ride table
+# has no corresponding 104025..104036 character sprites. Add that small
+# mapping after the common level, loyalty, and AI checks.
+if ! grep -q 'STONEAGE_WHITE_TIGER_RIDE' /src/gmsv/char/family.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0011-white-tiger-ride-mapping.patch
+fi
+
 # The authenticated web console writes one atomic, fixed-path notice file.
 # Let the GMSV consume it in its normal main loop and deliver it to online
 # players through the same red system-message path as the built-in announce

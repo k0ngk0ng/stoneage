@@ -57,6 +57,7 @@ jobs:
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
           python3 server/legacy/modern/tests/test-gmsv-trusted-gateway.py
           python3 server/legacy/modern/tests/test-gmsv-ride-level.py
+          python3 server/legacy/modern/tests/test-gmsv-white-tiger-ride.py
       - name: Verify production deployment tools
         run: |
           python3 scripts/modernize-object-cstring_test.py

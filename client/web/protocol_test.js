@@ -718,7 +718,7 @@ const fieldBootstrapBytes = fs.statSync(fieldBootstrapFilename).size;
 const fieldBootstrapPayload = JSON.parse(fs.readFileSync(fieldBootstrapFilename, "utf8"));
 const fieldBootstrapEntries = Object.entries(fieldBootstrapPayload.sprites || {});
 let fieldBootstrapFrames = 0;
-if (fieldBootstrapEntries.length !== 770 || fieldBootstrapBytes > 16 * 1024 * 1024) {
+if (fieldBootstrapEntries.length !== 782 || fieldBootstrapBytes > 16 * 1024 * 1024) {
   throw new Error(`field bootstrap SPR pack shape/size regression: ${fieldBootstrapEntries.length}/${fieldBootstrapBytes}`);
 }
 for (const [graphic, sprite] of fieldBootstrapEntries) {
@@ -729,7 +729,7 @@ for (const [graphic, sprite] of fieldBootstrapEntries) {
   }
   fieldBootstrapFrames += rows.reduce((total, row) => total + row.frames.length, 0);
 }
-if (fieldBootstrapFrames !== 159075) {
+if (fieldBootstrapFrames !== 163107) {
   throw new Error(`field bootstrap SPR frame coverage regression: ${fieldBootstrapFrames}`);
 }
 const creationLoaderStart = script.indexOf("  function loadCreationSpriteManifest");

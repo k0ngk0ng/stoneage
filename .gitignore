@@ -13,6 +13,8 @@ runtime/
 vendor/assets/
 vendor/archives/
 vendor/upstream/
+# Downloaded original client BIN resources; retain locally for repeatable imports.
+vendor/client-resources/
 
 # The 2.5 GMSV/SAAC source and immutable game data are part of this
 # repository. Keep generated objects, bundled executables, archive copies,

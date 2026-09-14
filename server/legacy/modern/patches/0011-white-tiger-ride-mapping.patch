@@ -1,0 +1,33 @@
+--- a/char/family.c
++++ b/char/family.c
+@@ -2250,5 +2250,20 @@
+   }
+ }
+ 
++#ifdef _NEW_RIDEPETS
++/* STONEAGE_WHITE_TIGER_RIDE: the 8.5 data has this pet outside RideCodeMode.
++ * Keep the native character-index lookup so ordinary colors and family-leader
++ * images select the matching 104025..104036 white-tiger sprite. */
++static int STONEAGE_getWhiteTigerRideNo( int playerNo, int petNo )
++{
++	int index;
++
++	if( petNo != 100872 ) return 0;
++	index = RIDEPET_getNOindex( playerNo );
++	if( index < 0 || index >= 12 ) return 0;
++	return 104025 + index;
++}
++#endif
++
+ void FAMILY_RidePet( int fd, int meindex, char* message )
+ {
+@@ -2373,4 +2373,8 @@
+ 			}
+ 
+ #ifdef _NEW_RIDEPETS
++				if( rideGraNo == 0 )
++					rideGraNo = STONEAGE_getWhiteTigerRideNo(
++					CHAR_getInt( meindex, CHAR_BASEBASEIMAGENUMBER ),
++					CHAR_getInt( petindex, CHAR_BASEBASEIMAGENUMBER ) );
+ 				if( rideGraNo == 0 )	{
+ 					int ti=-1, index, image=-1;
