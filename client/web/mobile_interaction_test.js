@@ -38,13 +38,13 @@ assert.match(section('  function applyScreenVisibility(', '  function ',),/else 
 (async()=>{
  for(const failure of ['none','throw','reject']){
   let closes=0,cancelled=0;const events={};
-  const state={phase:'world',polling:true,transport:{close(options){closes++;assert.equal(options.keepalive,true);if(failure==='throw')throw Error('closed');if(failure==='reject')return Promise.reject(Error('closed'));return Promise.resolve();},logoutAndClose(){assert.fail('must not send record-point logout');}}};
-  const env={app:state,cancelConnectionRetry(){cancelled++;},window:{addEventListener:(name,fn)=>events[name]=fn}};
-  vm.createContext(env);vm.runInContext(section('  let pageUnloadLogoutSent=false;','  function returnToLogin('),env);
+  const state={phase:'world',polling:true,rideRequest:{timer:7},transport:{close(options){closes++;assert.equal(options.keepalive,true);if(failure==='throw')throw Error('closed');if(failure==='reject')return Promise.reject(Error('closed'));return Promise.resolve();},logoutAndClose(){assert.fail('must not send record-point logout');}}};
+  const env={app:state,cancelConnectionRetry(){cancelled++;},window:{clearTimeout:id=>assert.equal(id,7),addEventListener:(name,fn)=>events[name]=fn}};
+  vm.createContext(env);vm.runInContext(section('  function clearRideRequest(', '  function receiveRideStatus('),env);vm.runInContext(section('  let pageUnloadLogoutSent=false;','  function returnToLogin('),env);
   let prevented=0;events.beforeunload({preventDefault(){prevented++;}});
   assert.equal(prevented,1);assert.equal(closes,0,'cancelled unload retains connection');
   events.pagehide();events.pagehide();await Promise.resolve();
-  assert.equal(closes,1);assert.equal(state.transport,null);assert.equal(state.polling,false);assert.equal(cancelled,2);
+  assert.equal(closes,1);assert.equal(state.rideRequest,null);assert.equal(state.transport,null);assert.equal(state.polling,false);assert.equal(cancelled,2);
  }
  console.log('mobile tap, pinned menu, selection and in-place browser-close regressions passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

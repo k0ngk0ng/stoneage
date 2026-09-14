@@ -45,6 +45,7 @@ jobs:
           node client/web/asset_cache_test.js
           node client/web/asset_index_test.js
           node client/web/album_test.js
+          node client/web/ride_test.js
           node client/web/server_directory_test.js
           node client/web/sprite_loading_test.js
           node client/web/sw_cache_test.js
@@ -55,6 +56,7 @@ jobs:
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
           python3 server/legacy/modern/tests/test-gmsv-trusted-gateway.py
+          python3 server/legacy/modern/tests/test-gmsv-ride-level.py
       - name: Verify production deployment tools
         run: |
           python3 scripts/modernize-object-cstring_test.py

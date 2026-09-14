@@ -179,14 +179,27 @@ func indexByNumber(schemas []functionSchema) map[int]functionSchema {
 // Translator contains only per-connection state. It is safe for one reader in
 // each direction, matching the gateway's two network pumps.
 type Translator struct {
-	mu           sync.RWMutex
-	account      string
-	nextResponse uint32
-	rotation     int
+	mu               sync.RWMutex
+	account          string
+	nextResponse     uint32
+	rotation         int
+	battleRideFields bool
 }
 
-func NewTranslator() *Translator {
-	return &Translator{nextResponse: 1}
+// TranslatorOptions controls compatibility details for one gateway
+// connection. The default preserves the eight-field BC records expected by
+// the archived Windows client. Web clients can opt into the complete Linux
+// 2.5 record, which also carries riding-pet state.
+type TranslatorOptions struct {
+	BattleRideFields bool
+}
+
+func NewTranslator(options ...TranslatorOptions) *Translator {
+	var translatorOptions TranslatorOptions
+	if len(options) > 0 {
+		translatorOptions = options[0]
+	}
+	return &Translator{nextResponse: 1, battleRideFields: translatorOptions.BattleRideFields}
 }
 
 func (translator *Translator) Account() string {
@@ -313,7 +326,7 @@ func (translator *Translator) ServerToClient(packet []byte) ([]byte, string, err
 				return nil, definition.name, fmt.Errorf("decode string field %d: %w", index, err)
 			}
 			if definition.name == "B" && index == 0 {
-				value, err = legacyBattleCommand(value)
+				value, err = translateBattleCommand(value, translator.battleRideFields)
 				if err != nil {
 					return nil, definition.name, err
 				}
@@ -348,12 +361,14 @@ func (translator *Translator) ServerToClient(packet []byte) ([]byte, string, err
 	return translated, definition.name, nil
 }
 
-// legacyBattleCommand removes the five riding-pet fields appended to each
-// character in the Linux 2.5 BC command. The preserved Windows client predates
-// that extension and consumes exactly eight fields per character; forwarding
-// all thirteen makes it interpret rideflg as the next character's battle ID.
-// Other battle commands are byte-for-byte transparent.
-func legacyBattleCommand(command []byte) ([]byte, error) {
+// translateBattleCommand validates the Linux 2.5 BC layout and optionally
+// removes the five riding-pet fields appended to each character. The
+// preserved Windows client predates that extension and consumes exactly eight
+// fields per character; forwarding all thirteen makes it interpret rideflg as
+// the next character's battle ID. Web clients request the complete record so
+// they can render riding-pet state. Other battle commands are byte-for-byte
+// transparent.
+func translateBattleCommand(command []byte, includeRideFields bool) ([]byte, error) {
 	if !bytes.HasPrefix(command, []byte("BC|")) {
 		return command, nil
 	}
@@ -373,6 +388,9 @@ func legacyBattleCommand(command []byte) ([]byte, error) {
 			len(characterFields), serverFieldsPerCharacter,
 		)
 	}
+	if includeRideFields {
+		return command, nil
+	}
 
 	result := make([]byte, 0, len(command))
 	result = append(result, "BC|"...)
@@ -385,6 +403,12 @@ func legacyBattleCommand(command []byte) ([]byte, error) {
 		}
 	}
 	return result, nil
+}
+
+// legacyBattleCommand retains the archived-client default for package-local
+// callers and tests.
+func legacyBattleCommand(command []byte) ([]byte, error) {
+	return translateBattleCommand(command, false)
 }
 
 func (translator *Translator) sessionKey(login bool) string {

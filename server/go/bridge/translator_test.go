@@ -245,6 +245,53 @@ func TestCapturedBattleCharacterTranslation(t *testing.T) {
 	}
 }
 
+func TestBattleRideFieldsOptionPreservesCompleteBC(t *testing.T) {
+	translator := NewTranslator(TranslatorOptions{BattleRideFields: true})
+	if _, _, err := translator.ClientToServer([]byte("HBZovLTemtm8s7fgadloSK8dIILiINuPLPGzJ-8\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	// This BC packet contains two characters and the Linux 2.5 five-field
+	// riding-pet extension for each one. The explicit option must preserve all
+	// thirteen fields while still passing the normal checksum/schema checks.
+	captured, err := hex.DecodeString("42437c307c307c50726f62654865726f7c7c31383641307c317c32337c32337c357c307c7c307c307c307c467cc2ccb9ea7c7c31383742307c367c33307c33307c317c307c7c307c307c307c31307cc2ccb9ea7c7c31383742307c367c33347c33347c317c307c7c307c307c307c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := protocol.NewFieldEncoder("probe" + protocol.RunningKey)
+	fields.String(captured)
+	raw, err := fields.Finish(15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric, err := protocol.EncodeMessage(raw, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named, function, err := translator.ServerToClient(numeric)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if function != "B" {
+		t.Fatalf("function = %q", function)
+	}
+	decoded, err := namedproto.DecodePacket(named)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := namedproto.ParseMessage(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := namedproto.DecodeString(message.Fields[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(command, captured) {
+		t.Fatalf("complete battle command = %x, want %x", command, captured)
+	}
+}
+
 func TestLegacyBattleCommandLeavesOtherCommandsUntouched(t *testing.T) {
 	input := []byte("BA|18000|0|")
 	got, err := legacyBattleCommand(input)
@@ -263,6 +310,17 @@ func TestLegacyBattleCommandRejectsMalformedCharacterFields(t *testing.T) {
 	} {
 		if _, err := legacyBattleCommand(input); err == nil {
 			t.Fatalf("legacyBattleCommand(%q) succeeded", input)
+		}
+	}
+}
+
+func TestBattleRideFieldsOptionStillRejectsMalformedCharacterFields(t *testing.T) {
+	for _, input := range [][]byte{
+		[]byte("BC|0|0|name|"),
+		[]byte("BC|0|0|name||186A0|1|23|23|5|0||0|0|0"),
+	} {
+		if _, err := translateBattleCommand(input, true); err == nil {
+			t.Fatalf("translateBattleCommand(%q, true) succeeded", input)
 		}
 	}
 }

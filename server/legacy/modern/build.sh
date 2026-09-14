@@ -95,6 +95,14 @@ if ! grep -q 'STONEAGE_DURABLE_EOF_LOGOUT' /src/gmsv/net.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0008-durable-eof-logout.patch
 fi
 
+# The legacy no-_RIDELEVEL fallback returned from an unconditional block after
+# every successful level check, so that build could never reach ride mapping.
+# Keep the historical +5 rule, but scope its message/return to the rejection
+# condition without changing the archived CP936 source in the repository.
+if ! grep -q 'STONEAGE_SAFE_RIDELEVEL_GUARD' /src/gmsv/char/family.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0010-safe-ride-level-guard.patch
+fi
+
 # The authenticated web console writes one atomic, fixed-path notice file.
 # Let the GMSV consume it in its normal main loop and deliver it to online
 # players through the same red system-message path as the built-in announce

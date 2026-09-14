@@ -19,6 +19,7 @@ import (
 
 	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
+	"github.com/k0ngk0ng/stoneage/server/go/protocol"
 )
 
 func TestGatewayConfigHelp(t *testing.T) {
@@ -96,8 +97,30 @@ func TestGatewayConfigWithoutFileKeepsLegacyDefaults(t *testing.T) {
 	if configPath != "" {
 		t.Fatalf("config path = %q, want empty", configPath)
 	}
-	if opts.listenAddress != "127.0.0.1:9065" || opts.upstreamAddress != "127.0.0.1:19065" || opts.trace || opts.traceBattle || opts.trustedProxyHosts != "" {
+	if opts.listenAddress != "127.0.0.1:9065" || opts.upstreamAddress != "127.0.0.1:19065" || opts.trace || opts.traceBattle || opts.battleRideFields || opts.trustedProxyHosts != "" {
 		t.Fatalf("legacy defaults = %#v", opts)
+	}
+}
+
+func TestGatewayBattleRideFieldsFlag(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "default", want: false},
+		{name: "explicit", args: []string{"-battle-ride-fields"}, want: true},
+		{name: "explicit false", args: []string{"-battle-ride-fields=false"}, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			opts, _, err := configFromCommandLine(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if opts.battleRideFields != test.want {
+				t.Fatalf("battle ride fields = %v, want %v", opts.battleRideFields, test.want)
+			}
+		})
 	}
 }
 
@@ -154,6 +177,35 @@ func startGatewayTestUpstream(t *testing.T) (string, <-chan gatewayUpstreamRead)
 		}
 		packet, readErr := bufio.NewReader(connection).ReadBytes('\n')
 		result <- gatewayUpstreamRead{packet: packet, err: readErr}
+	}()
+	t.Cleanup(func() { _ = listener.Close() })
+	return listener.Addr().String(), result
+}
+
+func startGatewayTestBattleUpstream(t *testing.T, response []byte) (string, <-chan error) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			result <- acceptErr
+			return
+		}
+		defer connection.Close()
+		if _, writeErr := connection.Write([]byte{'L', 0}); writeErr != nil {
+			result <- writeErr
+			return
+		}
+		if _, readErr := bufio.NewReader(connection).ReadBytes('\n'); readErr != nil {
+			result <- readErr
+			return
+		}
+		_, writeErr := connection.Write(response)
+		result <- writeErr
 	}()
 	t.Cleanup(func() { _ = listener.Close() })
 	return listener.Addr().String(), result
@@ -239,6 +291,77 @@ func runGatewayTestLogin(t *testing.T, store *auth.Store, remoteIP, trustedHosts
 		t.Fatal("test upstream did not observe gateway connection")
 	}
 	return connectionErr, upstreamRead
+}
+
+func gatewayTestBattleResponse(t *testing.T, command []byte) []byte {
+	t.Helper()
+	fields := protocol.NewFieldEncoder("probe" + protocol.RunningKey)
+	fields.String(command)
+	raw, err := fields.Finish(15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := protocol.EncodeMessage(raw, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func runGatewayTestBattle(t *testing.T, store *auth.Store, remoteIP, trustedHosts string, payload []byte, battleRideFields bool) ([]byte, error) {
+	t.Helper()
+	const fullCommand = "BC|0|0|ProbeHero||1234|1|35|35|5|0||0|0|0|"
+	upstreamAddress, upstreamResult := startGatewayTestBattleUpstream(t, gatewayTestBattleResponse(t, []byte(fullCommand)))
+	client, gateway := net.Pipe()
+	defer client.Close()
+	connection := &gatewayTestConn{Conn: gateway, remote: &net.TCPAddr{IP: net.ParseIP(remoteIP), Port: 49152}}
+	errorsChannel := make(chan error, 1)
+	go func() {
+		errorsChannel <- handleConnection(connection, options{
+			upstreamAddress:   upstreamAddress,
+			authRequired:      true,
+			trustedProxyHosts: trustedHosts,
+			battleRideFields:  battleRideFields,
+			stateDelay:        0,
+		}, store, log.New(io.Discard, "", 0))
+	}()
+	var greeting [2]byte
+	if _, err := io.ReadFull(client, greeting[:]); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(greeting[:], []byte{'L', 0}) {
+		t.Fatalf("gateway greeting = %x, want L\\x00", greeting)
+	}
+	if _, err := client.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	packet, err := bufio.NewReader(client).ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("read translated battle packet: %v", err)
+	}
+	command, err := namedBattleCommand(packet)
+	if err != nil {
+		t.Fatalf("decode translated battle packet: %v", err)
+	}
+	_ = client.Close()
+	select {
+	case connectionErr := <-errorsChannel:
+		if connectionErr != nil && !errors.Is(connectionErr, io.EOF) {
+			return nil, connectionErr
+		}
+	case <-time.After(3 * time.Second):
+		return nil, errors.New("gateway battle connection did not finish")
+	}
+	select {
+	case upstreamErr := <-upstreamResult:
+		if upstreamErr != nil {
+			return nil, upstreamErr
+		}
+	case <-time.After(3 * time.Second):
+		return nil, errors.New("battle test upstream did not finish")
+	}
+	return command, nil
 }
 
 func findGatewayAudit(t *testing.T, store *auth.Store, event string) (string, bool) {
@@ -351,6 +474,60 @@ func TestGatewayProxyProtocolAuditAndPeerTrust(t *testing.T) {
 			}
 			if !test.wantUpstreamPacket && len(upstreamRead.packet) != 0 {
 				t.Fatalf("login unexpectedly reached upstream: %q", upstreamRead.packet)
+			}
+		})
+	}
+}
+
+func TestGatewayBattleRideFieldsSelection(t *testing.T) {
+	const fullCommand = "BC|0|0|ProbeHero||1234|1|35|35|5|0||0|0|0|"
+	const legacyCommand = "BC|0|0|ProbeHero||1234|1|35|35|5|"
+	tests := []struct {
+		name             string
+		payload          func(*testing.T) []byte
+		trustedHosts     string
+		battleRideFields bool
+		want             string
+	}{
+		{
+			name:         "native client keeps legacy fields",
+			payload:      func(t *testing.T) []byte { return gatewayTestLoginPacket(t, "probe", "local") },
+			trustedHosts: "127.0.0.1",
+			want:         legacyCommand,
+		},
+		{
+			name:         "trusted Web proxy receives ride fields",
+			payload:      func(t *testing.T) []byte { return gatewayTestProxyPacket(t, "203.0.113.7", "probe", "local") },
+			trustedHosts: "127.0.0.1",
+			want:         fullCommand,
+		},
+		{
+			name:             "explicit flag enables ride fields",
+			payload:          func(t *testing.T) []byte { return gatewayTestLoginPacket(t, "probe", "local") },
+			trustedHosts:     "127.0.0.1",
+			battleRideFields: true,
+			want:             fullCommand,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := auth.Open(":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			if err := store.Migrate(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.CreateAccount(context.Background(), "probe", []byte("local")); err != nil {
+				t.Fatal(err)
+			}
+			got, err := runGatewayTestBattle(t, store, "127.0.0.1", test.trustedHosts, test.payload(t), test.battleRideFields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("battle command = %q, want %q", got, test.want)
 			}
 		})
 	}

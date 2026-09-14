@@ -60,7 +60,7 @@ var configFieldDefinitions = []configFieldDefinition{
 	{Group: "基础运行", Key: "battlenum", Label: "战斗数量上限", Hint: "影响同时进行的战斗数量。", Kind: "int", Default: "100", Min: 1, Max: 100000},
 	{Group: "基础运行", Key: "enable_nu_flow_control", Label: "启用 NU 移动流控", Hint: "默认关闭；旧版实现可能耗尽预算导致掉线。", Kind: "bool", Default: "0"},
 
-	{Group: "玩法开关", Key: "RIDEMODE", Label: "骑宠模式", Hint: "0 标准模式，1 骑证模式，2 非骑证模式，3 自由骑乘。", Kind: "int", Default: "1", Min: 0, Max: 3},
+	{Group: "玩法开关", Key: "RIDEMODE", Label: "骑宠模式", Hint: "历史模式配置；当前构建按原版角色与宠物造型配对及骑证权限判断，本项不开放自由骑乘。", Kind: "int", Default: "1", Min: 0, Max: 3},
 	{Group: "玩法开关", Key: "FUSIONBEIT", Label: "允许宠物融合", Hint: "0 关闭，1 开启。", Kind: "bool", Default: "1"},
 	{Group: "玩法开关", Key: "ENEMYACTION", Label: "敌人行动倍率", Hint: "0 关闭；数值越大遇敌频率越低。", Kind: "int", Default: "1", Min: 0, Max: 100000},
 	{Group: "玩法开关", Key: "FMPOINTPK", Label: "启用家族点数 PK", Hint: "0 关闭，1 开启。", Kind: "bool", Default: "1"},
@@ -70,8 +70,8 @@ var configFieldDefinitions = []configFieldDefinition{
 	{Group: "玩法开关", Key: "CHARLOOPS", Label: "遇敌时间倍率", Hint: "0.1 秒 × 倍率；按服务端原始整数填写。", Kind: "int", Default: "1", Min: 0, Max: 1000000},
 	{Group: "玩法开关", Key: "allowmanorpk", Label: "允许庄园 PK", Hint: "0 关闭，1 开启。", Kind: "bool", Default: "1"},
 	{Group: "玩法开关", Key: "PETUP", Label: "允许宠物升级", Hint: "0 关闭，1 开启。", Kind: "bool", Default: "1"},
-	{Group: "玩法开关", Key: "RIDELEVEL", Label: "骑乘最低等级", Hint: "达到此等级后才可骑乘。", Kind: "int", Default: "10", Min: 0, Max: 1000},
-	{Group: "玩法开关", Key: "RIDEPETLEVEL", Label: "骑乘宠物最低等级", Hint: "达到此等级后才可骑乘。", Kind: "int", Default: "200", Min: 0, Max: 1000},
+	{Group: "玩法开关", Key: "RIDELEVEL", Label: "骑宠允许等级差", Hint: "当前版本固定允许宠物最多高于角色 5 级，此配置暂不生效。", Kind: "int", Default: "10", Min: 0, Max: 1000},
+	{Group: "玩法开关", Key: "RIDEPETLEVEL", Label: "新角色骑乘等级许可", Hint: "新角色允许骑乘的宠物等级上限；不修改已有角色存档。", Kind: "int", Default: "200", Min: 0, Max: 1000},
 
 	{Group: "奖励与等级", Key: "GIVEVIPPOINT", Label: "VIP 点数奖励", Hint: "每次奖励的点数。", Kind: "int", Default: "100", Min: 0, Max: 1000000},
 	{Group: "奖励与等级", Key: "ANGELPLAYERTIME", Label: "天使玩家时间", Hint: "按服务端原始单位填写。", Kind: "int", Default: "5000", Min: 0, Max: 100000000},

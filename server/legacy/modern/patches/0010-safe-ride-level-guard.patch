@@ -1,0 +1,15 @@
+--- a/char/family.c
++++ b/char/family.c
+@@ -2314,4 +2314,5 @@
+ #else
+-			if( CHAR_getInt( meindex, CHAR_LV)+5 < CHAR_getInt( petindex, CHAR_LV )  ) return 0;
+-			{ 
++			/* STONEAGE_SAFE_RIDELEVEL_GUARD: keep the legacy +5 limit scoped to rejection. */
++			if( CHAR_getInt( meindex, CHAR_LV)+5 < CHAR_getInt( petindex, CHAR_LV ) )
++			{
+ 				char buff[255];
+@@ -2319,3 +2320,3 @@
+ 				CHAR_talkToCli( meindex, -1, buff, CHAR_COLORYELLOW );
+-				return;
++				return 0;
+ 			}	

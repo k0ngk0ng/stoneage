@@ -39,6 +39,7 @@ type options struct {
 	routes            string
 	trace             bool
 	traceBattle       bool
+	battleRideFields  bool
 	stateDelay        time.Duration
 	authDB            string
 	authRequired      bool
@@ -104,6 +105,7 @@ func configFromCommandLine(arguments []string) (options, string, error) {
 	flags.StringVar(&opts.routes, "routes", opts.routes, "semicolon-separated listener=GMSV route list; overrides -listen/-upstream")
 	flags.BoolVar(&opts.trace, "trace", opts.trace, "log translated function names (never logs password fields)")
 	flags.BoolVar(&opts.traceBattle, "trace-battle", opts.traceBattle, "log server battle command bytes as hex (never logs password fields)")
+	flags.BoolVar(&opts.battleRideFields, "battle-ride-fields", opts.battleRideFields, "preserve riding-pet fields in BC messages for every connection")
 	flags.StringVar(&opts.authDB, "auth-db", opts.authDB, "SQLite account database (enables login authentication)")
 	flags.BoolVar(&opts.authRequired, "auth-required", opts.authRequired, "reject game logins not accepted by the account database")
 	flags.StringVar(&opts.trustedProxyHosts, "trusted-proxy-hosts", opts.trustedProxyHosts, "comma-separated exact IP addresses or DNS names allowed to send PROXY protocol headers")
@@ -329,7 +331,7 @@ func handleConnection(client net.Conn, opts options, accountStore *auth.Store, l
 	}
 	logger.Printf("client %s connected", client.RemoteAddr())
 
-	translator := bridge.NewTranslator()
+	translatorOptions := bridge.TranslatorOptions{BattleRideFields: opts.battleRideFields}
 	var clientReader *bufio.Reader
 	var firstClientPacket []byte
 	if opts.authRequired {
@@ -357,6 +359,11 @@ func handleConnection(client net.Conn, opts options, accountStore *auth.Store, l
 				_ = client.SetReadDeadline(time.Time{})
 				return fmt.Errorf("parse PROXY protocol header: %w", err)
 			}
+			// The Web bridge sends a PROXY header on the same listener as
+			// native clients. Once both the peer allow-list and the header
+			// syntax have been verified, enable the complete BC record only
+			// for this connection so the browser receives riding-pet state.
+			translatorOptions.BattleRideFields = true
 			// The same 15-second deadline covers both the PROXY line and the
 			// actual login packet. The reader remains buffered, so any bytes
 			// already received after the line are preserved for the translator.
@@ -384,6 +391,7 @@ func handleConnection(client net.Conn, opts options, accountStore *auth.Store, l
 		}
 		logger.Printf("game login accepted account=%q source=%s", account, sourceIP)
 	}
+	translator := bridge.NewTranslator(translatorOptions)
 	var workers sync.WaitGroup
 	workers.Add(2)
 	errChannel := make(chan error, 2)
