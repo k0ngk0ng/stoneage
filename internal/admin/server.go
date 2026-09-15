@@ -57,6 +57,12 @@ type Server struct {
 	gmsvConfig          ConfigManager
 	saacConfig          ConfigManager
 	csrfSecret          []byte
+	giftMu              sync.Mutex
+	giftPreviews        map[string]*giftPreview
+	giftWorkerRunning   bool
+	giftWorkerKick      bool
+	giftRecoveryDone    bool
+	giftNowFunc         func() time.Time
 }
 
 type pageData struct {
@@ -130,6 +136,7 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
 		"assets":  "assets.html",
 		"players": "players.html",
+		"gifts":   "gifts.html",
 		"config":  "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
@@ -138,7 +145,7 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		}
 		templates[name] = parsed
 	}
-	return &Server{
+	server := &Server{
 		players:             options.Players,
 		playerCatalog:       options.PlayerCatalog,
 		playerCatalogLoader: options.PlayerCatalogLoader,
@@ -152,7 +159,11 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		gmsvConfig:          options.Config,
 		saacConfig:          options.SAACConfig,
 		csrfSecret:          options.CSRFSecret,
-	}, nil
+		giftPreviews:        make(map[string]*giftPreview),
+		giftNowFunc:         time.Now,
+	}
+	server.startGiftWorker()
+	return server, nil
 }
 
 func (server *Server) Handler() http.Handler {
@@ -203,6 +214,19 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	data := &pageData{Session: session, CSRF: server.csrfToken(token)}
+	if strings.HasPrefix(request.URL.Path, "/api/gift-") {
+		server.giftAPI(response, request, data)
+		return
+	}
+	if request.URL.Path == "/gifts" {
+		if request.Method != http.MethodGet {
+			server.renderError(response, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		data.Title = "礼包管理"
+		server.render(response, "gifts", data)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/api/accounts/") || request.URL.Path == "/api/player-catalog" || strings.HasPrefix(request.URL.Path, "/api/player-assets/") {
 		server.playerAPI(response, request, data)
 		return

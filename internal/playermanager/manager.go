@@ -143,6 +143,21 @@ func (m *Manager) Apply(ctx context.Context, account string, slot int, mutation 
 				return playerdata.Snapshot{}, err
 			}
 		}
+		if mutation.Action == "grant_bundle" {
+			values["bundle_count"] = strconv.Itoa(len(mutation.Bundle))
+			for i, entry := range mutation.Bundle {
+				prefix := "bundle_" + strconv.Itoa(i) + "_"
+				values[prefix+"kind"] = entry.Kind
+				values[prefix+"template_id"] = strconv.Itoa(entry.TemplateID)
+				values[prefix+"quantity"] = strconv.Itoa(entry.Quantity)
+				if entry.Name != "" {
+					values[prefix+"name"], err = encodeText(entry.Name)
+					if err != nil {
+						return playerdata.Snapshot{}, err
+					}
+				}
+			}
+		}
 		if values["location"] == "" {
 			delete(values, "location")
 		}

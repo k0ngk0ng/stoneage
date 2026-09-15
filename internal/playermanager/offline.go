@@ -10,12 +10,68 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/playerdata"
 )
 
+// These limits match the native bridge's bounded request and object arrays.
+// Keeping the limits here also prevents a malformed admin request from doing
+// unbounded template exports before the bridge gets a chance to reject it.
+const (
+	maxBundleEntries  = 20
+	maxBundleQuantity = 64
+)
+
+func validateBundleEntry(entry playerdata.BundleEntry) error {
+	if entry.Kind != string(gamecatalog.KindItem) && entry.Kind != string(gamecatalog.KindPet) {
+		return fmt.Errorf("礼包内容类型无效")
+	}
+	if entry.TemplateID < 0 || entry.Quantity < 1 || entry.Quantity > maxBundleQuantity {
+		return fmt.Errorf("礼包模板编号或数量无效")
+	}
+	if entry.Name != "" {
+		encoded, err := encodeText(entry.Name)
+		if err != nil {
+			return fmt.Errorf("礼包名称编码无效")
+		}
+		maxBytes := 16
+		if entry.Kind == string(gamecatalog.KindPet) {
+			maxBytes = 32
+		}
+		if len(encoded) > maxBytes {
+			return fmt.Errorf("礼包名称过长")
+		}
+	}
+	return nil
+}
+
+func bundleQuantities(bundle []playerdata.BundleEntry) (items, pets int, err error) {
+	if len(bundle) == 0 || len(bundle) > maxBundleEntries {
+		return 0, 0, fmt.Errorf("礼包至少需要一个内容且内容数量不能超过%d项", maxBundleEntries)
+	}
+	for _, entry := range bundle {
+		if err = validateBundleEntry(entry); err != nil {
+			return 0, 0, err
+		}
+		switch entry.Kind {
+		case string(gamecatalog.KindItem):
+			items += entry.Quantity
+		case string(gamecatalog.KindPet):
+			pets += entry.Quantity
+		}
+		if items > maxBundleQuantity || pets > maxBundleQuantity {
+			return 0, 0, fmt.Errorf("礼包中同类内容数量不能超过%d件", maxBundleQuantity)
+		}
+	}
+	return items, pets, nil
+}
+
 func validateMutation(m playerdata.Mutation) error {
 	if m.Action == "set_character" {
 		return playerdata.ValidateAttribute("character", m.Field, m.Value)
 	}
 	if m.Location != "inventory" && m.Location != "warehouse" {
 		return fmt.Errorf("请选择随身或仓库")
+	}
+	if m.Action == "grant_bundle" {
+		_, _, err := bundleQuantities(m.Bundle)
+		return err
 	}
 	kind := "item"
 	if strings.Contains(m.Action, "pet") {
@@ -80,6 +136,9 @@ func (m *Manager) applyOffline(ctx context.Context, account string, doc *playerd
 			return fmt.Errorf("这个角色没有该属性")
 		}
 		return doc.Character.SetInteger(change.Field, change.Value)
+	}
+	if change.Action == "grant_bundle" {
+		return m.grantOfflineBundle(ctx, account, doc, change)
 	}
 	kind := "item"
 	if strings.Contains(change.Action, "pet") {
@@ -243,4 +302,143 @@ func (m *Manager) grantOffline(ctx context.Context, account string, doc *playerd
 		}
 	}
 	return nil
+}
+
+// grantOfflineBundle performs all validation and placement planning before
+// asking the native side for the first payload. The caller writes the
+// resulting document once, so an export, decode, or placement failure can
+// never leave a partially-written archive behind.
+func (m *Manager) grantOfflineBundle(ctx context.Context, account string, doc *playerdata.Document, change playerdata.Mutation) error {
+	itemCount, petCount, err := bundleQuantities(change.Bundle)
+	if err != nil {
+		return err
+	}
+	catalog := m.loadCatalog()
+	if catalog == nil {
+		return playerdata.ErrUnavailable
+	}
+	for _, entry := range change.Bundle {
+		if _, ok := catalog.Find(gamecatalog.Kind(entry.Kind), entry.TemplateID); !ok {
+			return fmt.Errorf("赠送模板不存在")
+		}
+	}
+
+	itemSlots := []int{}
+	petSlots := []int{}
+	if itemCount > 0 {
+		itemSlots, err = offlineAvailableSlots(doc, "item", change.Location, itemCount)
+		if err != nil {
+			return err
+		}
+	}
+	if petCount > 0 {
+		petSlots, err = offlineAvailableSlots(doc, "pet", change.Location, petCount)
+		if err != nil {
+			return err
+		}
+	}
+	owner := ""
+	if petCount > 0 {
+		owner, err = doc.Character.Text("name")
+		if err != nil {
+			return err
+		}
+	}
+
+	itemOffset, petOffset := 0, 0
+	for _, entry := range change.Bundle {
+		kind := entry.Kind
+		prefix := recordPrefix(kind, change.Location)
+		for i := 0; i < entry.Quantity; i++ {
+			response, callErr := m.Game.Call(ctx, map[string]string{
+				"action":      "export_" + kind,
+				"template_id": strconv.Itoa(entry.TemplateID),
+			})
+			if callErr != nil {
+				return callErr
+			}
+			if response["kind"] != kind ||
+				response["template_id"] != strconv.Itoa(entry.TemplateID) ||
+				response["payload"] == "" {
+				return fmt.Errorf("%w: 原生模板响应无效", playerdata.ErrUnavailable)
+			}
+			payload := []byte(response["payload"])
+			if kind == string(gamecatalog.KindPet) {
+				pet, parseErr := playerdata.ParsePet(payload)
+				if parseErr != nil {
+					return parseErr
+				}
+				id, idErr := pet.Integer("dmswc")
+				if idErr != nil || id != int64(entry.TemplateID) {
+					return fmt.Errorf("原生宠物模板编号不匹配")
+				}
+				if err = pet.SetText("ocd", account, 31); err != nil {
+					return err
+				}
+				if err = pet.SetText("ocn", owner, 32); err != nil {
+					return err
+				}
+				if entry.Name != "" {
+					if err = pet.SetText("ownt", entry.Name, 32); err != nil {
+						return err
+					}
+				}
+				payload = pet.Bytes()
+			} else {
+				item, parseErr := playerdata.ParseItem(payload)
+				if parseErr != nil {
+					return parseErr
+				}
+				id, idErr := item.Integer("id")
+				if idErr != nil || id != int64(entry.TemplateID) {
+					return fmt.Errorf("原生物品模板编号不匹配")
+				}
+				if entry.Name != "" {
+					if err = item.SetText("na", entry.Name, 16); err != nil {
+						return err
+					}
+				}
+				payload = item.Bytes()
+			}
+
+			var slot int
+			if kind == string(gamecatalog.KindPet) {
+				slot = petSlots[petOffset]
+				petOffset++
+			} else {
+				slot = itemSlots[itemOffset]
+				itemOffset++
+			}
+			if err = doc.Character.SetRaw(prefix+strconv.Itoa(slot), payload); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func offlineAvailableSlots(doc *playerdata.Document, kind, location string, quantity int) ([]int, error) {
+	start, end := slotRange(kind, location)
+	if kind == "pet" && location == "warehouse" {
+		transmigration := int64(0)
+		if _, present := doc.Character.Raw("trn"); present {
+			var err error
+			transmigration, err = doc.Character.Integer("trn")
+			if err != nil {
+				return nil, err
+			}
+		}
+		end = playerdata.PetWarehouseCapacity(transmigration)
+	}
+	prefix := recordPrefix(kind, location)
+	available := make([]int, 0, quantity)
+	for slot := start; slot < end; slot++ {
+		if raw, ok := doc.Character.Raw(prefix + strconv.Itoa(slot)); !ok || len(raw) == 0 {
+			available = append(available, slot)
+		}
+	}
+	if len(available) < quantity {
+		return nil, fmt.Errorf("空位不足，未赠送任何内容")
+	}
+	return available[:quantity], nil
 }

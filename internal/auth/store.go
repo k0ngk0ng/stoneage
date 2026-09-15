@@ -219,6 +219,14 @@ CREATE INDEX IF NOT EXISTS login_attempts_created_idx ON login_attempts(created_
 		2, store.timestamp(store.now())); err != nil {
 		return fmt.Errorf("record auth schema migration: %w", err)
 	}
+	if err := store.migrateGiftSchema(ctx); err != nil {
+		return fmt.Errorf("upgrade gift schema: %w", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		"INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, ?)",
+		3, store.timestamp(store.now())); err != nil {
+		return fmt.Errorf("record auth schema migration: %w", err)
+	}
 	if err := protectSQLiteSidecars(store.path); err != nil {
 		return err
 	}

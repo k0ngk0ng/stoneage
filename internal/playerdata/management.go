@@ -17,18 +17,29 @@ type Character struct {
 	Online bool   `json:"online"`
 }
 
-type Mutation struct {
-	Revision   string `json:"revision"`
-	Action     string `json:"action"`
-	Location   string `json:"location,omitempty"`
-	Slot       int    `json:"slot,omitempty"`
-	TemplateID int    `json:"template_id,omitempty"`
-	Field      string `json:"field,omitempty"`
-	Value      int64  `json:"value,omitempty"`
-	SkillSlot  int    `json:"skill_slot,omitempty"`
-	SkillID    int    `json:"skill_id,omitempty"`
+// BundleEntry describes one template in a bundle. Quantity is the number of
+// separate game objects to create; a stackable item's in-game stack size is
+// intentionally left to the existing item mutation path.
+type BundleEntry struct {
+	Kind       string `json:"kind"`
+	TemplateID int    `json:"template_id"`
+	Quantity   int    `json:"quantity"`
 	Name       string `json:"name,omitempty"`
-	Quantity   int    `json:"quantity,omitempty"`
+}
+
+type Mutation struct {
+	Revision   string        `json:"revision"`
+	Action     string        `json:"action"`
+	Location   string        `json:"location,omitempty"`
+	Slot       int           `json:"slot,omitempty"`
+	TemplateID int           `json:"template_id,omitempty"`
+	Field      string        `json:"field,omitempty"`
+	Value      int64         `json:"value,omitempty"`
+	SkillSlot  int           `json:"skill_slot,omitempty"`
+	SkillID    int           `json:"skill_id,omitempty"`
+	Name       string        `json:"name,omitempty"`
+	Quantity   int           `json:"quantity,omitempty"`
+	Bundle     []BundleEntry `json:"bundle,omitempty"`
 }
 
 // Manager owns concurrency and persistence. A returned successful mutation

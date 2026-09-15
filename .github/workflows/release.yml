@@ -54,6 +54,7 @@ jobs:
           node internal/admin/app_time_test.js
           node internal/admin/audit_test.js
           node internal/admin/players_test.js
+          node internal/admin/gifts_test.js
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
           python3 server/legacy/modern/tests/test-gmsv-trusted-gateway.py

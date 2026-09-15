@@ -9,3 +9,4 @@
 - `verified-features.md`：实机通过功能与明确未完成项
 - `networking.md`：局域网与互联网联机边界
 - `database.md`：SQLite 认证库、SAAC 角色文件、备份与迁移
+- [gift-packages.md](gift-packages.md)：管理端礼包制作、单角色或全角色发放，以及中断结果核对

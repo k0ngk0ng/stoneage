@@ -1,0 +1,177 @@
+{{define "content"}}
+<link rel="stylesheet" href="/static/gifts.css">
+<div class="gifts-page" id="gift-admin" data-csrf="{{.CSRF}}">
+  <div class="page-heading">
+    <div>
+      <h1>礼包管理</h1>
+      <p class="muted">建立可重复使用的物品、宠物礼包，并在正式发放前预览目标和容量检查结果。</p>
+    </div>
+    <div class="gift-heading-actions">
+      <a class="button" href="/accounts">账号</a>
+      <button class="button" id="gift-refresh" type="button">刷新</button>
+    </div>
+  </div>
+
+  <div class="gift-status" id="gift-status" role="status" aria-live="polite"></div>
+
+  <div class="gift-layout">
+    <section class="card gift-packages-card" aria-labelledby="gift-packages-title">
+      <div class="card-heading">
+        <div>
+          <span class="section-kicker">礼包</span>
+          <h2 id="gift-packages-title">礼包列表</h2>
+        </div>
+        <button class="primary" id="gift-new-package" type="button">新建礼包</button>
+      </div>
+      <div class="gift-package-list" id="gift-package-list" aria-live="polite">
+        <div class="empty">正在加载礼包…</div>
+      </div>
+    </section>
+
+    <section class="card gift-editor-card" aria-labelledby="gift-editor-title">
+      <div class="card-heading">
+        <div>
+          <span class="section-kicker">定义</span>
+          <h2 id="gift-editor-title">新建礼包</h2>
+        </div>
+        <span class="gift-editor-mode" id="gift-editor-mode">未保存</span>
+      </div>
+
+      <form id="gift-package-form" novalidate>
+        <input id="gift-package-id" type="hidden" value="">
+        <label for="gift-package-name">礼包名称
+          <input id="gift-package-name" name="name" type="text" maxlength="120" autocomplete="off" required placeholder="例如：新手补给包">
+        </label>
+      </form>
+
+      <div class="gift-catalog-grid">
+        <section class="gift-catalog-section" aria-labelledby="gift-item-search-title">
+          <div class="gift-section-heading">
+            <h3 id="gift-item-search-title">物品</h3>
+            <span class="hint">按名称或 ID 搜索</span>
+          </div>
+          <form class="gift-catalog-search" id="gift-item-search" data-kind="item" novalidate>
+            <label class="sr-only" for="gift-item-query">搜索物品</label>
+            <input id="gift-item-query" name="q" type="search" autocomplete="off" placeholder="搜索物品">
+            <button class="button" type="submit">搜索</button>
+          </form>
+          <div class="gift-catalog-results" id="gift-item-results" aria-live="polite">
+            <div class="empty">搜索后选择要加入的物品。</div>
+          </div>
+          <div class="gift-selected" id="gift-item-selected">
+            <div class="empty">尚未添加物品。</div>
+          </div>
+        </section>
+
+        <section class="gift-catalog-section" aria-labelledby="gift-pet-search-title">
+          <div class="gift-section-heading">
+            <h3 id="gift-pet-search-title">宠物</h3>
+            <span class="hint">按名称或 ID 搜索</span>
+          </div>
+          <form class="gift-catalog-search" id="gift-pet-search" data-kind="pet" novalidate>
+            <label class="sr-only" for="gift-pet-query">搜索宠物</label>
+            <input id="gift-pet-query" name="q" type="search" autocomplete="off" placeholder="搜索宠物">
+            <button class="button" type="submit">搜索</button>
+          </form>
+          <div class="gift-catalog-results" id="gift-pet-results" aria-live="polite">
+            <div class="empty">搜索后选择要加入的宠物。</div>
+          </div>
+          <div class="gift-selected" id="gift-pet-selected">
+            <div class="empty">尚未添加宠物。</div>
+          </div>
+        </section>
+      </div>
+
+      <div class="gift-editor-footer">
+        <p class="hint" id="gift-definition-hint">礼包至少需要一个物品或宠物。</p>
+        <button class="primary" id="gift-package-save" type="button">保存礼包</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="card gift-run-card" aria-labelledby="gift-run-title">
+    <div class="card-heading">
+      <div>
+        <span class="section-kicker">发放</span>
+        <h2 id="gift-run-title">预览并发放礼包</h2>
+      </div>
+      <span class="gift-safety-note">确认前不会发放</span>
+    </div>
+    <form id="gift-run-form" novalidate>
+      <div class="gift-run-controls">
+        <label for="gift-run-package">礼包
+          <select id="gift-run-package" required>
+            <option value="">请选择礼包</option>
+          </select>
+        </label>
+        <fieldset class="gift-scope-fieldset">
+          <legend>范围</legend>
+          <label><input type="radio" name="gift-scope" value="single" checked> 单个角色</label>
+          <label><input type="radio" name="gift-scope" value="all"> 全部角色</label>
+        </fieldset>
+      </div>
+
+      <div class="gift-single-target" id="gift-single-target">
+        <div class="gift-target-fields">
+          <label for="gift-account-id">账号 ID
+            <input id="gift-account-id" type="number" min="1" step="1" inputmode="numeric" placeholder="例如：42">
+          </label>
+          <label for="gift-account-username">账号名（可选）
+            <input id="gift-account-username" type="text" maxlength="64" autocomplete="off" placeholder="也可由服务端解析账号名">
+          </label>
+          <label for="gift-character-slot">角色
+            <select id="gift-character-slot" disabled>
+              <option value="0">#0</option>
+              <option value="1">#1</option>
+            </select>
+          </label>
+          <button class="button gift-load-characters" id="gift-load-characters" type="button">读取角色</button>
+        </div>
+        <p class="hint" id="gift-character-hint">填写账号 ID 后可读取角色名称；也可以直接填写账号名和角色槽位。</p>
+      </div>
+
+      <div class="gift-run-footer">
+        <p class="hint">系统会先检查每个角色的背包容量；容量不足时整名角色跳过。</p>
+        <button class="primary" id="gift-preview" type="submit">预览发放范围</button>
+      </div>
+    </form>
+
+    <section class="gift-preview" id="gift-preview-panel" aria-labelledby="gift-preview-title" hidden>
+      <div class="gift-section-heading">
+        <h3 id="gift-preview-title">发放预览</h3>
+      </div>
+      <div class="gift-preview-stats" id="gift-preview-stats"></div>
+      <p class="gift-preview-warning" id="gift-preview-warning"></p>
+      <div class="gift-preview-skipped" id="gift-preview-skipped"></div>
+      <div class="gift-preview-actions">
+        <button class="button" id="gift-preview-reset" type="button">重新预览</button>
+        <button class="primary" id="gift-confirm" type="button" disabled>确认发放</button>
+      </div>
+    </section>
+    <div class="gift-run-result" id="gift-run-result" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="card gift-history-card" aria-labelledby="gift-history-title">
+    <div class="card-heading">
+      <div>
+        <span class="section-kicker">记录</span>
+        <h2 id="gift-history-title">发放记录</h2>
+      </div>
+      <button class="button" id="gift-runs-refresh" type="button">刷新记录</button>
+    </div>
+    <div class="gift-runs-list" id="gift-runs-list" aria-live="polite">
+      <div class="empty">正在加载发放记录…</div>
+    </div>
+    <button class="button gift-load-more" id="gift-runs-more" type="button" hidden>加载更多记录</button>
+    <section class="gift-run-detail" id="gift-run-detail" aria-labelledby="gift-run-detail-title" hidden>
+      <div class="gift-section-heading">
+        <h3 id="gift-run-detail-title">发放详情</h3>
+        <button class="button" id="gift-run-detail-close" type="button">关闭</button>
+      </div>
+      <div id="gift-run-deliveries"></div>
+      <button class="button gift-load-more" id="gift-deliveries-more" type="button" hidden>加载更多角色结果</button>
+    </section>
+  </section>
+</div>
+<script src="/static/gifts.js" defer></script>
+{{end}}

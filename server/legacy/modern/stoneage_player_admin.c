@@ -30,7 +30,7 @@
 #define STONEAGE_PA_VERSION 1
 #define STONEAGE_PA_MAX_REQUEST 65535
 #define STONEAGE_PA_MAX_RESPONSE 65535
-#define STONEAGE_PA_MAX_FIELDS 96
+#define STONEAGE_PA_MAX_FIELDS 128
 #define STONEAGE_PA_MAX_ID 64
 #define STONEAGE_PA_MAX_VALUE 8192
 #define STONEAGE_PA_MAX_PATH 1024
@@ -44,6 +44,7 @@
 #define STONEAGE_PA_MAX_CHARACTER_SLOTS 2
 #define STONEAGE_PA_MAX_NATIVE_NAME 64
 #define STONEAGE_PA_MAX_GRANT_QUANTITY 64
+#define STONEAGE_PA_MAX_BUNDLE_ENTRIES 20
 #define STONEAGE_PA_MIN_PET_MODAI 0
 #define STONEAGE_PA_MAX_PET_MODAI 1000000
 
@@ -51,6 +52,14 @@ typedef struct tagStoneAgePAField {
     char key[64];
     char value[STONEAGE_PA_MAX_VALUE];
 } StoneAgePAField;
+
+typedef struct tagStoneAgePABundleEntry {
+    char kind[8];
+    char name[STONEAGE_PA_MAX_NATIVE_NAME];
+    int template_id;
+    int quantity;
+    int has_name;
+} StoneAgePABundleEntry;
 
 typedef struct tagStoneAgePARequest {
     char id[STONEAGE_PA_MAX_ID + 1];
@@ -89,8 +98,15 @@ typedef struct tagStoneAgePARequest {
     int has_field;
     int has_name;
     int has_payload;
+    StoneAgePABundleEntry bundle[STONEAGE_PA_MAX_BUNDLE_ENTRIES];
+    int bundle_count;
+    int has_bundle;
     int granted_slots[STONEAGE_PA_MAX_GRANT_QUANTITY];
     int granted_slot_count;
+    int granted_item_slots[STONEAGE_PA_MAX_GRANT_QUANTITY];
+    int granted_item_slot_count;
+    int granted_pet_slots[STONEAGE_PA_MAX_GRANT_QUANTITY];
+    int granted_pet_slot_count;
     int field_count;
     StoneAgePAField fields[STONEAGE_PA_MAX_FIELDS];
 } StoneAgePARequest;
@@ -261,6 +277,56 @@ static int StoneAgePA_requiredString( const StoneAgePARequest *request,
     return TRUE;
 }
 
+static int StoneAgePA_parseBundle( const StoneAgePARequest *request,
+                                   StoneAgePABundleEntry *entries,
+                                   int *count )
+{
+    char key[64];
+    char encoded[STONEAGE_PA_MAX_VALUE];
+    int parsed_count;
+    int i;
+    int total_item = 0;
+    int total_pet = 0;
+    StoneAgePABundleEntry *entry;
+
+    if( !StoneAgePA_getField(request, "bundle_count", encoded, sizeof(encoded)) ||
+        !StoneAgePA_parseInt(encoded, &parsed_count) ||
+        parsed_count < 1 || parsed_count > STONEAGE_PA_MAX_BUNDLE_ENTRIES ) return FALSE;
+    for( i = 0; i < parsed_count; i++ ) {
+        entry = &entries[i];
+        memset(entry, 0, sizeof(*entry));
+        snprintf(key, sizeof(key), "bundle_%d_kind", i);
+        if( !StoneAgePA_requiredString(request, key, entry->kind,
+                                       sizeof(entry->kind)) ||
+            (strcmp(entry->kind, "item") != 0 && strcmp(entry->kind, "pet") != 0) ) return FALSE;
+        snprintf(key, sizeof(key), "bundle_%d_template_id", i);
+        if( !StoneAgePA_getField(request, key, encoded, sizeof(encoded)) ||
+            !StoneAgePA_parseInt(encoded, &entry->template_id) ||
+            entry->template_id < 0 ) return FALSE;
+        snprintf(key, sizeof(key), "bundle_%d_quantity", i);
+        if( !StoneAgePA_getField(request, key, encoded, sizeof(encoded)) ||
+            !StoneAgePA_parseInt(encoded, &entry->quantity) ||
+            entry->quantity < 1 || entry->quantity > STONEAGE_PA_MAX_GRANT_QUANTITY ) return FALSE;
+        if( strcmp(entry->kind, "item") == 0 ) {
+            if( total_item > STONEAGE_PA_MAX_GRANT_QUANTITY - entry->quantity ) return FALSE;
+            total_item += entry->quantity;
+        } else {
+            if( total_pet > STONEAGE_PA_MAX_GRANT_QUANTITY - entry->quantity ) return FALSE;
+            total_pet += entry->quantity;
+        }
+        snprintf(key, sizeof(key), "bundle_%d_name", i);
+        if( StoneAgePA_getField(request, key, encoded, sizeof(encoded)) ) {
+            if( encoded[0] == '\0' || strlen(encoded) >= sizeof(entry->name) ) return FALSE;
+            if( strchr(encoded, '\r') != NULL || strchr(encoded, '\n') != NULL ) return FALSE;
+            strncpy(entry->name, encoded, sizeof(entry->name));
+            entry->name[sizeof(entry->name) - 1] = '\0';
+            entry->has_name = TRUE;
+        }
+    }
+    *count = parsed_count;
+    return TRUE;
+}
+
 static int StoneAgePA_parseRequest( char *data, size_t length,
                                     const char *filename_id,
                                     StoneAgePARequest *request )
@@ -270,7 +336,6 @@ static int StoneAgePA_parseRequest( char *data, size_t length,
     char *equals;
     char encoded[STONEAGE_PA_MAX_VALUE];
     int i;
-    int value;
     memset( request, 0, sizeof(*request) );
     request->protocol = -1;
     request->character_slot = -1;
@@ -409,6 +474,10 @@ static int StoneAgePA_parseRequest( char *data, size_t length,
     if( StoneAgePA_getField(request, "skill_id", encoded, sizeof(encoded)) ) {
         if( !StoneAgePA_parseInt(encoded, &request->skill_id) ) return FALSE;
         request->has_skill_id = TRUE;
+    }
+    if( strcmp(request->action, "grant_bundle") == 0 ) {
+        if( !StoneAgePA_parseBundle(request, request->bundle, &request->bundle_count) ) return FALSE;
+        request->has_bundle = TRUE;
     }
     return TRUE;
 }
@@ -1160,6 +1229,246 @@ static int StoneAgePA_collectItemSlots( int index, const char *location,
     return found;
 }
 
+static int StoneAgePA_collectPetSlots( int index, const char *location,
+                                       int count, int *slots )
+{
+    int limit;
+    int i;
+    int found = 0;
+    if( strcmp(location, "warehouse") == 0 ) {
+        limit = StoneAgePA_poolPetLimit(index);
+        for( i = 0; i < limit && found < count; i++ ) {
+            if( CHAR_getCharPoolPet(index, i) == -1 ) slots[found++] = i;
+        }
+    } else {
+        for( i = 0; i < CHAR_MAXPETHAVE && found < count; i++ ) {
+            if( CHAR_getCharPet(index, i) == -1 ) slots[found++] = i;
+        }
+    }
+    return found;
+}
+
+static void StoneAgePA_detachItem( int index, int itemindex )
+{
+    int i;
+    if( itemindex < 0 ) return;
+    for( i = 0; i < CHAR_MAXITEMHAVE; i++ ) {
+        if( CHAR_getItemIndex(index, i) == itemindex ) CHAR_setItemIndex(index, i, -1);
+    }
+    for( i = 0; i < CHAR_MAXPOOLITEMHAVE; i++ ) {
+        if( CHAR_getPoolItemIndex(index, i) == itemindex ) CHAR_setPoolItemIndex(index, i, -1);
+    }
+    if( ITEM_CHECKINDEX(itemindex) ) ITEM_endExistItemsOne(itemindex);
+}
+
+static void StoneAgePA_detachPet( int index, int petindex )
+{
+    int i;
+    if( petindex < 0 ) return;
+    for( i = 0; i < CHAR_MAXPETHAVE; i++ ) {
+        if( CHAR_getCharPet(index, i) == petindex ) CHAR_setCharPet(index, i, -1);
+    }
+    for( i = 0; i < CHAR_MAXPOOLPETHAVE; i++ ) {
+        if( CHAR_getCharPoolPet(index, i) == petindex ) CHAR_setCharPoolPet(index, i, -1);
+    }
+    if( CHAR_CHECKINDEX(petindex) ) CHAR_endCharOneArray(petindex);
+}
+
+static int StoneAgePA_grantBundle( StoneAgePAResponse *response,
+                                   StoneAgePARequest *request, int index )
+{
+    int item_slots[STONEAGE_PA_MAX_GRANT_QUANTITY];
+    int pet_slots[STONEAGE_PA_MAX_GRANT_QUANTITY];
+    int created_items[STONEAGE_PA_MAX_GRANT_QUANTITY];
+    int created_pets[STONEAGE_PA_MAX_GRANT_QUANTITY];
+    int pet_arrays[STONEAGE_PA_MAX_BUNDLE_ENTRIES];
+    int item_count = 0;
+    int pet_count = 0;
+    int item_created = 0;
+    int pet_created = 0;
+    int i;
+    int j;
+    int slot;
+    int itemindex;
+    int petindex;
+    int array;
+    int temporary_slot;
+    int displaced;
+    int created_slot;
+    int found;
+    int item_total = 0;
+    int pet_total = 0;
+    if( !request->has_bundle || request->bundle_count < 1 ||
+        request->bundle_count > STONEAGE_PA_MAX_BUNDLE_ENTRIES ) {
+        StoneAgePA_responseError(response, "bundle_required", "grant_bundle requires bundle contents");
+        return FALSE;
+    }
+    for( i = 0; i < request->bundle_count; i++ ) {
+        if( strcmp(request->bundle[i].kind, "item") == 0 ) {
+            if( item_total > STONEAGE_PA_MAX_GRANT_QUANTITY - request->bundle[i].quantity ) {
+                StoneAgePA_responseError(response, "invalid_quantity", "too many item objects in bundle");
+                return FALSE;
+            }
+            item_total += request->bundle[i].quantity;
+        } else if( strcmp(request->bundle[i].kind, "pet") == 0 ) {
+            if( pet_total > STONEAGE_PA_MAX_GRANT_QUANTITY - request->bundle[i].quantity ) {
+                StoneAgePA_responseError(response, "invalid_quantity", "too many pet objects in bundle");
+                return FALSE;
+            }
+            pet_total += request->bundle[i].quantity;
+            array = ENEMY_getEnemyArrayFromTempNo(request->bundle[i].template_id);
+            if( array < 0 ) {
+                StoneAgePA_responseError(response, "invalid_template", "pet template does not exist");
+                return FALSE;
+            }
+            pet_arrays[i] = array;
+        } else {
+            StoneAgePA_responseError(response, "invalid_bundle", "bundle contains an unsupported kind");
+            return FALSE;
+        }
+    }
+
+    if( item_total > 0 ) {
+        StoneAgePARequest empty_request;
+        memset(&empty_request, 0, sizeof(empty_request));
+        empty_request.has_slot = FALSE;
+        item_count = StoneAgePA_collectItemSlots(index, request->location,
+                                                 &empty_request, item_total,
+                                                 item_slots);
+        if( item_count < item_total ) {
+            StoneAgePA_responseError(response,
+                                     strcmp(request->location, "warehouse") == 0
+                                         ? "warehouse_full" : "inventory_full",
+                                     "not enough empty item slots for bundle");
+            return FALSE;
+        }
+    }
+    if( pet_total > 0 ) {
+        pet_count = StoneAgePA_collectPetSlots(index, request->location,
+                                               pet_total, pet_slots);
+        if( pet_count < pet_total ) {
+            StoneAgePA_responseError(response,
+                                     strcmp(request->location, "warehouse") == 0
+                                         ? "warehouse_full" : "pet_full",
+                                     "not enough empty pet slots for bundle");
+            return FALSE;
+        }
+    }
+
+    /* Create every item while detached. Any later pet failure can therefore
+     * release it without touching an existing possession. */
+    for( i = 0; i < request->bundle_count; i++ ) {
+        if( strcmp(request->bundle[i].kind, "item") != 0 ) continue;
+        for( j = 0; j < request->bundle[i].quantity; j++ ) {
+            itemindex = ITEM_makeItemAndRegist(request->bundle[i].template_id);
+            if( itemindex < 0 || !ITEM_CHECKINDEX(itemindex) ||
+                ITEM_getInt(itemindex, ITEM_ID) != request->bundle[i].template_id ) {
+                if( itemindex >= 0 ) StoneAgePA_detachItem(index, itemindex);
+                for( found = 0; found < item_created; found++ ) {
+                    StoneAgePA_detachItem(index, created_items[found]);
+                }
+                StoneAgePA_responseError(response, "invalid_template", "item template does not exist");
+                return FALSE;
+            }
+            if( request->bundle[i].has_name ) {
+                ITEM_setChar(itemindex, ITEM_NAME, request->bundle[i].name);
+            }
+            created_items[item_created++] = itemindex;
+        }
+    }
+
+    /* Attach items only after all item creation succeeded. */
+    for( i = 0; i < item_created; i++ ) {
+        slot = item_slots[i];
+        if( strcmp(request->location, "warehouse") == 0 ) {
+            CHAR_setPoolItemIndex(index, slot, created_items[i]);
+        } else {
+            CHAR_setItemIndex(index, slot, created_items[i]);
+        }
+        if( (strcmp(request->location, "warehouse") == 0
+                ? CHAR_getPoolItemIndex(index, slot)
+                : CHAR_getItemIndex(index, slot)) != created_items[i] ) {
+            for( found = 0; found < item_created; found++ ) {
+                StoneAgePA_detachItem(index, created_items[found]);
+            }
+            StoneAgePA_responseError(response, "bundle_create_failed", "item could not be attached");
+            return FALSE;
+        }
+        ITEM_setWorkInt(created_items[i], ITEM_WORKCHARAINDEX, index);
+        ITEM_setWorkInt(created_items[i], ITEM_WORKOBJINDEX, -1);
+    }
+
+    /* Pet creation normally attaches to the first free inventory pet slot.
+     * For warehouse gifts, move that temporary attachment into the planned
+     * pool slot and restore any displaced inventory pet immediately. */
+    for( i = 0; i < request->bundle_count; i++ ) {
+        if( strcmp(request->bundle[i].kind, "pet") != 0 ) continue;
+        for( j = 0; j < request->bundle[i].quantity; j++ ) {
+            petindex = -1;
+            temporary_slot = -1;
+            displaced = -1;
+            if( strcmp(request->location, "warehouse") == 0 ) {
+                temporary_slot = CHAR_getCharPetElement(index);
+                if( temporary_slot < 0 ) {
+                    temporary_slot = 0;
+                    displaced = CHAR_getCharPet(index, temporary_slot);
+                    CHAR_setCharPet(index, temporary_slot, -1);
+                }
+            }
+            petindex = ENEMY_createPetFromEnemyIndex(index, pet_arrays[i]);
+            if( strcmp(request->location, "warehouse") == 0 && petindex >= 0 ) {
+                created_slot = -1;
+                for( found = 0; found < CHAR_MAXPETHAVE; found++ ) {
+                    if( CHAR_getCharPet(index, found) == petindex ) {
+                        created_slot = found;
+                        break;
+                    }
+                }
+                if( created_slot >= 0 ) {
+                    CHAR_setCharPet(index, created_slot, -1);
+                    CHAR_setCharPoolPet(index, pet_slots[pet_created], petindex);
+                }
+            }
+            if( displaced >= 0 ) CHAR_setCharPet(index, temporary_slot, displaced);
+            if( petindex < 0 ||
+                (strcmp(request->location, "warehouse") == 0
+                    ? CHAR_getCharPoolPet(index, pet_slots[pet_created]) != petindex
+                    : CHAR_getCharPet(index, pet_slots[pet_created]) != petindex) ) {
+                if( petindex >= 0 ) StoneAgePA_detachPet(index, petindex);
+                for( found = 0; found < item_created; found++ ) {
+                    StoneAgePA_detachItem(index, created_items[found]);
+                }
+                for( found = 0; found < pet_created; found++ ) {
+                    StoneAgePA_detachPet(index, created_pets[found]);
+                }
+                StoneAgePA_responseError(response, "bundle_create_failed", "pet could not be created or attached");
+                return FALSE;
+            }
+            if( request->bundle[i].has_name ) {
+                CHAR_setChar(petindex, CHAR_USERPETNAME, request->bundle[i].name);
+            }
+            CHAR_complianceParameter(petindex);
+            created_pets[pet_created++] = petindex;
+        }
+    }
+
+    request->granted_item_slot_count = item_created;
+    for( i = 0; i < item_created; i++ ) request->granted_item_slots[i] = item_slots[i];
+    request->granted_pet_slot_count = pet_created;
+    for( i = 0; i < pet_created; i++ ) request->granted_pet_slots[i] = pet_slots[i];
+    if( item_created > 0 ) {
+        StoneAgePA_writeInt(response, "slot", item_slots[0]);
+        StoneAgePA_writeInt(response, "item_id", ITEM_getInt(created_items[0], ITEM_ID));
+        StoneAgePA_writeInt(response, "quantity", item_created);
+    }
+    if( pet_created > 0 ) {
+        StoneAgePA_writeInt(response, "pet_slot", pet_slots[0]);
+        StoneAgePA_writeInt(response, "pet_id", CHAR_getInt(created_pets[0], CHAR_PETID));
+        StoneAgePA_writeInt(response, "pet_quantity", pet_created);
+    }
+    return TRUE;
+}
+
 static int StoneAgePA_grantItem( StoneAgePAResponse *response,
                                  const StoneAgePARequest *request, int index )
 {
@@ -1591,6 +1900,7 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
     if( strcmp(request->action, "snapshot") == 0 ) mutate = FALSE;
     else if( strcmp(request->action, "set_character") == 0 ||
              strcmp(request->action, "grant_item") == 0 ||
+             strcmp(request->action, "grant_bundle") == 0 ||
              strcmp(request->action, "set_item") == 0 ||
              strcmp(request->action, "delete_item") == 0 ||
              strcmp(request->action, "grant_pet") == 0 ||
@@ -1610,6 +1920,7 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
     }
     if( strcmp(request->action, "set_character") == 0 ) ok = StoneAgePA_setCharacter(response, request, index);
     else if( strcmp(request->action, "grant_item") == 0 ) ok = StoneAgePA_grantItem(response, request, index);
+    else if( strcmp(request->action, "grant_bundle") == 0 ) ok = StoneAgePA_grantBundle(response, request, index);
     else if( strcmp(request->action, "set_item") == 0 ) ok = StoneAgePA_setItem(response, request, index);
     else if( strcmp(request->action, "delete_item") == 0 ) ok = StoneAgePA_deleteItem(response, request, index);
     else if( strcmp(request->action, "grant_pet") == 0 ) ok = StoneAgePA_grantPet(response, request, index);
@@ -1622,7 +1933,16 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
     if( !StoneAgePA_save(index, response) ) return FALSE;
     CHAR_sendStatusString(index, "P");
     CHAR_sendStatusString(index, "I");
-    if( strcmp(request->action, "grant_pet") == 0 ) {
+    if( strcmp(request->action, "grant_bundle") == 0 ) {
+        int i;
+        for( i = 0; i < request->granted_pet_slot_count; i++ ) {
+            char category[8];
+            snprintf(category, sizeof(category), "%s%d",
+                     strcmp(request->location, "warehouse") == 0 ? "W" : "K",
+                     request->granted_pet_slots[i]);
+            CHAR_sendStatusString(index, category);
+        }
+    } else if( strcmp(request->action, "grant_pet") == 0 ) {
         int i;
         for( i = 0; i < request->granted_slot_count; i++ ) {
             char category[8];

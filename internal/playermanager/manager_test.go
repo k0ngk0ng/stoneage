@@ -907,3 +907,150 @@ func TestOfflineGrantSecondExportFailureDoesNotWritePartialCAS(t *testing.T) {
 		t.Fatal("archive changed after partial export failure")
 	}
 }
+
+func bundleCatalog() *gamecatalog.Catalog {
+	return &gamecatalog.Catalog{
+		Items: []gamecatalog.Item{{Entry: gamecatalog.Entry{
+			Kind: gamecatalog.KindItem, ID: 777, TemplateID: 777, Name: "Gift Item",
+		}}},
+		Pets: []gamecatalog.Pet{{Entry: gamecatalog.Entry{
+			Kind: gamecatalog.KindPet, ID: 888, TemplateID: 888, Name: "Gift Pet",
+		}}},
+	}
+}
+
+func TestBundleEntryLimitMatchesNativeContract(t *testing.T) {
+	entries := func(kind string, count int) []playerdata.BundleEntry {
+		bundle := make([]playerdata.BundleEntry, count)
+		for index := range bundle {
+			bundle[index] = playerdata.BundleEntry{Kind: kind, TemplateID: 777, Quantity: 1}
+		}
+		return bundle
+	}
+
+	if _, _, err := bundleQuantities(entries("item", 20)); err != nil {
+		t.Fatalf("20-entry bundle rejected: %v", err)
+	}
+	if _, _, err := bundleQuantities(entries("item", 21)); err == nil {
+		t.Fatal("21-entry bundle unexpectedly accepted")
+	}
+
+	mixed := append(entries("item", 15), entries("pet", 5)...)
+	items, pets, err := bundleQuantities(mixed)
+	if err != nil {
+		t.Fatalf("15-item/5-pet bundle rejected: %v", err)
+	}
+	if items != 15 || pets != 5 {
+		t.Fatalf("mixed bundle quantities = items:%d pets:%d, want items:15 pets:5", items, pets)
+	}
+}
+
+func TestOfflineBundleWritesMixedContentsWithOneCAS(t *testing.T) {
+	original := testArchive()
+	manager, archives, game := newOfflineManager(t, original)
+	manager.Catalog = bundleCatalog()
+	game.call = func(values map[string]string) (map[string]string, error) {
+		switch values["action"] {
+		case "snapshot":
+			return nil, &playerbridge.Error{Code: "target_not_online", Message: "offline"}
+		case "inspect_item":
+			return inspectTestItem(values)
+		case "export_item":
+			return map[string]string{"kind": "item", "template_id": "777", "payload": "id=777|na=Gift|"}, nil
+		case "export_pet":
+			return map[string]string{"kind": "pet", "template_id": "888", "payload": "dmswc:888|name:Wolf|ownt:|"}, nil
+		default:
+			return nil, fmt.Errorf("unexpected game action %q", values["action"])
+		}
+	}
+
+	before, err := manager.Get(context.Background(), "alice", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := manager.Apply(context.Background(), "alice", 0, playerdata.Mutation{
+		Revision: before.Revision,
+		Action:   "grant_bundle",
+		Location: "inventory",
+		Bundle: []playerdata.BundleEntry{
+			{Kind: "item", TemplateID: 777, Quantity: 2, Name: "补给"},
+			{Kind: "pet", TemplateID: 888, Quantity: 1, Name: "伙伴"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if len(archives.writes) != 1 {
+		t.Fatalf("archive writes = %d, want one atomic write", len(archives.writes))
+	}
+	if len(got.Possessions) != 3 {
+		t.Fatalf("bundle possessions = %d, want 3", len(got.Possessions))
+	}
+	replacement := archives.writes[0].replacement
+	doc, err := playerdata.ParseSave(replacement)
+	if err != nil {
+		t.Fatalf("replacement is not a valid save: %v", err)
+	}
+	for _, slot := range []int{5, 6} {
+		raw, ok := doc.Character.Raw("item" + strconv.Itoa(slot))
+		if !ok {
+			t.Fatalf("missing bundle item in slot %d", slot)
+		}
+		item, err := playerdata.ParseItem(raw)
+		if err != nil {
+			t.Fatalf("item%d parse: %v", slot, err)
+		}
+		if id, err := item.Integer("id"); err != nil || id != 777 {
+			t.Fatalf("item%d id=%d err=%v, want 777", slot, id, err)
+		}
+		if name, err := item.Text("na"); err != nil || name != "补给" {
+			t.Fatalf("item%d name=%q err=%v, want 补给", slot, name, err)
+		}
+	}
+	raw, ok := doc.Character.Raw("pet0")
+	if !ok {
+		t.Fatal("missing bundle pet in slot 0")
+	}
+	pet, err := playerdata.ParsePet(raw)
+	if err != nil {
+		t.Fatalf("pet parse: %v", err)
+	}
+	if id, err := pet.Integer("dmswc"); err != nil || id != 888 {
+		t.Fatalf("pet id=%d err=%v, want 888", id, err)
+	}
+	if name, err := pet.Text("ownt"); err != nil || name != "伙伴" {
+		t.Fatalf("pet name=%q err=%v, want 伙伴", name, err)
+	}
+	if countGameAction(game, "export_item") != 2 || countGameAction(game, "export_pet") != 1 {
+		t.Fatalf("exports = item:%d pet:%d, want 2/1", countGameAction(game, "export_item"), countGameAction(game, "export_pet"))
+	}
+}
+
+func TestOfflineBundleCapacityFailureDoesNotExportOrWrite(t *testing.T) {
+	fields := make([]string, 0, 16)
+	for slot := 5; slot < 20; slot++ {
+		fields = append(fields, "item"+strconv.Itoa(slot)+"=id=777|")
+	}
+	original := testArchive(fields...)
+	manager, archives, game := newOfflineManager(t, original)
+	manager.Catalog = bundleCatalog()
+	before, err := manager.Get(context.Background(), "alice", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Apply(context.Background(), "alice", 0, playerdata.Mutation{
+		Revision: before.Revision,
+		Action:   "grant_bundle",
+		Location: "inventory",
+		Bundle: []playerdata.BundleEntry{
+			{Kind: "item", TemplateID: 777, Quantity: 1},
+			{Kind: "pet", TemplateID: 888, Quantity: 1},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "空位不足") {
+		t.Fatalf("capacity error = %v, want capacity rejection", err)
+	}
+	if len(archives.writes) != 0 || countGameAction(game, "export_item") != 0 || countGameAction(game, "export_pet") != 0 {
+		t.Fatalf("capacity rejection writes=%d exports=%d/%d", len(archives.writes), countGameAction(game, "export_item"), countGameAction(game, "export_pet"))
+	}
+}

@@ -88,6 +88,20 @@ physical 0–6 range. New warehouse pets respect the character's available
 capacity, `min(15, 5 + 2 * transmigration)`, while snapshots retain existing
 pets in all physical slots. Batch grants notify the client for every new slot.
 
+`grant_bundle` creates mixed items and pets in one character mutation. It takes
+`bundle_count` (1–20), plus `bundle_N_kind` (`item` or `pet`),
+`bundle_N_template_id`, `bundle_N_quantity`, and optional `bundle_N_name` for
+each zero-based entry. Quantity means separate objects. The bridge checks
+capacity for both kinds before creating anything and releases every new
+object if creation fails. Existing possessions remain intact. A successful
+bundle uses one save operation and refreshes every new pet slot.
+
+The admin gift page restricts bundles to inventory capacity: 15 items and
+5 pets. Equipment slots do not count as available inventory space. Offline
+delivery uses native template exports and one compare-and-swap archive write.
+As with other mutations, an ambiguous save or response failure must be
+verified against the character before an operator considers another delivery.
+
 `export_item` and `export_pet` are template-only requests used by an offline
 manager. They require only `template_id`, create a temporary native object,
 and return its native serialized `payload`; they do not target a character or
