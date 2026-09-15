@@ -466,8 +466,10 @@ async function networkFirst(request, clientId, waitUntil) {
         const lateResponse = cache ? () => cacheMatchBestEffort(cache, request) : null;
         return {response, consumers, lateResponse};
       }
+      void postAssetProgress(clientId, {type: "asset-error", url: request.url, status: Number(response?.status) || 0, message: `HTTP ${response?.status || 0}`});
       return {response};
     } catch (error) {
+      void postAssetProgress(clientId, {type: "asset-error", url: request.url, status: 0, message: String(error)});
       const current = await cacheMatchBestEffort(cache, request);
       if (current) return {response: current};
       const fallback = await globalCacheMatchBestEffort(request);
@@ -525,8 +527,10 @@ async function cacheFirst(request, clientId, waitUntil) {
         const lateResponse = cache ? () => cacheMatchBestEffort(cache, request) : null;
         return {response, consumers, lateResponse};
       }
+      void postAssetProgress(clientId, {type: "asset-error", url: request.url, status: Number(response?.status) || 0, message: `HTTP ${response?.status || 0}`});
       return {response};
     } catch (error) {
+      void postAssetProgress(clientId, {type: "asset-error", url: request.url, status: 0, message: String(error)});
       const fallback = await globalCacheMatchBestEffort(request);
       if (fallback) return {response: fallback};
       throw error;

@@ -221,25 +221,24 @@
     /* NOW LOADING is a modal native field surface.  Keep it above the
        painted cursor/overlay as well as the toolbar so a stale fish sprite
        cannot sit on top of the progress plate while a new M window decodes. */
-    #world-loading { position:absolute; inset:0; z-index:2000; display:flex; align-items:flex-end; justify-content:center; padding:0 0 22px; background:#260000 url('/assets/bitmaps/bitmap_9112.png') center/100% 100% no-repeat; image-rendering:pixelated; pointer-events:auto; }
+    #world-loading { position:absolute; inset:0; z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px; background:#17261e; pointer-events:auto; }
     #world-loading[aria-hidden="true"] { display:none; }
-    /* bitmap_9112 already contains the original NOW LOADING artwork.  Keep
-       the live label for screen readers only; an extra HTML caption over the
-       art was another web-MVP layer. */
-    /* Keep the original NOW LOADING artwork as the backdrop, but add a small
-       native-looking status plate so a mobile player can tell whether a map
-       is downloading, decoding, or waiting on a retry. */
-    #world-loading-panel { width:286px; max-width:calc(100% - 24px); min-height:48px; padding:5px 8px 6px; color:#f7e7b0; background:#1e120dd9; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff5,inset -1px -1px #000b,0 1px 0 #120a06; text-align:left; font:10px/13px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #080504; }
-    #world-loading-title { display:block; color:#ffe08a; font:12px/15px Tahoma,"Microsoft YaHei",sans-serif; letter-spacing:.08em; }
+    /* Loading must render before any network image is available. */
+    #world-loading-panel { width:400px; max-width:calc(100% - 24px); min-height:48px; padding:5px 8px 6px; color:#f7e7b0; background:#1e120dd9; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff5,inset -1px -1px #000b,0 1px 0 #120a06; text-align:left; font:16px/24px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #080504; }
+    #world-loading-title { display:block; color:#ffe08a; font:16px/24px Tahoma,"Microsoft YaHei",sans-serif; letter-spacing:.08em; }
     #world-loading-text { display:block; min-height:13px; color:#f5ecd4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #world-loading-progress { position:relative; width:100%; height:8px; margin:4px 0 3px; overflow:hidden; background:#090706; border:1px solid #705331; box-shadow:inset 1px 1px #000b; }
     #world-loading-progress-bar { display:block; width:0%; height:100%; background:linear-gradient(90deg,#a9682e,#f0c763 58%,#fff0a2); box-shadow:inset 1px 1px #fff6; transition:width .18s steps(5,end); }
     #world-loading-progress.is-indeterminate #world-loading-progress-bar { width:34%; animation:world-loading-scan 1.05s steps(8,end) infinite; }
-    #world-loading-detail { display:block; min-height:13px; color:#cdb987; font-size:9px; }
-    #world-loading-retry { display:block; min-width:62px; height:18px; margin:4px auto 0; padding:0 8px; color:#ffe9ac; background:#493020; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff4,inset -1px -1px #000b; font:10px/16px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #120a06; }
+    #world-loading-detail { display:block; min-height:20px; color:#cdb987; font-size:14px; }
+    #world-loading-retry { display:block; min-width:110px; height:40px; margin:4px auto 0; padding:0 8px; color:#ffe9ac; background:#493020; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff4,inset -1px -1px #000b; font:16px/24px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #120a06; }
     #world-loading-retry[hidden] { display:none; }
+    #world-loading-diagnostics { margin-top:8px; font-size:13px; line-height:19px; }
+    #world-loading-diagnostics[hidden] { display:none; }
+    #world-loading-diagnostic-text { max-height:130px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; -webkit-user-select:text; font:12px/18px monospace; }
+    #world-loading-copy { min-height:36px; margin-top:6px; color:#ffe9ac; background:#493020; border:1px solid #b28a4e; font-size:14px; }
     @keyframes world-loading-scan { 0%{transform:translateX(-110%)} 100%{transform:translateX(310%)} }
-    #orientation-lock { display:none; position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); background:#160d09 url('/assets/bitmaps/bitmap_9112.png') center/cover no-repeat; color:#ffe9b8; text-align:center; pointer-events:auto; touch-action:manipulation; }
+    #orientation-lock { display:none; position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); background:#160d09; color:#ffe9b8; text-align:center; pointer-events:auto; touch-action:manipulation; }
     #orientation-lock .orientation-card { width:min(320px,82vw); padding:20px 14px 14px; background:#160e0bcc; border:1px solid #b18b50; box-shadow:inset 1px 1px #fff4,inset -1px -1px #0008; font:14px/24px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #100806; }
     #orientation-lock strong { display:block; margin-bottom:8px; color:#ffe28a; font-size:18px; }
     #orientation-enter { display:block; width:124px; height:68px; margin:8px auto -4px; padding:0; color:transparent; font-size:0; border:0; box-shadow:none; background:transparent url('/assets/bitmaps/bitmap_9114.png') center/100% 100% no-repeat; image-rendering:pixelated; touch-action:manipulation; }
@@ -707,9 +706,9 @@
        decoded its map tiles.  Keep the black shutter closed until that
        back-buffer is ready, but expose the same compact progress plate used
        by NOW LOADING so a phone never looks frozen behind a blank curtain. */
-    #scene-transition-loading { position:absolute; left:50%; bottom:22px; z-index:901; display:none; width:286px; max-width:calc(100% - 24px); min-height:48px; padding:5px 8px 6px; transform:translateX(-50%); color:#f7e7b0; background:#1e120df2; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff5,inset -1px -1px #000b,0 1px 0 #120a06; text-align:left; font:10px/13px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #080504; pointer-events:none; }
+    #scene-transition-loading { position:absolute; left:50%; bottom:22px; z-index:901; display:none; width:286px; max-width:calc(100% - 24px); min-height:48px; padding:5px 8px 6px; transform:translateX(-50%); color:#f7e7b0; background:#1e120df2; border:1px solid #b28a4e; box-shadow:inset 1px 1px #fff5,inset -1px -1px #000b,0 1px 0 #120a06; text-align:left; font:16px/24px Tahoma,"Microsoft YaHei",sans-serif; text-shadow:1px 1px #080504; pointer-events:none; }
     #scene-transition-loading.active { display:block; }
-    #scene-transition-loading strong { display:block; color:#ffe08a; font:12px/15px Tahoma,"Microsoft YaHei",sans-serif; letter-spacing:.08em; }
+    #scene-transition-loading strong { display:block; color:#ffe08a; font:16px/24px Tahoma,"Microsoft YaHei",sans-serif; letter-spacing:.08em; }
     #scene-transition-loading .scene-loading-text { display:block; min-height:13px; color:#f5ecd4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #scene-transition-loading .scene-loading-progress { position:relative; width:100%; height:8px; margin:4px 0 3px; overflow:hidden; background:#090706; border:1px solid #705331; box-shadow:inset 1px 1px #000b; }
     #scene-transition-loading .scene-loading-progress-bar { display:block; width:0%; height:100%; background:linear-gradient(90deg,#a9682e,#f0c763 58%,#fff0a2); box-shadow:inset 1px 1px #fff6; transition:width .18s steps(5,end); }
@@ -1111,6 +1110,7 @@
             <div id="world-loading-progress" role="progressbar" aria-label="地图加载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="world-loading-progress-bar"></i></div>
             <small id="world-loading-detail">准备读取地图资源…</small>
             <button id="world-loading-retry" type="button" hidden>重试</button>
+            <details id="world-loading-diagnostics" hidden><summary>查看失败或等待中的文件</summary><pre id="world-loading-diagnostic-text"></pre><button id="world-loading-copy" type="button">复制诊断信息</button></details>
           </div>
         </div>
         <img id="world-map" alt="原版地图背景">
@@ -5323,6 +5323,30 @@
       if(app.mapLoading)scheduleMapLoadingProgress();
     },500);
   }
+  function mapLoadingDiagnosticText(){
+    const now=Date.now(),cache=app.mapLayerCache,lines=[`地图 ${app.floor} · ${app.mapLoadingStats?.phase||"加载中"}`];
+    const required=new Set([...(cache?.required||[]),...(cache?.failed||[]),...(cache?.missing||[])]);
+    for(const actor of app.actors?.values?.()||[])if(actor?._pendingFrameFile)required.add(actor._pendingFrameFile);
+    const records=[];
+    for(const file of required){
+      const image=assetState.images.get(file);
+      if(mapImageReady(image))continue;
+      const url=assetURL(file),error=assetState.resourceErrors?.get(url);
+      const failed=Boolean(image?._assetFailed||cache?.failed?.has(file)||cache?.missing?.has(file));
+      const waited=Math.max(0,Math.floor((now-Number(image?._assetRequestedAt||app.mapLoadingStartedAt||now))/1000));
+      const reason=error?(error.status?`HTTP ${error.status}`:error.message):failed?"浏览器报告图片失败，未提供具体原因":image?._assetPhase==="source"?"等待本地缓存准备":"等待图片加载完成回调";
+      records.push({failed,text:`${failed?"失败":"等待"} ${waited}s · ${reason}\n${url}`});
+    }
+    records.sort((a,b)=>Number(b.failed)-Number(a.failed));
+    lines.push(...records.map(record=>record.text));
+    for(const [ready,failed,url] of [
+      [assetState.manifestReady,assetState.manifestFailed,ASSET_MANIFEST_URL],
+      [assetState.fieldBootstrapSpritesReady||assetState.spritesReady,assetState.fieldBootstrapSpritesFailed,FIELD_BOOTSTRAP_SPRITE_MANIFEST_URL]
+    ])if(!ready)lines.push(`${failed?"失败":"等待"} 资源清单\n${url}`);
+    if(cache?.rasterFailed)lines.push("失败：地图画布绘制未完成");
+    if(!records.length&&cache?.rasterScheduled)lines.push(`等待地图绘制：${cache.rasterIndex||0}/${cache.groundCells?.length||0}`);
+    return lines.join("\n\n");
+  }
   function renderMapLoadingProgress(text=""){
     const progress=$("world-loading-progress"),bar=$("world-loading-progress-bar"),detail=$("world-loading-detail"),retry=$("world-loading-retry");
     if(!progress||!bar||!detail)return;
@@ -5359,7 +5383,7 @@
     else bar.style.width=`${percent}%`;
     /* Raster/image callbacks can arrive after setMapLoading(false) has
        published the completed state.  They still call this helper with a
-       transient phase label (for example “正在解码地图贴片…”), but the
+       transient phase label (for example “正在加载地图图片…”), but the
        loading surface is no longer active at that point.  Do not let those
        late callbacks resurrect a stale loading phase in the observable
        progress snapshot; the native client considers the map ready once the
@@ -5375,7 +5399,7 @@
            response behind a proxy.  Keep reporting the bytes already read
            in that case instead of falling back to an unexplained spinner. */
         :`资源清单已接收 ${formatLoadingBytes(stats.manifestBytes)}（总量未知）`)
-      :(hasTotal?`贴片 ${stats.done}/${stats.total}`:"正在统计地图贴片");
+      :(hasTotal?`图片 ${stats.loaded}/${stats.total}${stats.failed?` · 失败 ${stats.failed}`:""}`:"正在统计地图贴片");
     const bootstrapText=bootstrapPending
       ?(assetState.fieldBootstrapSpritesFailed&&assetState.spritesFailed?" · 人物资源加载失败，请点击重试":bootstrapHasTotal?` · 首屏人物 ${formatLoadingBytes(stats.fieldBootstrapBytes)} / ${formatLoadingBytes(stats.fieldBootstrapTotalBytes)}`:" · 正在读取首屏人物")
       :"";
@@ -5391,9 +5415,12 @@
     const previous=app.mapLoadingStats||{};
     const lastProgressAt=progressKey!==previous.lastProgressKey?now:Number(previous.lastProgressAt)||now;
     const stalled=Boolean(startedAt&&now-lastProgressAt>=15000&&(!hasTotal||stats.pending>0||manifestPending||bootstrapPending||actorStats?.pending>0));
-    const retryVisible=Boolean((stalled||(bootstrapPending&&assetState.fieldBootstrapSpritesFailed&&assetState.spritesFailed))&&app.mapLoading&&app.phase==="world");
+    const retryVisible=Boolean((stalled||stats.failed>0||assetState.manifestFailed||app.mapLayerCache?.rasterFailed||(bootstrapPending&&assetState.fieldBootstrapSpritesFailed&&assetState.spritesFailed))&&app.mapLoading&&app.phase==="world");
     detail.textContent=`${suffix}${bootstrapText}${actorText}${byteText}${elapsed>0?` · ${elapsed}s`:""}${stalled?" · 资源响应较慢":""}`;
     if(retry){retry.hidden=!retryVisible;retry.setAttribute("aria-hidden",retryVisible?"false":"true");}
+    const diagnostics=$("world-loading-diagnostics"),diagnosticText=$("world-loading-diagnostic-text");
+    if(diagnostics)diagnostics.hidden=!retryVisible;
+    if(diagnosticText&&retryVisible)diagnosticText.textContent=mapLoadingDiagnosticText();
     /* The character-entry shutter sits above #world-screen, so the normal
        NOW LOADING panel is covered while that fold is held. Mirror its live
        text/progress into the top-level transition plate so slow first loads
@@ -5579,7 +5606,7 @@
       return;
     }
     if(failed>0){setMapLoading(true,`地图贴片加载失败（${failed}），等待资源…`);}
-    else renderMapLoadingProgress(`正在解码地图贴片…`);
+    else renderMapLoadingProgress(`正在加载地图图片…`);
   }
   function send(functionName,values) {
     /* Keep the 2.5 wire boundary at the last common send helper as well as
@@ -5753,6 +5780,13 @@
   }
   function receiveAssetWorkerMessage(event){
     const data=event?.data||{};
+    if(data.type==="asset-error"){
+      const file=assetFileFromURL(data.url);if(!file)return;
+      if(!(assetState.resourceErrors instanceof Map))assetState.resourceErrors=new Map();
+      assetState.resourceErrors.set(assetURL(file),{status:Number(data.status)||0,message:String(data.message||"请求失败").slice(0,300)});
+      if(assetState.resourceErrors.size>256)assetState.resourceErrors.delete(assetState.resourceErrors.keys().next().value);
+      return;
+    }
     if(data.type!=="asset-progress")return;
     const file=assetFileFromURL(data.url),size=Number(data.size)||0;
     if(file&&size>0)rememberAssetResourceSize(file,size);
@@ -6017,7 +6051,7 @@
          still waits for one complete window, avoiding per-image repaints. */
       if(refreshMapLayerParts(cache,file)&&mapLayerCacheUsable(app.mapLayerFallback))scheduleAssetRefresh(true);
     }
-    renderMapLoadingProgress(failed?"正在重试地图贴片…":"正在解码地图贴片…");
+    renderMapLoadingProgress(failed?"正在重试地图贴片…":"正在加载地图图片…");
     if(cache.pending.size===0)scheduleAssetRefresh(true);
     return true;
   }
@@ -6034,10 +6068,12 @@
          deployment CORS rule therefore pairs with anonymous image loading;
          same-origin development assets continue to work unchanged. */
       image=new Image();image.crossOrigin="anonymous";image.decoding="async";
+      image._assetRequestedAt=Date.now();image._assetPhase="source";
       image.onload=()=>{
+        image._assetPhase="ready";assetState.resourceErrors?.delete(assetURL(file));
         rememberAssetResourceSize(file,assetNetworkBytes(file));
         const settled=settleMapAsset(file,false);
-        renderMapLoadingProgress("正在解码地图贴片…");
+        renderMapLoadingProgress("正在加载地图图片…");
         /* The loading curtain deliberately hides the back-buffer until the
            complete M window is resident.  Re-rasterising the whole scene for
            every one of hundreds of tile onload callbacks only starves the
@@ -6048,15 +6084,15 @@
         const cache=app.mapLayerCache;
         if(!mapAsset||!cache||cache.pending.size===0)scheduleAssetRefresh(settled&&(!cache||cache.pending.size===0));
       };
-      image.onerror=()=>{image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
+      image.onerror=()=>{image._assetPhase="failed";image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
       assetState.images.set(file,image);
       /* Keep the old localStorage tile cache useful by migrating it into the
          worker's fixed-URL CacheStorage entry before the browser can request
          the CDN URL.  No temporary URL is ever assigned to an image. */
       prepareAssetSource(file).then(source=>{
         if(assetState.images.get(file)!==image||image._assetFailed)return;
-        image.src=source;
-      }).catch(()=>{image.src=assetURL(file);});
+        image._assetPhase="image";image.src=source;
+      }).catch(()=>{image._assetPhase="image";image.src=assetURL(file);});
     }
     return image;
   }
@@ -17269,7 +17305,7 @@
       cache.groundCells=null;cache.rasterScheduled=false;cache.rasterComplete=true;
       cache.dirty=cache.pending.size>0||cache.failed.size>0||cache.missing.size>0;
       cache.ready=!cache.dirty;
-      if(mapLayerCacheUsable(cache)){app.mapLayerFallback=null;renderMapLoadingProgress("正在解码地图贴片…");scheduleAssetRefresh(true);}
+      if(mapLayerCacheUsable(cache)){app.mapLayerFallback=null;renderMapLoadingProgress("正在加载地图图片…");scheduleAssetRefresh(true);}
     };
     enqueue(pump);
   }
@@ -19863,6 +19899,11 @@
   });
   document.querySelectorAll("#world-actions [data-dir]").forEach(button=>button.addEventListener("click",()=>move(Number(button.dataset.dir)))); $("attack").addEventListener("click",()=>beginBattleAction({kind:"attack"})); $("guard").addEventListener("click",()=>battleCommand("G")); $("escape").addEventListener("click",()=>battleCommand("E"));
   $("world-loading-retry")?.addEventListener("click",retryMapLoading);
+  $("world-loading-copy")?.addEventListener("click",async()=>{
+    const button=$("world-loading-copy");
+    try{await navigator.clipboard.writeText(mapLoadingDiagnosticText());button.textContent="已复制";}
+    catch(_){button.textContent="请长按上方文字复制";}
+  });
  $("chat-form").addEventListener("submit",async event=>{event.preventDefault();const input=$("chat-input");normalizeChatInputValue(input);const rawText=String(input.value||""),text=rawText.trim();if(!text||(app.phase!=="world"&&app.phase!=="battle"))return;try{const x=Number(app.position[0])||0,y=Number(app.position[1])||0;
     /* Keep the original buffer for TK.  The native chat path only rejects a
        zero-length line; it does not trim command arguments before

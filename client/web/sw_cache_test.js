@@ -397,6 +397,53 @@ async function assertPreviousCacheMigrationIsBackgrounded() {
   await h.waitBackground();
 }
 
+async function assertAssetErrorsReportHttpAndNetworkFailures() {
+  const httpURL = "https://game.test/assets/missing.png";
+  const http = harness({fetchFactory: () => new Response("missing", {status: 404, statusText: "Not Found"})});
+  const httpEvent = http.startDispatch(httpURL, {clientId: "client-http", destination: "image"});
+  const httpResponse = await httpEvent.responsePromise;
+  assert.equal(httpResponse.status, 404, "HTTP failures must still reach the image request");
+  await new Promise(resolve => setImmediate(resolve));
+  const httpError = http.messages().find(message => message.type === "asset-error");
+  assert.ok(httpError, "HTTP image failures must emit an asset-error message");
+  assert.equal(httpError.url, httpURL, "HTTP image failures must identify the URL");
+  assert.equal(httpError.status, 404, "HTTP image failures must identify the status");
+  assert.equal(httpError.message, "HTTP 404", "HTTP image failures must identify the response");
+
+  const indexHTTPURL = "https://game.test/assets/missing.json";
+  const indexHTTP = harness({fetchFactory: () => new Response("missing", {status: 503, statusText: "Unavailable"})});
+  const indexHTTPEvent = indexHTTP.startDispatch(indexHTTPURL, {clientId: "client-index-http"});
+  const indexHTTPResponse = await indexHTTPEvent.responsePromise;
+  assert.equal(indexHTTPResponse.status, 503, "network-first HTTP failures must still reach the index request");
+  await new Promise(resolve => setImmediate(resolve));
+  const indexHTTPError = indexHTTP.messages().find(message => message.type === "asset-error");
+  assert.ok(indexHTTPError, "network-first HTTP failures must emit an asset-error message");
+  assert.equal(indexHTTPError.url, indexHTTPURL, "network-first HTTP failures must identify the URL");
+  assert.equal(indexHTTPError.status, 503, "network-first HTTP failures must identify the status");
+
+  const networkURL = "https://game.test/assets/offline.png";
+  const network = harness({fetchFactory: () => { throw new Error("cdn offline"); }});
+  const networkEvent = network.startDispatch(networkURL, {clientId: "client-network", destination: "image"});
+  await assert.rejects(networkEvent.responsePromise, /cdn offline/);
+  await new Promise(resolve => setImmediate(resolve));
+  const networkError = network.messages().find(message => message.type === "asset-error");
+  assert.ok(networkError, "network image failures must emit an asset-error message");
+  assert.equal(networkError.url, networkURL, "network image failures must identify the URL");
+  assert.equal(networkError.status, 0, "network image failures must use status zero");
+  assert.equal(networkError.message, "Error: cdn offline", "network image failures must preserve the error string");
+
+  const indexNetworkURL = "https://game.test/assets/offline.json";
+  const indexNetwork = harness({fetchFactory: () => { throw new Error("index offline"); }});
+  const indexNetworkEvent = indexNetwork.startDispatch(indexNetworkURL, {clientId: "client-index-network"});
+  await assert.rejects(indexNetworkEvent.responsePromise, /index offline/);
+  await new Promise(resolve => setImmediate(resolve));
+  const indexNetworkError = indexNetwork.messages().find(message => message.type === "asset-error");
+  assert.ok(indexNetworkError, "network-first network failures must emit an asset-error message");
+  assert.equal(indexNetworkError.url, indexNetworkURL, "network-first network failures must identify the URL");
+  assert.equal(indexNetworkError.status, 0, "network-first network failures must use status zero");
+  assert.equal(indexNetworkError.message, "Error: index offline", "network-first network failures must preserve the error string");
+}
+
 (async () => {
   /* JSON indexes use network-first and binary assets use cache-first. */
   await assertCacheFailureIsOptional("https://game.test/assets/field-bootstrap-sprites.json");
@@ -423,6 +470,7 @@ async function assertPreviousCacheMigrationIsBackgrounded() {
   await assertCloneFailureSettlesSubscribers();
   await assertInFlightSurvivesDeferredCacheWrite();
   await assertPreviousCacheMigrationIsBackgrounded();
+  await assertAssetErrorsReportHttpAndNetworkFailures();
 
   const opaqueURL = "https://game.test/assets/prefetched.png";
   const opaque = harness();
