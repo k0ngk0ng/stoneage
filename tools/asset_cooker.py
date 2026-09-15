@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract the 2.5 indexed graphics used by the mobile client.
+"""Decode preserved client graphics for Web asset extraction and offline tools.
 
 The preserved Windows client stores its pictures in a pair of files:
 
@@ -8,7 +8,7 @@ The preserved Windows client stores its pictures in a pair of files:
 
 The old 1.82 source is used here as a format reference only.  This script is
 an independent, bounds-checked decoder and emits ordinary RGBA PNG files plus
-JSON metadata that a mobile renderer can consume.  It deliberately extracts a
+JSON metadata for asset tooling.  It deliberately extracts a
 small, deterministic slice (map 1006, selected sprites and one battle map) so
 the client does not ship the 764 MB source archive.
 """
@@ -515,7 +515,7 @@ def paint_isometric(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-root", type=Path, default=Path("runtime/legacy-client"))
-    parser.add_argument("--output", type=Path, default=Path("client/mobile/assets/generated"))
+    parser.add_argument("--output", type=Path, default=Path("build/legacy-assets"))
     parser.add_argument(
         "--map",
         type=int,

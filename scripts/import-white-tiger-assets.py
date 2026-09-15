@@ -17,7 +17,7 @@ import sys
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "client/mobile/tools"))
+sys.path.insert(0, str(ROOT / "tools"))
 from asset_cooker import AssetError, parse_adrn, read_sprite_animations, read_sprite_index, sha256
 
 

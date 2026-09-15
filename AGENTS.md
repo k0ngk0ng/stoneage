@@ -1,3 +1,11 @@
+# 客户端维护范围
+
+- 当前客户端统一使用 `client/web`，桌面与手机均通过浏览器访问；客户端功能、界面和移动端适配都在该目录维护。
+- `client/mobile` 的 Godot 原型已清理，不再恢复或新增独立移动客户端。
+- `runtime/legacy-client` 等 legacy 目录中的旧客户端仅作为历史版本，供协议、行为及资源格式参考，不作为当前客户端开发入口。此规则仅针对客户端；`server/legacy` 中的现用服务端仍按项目需要维护。
+- Web 资源提取与导入所需的公共解码器位于 `tools/asset_cooker.py`；相关工具复用该模块，不依赖已清理的客户端目录。临时提取、分析及转换产物写入 `build/`。
+- 核查或导入宠物、骑乘、精灵及地图资源时，使用项目技能 [stoneage-client-assets](.agents/skills/stoneage-client-assets/SKILL.md)；白虎的已验证来源、映射和导入步骤见该技能的参考文档。
+
 # 原版参考目录
 
 - 用户指定的 8.5 原版客户端参考目录为 `~/Sources/github.com/anson1788/stoneage`。核查 8.5 行为、宠物和骑乘资源时，优先检查该完整目录。

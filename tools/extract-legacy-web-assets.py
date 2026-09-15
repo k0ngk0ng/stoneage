@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Build the browser asset pack directly from the preserved sa_2903 data.
 
-This intentionally does not consume images from client/mobile.  The browser
-pack is a reproducible selection of the original indexed graphics plus
+The browser pack is a reproducible selection of the original indexed graphics plus
 source-rendered field and battle viewports from the sa_2903 data set.
 """
 
@@ -17,7 +16,7 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-COOKER = REPO / "client" / "mobile" / "tools"
+COOKER = REPO / "tools"
 sys.path.insert(0, str(COOKER))
 import asset_cooker as legacy  # noqa: E402  (the decoder is shared, output is not)
 

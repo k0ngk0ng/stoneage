@@ -2,15 +2,14 @@
 
 让经典《石器时代》重新成为一套可维护、可联网、可在现代 macOS 与 Windows 上运行的游戏。
 
-当前可玩基线已经固定为 **StoneAge 2.5**：保存下来的 32 位 Windows
-客户端经兼容补丁后，在 Apple Silicon macOS 的 Wine 11 中可连接容器内的
-Linux 2.5 服务端。旧档案只作为只读输入；日常运行不再依赖移动硬盘。
+当前客户端统一使用 [`client/web`](client/web/README.md)，覆盖桌面与手机浏览器。
+`runtime/legacy-client` 等 legacy 目录中的旧客户端仅作为历史版本，供协议、行为和资源格式参考；当前服务端基线为 **StoneAge 2.5**。
 
 浏览器 Web 后端是 Go（`client/web`），不是 Node.js；页面前端是随 Go 二进制嵌入的
 HTML/CSS/JavaScript。Web 进程只负责游戏协议和公开静态资源 URL，对象存储上传由独立的
 `stoneage-assets-sync` 控制面命令完成。
 
-## 已验证状态（2026-08-13）
+## 历史客户端验证记录（2026-08-13）
 
 - macOS 26.5.2 / Apple Silicon / Wine 11：登录、人物、地图、移动、聊天、
   多人、宠物、物品及完整战斗均已通过实机验证。
@@ -28,7 +27,7 @@ HTML/CSS/JavaScript。Web 进程只负责游戏协议和公开静态资源 URL�
 - 发布服务端使用独立 SQLite 认证库（Argon2id 密码哈希、管理员会话、审计日志），
   SAAC 仍保存人物、邮件和家族平面文件。SQLite 不替代角色目录，也不需要 MySQL。
 
-## macOS 一键运行
+## 历史客户端本地参考环境（macOS）
 
 首次需要 Docker Desktop、Go、Wine 11，以及已经保存在本目录中的
 `vendor/`、`assets/client/` 资产。随后执行：

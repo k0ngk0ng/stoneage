@@ -17,7 +17,7 @@
 
 协议/指令的逐项差异（包括 `PMSG` 宠物邮件和场景 `PS` 宠物技能的专用网页入口）见 [`COMMAND_AUDIT.md`](COMMAND_AUDIT.md)。
 
-目标二进制的已知 SHA-256 是 `9abb989b207d2db6eeb0a95fbc13cfb681eca8a20e9ddc169edb64a03497a3ee`；网页不加载或执行 exe，也不依赖 `client/mobile` 的 Godot 场景。服务器只把网页生成的包原样转给现有 TCP 网关。
+目标二进制的已知 SHA-256 是 `9abb989b207d2db6eeb0a95fbc13cfb681eca8a20e9ddc169edb64a03497a3ee`；网页不加载或执行 exe。服务器只把网页生成的包原样转给现有 TCP 网关。
 
 登录页左下角以低调的灰褐色显示当前程序发布版本（例如 `v0.1.23`），来自镜像或二进制构建时注入的 Git tag；本地开发显示 `dev`，与资源包版本独立。
 
@@ -58,7 +58,7 @@ TCP 上游改为本机路径后运行 `go run . -config /path/to/web.toml`；也
 `STONEAGE_WEB_CONFIG=/path/to/web.toml`。文件中的未知字段、非法对象存储 endpoint、
 不完整的 endpoint/bucket 组合和非法 CDN URL 都会让服务在启动时直接报错。
 
-从仓库的 `client/web` 目录启动时，`STONEAGE_WEB_ASSETS` 默认就是 `assets/original`。这组资源直接从 `runtime/legacy-client/sa_2903.exe` 的伴随数据（`real_15.bin`、`adrn_15.bin`、`spr_4.bin`、`spradrn_5.bin`、地图和 `Palet_1.sap`）提取，不引用 `/client/mobile` 的图片；所有已同步的地图、物件、角色和战斗场景都使用原版索引与位图。部署到别的目录时请显式设置该变量。资源通过只读 `/assets/` 路径提供，不接受浏览器指定任意目录。
+从仓库的 `client/web` 目录启动时，`STONEAGE_WEB_ASSETS` 默认就是 `assets/original`。这组资源直接从 `runtime/legacy-client/sa_2903.exe` 的伴随数据（`real_15.bin`、`adrn_15.bin`、`spr_4.bin`、`spradrn_5.bin`、地图和 `Palet_1.sap`）提取；所有已同步的地图、物件、角色和战斗场景都使用原版索引与位图。部署到别的目录时请显式设置该变量。资源通过只读 `/assets/` 路径提供，不接受浏览器指定任意目录。
 
 `static.cdn.base_url` 是公开静态资源根地址；`STONEAGE_WEB_CDN_BASE_URL` 仅保留为应急环境变量覆盖。设置后，返回给浏览器的页面会把 `/assets/`、`/maps/` 和 `/audio/` 改写为这个根地址下的同名目录；`/api/sessions`、`/api/npcs` 等动态接口不会改写。`static.oss` 保存对象存储的 provider、endpoint、region、bucket、固定 prefix；provider 支持 `aliyun-oss` 和 `cloudflare-r2`。AK/SK 不写在 TOML，而是仅作为 Docker secret 文件注入批量资源同步工具，Web 游戏进程不会读取或上传。如果配置了阿里云 OSS 而未配置 CDN，Web 后端会自动使用 `https://<bucket>.<endpoint>/<prefix>` 作为公开资源根地址；R2 的 S3 endpoint 默认需要签名，必须配 Cloudflare CDN 自定义域名。CDN 基址只接受不含账号、查询串和片段的绝对 HTTP(S) URL，末尾斜线会自动去除；对象存储 endpoint/bucket 必须同时设置。生产部署应使用 HTTPS 和固定资源根目录，CDN 路径和存储 prefix 都不带 tag，发布时增量同步；JSON 清单使用短缓存或 `no-cache`，PNG、地图和音频可长期缓存，同名二进制确实发生变化时刷新对应 CDN URL。CDN/对象存储源站还需为网页域名配置 CORS 和 `Timing-Allow-Origin`（下载进度需要）。存储和 CDN 都未设置时仍由当前 Web 进程提供本地文件，便于开发和故障排查。
 
