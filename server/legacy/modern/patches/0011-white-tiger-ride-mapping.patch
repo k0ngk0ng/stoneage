@@ -1,7 +1,6 @@
 --- a/char/family.c
 +++ b/char/family.c
-@@ -2250,5 +2250,20 @@
-   }
+@@ -2251,4 +2251,19 @@
  }
  
 +#ifdef _NEW_RIDEPETS
@@ -21,13 +20,12 @@
 +
  void FAMILY_RidePet( int fd, int meindex, char* message )
  {
-@@ -2373,4 +2373,8 @@
- 			}
+@@ -2374,4 +2389,8 @@
  
  #ifdef _NEW_RIDEPETS
-+				if( rideGraNo == 0 )
-+					rideGraNo = STONEAGE_getWhiteTigerRideNo(
++			if( rideGraNo == 0 )
++				rideGraNo = STONEAGE_getWhiteTigerRideNo(
 +					CHAR_getInt( meindex, CHAR_BASEBASEIMAGENUMBER ),
 +					CHAR_getInt( petindex, CHAR_BASEBASEIMAGENUMBER ) );
- 				if( rideGraNo == 0 )	{
- 					int ti=-1, index, image=-1;
+ 			if( rideGraNo == 0 )	{
+ 				int ti=-1, index, image=-1;

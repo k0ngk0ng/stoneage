@@ -152,12 +152,15 @@ def main() -> None:
         target = temp_path / "src/gmsv/char/family.c"
         target.parent.mkdir(parents=True)
         target.write_bytes(source)
-        subprocess.run(
-            ["patch", "--batch", "--forward", "-d", str(temp_path / "src/gmsv"), "-p1"],
-            input=patch,
-            cwd=ROOT,
-            check=True,
-        )
+        # Match the production patch order and require exact context. BSD patch
+        # otherwise accepts malformed/indented hunks that GNU patch rejects in CI.
+        for payload in (PATCH.with_name("0010-safe-ride-level-guard.patch").read_bytes(), patch):
+            subprocess.run(
+                ["patch", "--batch", "--forward", "--fuzz=0", "-d", str(temp_path / "src/gmsv"), "-p1"],
+                input=payload,
+                cwd=ROOT,
+                check=True,
+            )
         patched = target.read_bytes().decode("latin1")
         if "STONEAGE_WHITE_TIGER_RIDE" not in patched:
             raise AssertionError("white-tiger ride patch marker was not applied")
