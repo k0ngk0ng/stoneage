@@ -285,6 +285,14 @@ async function main() {
   assert.deepEqual(players.parseFixedPoint("12.34"), {value: 1234});
   assert.deepEqual(players.parseFixedPoint("-0.5"), {value: -50});
   assert(players.parseFixedPoint("12.345").error, "more than two decimal places are rejected");
+  assert.equal(players.formatPetCharm(300), "30.0");
+  assert.equal(players.formatPetLuck(10000), "100.00");
+  assert.deepEqual(players.parsePetCharm("31.5"), {value: 315});
+  assert.deepEqual(players.parsePetLuck("-100.00"), {value: -10000});
+  assert.deepEqual(players.parsePetLuck("1e2"), {value: 10000});
+  assert(players.numberOrString({value: "1.5", dataset: {numeric: "true"}}).error,
+    "ordinary integer fields reject fractional values");
+  assert.deepEqual(players.numberOrString({value: "1e1", dataset: {numeric: "true"}}), {value: 10});
 
   const fixture = makeFetcher();
   const page = makeHarness(fixture.fetcher);
@@ -387,6 +395,16 @@ async function main() {
   click(page.catalogResults.querySelector(".catalog-entry"));
   const quantity = page.catalogSelection.querySelector("input");
   const location = page.catalogSelection.querySelector("select");
+  assert.equal(quantity.type, "number", "grant quantity is a native number input");
+  assert.equal(quantity.min, "1", "grant quantity has a lower bound");
+  assert.equal(quantity.step, "1", "grant quantity only steps by whole numbers");
+  assert.equal(page.catalogSelection.querySelectorAll(".quantity-step").length, 2,
+    "grant quantity has visible increment and decrement controls");
+  quantity.value = "1.5";
+  submit(page.catalogSelection.querySelector("form"));
+  assert.match(page.document.getElementById("player-load-state").textContent, /整数数量/,
+    "fractional grant quantities show an integer error");
+  quantity.value = "1";
   assert.equal(quantity.max, "14", "item quantity accounts for occupied backpack slots");
   location.value = "warehouse";
   location.dispatchEvent({type: "change"});

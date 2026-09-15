@@ -177,6 +177,32 @@ func TestPetDefinitionsExposeGrowthBytesAndBoundRank(t *testing.T) {
 	}
 }
 
+func TestPetAIBoundsPreserveRawScale(t *testing.T) {
+	var definitions map[string]Attribute
+	definitions = make(map[string]Attribute)
+	for _, definition := range Definitions("pet") {
+		definitions[definition.Key] = definition
+	}
+	if got := definitions["chr"]; got.Min != 0 || got.Max != 1000000 {
+		t.Fatalf("pet chr bounds = %d..%d, want 0..1000000", got.Min, got.Max)
+	}
+	if got := definitions["luc"]; got.Min != -10000 || got.Max != 10000 {
+		t.Fatalf("pet luc bounds = %d..%d, want -10000..10000", got.Min, got.Max)
+	}
+	if err := ValidateAttribute("pet", "chr", 0); err != nil {
+		t.Fatalf("raw zero chr rejected: %v", err)
+	}
+	if err := ValidateAttribute("pet", "chr", 1000000); err != nil {
+		t.Fatalf("canonical max chr rejected: %v", err)
+	}
+	if err := ValidateAttribute("pet", "chr", 1000001); err == nil {
+		t.Fatal("pet chr accepted a value above canonical MODAI max")
+	}
+	if err := ValidateAttribute("character", "chr", 101); err == nil {
+		t.Fatal("character chr accepted a pet-only value")
+	}
+}
+
 func TestCP936TrailBytesAreNotDelimitersOrEscapes(t *testing.T) {
 	// Both pairs are valid CP936 characters whose trail byte is ASCII punctuation.
 	data := []byte{'n', 'a', 'm', 'e', '=', 0x81, 0x5c, 0x81, 0x7c, '\n', 'g', 'l', 'd', '=', '1', '\n'}

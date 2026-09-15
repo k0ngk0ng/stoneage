@@ -108,6 +108,13 @@ func Definitions(kind string) []Attribute {
 			result = append(result, a)
 		case "chr":
 			a.Label = "忠诚基础"
+			// CHAR_MODAI is the pet's raw AI denominator.  Unlike a player
+			// charm value it is sourced from enemybase.txt, where template 524
+			// reaches 1,000,000.  Zero is retained because the legacy
+			// compliance calculation treats it as the default denominator
+			// without changing the stored field.
+			a.Min = 0
+			a.Max = 1000000
 			result = append(result, a)
 		case "luc":
 			a.Label = "忠诚变化"

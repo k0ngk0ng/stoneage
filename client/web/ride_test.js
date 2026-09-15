@@ -6,7 +6,7 @@ const digits='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function encode62(n){let s='';do{s=digits[n%62]+s;n=Math.floor(n/62);}while(n);return s;}
 const packets=[],messages=[],timers=new Map();let timerID=0;
 const app={phase:'world',battle:false,position:[1,1],transport:{},pc:{ridePet:-1,learnRide:200},petSlots:[{name:'骑宠',ai:100,level:1,hp:100}],selectedPet:-1,petMailNo:-1,status:{standbyPetMask:0}};
-const context=vm.createContext({app,Number,String,Object,Math,Boolean,Protocol:{base62:s=>[...s].reduce((a,c)=>a*62+digits.indexOf(c),0)},stateNumber:Number,unescapeCharacterOption:s=>s,window:{setTimeout:fn=>{timers.set(++timerID,fn);return timerID;},clearTimeout:id=>timers.delete(id)},mapMovementBlocked:()=>false,renderPets(){},setWorldState:(...v)=>messages.push(v),reportError:e=>{throw e},fieldSend:async(...v)=>{packets.push(JSON.parse(JSON.stringify(v)));return true},send:async(...v)=>{packets.push(JSON.parse(JSON.stringify(v)));return true}});
+const context=vm.createContext({app,Number,String,Object,Math,Boolean,Protocol:{base62:s=>[...s].reduce((a,c)=>a*62+digits.indexOf(c),0)},stateNumber:Number,unescapeCharacterOption:s=>s,window:{setTimeout:fn=>{timers.set(++timerID,fn);return timerID;},clearTimeout:id=>timers.delete(id)},mapMovementBlocked:()=>false,renderPets(){},renderBattle(){},setStatus(){},addChat(){},setWorldState:(...v)=>messages.push(v),reportError:e=>{throw e},fieldSend:async(...v)=>{packets.push(JSON.parse(JSON.stringify(v)));return true},send:async(...v)=>{packets.push(JSON.parse(JSON.stringify(v)));return true}});
 vm.runInContext(between('  const PC_FIELDS=','  const PET_FIELDS='),context);
 vm.runInContext(between('  function petDisplayName(','  function petAttributeBitmap('),context);
 vm.runInContext(between('  function applyMaskedFields(','  /* CHAR_makeStatusString'),context);
@@ -15,14 +15,28 @@ vm.runInContext('function receiveP(data){const parts=data.split("|"),kind=parts[
 (async()=>{
  // Follow MENU.CPP's actual state-button path, not a separate mount shortcut.
  context.activatePetMenuState(0);assert.equal(context.petMenuState(0).key,'standby');
- context.activatePetMenuState(0);assert.deepEqual(packets.at(-1),['KS',[0]]);app.selectedPet=0;
- context.activatePetMenuState(0);assert.deepEqual(packets.at(-1),['KS',[-1]]);app.selectedPet=-1;
+ context.activatePetMenuState(0);assert.deepEqual(packets.at(-1),['KS',[0]]);assert.equal(app.petActionRequest.slot,0);
+ const ksCount=packets.length;context.activatePetMenuState(0);assert.equal(packets.length,ksCount,'pending KS clicks are deduplicated');
+ context.receivePetBattleStatus(0,1);assert.equal(app.selectedPet,0);assert.equal(app.petActionRequest,null);
+ context.activatePetMenuState(0);assert.deepEqual(packets.at(-1),['KS',[-1]]);assert.equal(app.petActionRequest.slot,-1);
+ context.receivePetBattleStatus(-1,1);assert.equal(app.selectedPet,-1);
  assert.equal(context.petMenuState(0).key,'mail');context.activatePetMenuState(0);await Promise.resolve();
  assert.deepEqual(packets.at(-1),['FM',['R|P|0']]);assert.equal(app.pc.ridePet,-1,'request must not optimistically mount');
  const count=packets.length;context.activatePetMenuState(0);assert.equal(packets.length,count,'pending clicks are deduplicated');
  context.receiveP('P'+encode62(1<<27)+'|0');assert.equal(context.petMenuState(0).key,'ride');assert.equal(context.petMenuState(0).bitmap,234536);assert.equal(app.rideRequest,null);
- context.activatePetMenuState(0);await Promise.resolve();assert.deepEqual(packets.at(-1),['FM',['R|P|-1']]);assert.equal(app.pc.ridePet,0);
+ context.activatePetMenuState(0);await Promise.resolve();assert.deepEqual(packets.at(-1),['FM',['R|P|-1']]);assert.equal(app.pc.ridePet,0,'dismount waits for the authoritative P reply');
  context.receiveP('P'+encode62(1<<27)+'|-1');assert.equal(context.petMenuState(0).key,'rest');assert.equal(timers.size,0);
+ // A rejected KS releases the latch and keeps the native intermediate state
+ // usable for a subsequent click.
+ app.status.standbyPetMask=0;app.petMailNo=-1;app.selectedPet=-1;
+ context.activatePetMenuState(0);context.activatePetMenuState(0);
+ const rejectCount=packets.length;assert.deepEqual(packets.at(-1),['KS',[0]]);
+ context.receivePetBattleStatus(0,0);assert.equal(app.petActionRequest,null);assert.equal(context.petMenuState(0).key,'standby');
+ context.activatePetMenuState(0);assert.equal(packets.length,rejectCount+1);assert.deepEqual(packets.at(-1),['KS',[0]]);
+ // A lost KS callback also releases the latch after the bounded timeout.
+ const timeout=timers.get(app.petActionRequest.timer);assert.equal(typeof timeout,'function');timeout();assert.equal(app.petActionRequest,null);timers.clear();
+ const timeoutCount=packets.length;context.activatePetMenuState(0);assert.equal(packets.length,timeoutCount+1);assert.deepEqual(packets.at(-1),['KS',[0]]);
+ context.receivePetBattleStatus(0,1);assert.equal(app.selectedPet,0);context.receivePetBattleStatus(-1,1);assert.equal(app.selectedPet,-1);
  // Native masks include transmigration before NAME; combined updates must
  // neither turn a name into a ride slot nor consume the wrong token.
  const mask=(1<<24)|(1<<25)|(1<<26)|(1<<27)|(1<<28)|(1<<29);

@@ -27,6 +27,12 @@
   };
   const FIXED_POINT_KEYS = {vi: true, str: true, tou: true, dx: true};
 
+  // Pet AI fields are stored as integer hundredths/tenths in the legacy
+  // character record.  Keep their display conversion separate from the
+  // player's chr/luc fields: player chr and luc remain ordinary 0..100
+  // attributes in the character editor.
+  const PET_SCALED_KEYS = {chr: {decimals: 1, step: "0.1"}, luc: {decimals: 2, step: "0.01"}};
+
   function valueText(value, fallback) {
     if (value === null || value === undefined || value === "") {
       return fallback === undefined ? "—" : fallback;
@@ -100,6 +106,26 @@
     }
   }
 
+  function validityError(input, fallback, stepFallback, rangeFallback, missingFallback, badInputFallback) {
+    const validity = input && input.validity;
+    if (!validity) {
+      return fallback;
+    }
+    if (validity.valueMissing) {
+      return missingFallback || "此项不能为空。";
+    }
+    if (validity.badInput) {
+      return badInputFallback || "请输入有效数字。";
+    }
+    if (validity.stepMismatch) {
+      return stepFallback || "请输入符合步长要求的数值。";
+    }
+    if (validity.rangeUnderflow || validity.rangeOverflow) {
+      return rangeFallback || "数值超出允许范围。";
+    }
+    return fallback;
+  }
+
   function entryKind(entry, fallback) {
     const kind = entry && entry.kind;
     return kind === "pet" || kind === "pet_skill" || kind === "item" ? kind : fallback || "item";
@@ -167,29 +193,90 @@
     return Number.isSafeInteger(number) ? number : null;
   }
 
+  // Number() accepts exponent notation (for example, 3e1), while the safe
+  // integer check rejects fractional values without silently truncating them.
+  // This is used for native integer fields, quantity, and skill slots.
+  function strictIntegerNumber(value) {
+    const text = String(value === undefined || value === null ? "" : value).trim();
+    if (!text) {
+      return null;
+    }
+    const number = Number(text);
+    return Number.isSafeInteger(number) ? number : null;
+  }
+
   // Character and pet vi/str/tou/dx values are stored as hundredths by the
   // game. Keep the conversion in string arithmetic so entering 12.34 always
   // produces the exact API value 1234. Item attributes use their own units.
-  function formatFixedPoint(value) {
+  function formatScaledPoint(value, decimals, preserveTrailing) {
     const parts = integerParts(value);
     if (!parts) {
       return valueText(value, "");
     }
-    const digits = parts.digits.length <= 2 ? parts.digits.padStart(3, "0") : parts.digits;
-    const integerPart = digits.slice(0, -2) || "0";
-    const fractionPart = digits.slice(-2).replace(/0+$/, "");
+    const digits = parts.digits.length <= decimals
+      ? parts.digits.padStart(decimals + 1, "0")
+      : parts.digits;
+    const integerPart = digits.slice(0, -decimals) || "0";
+    let fractionPart = digits.slice(-decimals);
+    if (!preserveTrailing) {
+      fractionPart = fractionPart.replace(/0+$/, "");
+    }
     return (parts.negative ? "-" : "") + integerPart + (fractionPart ? "." + fractionPart : "");
   }
 
-  function parseFixedPoint(value) {
+  function formatFixedPoint(value) {
+    return formatScaledPoint(value, 2, false);
+  }
+
+  function formatPetCharm(value) {
+    return formatScaledPoint(value, 1, true);
+  }
+
+  function formatPetLuck(value) {
+    return formatScaledPoint(value, 2, true);
+  }
+
+  function parseScaledPoint(value, decimals, syntaxError) {
     const text = String(value === undefined || value === null ? "" : value).trim();
-    const match = text.match(/^([+-]?)(\d+)(?:\.(\d{0,2}))?$/);
+    const match = text.match(/^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/);
     if (!match) {
-      return {error: "请输入整数或最多两位小数。"};
+      return {error: syntaxError};
     }
-    const whole = match[2].replace(/^0+/, "") || "0";
-    const fraction = (match[3] || "").padEnd(2, "0");
-    const digits = (whole + fraction).replace(/^0+/, "") || "0";
+    const whole = match[2] || "0";
+    const fraction = match[3] === undefined ? (match[4] || "") : match[3];
+    const exponent = match[5] ? Number(match[5]) : 0;
+    if (!Number.isSafeInteger(exponent)) {
+      return {error: "数值超出允许范围。"};
+    }
+    let digits = (whole + fraction).replace(/^0+/, "") || "0";
+    const decimalPlaces = fraction.length - exponent;
+    const discarded = decimalPlaces - decimals;
+    if (discarded > 0) {
+      if (discarded > digits.length) {
+        if (digits !== "0") {
+          return {error: syntaxError};
+        }
+        digits = "0";
+      } else {
+        const tail = digits.slice(-discarded);
+        if (/[^0]/.test(tail)) {
+          return {error: syntaxError};
+        }
+        digits = digits.slice(0, -discarded) || "0";
+      }
+    } else if (discarded < 0) {
+      const zeros = -discarded;
+      // Avoid constructing an unbounded string for an exponent that is
+      // already outside every supported attribute range.
+      if (zeros > 64) {
+        if (digits !== "0") {
+          return {error: "数值超出允许范围。"};
+        }
+        digits = "0";
+      } else {
+        digits += "0".repeat(zeros);
+      }
+    }
     const negative = match[1] === "-" && digits !== "0";
     const number = Number((negative ? "-" : "") + digits);
     if (!Number.isSafeInteger(number)) {
@@ -198,15 +285,66 @@
     return {value: number};
   }
 
+  function parseFixedPoint(value) {
+    return parseScaledPoint(value, 2, "请输入整数或最多两位小数。");
+  }
+
+  function parsePetCharm(value) {
+    return parseScaledPoint(value, 1, "请输入整数或最多一位小数。");
+  }
+
+  function parsePetLuck(value) {
+    return parseScaledPoint(value, 2, "请输入整数或最多两位小数。");
+  }
+
+  function petScaledAttribute(attribute, scope) {
+    if (scope !== "pet" || !attribute) {
+      return null;
+    }
+    const definition = PET_SCALED_KEYS[attribute.key];
+    if (!definition) {
+      return null;
+    }
+    return {
+      decimals: definition.decimals,
+      step: definition.step,
+      format: function (value) {
+        return attribute.key === "chr" ? formatPetCharm(value) : formatPetLuck(value);
+      },
+      parse: function (value) {
+        return attribute.key === "chr" ? parsePetCharm(value) : parsePetLuck(value);
+      }
+    };
+  }
+
+  function scaledAttribute(attribute, scope) {
+    const petAttribute = petScaledAttribute(attribute, scope);
+    if (petAttribute) {
+      return petAttribute;
+    }
+    if ((scope === "character" || scope === "pet") &&
+        Boolean(attribute && FIXED_POINT_KEYS[attribute.key])) {
+      return {
+        decimals: 2,
+        step: "0.01",
+        format: function (value) { return formatScaledPoint(value, 2, false); },
+        parse: function (value) { return parseScaledPoint(value, 2, "请输入整数或最多两位小数。"); }
+      };
+    }
+    return null;
+  }
+
   function fixedPointAttribute(attribute, scope) {
-    return (scope === "character" || scope === "pet") &&
-      Boolean(attribute && FIXED_POINT_KEYS[attribute.key]);
+    return Boolean(scaledAttribute(attribute, scope));
   }
 
   function numberOrString(input) {
     const value = String(input.value === undefined ? "" : input.value).trim();
     if (input.dataset && input.dataset.fixedPoint === "true") {
-      const converted = parseFixedPoint(value);
+      const decimals = input.dataset.scaleDecimals === undefined
+        ? 2 : Number(input.dataset.scaleDecimals);
+      const converted = parseScaledPoint(value, decimals,
+        "请输入整数或最多" + decimals + "位小数。");
       if (converted.error) {
         return converted;
       }
@@ -218,9 +356,9 @@
       return converted;
     }
     if (input.dataset && input.dataset.numeric === "true") {
-      const number = Number(value);
-      if (!Number.isFinite(number)) {
-        return {error: "请输入有效数字。"};
+      const number = strictIntegerNumber(value);
+      if (number === null) {
+        return {error: "请输入整数。"};
       }
       const min = input.dataset.min === "" ? null : finiteNumber(input.dataset.min, null);
       const max = input.dataset.max === "" ? null : finiteNumber(input.dataset.max, null);
@@ -264,6 +402,7 @@
     const editorDialog = document.getElementById("player-editor-dialog");
     const editorPanel = editorDialog && editorDialog.querySelector(".player-dialog-panel");
     const editorTitle = editorDialog && editorDialog.querySelector("#player-editor-dialog-title");
+    const editorError = editorDialog && editorDialog.querySelector("#player-editor-dialog-error");
     const editorContent = editorDialog && editorDialog.querySelector("#player-editor-dialog-content");
     const editorCancel = editorDialog && editorDialog.querySelectorAll("[data-player-editor-cancel]");
     const editorClose = editorDialog && editorDialog.querySelector("button[data-player-editor-cancel]");
@@ -298,6 +437,11 @@
       setText(loadState, message);
       loadState.classList.toggle("error", kind === "error");
       loadState.classList.toggle("success", kind === "success");
+      if (editorError) {
+        const error = kind === "error" ? valueText(message, "") : "";
+        setText(editorError, error);
+        editorError.hidden = !error;
+      }
     }
 
     function setOnlineStatus(online) {
@@ -327,6 +471,17 @@
       const submit = catalogSelection.querySelector("[data-catalog-mutate]");
       if (submit) {
         submit.disabled = busy || submit.dataset.capacityEmpty === "true";
+      }
+      const quantityControl = catalogSelection.querySelector(".quantity-input-control");
+      const quantity = quantityControl && quantityControl.querySelector("input");
+      const quantitySteps = catalogSelection.querySelectorAll(".quantity-step");
+      if (busy) {
+        quantitySteps.forEach(function (element) { element.disabled = true; });
+      } else if (quantity && quantitySteps.length >= 2) {
+        const available = strictIntegerNumber(quantity.max);
+        const count = strictIntegerNumber(quantity.value);
+        quantitySteps[0].disabled = available === null || available < 1 || count !== null && count >= available;
+        quantitySteps[1].disabled = available === null || available < 1 || count !== null && count <= 1;
       }
     }
 
@@ -397,9 +552,17 @@
 
     function closePossessionEditor() {
       if (editorDialog.hidden) {
+        if (editorError) {
+          editorError.hidden = true;
+          setText(editorError, "");
+        }
         return;
       }
       editorDialog.hidden = true;
+      if (editorError) {
+        editorError.hidden = true;
+        setText(editorError, "");
+      }
       clear(editorContent);
       state.editorPossession = null;
       const focus = state.editorPreviousFocus;
@@ -418,6 +581,10 @@
       }
       if (!editorDialog.hidden) {
         closePossessionEditor();
+      }
+      if (editorError) {
+        editorError.hidden = true;
+        setText(editorError, "");
       }
       state.editorPossession = possession;
       state.editorPreviousFocus = document.activeElement;
@@ -537,29 +704,49 @@
       const valueCell = makeElement(document, "dd");
       const form = makeElement(document, "form", "attribute-editor");
       const input = document.createElement("input");
-      const fixedPoint = fixedPointAttribute(attribute, options && options.scope);
-      input.type = "text";
-      input.value = fixedPoint ? formatFixedPoint(attribute.value) : valueText(attribute.value, "");
+      const scaled = scaledAttribute(attribute, options && options.scope);
+      const fixedPoint = Boolean(scaled);
+      input.type = scaled ? "number" : "text";
+      input.value = scaled ? scaled.format(attribute.value) : valueText(attribute.value, "");
       input.setAttribute("aria-label", valueText(attribute.label, attribute.key));
       input.dataset.fixedPoint = fixedPoint ? "true" : "false";
       const numeric = fixedPoint || typeof attribute.value === "number" || attribute.min !== undefined || attribute.max !== undefined;
       input.dataset.numeric = numeric ? "true" : "false";
+      if (scaled) {
+        input.dataset.scaleDecimals = String(scaled.decimals);
+      }
       if (attribute.min !== undefined && attribute.min !== null) {
         input.dataset.min = String(attribute.min);
       }
       if (attribute.max !== undefined && attribute.max !== null) {
         input.dataset.max = String(attribute.max);
       }
-      if (fixedPoint) {
-        input.step = "0.01";
+      if (scaled) {
+        input.step = scaled.step;
         input.setAttribute("inputmode", "decimal");
+        if (attribute.min !== undefined && attribute.min !== null) {
+          input.min = scaled.format(attribute.min);
+        }
+        if (attribute.max !== undefined && attribute.max !== null) {
+          input.max = scaled.format(attribute.max);
+        }
+      }
+      if (scaled) {
+        input.addEventListener("invalid", function () {
+          const fallback = "请输入符合步长要求的数值。";
+          const stepFallback = "请输入最多" + scaled.decimals + "位小数的数值。";
+          const label = valueText(attribute.label, attribute.key);
+          setLoadState(label + "：" +
+            validityError(input, fallback, stepFallback, null,
+              label + "不能为空。"), "error");
+        });
       }
       const bounds = [];
       if (attribute.min !== undefined && attribute.min !== null) {
-        bounds.push("最小 " + (fixedPoint ? formatFixedPoint(attribute.min) : attribute.min));
+        bounds.push("最小 " + (scaled ? scaled.format(attribute.min) : attribute.min));
       }
       if (attribute.max !== undefined && attribute.max !== null) {
-        bounds.push("最大 " + (fixedPoint ? formatFixedPoint(attribute.max) : attribute.max));
+        bounds.push("最大 " + (scaled ? scaled.format(attribute.max) : attribute.max));
       }
       if (bounds.length) {
         form.appendChild(makeElement(document, "small", "", bounds.join("，")));
@@ -695,10 +882,11 @@
       if (attributes.length) {
         const list = makeElement(document, "div", "possession-attributes");
         attributes.forEach(function (attribute) {
+          const scaled = scaledAttribute(attribute, kind === "pet" ? "pet" : "item");
           const row = makeElement(document, "div", "possession-attribute");
           row.appendChild(makeElement(document, "span", "", valueText(attribute.label, attribute.key)));
-          row.appendChild(makeElement(document, "span", "", fixedPointAttribute(attribute, kind === "pet" ? "pet" : "item")
-            ? formatFixedPoint(attribute.value)
+          row.appendChild(makeElement(document, "span", "", scaled
+            ? scaled.format(attribute.value)
             : valueText(attribute.value)));
           list.appendChild(row);
           const edit = renderAttributeEditor(attribute, function (value) {
@@ -1012,8 +1200,14 @@
           skillSlot.type = "number";
           skillSlot.min = "0";
           skillSlot.max = "6";
+          skillSlot.step = "1";
           skillSlot.value = "0";
           skillSlot.required = true;
+          skillSlot.setAttribute("inputmode", "numeric");
+          skillSlot.addEventListener("invalid", function () {
+            const fallback = "请输入 0 到 6 之间的整数技能槽位。";
+            setLoadState(validityError(skillSlot, fallback, "请输入整数技能槽位。", fallback, fallback), "error");
+          });
           skillSlot.className = "skill-slot-input";
           skillSlotLabel.appendChild(skillSlot);
           form.appendChild(skillSlotLabel);
@@ -1024,7 +1218,7 @@
           form.addEventListener("submit", function (event) {
             event.preventDefault();
             const selected = String(target.value).split(":");
-            const skillSlotValue = normalizeSlot(skillSlot.value);
+            const skillSlotValue = strictIntegerNumber(skillSlot.value);
             if (selected.length !== 2 || skillSlotValue === null || skillSlotValue < 0 || skillSlotValue > 6) {
               setLoadState("请选择有效的宠物和技能槽位。", "error");
               return;
@@ -1050,14 +1244,32 @@
         locationLabel.appendChild(location);
         form.appendChild(locationLabel);
         const quantityLabel = makeElement(document, "label", "", "数量");
+        const quantityControl = makeElement(document, "div", "quantity-input-control");
         const quantity = document.createElement("input");
         quantity.type = "number";
         quantity.name = "quantity";
         quantity.min = "1";
+        quantity.step = "1";
         quantity.max = "9999";
         quantity.value = "1";
         quantity.required = true;
-        quantityLabel.appendChild(quantity);
+        quantity.setAttribute("inputmode", "numeric");
+        quantity.addEventListener("invalid", function () {
+          const fallback = "请输入 1 到 " + quantity.max + " 之间的整数数量。";
+          setLoadState(validityError(quantity, fallback, "请输入整数数量。", fallback, fallback), "error");
+        });
+        const decrement = makeElement(document, "button", "quantity-step", "▼");
+        decrement.type = "button";
+        decrement.setAttribute("aria-label", "减少数量");
+        const increment = makeElement(document, "button", "quantity-step", "▲");
+        increment.type = "button";
+        increment.setAttribute("aria-label", "增加数量");
+        const stepper = makeElement(document, "span", "quantity-stepper");
+        stepper.appendChild(increment);
+        stepper.appendChild(decrement);
+        quantityControl.appendChild(quantity);
+        quantityControl.appendChild(stepper);
+        quantityLabel.appendChild(quantityControl);
         form.appendChild(quantityLabel);
         const note = makeElement(document, "p", "selection-note", "已选「" + valueText(entry.name, KIND_LABELS[kind]) + "」，赠送前请确认外观和数量。");
         form.appendChild(note);
@@ -1070,21 +1282,43 @@
           quantity.max = String(available);
           submit.dataset.capacityEmpty = available < 1 ? "true" : "false";
           submit.disabled = state.busy || available < 1;
-          if (available > 0 && (normalizeSlot(quantity.value) === null || Number(quantity.value) > available)) {
+          if (available > 0 && (strictIntegerNumber(quantity.value) === null || Number(quantity.value) > available)) {
             quantity.value = String(available);
           }
+          updateQuantityStepper(available);
           setText(note, available > 0
             ? "已选「" + valueText(entry.name, KIND_LABELS[kind]) + "」，当前最多可放 " + available + " 个。"
             : "已选「" + valueText(entry.name, KIND_LABELS[kind]) + "」，当前位置没有空余槽位。");
         }
+        function updateQuantityStepper(available) {
+          const count = strictIntegerNumber(quantity.value);
+          const disabled = state.busy || available < 1;
+          decrement.disabled = disabled || count !== null && count <= 1;
+          increment.disabled = disabled || count !== null && count >= available;
+        }
+        function adjustQuantity(delta) {
+          const available = grantCapacity(kind, location.value === "warehouse" ? "warehouse" : "inventory");
+          if (available < 1 || state.busy) return;
+          const current = strictIntegerNumber(quantity.value);
+          let next = current === null ? (delta > 0 ? 1 : available) : current + delta;
+          next = Math.max(1, Math.min(available, next));
+          quantity.value = String(next);
+          updateQuantityStepper(available);
+          quantity.focus();
+        }
+        decrement.addEventListener("click", function () { adjustQuantity(-1); });
+        increment.addEventListener("click", function () { adjustQuantity(1); });
+        quantity.addEventListener("input", function () {
+          updateQuantityStepper(grantCapacity(kind, location.value === "warehouse" ? "warehouse" : "inventory"));
+        });
         location.addEventListener("change", updateQuantityLimit);
         updateQuantityLimit();
         form.addEventListener("submit", function (event) {
           event.preventDefault();
-          const count = normalizeSlot(quantity.value);
+          const count = strictIntegerNumber(quantity.value);
           const available = grantCapacity(kind, location.value === "warehouse" ? "warehouse" : "inventory");
           if (count === null || count < 1 || count > available) {
-            setLoadState(available > 0 ? "请输入 1 到 " + available + " 之间的数量。" : "当前位置没有空余槽位。", "error");
+            setLoadState(available > 0 ? "请输入 1 到 " + available + " 之间的整数数量。" : "当前位置没有空余槽位。", "error");
             quantity.focus();
             return;
           }
@@ -1267,8 +1501,13 @@
     playersURL: playersURL,
     catalogKind: catalogKind,
     numberOrString: numberOrString,
+    strictIntegerNumber: strictIntegerNumber,
     formatFixedPoint: formatFixedPoint,
     parseFixedPoint: parseFixedPoint,
+    formatPetCharm: formatPetCharm,
+    parsePetCharm: parsePetCharm,
+    formatPetLuck: formatPetLuck,
+    parsePetLuck: parsePetLuck,
     valueText: valueText
   };
 }));

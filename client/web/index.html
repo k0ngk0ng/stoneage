@@ -1796,6 +1796,12 @@
      cannot reopen the disconnect dialog or close the replacement session. */
   app.pollingTransport=null;
   app.connectionToken=0;
+  /* MENU.CPP keeps BattlePetReceiveFlag/BattlePetReceivePetNo until the
+     matching KS callback arrives.  The browser must keep the same latch so a
+     fast second tap cannot enqueue another switch while the first one is
+     still being checked by GMSV. */
+  app.petActionRequest=null;
+  app.petActionRequestSequence=0;
   const connectionRetry={active:false,attempt:0,generation:0,timer:0,timeout:0};
   app.battleState.commandTimers={player:0,pet:0};
   app.battleState.commandPending={player:null,pet:null};
@@ -7446,8 +7452,73 @@
     if(Number(app.pc?.ridePet??-1)===index){key="ride";bitmap=234536;label="骑乘";}
     return {key,bitmap,label,standby};
   }
+  const PET_ACTION_TIMEOUT_MS=4000;
+  function clearPetActionRequest(request=null,restore=false){
+    const current=app.petActionRequest;
+    if(!current||request&&current!==request)return false;
+    window.clearTimeout(current.timer);
+    app.petActionRequest=null;
+    if(restore&&typeof current.rollback==="function")current.rollback();
+    return true;
+  }
+  function finishPetActionRequest(request,ok,message=""){
+    if(app.petActionRequest!==request)return false;
+    window.clearTimeout(request.timer);
+    app.petActionRequest=null;
+    if(!ok&&typeof request.rollback==="function")request.rollback();
+    if(!ok&&message)setWorldState(message,"error");
+    renderPets();
+    return true;
+  }
+  async function requestPetBattle(index,options={}){
+    if(app.phase!=="world"||app.battle||app.activeWindow||app.trade?.active||app.rideRequest||app.petActionRequest)return false;
+    const slot=Number(index),pet=slot>=0?app.petSlots?.[slot]:null;
+    if(!Number.isInteger(slot)||slot< -1||slot>4||(slot>=0&&!pet))return false;
+    const request={slot,transport:app.transport,sequence:(app.petActionRequestSequence||0)+1,rollback:typeof options.rollback==="function"?options.rollback:null,timer:0};
+    app.petActionRequestSequence=request.sequence;
+    app.petActionRequest=request;
+    try{
+      if(typeof options.optimistic==="function")options.optimistic();
+    }catch(error){
+      finishPetActionRequest(request,false);
+      reportError(error);
+      return false;
+    }
+    request.timer=window.setTimeout(()=>{
+      if(app.petActionRequest!==request)return;
+      const sameTransport=app.transport===request.transport;
+      finishPetActionRequest(request,false,sameTransport&&app.phase==="world"?"出战状态未改变，请稍后重试。":"");
+    },PET_ACTION_TIMEOUT_MS);
+    try{
+      const sent=await send("KS",[slot]);
+      if(sent===false){finishPetActionRequest(request,false);return false;}
+      return true;
+    }catch(error){
+      finishPetActionRequest(request,false);
+      reportError(error);
+      return false;
+    }
+  }
+  function receivePetBattleStatus(petarray,result){
+    const slot=Number(petarray),ok=Number(result)===1,pending=app.petActionRequest;
+    setStatus("battlePet",slot+":"+(ok?1:0));
+    if(ok){
+      /* KS is authoritative.  A local click may show the intermediate mail
+         state, but only this server acknowledgement may commit selectedPet. */
+      app.selectedPet=slot>=0?slot:-1;
+      addChat("宠物",slot>=0?"已切换到宠物 "+(slot+1):"已收回出战宠物");
+    }else addChat("宠物","出战/切换失败，服务器拒绝了这只宠物。");
+    /* KS has no wire request id.  Match both the requested slot and the
+       transport that carried it; an unrelated server-originated KS must not
+       release a newer field click.  The sequence still gives every request
+       a distinct identity for timers and late local completions. */
+    if(pending&&pending.transport===app.transport&&pending.slot===slot)
+      finishPetActionRequest(pending,ok,ok?"":"出战/收回请求被服务器拒绝，请重试。");
+    else renderPets();
+    renderBattle();
+  }
   async function requestPetRide(index){
-    if(app.phase!=="world"||app.battle||app.activeWindow||app.trade?.active||mapMovementBlocked()||app.rideRequest)return false;
+    if(app.phase!=="world"||app.battle||app.activeWindow||app.trade?.active||mapMovementBlocked()||app.rideRequest||app.petActionRequest)return false;
     const slot=Number(index),current=Number(app.pc?.ridePet??-1),pet=app.petSlots?.[slot];
     if(!Number.isInteger(slot)||slot< -1||slot>4||(slot>=0&&!pet))return false;
     if(slot>=0){
@@ -7489,20 +7560,28 @@
   }
   function activatePetMenuState(index){
     const pet=app.petSlots[index];if(!pet)return;
-    if(app.phase!=="world"||app.battle||app.trade?.active||app.activeWindow||app.rideRequest)return;
+    if(app.phase!=="world"||app.battle||app.trade?.active||app.activeWindow||app.rideRequest||app.petActionRequest)return;
     const state=petMenuState(index);
     if(state.key==="ride"){requestPetRide(-1);return;}
     if(state.key==="mail"){
       app.petMailNo=-1;setPetStandby(index,false);renderPets();requestPetRide(index);return;
     }
     if(state.key==="battle"){
-      setPetStandby(index,false);
-      if(Number(app.petMailNo)<0)app.petMailNo=index;
-      renderPets();send("KS",[-1]).catch(reportError);return;
+      const previousMail=Number(app.petMailNo),previousMask=Number(app.status.standbyPetMask)||0;
+      requestPetBattle(-1,{
+        optimistic:()=>{setPetStandby(index,false);if(Number(app.petMailNo)<0)app.petMailNo=index;renderPets();},
+        rollback:()=>{
+          /* Restore only the local fields this click changed.  A server push
+             received while KS was pending must remain authoritative. */
+          if(Number(app.petMailNo)===index&&previousMail<0)app.petMailNo=previousMail;
+          const currentMask=Number(app.status.standbyPetMask)||0,bit=1<<index;
+          if(!(currentMask&bit))app.status.standbyPetMask=currentMask|(previousMask&bit);
+        }
+      });return;
     }
     if(state.key==="standby"){
       if(Number(app.selectedPet)<0){
-        if(Number(pet.hp??0)>0)send("KS",[index]).catch(reportError);
+        if(Number(pet.hp??0)>0)requestPetBattle(index);
         else setWorldState("这只宠物已经无法战斗。","error");
       }else{
         setPetStandby(index,false);
@@ -15266,7 +15345,7 @@
     /* A stale poll may finish after a reconnect.  It may close its own old
        socket, but it must never clear or close the replacement transport. */
     if(expected&&app.transport!==expected){return transport?.close?.(options)??Promise.resolve(true);}
-    if(app.transport===transport){clearRideRequest();clearInitialMapChecksum();clearMapWindowRequest();app.transport=null;app.polling=false;app.pollingTransport=null;app.connectionToken++;}
+    if(app.transport===transport){clearRideRequest();clearPetActionRequest();clearInitialMapChecksum();clearMapWindowRequest();app.transport=null;app.polling=false;app.pollingTransport=null;app.connectionToken++;}
     return transport?.close?.(options)??Promise.resolve(true);
   }
   function focusLoginAccount(){
@@ -15294,7 +15373,7 @@
     const transport=app.transport;
     if(!transport)return;
     pageUnloadLogoutSent=true;
-    clearRideRequest();
+    clearRideRequest();clearPetActionRequest();
     app.transport=null;
     app.polling=false;
     try{
@@ -15605,7 +15684,7 @@
       case "FS": { const flags=Number(values[0])||0;setStatus("etcFlag",flags);setStatus("partyAllowed",Boolean(flags&1));setStatus("duelAllowed",Boolean(flags&4));renderFieldSettings();break; }
       case "HL": { const help=Number(values[0])?1:0;setStatus("helpFlag",help);addChat("战斗",help?"队伍求助已开启":"队伍求助已关闭");break; }
       case "PR": { const request=Number(values[0])||0,result=Number(values[1])||0,ok=result===1;const message=ok?(request===1?"组队成功":"已离开队伍"):(request===1?"组队请求失败":"离队失败");setStatus("partyResult",`${request}:${result}`);addChat("队伍",message);if(ok&&request===0){app.party.fill(null);clearPartyFollow();}renderPartyFixed();break; }
-      case "KS": { const petarray=Number(values[0]),ok=Number(values[1])===1;setStatus("battlePet",`${petarray}:${ok?1:0}`);if(ok){app.selectedPet=petarray>=0?petarray:-1;addChat("宠物",petarray>=0?`已切换到宠物 ${petarray+1}`:"已收回出战宠物");}else addChat("宠物","出战/切换失败，服务器拒绝了这只宠物。");renderPets();renderBattle();break; }
+      case "KS": receivePetBattleStatus(values[0],values[1]);break;
       case "PS": { const ok=Number(values[0])===1,petindex=Number(values[1])||0,skillindex=Number(values[2])||0,toindex=Number(values[3]);setStatus("petSkill",`${ok?1:0}:${petindex}:${skillindex}:${toindex}`);addChat("宠物技能",ok?`宠物 ${petindex+1} 使用技能 ${skillindex}`:"宠物技能使用失败");renderPets();break; }
       case "SKUP": setStatus("skillPoints",values[0]); break;
       case "S": receiveSystemState(values[0]||"");setStatus("serverCategory",values[0]||"");break;
@@ -15893,7 +15972,7 @@
     characterStatus(`正在登入 ${name}…`);
     try { await send("CharLogin",[name]); } catch(error) { characterStatus(error.message,"error"); }
   }
-  function enterWorld() { app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear(); resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; clearChatBuffer(); /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); if(!assetState.manifestReady&&!assetState.loading)loadAssetManifest(); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
+  function enterWorld() { clearPetActionRequest();clearRideRequest();app.phase="world"; app.battle=false; app.ignoreBattlePacketsUntil=0; app.activeMapEvent=null; app.pendingMove=false; app.pendingMoveAt=0; app.pendingMoveFrom=null; app.pendingMoveTarget=null; app.moveTarget=null; app.moveQueue=[]; app.moveSentSteps=0; window.clearTimeout(app.moveWireTimer);app.moveWireTimer=0; window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0; window.clearTimeout(app._worldAnimationTimer);app._worldAnimationTimer=0; if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame); app._worldAnimationFrame=0; app.moveWirePending=false; app.moveWireTarget=null; app.moveWireRoute=""; app.movePredictionActive=false; app.movePredictionTrail=[]; app.movePredictionStartedAt=0; app.walkAnimation=null; app.playerActorId=null; app.floor=-1; clearInitialMapChecksum();clearMapWindowRequest();app.mapWindowRevisionByKey.clear(); resetMapEffects(); app.mapPaletteName="";app.mapPaletteNo=-1;app.mapDrawTimeAnime=true;app.mapPaletteLoading=false;app.mapPaletteFailed=false; app.npcMetadataFloor=-1; app.npcMetadataLoading=false; app.npcMetadataReady=false; app.npcMetadataByKey.clear(); app.npcMetadataRequest++; app.pointerLookTargetId=null;app.pointerLookPointerId=null; app.position=[0,0]; app.serverPosition=[0,0]; app.map=null; app.mapLayerCache=null; app.mapLayerFallback=null; app.mapLoadingStartedAt=0; app.music.mode="map";app.music.mapTone=null;app.music.mapBgmNo=-1;app.music.battleBgmNo=-1; app.actors.clear(); stopInventoryGoldHold();cancelInventoryDrag();app.inventory=[];app.inventoryPage="items";app.inventoryDropGold=0;app.inventoryTargetPanel=false;app.inventoryHoveredItem=-1;app.selectedItem=-1;app.selectedMagic=-1; app.contacts=[]; app.selectedContact=-1; app.mails=[]; app.mailHistory.clear(); app.mailCompose={open:false,page:0,recipients:new Set(),text:""}; app.pets=[]; app.petSlots=Array.from({length:5},()=>null); app.petSkills=Array.from({length:5},()=>[]); app.skills=[]; app.party=Array.from({length:5},()=>null); app.magic=[]; app.titles=[]; app.pc={}; app.status={}; app.serverState={}; clearChatBuffer(); /* A scene/map change must never recenter the painted fish.  Preserve the last physical pointer sample and only clear its stale tile hint; the actual coordinates are owned by updateWorldPointer(). */ const cursorX=Number.isFinite(Number(app.cursor?.x))?Number(app.cursor.x):320,cursorY=Number.isFinite(Number(app.cursor?.y))?Number(app.cursor.y):240; app.cursor={x:cursorX,y:cursorY,visible:true,tile:null,updatedAt:app.cursor?.updatedAt||0}; app.battleState={field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,pendingBattleControls:[],autoTurn:-1,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],deathStartedAt:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,transientTimer:0,escapeExitTimer:0,escapePending:new Map()}; show(worldScreen); if(!assetState.manifestReady&&!assetState.loading)loadAssetManifest(); setMapLoading(true,"正在读取地图…"); setWorldState("已进入，等待地图和坐标…","good"); status(`人物 ${app.character}`,"good"); updateHUD(); renderWorld(); renderPets();renderStatus();renderPartyFixed();renderTitles();renderWorldOverlay();scheduleBackgroundAssetWarmup();setMusicMode("map",0); send("AB",[]).catch(reportError); send("ProcGet",[]).catch(reportError); send("PlayerNumGet",[]).catch(reportError); }
   /* enterWorld() replaces the battle state for a fresh field session.  Keep
      the watchdogs from a just-closed battle from firing against that new
      state, including logout/reconnect paths that do not pass through BU. */

@@ -44,6 +44,8 @@
 #define STONEAGE_PA_MAX_CHARACTER_SLOTS 2
 #define STONEAGE_PA_MAX_NATIVE_NAME 64
 #define STONEAGE_PA_MAX_GRANT_QUANTITY 64
+#define STONEAGE_PA_MIN_PET_MODAI 0
+#define STONEAGE_PA_MAX_PET_MODAI 1000000
 
 typedef struct tagStoneAgePAField {
     char key[64];
@@ -873,7 +875,10 @@ static int StoneAgePA_validatePetValue( const char *field, int value )
         strcmp(field, "trn") == 0 || strcmp(field, "lvup") == 0 ) {
         return value >= 0;
     }
-    if( strcmp(field, "chr") == 0 ) return value >= 0 && value <= CHAR_MAXATTRIB;
+    if( strcmp(field, "chr") == 0 ) {
+        return value >= STONEAGE_PA_MIN_PET_MODAI &&
+               value <= STONEAGE_PA_MAX_PET_MODAI;
+    }
     if( strcmp(field, "luc") == 0 ) {
         return value >= CHAR_MINVARIABLEAI && value <= CHAR_MAXVARIABLEAI;
     }
