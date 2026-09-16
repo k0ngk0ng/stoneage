@@ -4,7 +4,7 @@
 
 ## 当前验收状态
 
-以下汇总截至 2026-09-16 的有效证据；后文按实施顺序保留各次测试及其范围，早期的“尚未验证”由后续对应测试补充。
+以下汇总截至 2026-09-17 的有效证据；后文按实施顺序保留各次测试及其范围，早期的“尚未验证”由后续对应测试补充。
 
 | 要求 | 当前证据 | 验证边界 |
 | --- | --- | --- |
@@ -14,13 +14,31 @@
 | 私人记忆、自建定时提醒及恢复 | 两轮真实 Codex、数据库重新打开、提醒到期投递；管理进程重启 | 提醒是唤醒决策，不是自动认定游戏操作完成 |
 | 公屏与原生邮件 | 两个新 QA 角色双向聊天、交换名片及收信 | 协议驱动验证；未验证两模型长期自主交往 |
 | 出生、随机、自定义人物与宠物等级，默认骑乘 | 真实管理员 HTTP 创建、独立原生存档、实际重新登录 | 随机计划只生成一次 |
-| 独立容器运行 | 实际 Linux Codex 容器连接 QA 游戏、恢复 thread；broker 崩溃恢复另测 | 正式打包镜像与 Factory/broker 全链路仍待验收 |
+| 独立容器运行 | 已发布 rc.4 镜像通过真实 DeepSeek/Codex、Factory/broker 与 QA 游戏完整链路；角色 1→2 级 | 短时联调通过，长期自主生活仍待观察 |
 
-当前工作树普通回归已通过：`internal/ai...`、`internal/admin`、`cmd/stoneage-admin`、`cmd/stoneage-ai-runner` 和 `cmd/stoneage-game-mcp`。日志：`build/ai/delivery-current-regression.log`。这项回归默认跳过显式 opt-in 的真实模型/游戏测试，不能代替表中的实测记录。尚未发布或部署本次变更。
+当前工作树普通回归已通过：`internal/ai...`、`internal/admin`、`cmd/stoneage-admin`、`cmd/stoneage-ai-runner` 和 `cmd/stoneage-game-mcp`。日志：`build/ai/delivery-current-regression.log`。这项回归默认跳过显式 opt-in 的真实模型/游戏测试，不能代替表中的实测记录。已发布 `v0.1.47-rc.4` 候选版，尚未部署到生产。
 
 部署包检查 `scripts/test-deployment-package.py` 也已通过，日志为 `build/ai/delivery-package-regression.log`；检查覆盖 AI Compose 文件随包分发、配置变量和项目发布入口的接线，使用模拟 Docker，不构建、拉取或验证实际镜像。
 
 用本地真实 runner、MCP 和官方 Codex 执行 `scripts/ai-runtime-smoke.cjs`，已通过两轮合成 Responses 请求、原 thread 恢复、技能安装和固定配置检查，日志为 `build/ai/image-smoke-local-current.log`。脚本的 SSE 换行和正则转义核查正确，无需修改。此验证只访问本地模拟服务，不使用真实模型密钥，仍不替代 Linux 打包镜像验收。两个容器实测入口的 QA 二进制哈希已更新到 `initial-state-qa-20260916/manifest.json` 的已核对版本；源码模块、编译产物和运行中 QA 程序均匹配该来源记录。
+
+## 已发布镜像联调（2026-09-17）
+
+候选版：[v0.1.47-rc.4](https://github.com/k0ngk0ng/stoneage/releases/tag/v0.1.47-rc.4)，发布提交 `59b8fc0364f67ee009c504f08ffab34869b4c395`。GitHub Actions 全部检查及三组镜像发布成功，临时公开后已恢复仓库私有；未执行生产部署。
+
+AI 镜像固定引用：
+
+```text
+ghcr.io/k0ngk0ng/stoneage/ai-runtime:v0.1.47-rc.4@sha256:9172c015106364a6ba90fa89fbb66db292556641efb3e13f26eb71c44845f0a6
+```
+
+`TestLiveFactoryBrokerCodexLeveling` 使用上述实际发布镜像，通过真实 DeepSeek Flash、官方 Codex、Factory/broker、原生 MCP 和独立 QA 游戏完成新角色 1→2 级，任务状态 `confirmed`，耗时 63.43 秒。验证了实际 UID 10001、只读根目录、独立 profile 卷、能力移除、同一请求重放不创建第二个容器，以及关闭后的游戏能力撤销。没有在本机构建镜像。
+
+证据：`build/ai/rc4-factory-broker-live.log`、`build/ai/container-runtime-qa/factory-broker/`。测试自身只验证已加载镜像；另由 `build/release-v0.1.47-rc.4/ai-release-verification.json` 将通过的测试证据、实际镜像和 Release 的 `IMAGE-DIGESTS`/`SHA256SUMS` 关联，确认发布来源。
+
+本轮修复了无末尾斜杠的 API 根地址被容器错误拒绝的问题；模型配置保存会移除尾斜杠，因此该修复覆盖 DeepSeek 和自定义根地址。测试另修正了预绑定 QA 后端遗漏 `ProfileID` 的问题，未改变发布镜像的生产逻辑。
+
+macOS OrbStack 的 Docker CLI 是按程序名分发的多命令二进制；本测试会解析可执行文件符号链接。若解析后名为 `docker-tools`，需将本机真实二进制复制为项目 `build/ai/docker-cli/docker` 并在测试的 `PATH` 中优先使用。该本机测试文件不能提交或分发。
 
 ## 管理端操作
 

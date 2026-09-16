@@ -257,7 +257,7 @@ func runLiveContainerCodexLeveling(t *testing.T, brokerImage string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := aimcp.Binding{AccountID: f.Created.Account.Username, CharacterID: f.Created.Binding.CharacterID, CharacterName: f.Created.Binding.CharacterName, Generation: control.Generation}
+	binding := aimcp.Binding{AccountID: f.Created.Account.Username, ProfileID: "real-leveling-container", CharacterID: f.Created.Binding.CharacterID, CharacterName: f.Created.Binding.CharacterName, Generation: control.Generation}
 	session := &containerLevelingSession{GameSession: f.Lease.Session, actions: map[aigame.ActionKind]int{}}
 	config := GameplayConfig{Plans: plans, Tiles: tiles}
 	funding := configureSuppliedLeveling(t, ctx, f, knowledge, &config)
