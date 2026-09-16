@@ -1,0 +1,63 @@
+--- a/char/enemy.c
++++ b/char/enemy.c
+@@ -494,0 +495,21 @@
++/* STONEAGE_SAFE_ENEMY_GROUP_BOUNDS */
++static BOOL ENEMY_resolveGroupArray( int groupid, int *group_array)
++{
++	int array;
++	if( group_array == NULL) return FALSE;
++	*group_array = -1;
++	array = GROUP_getGroupArray( groupid);
++	if( !GROUP_CHECKINDEX( array)) return FALSE;
++	*group_array = array;
++	return TRUE;
++}
++
++static BOOL ENEMY_checkGroupEnemyArray( int group_array, int index, int enemy_array)
++{
++	int enemyid;
++	if( !GROUP_CHECKINDEX( group_array)) return FALSE;
++	if( index < 0 || index >= CREATEPROB1 - ENEMY_ID1) return FALSE;
++	enemyid = GROUP_getInt( group_array, (GROUP_DATAINT)(ENEMY_ID1 + index));
++	if( enemyid == -1) return enemy_array == -1;
++	return ENEMY_CHECKINDEX( enemy_array);
++}
+@@ -1301 +1322,4 @@
+-			g_array = GROUP_getGroupArray( groupid);
++			if( !ENEMY_resolveGroupArray( groupid, &g_array)) {
++				print( "\n ENEMY_getEnemy: missing group %d\n", groupid);
++				return NULL;
++			}
+@@ -1349 +1373,4 @@
+-		g_array = GROUP_getGroupArray( groupid);
++		if( !ENEMY_resolveGroupArray( groupid, &g_array)) {
++			print( "\n ENEMY_getEnemy: selected group %d is missing\n", groupid);
++			return NULL;
++		}
+@@ -1359,0 +1387,2 @@
++		int effective_group_array;
++		effective_group_array = g_array;
+@@ -1375,2 +1404,8 @@
+-				e_array = ENEMY_getEnemyArrayFromIndex( 
+-					   GROUP_getGroupArray( ENCOUNT_table[array].enemy_group ),i - ENEMY_ID1 );
++					if( !ENEMY_resolveGroupArray( ENCOUNT_table[array].enemy_group,
++									&effective_group_array)) {
++						print( "\n ENEMY_getEnemy: event group %d is missing\n",
++							   ENCOUNT_table[array].enemy_group);
++						return NULL;
++					}
++					e_array = ENEMY_getEnemyArrayFromIndex( effective_group_array,
++									 i - ENEMY_ID1);
+@@ -1380,0 +1416,7 @@
++		if( !ENEMY_checkGroupEnemyArray( effective_group_array,
++				i - ENEMY_ID1, e_array)) {
++			print( "\n ENEMY_getEnemy: group %d enemy slot %d is missing\n",
++				   groupid, i - ENEMY_ID1);
++			return NULL;
++		}
++		if( e_array == -1) continue;
+@@ -1382,0 +1425,4 @@
++			if( !ENEMY_CHECKINDEX( newarray)) {
++				print( "\n ENEMY_getEnemy: random enemy %d is missing\n", enemywork);
++				return NULL;
++			}

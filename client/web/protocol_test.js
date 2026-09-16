@@ -2491,7 +2491,7 @@ for (const expected of [
      MakeHitBox at the same 21-pixel row.  Do not duplicate selectable text
      in both the body and a separately flowing choice column. */
   /#server-window-screen\.server-window-select #server-window-body\{[^}]*font:11px\/21px[^}]*text-align:left/,
-  /screen\.classList\.remove\("server-window-shop-list","server-window-shop-quantity","server-window-select"\)/,
+  /screen\.classList\.remove\("server-window-shop-list","server-window-shop-quantity","server-window-select","server-window-pet-training","pet-training-catalog"\)/,
   /screen\.classList\.add\("server-window-select"\);[\s\S]{0,900}body\.textContent=parsed\.lines\.slice\(0,start\)\.join\("\\n"\);/,
   /const item=appendChoice\(label,0,String\(index\+1\)\);item\.style\.setProperty\("--wnd-select-row-y",`\$\{index\*21\}px`\)/,
   /* _checkWarpEvent() gates the three timed warp ids by getLSTime(); event 7
@@ -2515,6 +2515,14 @@ for (const expected of [
 /* CHAR_makeStatusString('w') normally leaves a final `|`, but a bridge may
    trim that delimiter.  The parser must still expose a one-skill W0 row and
    retain its native slot index; empty five-field slots remain skipped. */
+// A short escape movie uses valid hex words, but BE is not an owner slot.
+const bpClassificationStart = script.indexOf("const bpValues=parts.slice(1)");
+const bpClassificationEnd = script.indexOf("if(isTurnState)", bpClassificationStart);
+if (bpClassificationStart < 0 || bpClassificationEnd < bpClassificationStart) throw new Error("BP classifier missing");
+const classifyBattleBP = new Function("parts", "battleNumber", script.slice(bpClassificationStart, bpClassificationEnd) + "return isTurnState;");
+for (const [packet, expected] of [["BP|0|0|10", true], ["BP|14|6|0", true], ["BP|BE|e0|f1|", false], ["BP|BE|e0|f0|", false], ["BP|BE|eA|f1|", false]]) {
+  if (classifyBattleBP(packet.split("|"), value => parseInt(value, 16)) !== expected) throw new Error("BP menu/movie classification: " + packet);
+}
 const petSkillParserStart = script.indexOf("  function parsePetSkillStatusTokens(tokens){");
 const petSkillParserEnd = script.indexOf("  function recordServerPosition", petSkillParserStart);
 if (petSkillParserStart < 0 || petSkillParserEnd <= petSkillParserStart) {

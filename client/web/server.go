@@ -36,6 +36,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
+	"github.com/k0ngk0ng/stoneage/internal/aigame"
+	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -62,6 +65,13 @@ func pageWithReleaseVersion(source []byte, version string) []byte {
 //
 //go:embed sw.js
 var serviceWorker []byte
+
+// AI controls are kept in a separate module so the large legacy-compatible
+// page remains easy to audit. The module is served by this same origin and
+// therefore shares the browser session's normal HTTP protections.
+//
+//go:embed automation.js
+var automationScript []byte
 
 // Installed mobile shortcuts must not force a particular orientation. The
 // page keeps the executable's 640x480 surface and scales it to the limiting
@@ -119,6 +129,10 @@ const (
 	defaultPollTimeout  = 25 * time.Second
 	defaultIdleTimeout  = 10 * time.Minute
 	defaultDialTimeout  = 5 * time.Second
+	// Bound every bridge-to-game write so a control handoff cannot wait on a
+	// stalled upstream socket forever. This is a bridge timeout only; it does
+	// not alter the 2.5 server's turn or movement deadlines.
+	defaultWriteTimeout = 5 * time.Second
 	// An in-place logout is represented by the stock 2.5 disconnect path,
 	// not by a newer CharLogout flag.  Give GMSV a short window to observe the
 	// TCP FIN, run CHAR_logout(), and close its side before the browser is told
@@ -164,6 +178,27 @@ type Config struct {
 	// hold assets/, maps/ and audio/. Runtime browser URLs still prefer the
 	// CDN base above; this process never uploads to OSS or receives its keys.
 	OSS OSSConfig
+	// Automation is the server-owned deterministic executor. It is injected
+	// by startup after loading the reviewed knowledge/map snapshots and
+	// opening the durable plan/receipt stores. Browser requests cannot replace
+	// this capability.
+	Automation Automation
+	// AutomationClose releases resources opened for Automation. It is kept
+	// separate from the interface so tests and embedders can inject an
+	// executor without requiring it to expose lifecycle methods.
+	AutomationClose func() error
+	// The following paths are server-owned runtime inputs. If any are set,
+	// NewHandler loads all four dependencies and enables the real executor;
+	// incomplete configuration fails closed.
+	AutomationKnowledgeDataDir  string
+	AutomationMapDataDir        string
+	AutomationStockItems        string
+	AutomationHealingItems      string
+	AutomationNPCRegistry       string
+	AutomationDB                string
+	ReceiptDB                   string
+	AutomationPollInterval      time.Duration
+	AutomationNoProgressTimeout time.Duration
 }
 
 type OSSConfig struct {
@@ -252,6 +287,33 @@ func applyEnvironmentConfig(cfg Config) Config {
 	}
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_OSS_PREFIX")); value != "" {
 		cfg.OSS.Prefix = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_KNOWLEDGE_DATA_DIR")); value != "" {
+		cfg.AutomationKnowledgeDataDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_MAP_DATA_DIR")); value != "" {
+		cfg.AutomationMapDataDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_STOCK_ITEMS")); value != "" {
+		cfg.AutomationStockItems = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_HEALING_ITEMS")); value != "" {
+		cfg.AutomationHealingItems = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_NPC_REGISTRY")); value != "" {
+		cfg.AutomationNPCRegistry = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_AUTOMATION_DB")); value != "" {
+		cfg.AutomationDB = value
+	}
+	if value := strings.TrimSpace(os.Getenv("STONEAGE_AI_RECEIPT_DB")); value != "" {
+		cfg.ReceiptDB = value
+	}
+	if value := positiveDurationEnv("STONEAGE_AI_AUTOMATION_POLL_INTERVAL"); value > 0 {
+		cfg.AutomationPollInterval = value
+	}
+	if value := positiveDurationEnv("STONEAGE_AI_AUTOMATION_NO_PROGRESS_TIMEOUT"); value > 0 {
+		cfg.AutomationNoProgressTimeout = value
 	}
 	return cfg
 }
@@ -436,13 +498,30 @@ var (
 )
 
 type tcpSession struct {
-	id     string
-	conn   net.Conn
-	limit  int
-	closed chan struct{}
+	id string
+	// serverID is the stable configured game-line identifier selected when
+	// this TCP session was created.  Keep it alongside the socket so a
+	// reconnect cannot recover a run from the same account on another line.
+	serverID     string
+	conn         net.Conn
+	limit        int
+	gate         *aicontrol.Gate
+	writeTimeout time.Duration
+	closed       chan struct{}
 
 	mu               sync.Mutex
 	writeMu          sync.Mutex
+	dispatchMu       sync.Mutex
+	activeDispatch   int
+	gateClosePending bool
+	gateCloseOnce    sync.Once
+	automationMu     sync.Mutex
+	automationHandle AutomationHandle
+	automationMode   aicontrol.Mode
+	automationGen    uint64
+	authoritative    *aigame.Session
+	authoritativeMu  sync.RWMutex
+	authoritativeErr error
 	events           []packetEvent
 	eventBytes       int
 	lastActivity     time.Time
@@ -458,14 +537,23 @@ type tcpSession struct {
 }
 
 func newTCPSession(id string, conn net.Conn, packetLimit int) *tcpSession {
-	return &tcpSession{
+	session := &tcpSession{
 		id:           id,
+		serverID:     legacyServerID,
 		conn:         conn,
 		limit:        packetLimit,
+		gate:         aicontrol.New(),
+		writeTimeout: defaultWriteTimeout,
 		closed:       make(chan struct{}),
 		notify:       make(chan struct{}, 1),
 		lastActivity: time.Now(),
 	}
+	// The Web bridge already owns this TCP connection. Feed the same framed
+	// packets into an aigame parser backed by a write-through adapter so an
+	// automation executor can observe and submit typed actions on this exact
+	// session without opening another login/socket.
+	session.authoritative = aigame.NewSession(&webObserverConn{session: session}, aigame.Config{PacketLimit: packetLimit, EventBuffer: 1})
+	return session
 }
 
 func (session *tcpSession) touchLocked() {
@@ -478,11 +566,65 @@ func (session *tcpSession) touch() {
 	session.mu.Unlock()
 }
 
+// serverLineID returns the immutable configured game-line key associated with
+// this session. Tests and embedders that construct a session directly use the
+// legacy single-line default from newTCPSession.
+func (session *tcpSession) serverLineID() string {
+	if session == nil {
+		return ""
+	}
+	return strings.TrimSpace(session.serverID)
+}
+
 func (session *tcpSession) signal() {
 	select {
 	case session.notify <- struct{}{}:
 	default:
 	}
+}
+
+// dispatch is the only path from an HTTP caller to the character socket. The
+// small in-flight counter lets finish fence the Gate without attempting to
+// acquire Gate's mutex from inside Gate.Dispatch (write errors can call
+// finish while Dispatch still owns that mutex).
+func (session *tcpSession) dispatch(ctx context.Context, generation uint64, owner aicontrol.Mode, send func(context.Context) error) error {
+	if session == nil || session.gate == nil {
+		return aicontrol.ErrClosed
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	session.dispatchMu.Lock()
+	session.mu.Lock()
+	finished := session.finished
+	session.mu.Unlock()
+	if finished || session.gateClosePending {
+		session.dispatchMu.Unlock()
+		return aicontrol.ErrClosed
+	}
+	session.activeDispatch++
+	session.dispatchMu.Unlock()
+
+	err := session.gate.Dispatch(ctx, generation, owner, send)
+	session.dispatchMu.Lock()
+	session.activeDispatch--
+	closeGate := session.gateClosePending && session.activeDispatch == 0
+	session.dispatchMu.Unlock()
+	if closeGate {
+		session.closeGate()
+	}
+	return err
+}
+
+func (session *tcpSession) closeGate() {
+	if session.gate == nil {
+		return
+	}
+	session.gateCloseOnce.Do(func() {
+		session.gate.Close()
+		handle := session.clearAutomation(0)
+		detachAutomationHandle(handle)
+	})
 }
 
 func (session *tcpSession) enqueue(event packetEvent) {
@@ -516,7 +658,27 @@ func (session *tcpSession) readLoop() {
 			}
 			return
 		}
+		session.applyAuthoritativePacket(packet)
 		session.enqueue(packetEvent{packet: packet})
+	}
+}
+
+func (session *tcpSession) applyAuthoritativePacket(packet []byte) {
+	if session == nil {
+		return
+	}
+	session.authoritativeMu.RLock()
+	observer := session.authoritative
+	session.authoritativeMu.RUnlock()
+	if observer == nil {
+		return
+	}
+	if err := observer.ApplyServerPacket(packet); err != nil && !errors.Is(err, aigame.ErrClosed) {
+		session.authoritativeMu.Lock()
+		if session.authoritativeErr == nil {
+			session.authoritativeErr = err
+		}
+		session.authoritativeMu.Unlock()
 	}
 }
 
@@ -558,6 +720,22 @@ func (session *tcpSession) finish(reason string) {
 		_ = session.conn.Close()
 		session.signal()
 	})
+	// Never call Gate.Close while dispatch holds Gate's mutex. A write failure
+	// can reach this method from inside the Dispatch callback, so defer the
+	// close until the wrapped dispatch has returned.
+	session.dispatchMu.Lock()
+	session.gateClosePending = true
+	closeGate := session.activeDispatch == 0
+	session.dispatchMu.Unlock()
+	if closeGate {
+		session.closeGate()
+	}
+	session.authoritativeMu.RLock()
+	observer := session.authoritative
+	session.authoritativeMu.RUnlock()
+	if observer != nil {
+		_ = observer.Close()
+	}
 }
 
 func (session *tcpSession) close() {
@@ -631,6 +809,20 @@ func (session *tcpSession) isClosed() bool {
 }
 
 func (session *tcpSession) write(packet []byte) error {
+	if err := session.writeUpstream(packet); err != nil {
+		return err
+	}
+	// Release the transport lock before entering the game observer. Typed
+	// actions take the game lock before the transport lock.
+	session.applyAuthoritativeClientPacket(packet)
+	return nil
+}
+
+// The aigame writer already records typed action submissions and may hold its
+// state lock during this write. Only browser-originated packets need the raw
+// client observation hook; invoking it twice would both lose provenance and
+// recursively lock the shared observer.
+func (session *tcpSession) writeUpstream(packet []byte) error {
 	if len(packet) == 0 || packet[len(packet)-1] != '\n' {
 		return errors.New("packet must contain a trailing newline")
 	}
@@ -651,20 +843,28 @@ func (session *tcpSession) write(packet []byte) error {
 	if closing {
 		return net.ErrClosed
 	}
+	// net.Conn.Write has no useful cancellation hook on every supported
+	// transport. A deadline is therefore part of the bridge's ownership
+	// contract: takeover must not wait indefinitely for a blocked upstream.
+	writeTimeout := session.writeTimeout
+	if writeTimeout <= 0 {
+		writeTimeout = defaultWriteTimeout
+	}
+	_ = session.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	defer func() { _ = session.conn.SetWriteDeadline(time.Time{}) }()
 	remaining := packet
 	for len(remaining) > 0 {
 		written, err := session.conn.Write(remaining)
 		if err != nil {
-			session.finish(err.Error())
 			return err
 		}
 		if written == 0 {
-			session.finish("TCP write made no progress")
 			return io.ErrShortWrite
 		}
 		remaining = remaining[written:]
 	}
 	session.touch()
+
 	return nil
 }
 
@@ -958,20 +1158,23 @@ func (store *sessionStore) closeAll() {
 }
 
 type Handler struct {
-	trustedProxies []netip.Prefix
-	config         Config
-	sessions       *sessionStore
-	page           []byte
-	assets         http.Handler
-	maps           http.Handler
-	audio          http.Handler
-	npcDir         string
-	npcMu          sync.RWMutex
-	npcData        map[int][]npcMetadata
-	npcErr         error
-	npcDone        bool
-	stop           chan struct{}
-	stopOnce       sync.Once
+	trustedProxies  []netip.Prefix
+	config          Config
+	sessions        *sessionStore
+	page            []byte
+	assets          http.Handler
+	maps            http.Handler
+	audio           http.Handler
+	npcDir          string
+	npcMu           sync.RWMutex
+	npcData         map[int][]npcMetadata
+	npcErr          error
+	npcDone         bool
+	stop            chan struct{}
+	stopOnce        sync.Once
+	automationMu    sync.RWMutex
+	automation      Automation
+	automationClose func() error
 }
 
 // npcMetadata is deliberately a description, not a second NPC protocol.
@@ -1342,7 +1545,15 @@ func NewHandler(config Config) (*Handler, error) {
 		   are operational rather than deployment-only metadata. */
 		publicAssetBaseURL = ossPublicBaseURL(oss)
 	}
-	handler := &Handler{trustedProxies: trustedProxies, config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata)}
+	if config.Automation == nil {
+		automation, closeAutomation, err := configureAutomationRuntime(config)
+		if err != nil {
+			return nil, err
+		}
+		config.Automation = automation
+		config.AutomationClose = closeAutomation
+	}
+	handler := &Handler{trustedProxies: trustedProxies, config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata), automation: config.Automation, automationClose: config.AutomationClose}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository
@@ -1444,6 +1655,9 @@ func (handler *Handler) Close() {
 	handler.stopOnce.Do(func() {
 		close(handler.stop)
 		handler.sessions.closeAll()
+		if handler.automationClose != nil {
+			_ = handler.automationClose()
+		}
 	})
 }
 
@@ -1491,6 +1705,19 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			return
 		}
 		_, _ = response.Write(serviceWorker)
+		return
+	}
+	if request.URL.Path == "/automation.js" {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		response.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		if request.Method == http.MethodHead {
+			return
+		}
+		_, _ = response.Write(automationScript)
 		return
 	}
 	if request.URL.Path == "/manifest.webmanifest" {
@@ -1580,6 +1807,12 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		http.NotFound(response, request)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "automation" && parts[2] == "tasks" {
+		// The catalog is tied to the current server knowledge revision and may
+		// contain character-specific review notes; never cache success or error
+		// responses in a browser or intermediary.
+		response.Header().Set("Cache-Control", "no-store")
+	}
 	session, ok := handler.sessions.get(parts[0])
 	if !ok {
 		http.Error(response, "unknown session", http.StatusNotFound)
@@ -1595,6 +1828,33 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			handler.sessions.delete(session.id)
 		}
 		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "automation" {
+		http.NotFound(response, request)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "automation" && parts[2] == "tasks" {
+		response.Header().Set("Cache-Control", "no-store")
+		if request.Method != http.MethodGet {
+			response.Header().Set("Allow", "GET")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handler.listAutomationTasks(response, request)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "automation" && (parts[2] == "start" || parts[2] == "preview") {
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", "POST")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if parts[2] == "preview" {
+			handler.previewAutomation(response, request, session)
+		} else {
+			handler.startAutomation(response, request, session)
+		}
 		return
 	}
 	if len(parts) != 2 {
@@ -1616,6 +1876,34 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			return
 		}
 		handler.pollEvents(response, request, session)
+	case "control":
+		if request.Method != http.MethodGet {
+			response.Header().Set("Allow", "GET")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handler.control(response, request, session)
+	case "takeover":
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", "POST")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handler.takeover(response, request, session)
+	case "pause":
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", "POST")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handler.pauseAutomation(response, request, session)
+	case "resume":
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", "POST")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handler.resumeAutomation(response, request, session)
 	default:
 		http.NotFound(response, request)
 	}
@@ -1643,6 +1931,21 @@ func (handler *Handler) listNPCs(response http.ResponseWriter, request *http.Req
 	}
 	response.Header().Set("Cache-Control", "public, max-age=60")
 	handler.writeJSON(response, http.StatusOK, npcMetadataResponse{Floor: floor, NPCs: items})
+}
+
+func (handler *Handler) listAutomationTasks(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	provider, ok := handler.automationExecutor().(automationTaskDirectoryProvider)
+	if !ok || provider == nil {
+		http.Error(response, "automation task directory unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	directory, err := provider.TaskDirectory(request.Context())
+	if err != nil {
+		http.Error(response, "automation task directory unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	handler.writeJSON(response, http.StatusOK, directory)
 }
 
 func (handler *Handler) npcsForFloor(floor int) ([]npcMetadata, error) {
@@ -1746,9 +2049,11 @@ func (handler *Handler) listServers(response http.ResponseWriter, request *http.
 }
 
 type createResponse struct {
-	ID       string `json:"id"`
-	Greeting string `json:"greeting"`
-	EventAck bool   `json:"event_ack"`
+	ID                  string          `json:"id"`
+	Greeting            string          `json:"greeting"`
+	EventAck            bool            `json:"event_ack"`
+	Control             aicontrol.State `json:"control"`
+	AutomationAvailable bool            `json:"automation_available"`
 }
 
 type createRequest struct {
@@ -1862,6 +2167,13 @@ func (handler *Handler) createSession(response http.ResponseWriter, request *htt
 		return
 	}
 	session := newTCPSession(id, connection, handler.config.PacketLimit)
+	// The legacy single-line mode has no request field, but it still needs a
+	// stable identity component for automation recovery.  Gateway-backed
+	// sessions always carry the caller-selected configured server ID.
+	session.serverID = input.ServerID
+	if session.serverID == "" {
+		session.serverID = legacyServerID
+	}
 	if err := handler.sessions.add(session); err != nil {
 		_ = connection.Close()
 		http.Error(response, err.Error(), http.StatusServiceUnavailable)
@@ -1869,9 +2181,11 @@ func (handler *Handler) createSession(response http.ResponseWriter, request *htt
 	}
 	go session.readLoop()
 	handler.writeJSON(response, http.StatusCreated, createResponse{
-		ID:       id,
-		Greeting: base64.StdEncoding.EncodeToString(greeting),
-		EventAck: true,
+		ID:                  id,
+		Greeting:            base64.StdEncoding.EncodeToString(greeting),
+		EventAck:            true,
+		Control:             session.gate.State(),
+		AutomationAvailable: handler.automationExecutor() != nil,
 	})
 }
 
@@ -1883,8 +2197,392 @@ func newSessionID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
+type controlResponse struct {
+	Recovery            *AutomationRecovery `json:"automation_recovery"`
+	RecoveryUnavailable bool                `json:"automation_recovery_unavailable,omitempty"`
+	Control             aicontrol.State     `json:"control"`
+	AutomationAvailable bool                `json:"automation_available"`
+	AutomationActive    bool                `json:"automation_active"`
+	AutomationMode      aicontrol.Mode      `json:"automation_mode,omitempty"`
+}
+
+func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
+	state := aicontrol.State{}
+	if session == nil {
+		return controlResponse{AutomationAvailable: handler.automationExecutor() != nil}
+	}
+	if session.gate != nil {
+		state = session.gate.State()
+	}
+	_, mode, generation := session.automationStatus()
+	active := generation != 0 && (state.Mode == aicontrol.Quest || state.Mode == aicontrol.Leveling || state.Mode == aicontrol.Agent || state.Mode == aicontrol.Paused)
+	if !active {
+		mode = ""
+	}
+	var recovery *AutomationRecovery
+	var recoveryErr error
+	if !active && state.Mode == aicontrol.Manual {
+		recovery, recoveryErr = handler.recoveryOffer(context.Background(), session)
+	}
+	return controlResponse{
+		Control:  state,
+		Recovery: recovery, RecoveryUnavailable: recoveryErr != nil,
+		AutomationAvailable: handler.automationExecutor() != nil,
+		AutomationActive:    active,
+		AutomationMode:      mode,
+	}
+}
+
+func (handler *Handler) control(response http.ResponseWriter, _ *http.Request, session *tcpSession) {
+	if session == nil || session.gate == nil {
+		http.Error(response, "session control unavailable", http.StatusGone)
+		return
+	}
+	handler.writeJSON(response, http.StatusOK, handler.controlSnapshot(session))
+}
+
+// controlRequest is shared by takeover/pause/resume. An owner field is
+// accepted only to produce a deliberate rejection for old integrations that
+// tried to identify an AI owner over HTTP; it is never used for authorization.
+type controlRequest struct {
+	RecoveryHandle string  `json:"recovery_handle,omitempty"`
+	Generation     *uint64 `json:"generation,omitempty"`
+	Mode           string  `json:"mode,omitempty"`
+	Reason         string  `json:"reason,omitempty"`
+	Owner          string  `json:"owner,omitempty"`
+}
+
+func decodeControlRequest(response http.ResponseWriter, request *http.Request) (controlRequest, error) {
+	var value controlRequest
+	if request.Body == nil {
+		return value, nil
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 16*1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		if errors.Is(err, io.EOF) {
+			return value, nil
+		}
+		return controlRequest{}, fmt.Errorf("invalid control request: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return controlRequest{}, errors.New("control request contains multiple JSON values")
+		}
+		return controlRequest{}, fmt.Errorf("invalid control request: %w", err)
+	}
+	if owner := strings.ToLower(strings.TrimSpace(value.Owner)); owner != "" && owner != string(aicontrol.Manual) {
+		return controlRequest{}, errors.New("external automation owner is not accepted")
+	}
+	value.Mode = strings.ToLower(strings.TrimSpace(value.Mode))
+	value.Reason = strings.TrimSpace(value.Reason)
+	return value, nil
+}
+
+func controlError(response http.ResponseWriter, err error) {
+	status := http.StatusConflict
+	switch {
+	case errors.Is(err, aicontrol.ErrClosed):
+		status = http.StatusGone
+	case errors.Is(err, aicontrol.ErrStale):
+		status = http.StatusConflict
+	case errors.Is(err, aicontrol.ErrMode):
+		status = http.StatusBadRequest
+	}
+	http.Error(response, err.Error(), status)
+}
+
+func (handler *Handler) takeover(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	input, err := decodeControlRequest(response, request)
+	if err != nil {
+		if strings.Contains(err.Error(), "external automation owner") {
+			http.Error(response, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	if input.RecoveryHandle != "" {
+		handler.discardRecoveredAutomation(response, request, session, input)
+		return
+	}
+	_, err = session.gate.Takeover(input.Reason)
+	if err != nil {
+		controlError(response, err)
+		return
+	}
+	handle := session.clearAutomation(0)
+	stopAutomationHandle(handle)
+	handler.writeJSON(response, http.StatusOK, handler.controlSnapshot(session))
+}
+
+func (handler *Handler) pauseAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	input, err := decodeControlRequest(response, request)
+	if err != nil {
+		if strings.Contains(err.Error(), "external automation owner") {
+			http.Error(response, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	if input.Generation == nil || *input.Generation == 0 {
+		http.Error(response, "current control generation is required", http.StatusBadRequest)
+		return
+	}
+	state := session.gate.State()
+	if state.Mode != aicontrol.Quest && state.Mode != aicontrol.Leveling && state.Mode != aicontrol.Agent {
+		http.Error(response, "automation is not running", http.StatusConflict)
+		return
+	}
+	if _, _, generation := session.automationStatus(); generation == 0 {
+		http.Error(response, "automation run is unavailable", http.StatusConflict)
+		return
+	}
+	if _, _, err = session.gate.Switch(*input.Generation, aicontrol.Paused, input.Reason); err != nil {
+		controlError(response, err)
+		return
+	}
+	if handle, _, _ := session.automationStatus(); handle != nil {
+		if pauser, ok := handle.(automationPauser); ok {
+			ctx, cancel := context.WithTimeout(request.Context(), defaultWriteTimeout)
+			err = pauser.Pause(ctx)
+			cancel()
+			if err != nil {
+				// Gate has already revoked every outbound action. Failure to
+				// confirm the durable pause must not turn a pause request into
+				// cancellation or erase an uncertain submitted step.
+				http.Error(response, err.Error(), http.StatusBadGateway)
+				return
+			}
+		}
+	}
+	handler.writeJSON(response, http.StatusOK, handler.controlSnapshot(session))
+}
+
+func (handler *Handler) resumeAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	input, err := decodeControlRequest(response, request)
+	if err != nil {
+		if strings.Contains(err.Error(), "external automation owner") {
+			http.Error(response, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	if input.Generation == nil || *input.Generation == 0 {
+		http.Error(response, "current control generation is required", http.StatusBadRequest)
+		return
+	}
+	if input.RecoveryHandle != "" {
+		handler.resumeRecoveredAutomation(response, request, session, input)
+		return
+	}
+	state := session.gate.State()
+	if state.Mode != aicontrol.Paused {
+		http.Error(response, "automation is not paused", http.StatusConflict)
+		return
+	}
+	handle, mode, generation := session.automationStatus()
+	if handle == nil || generation == 0 {
+		http.Error(response, "automation run is unavailable", http.StatusConflict)
+		return
+	}
+	if input.Mode != "" && input.Mode != string(mode) {
+		http.Error(response, "automation mode does not match the paused run", http.StatusConflict)
+		return
+	}
+	if mode != aicontrol.Quest && mode != aicontrol.Leveling && mode != aicontrol.Agent {
+		http.Error(response, "invalid automation mode", http.StatusBadRequest)
+		return
+	}
+	newState, ctx, err := session.gate.Switch(*input.Generation, mode, input.Reason)
+	if err != nil {
+		controlError(response, err)
+		return
+	}
+	if resumer, ok := handle.(automationResumer); ok {
+		if err = resumer.Resume(ctx); err != nil {
+			// A failed reconciliation is not a cancellation. Preserve the
+			// checkpoint and its handle for a later observation or explicit
+			// takeover, without undoing a concurrent control transition.
+			_, _, _ = session.gate.Switch(newState.Generation, aicontrol.Paused, "恢复尚未确认，原任务保持暂停")
+			http.Error(response, err.Error(), http.StatusBadGateway)
+			return
+		}
+	}
+	if !session.setAutomation(handle, mode, newState.Generation) {
+		http.Error(response, "automation control changed during resume", http.StatusConflict)
+		return
+	}
+	handler.writeJSON(response, http.StatusOK, handler.controlSnapshot(session))
+}
+
+type automationStartHTTP struct {
+	Generation          *uint64                `json:"generation,omitempty"`
+	Mode                string                 `json:"mode"`
+	Reason              string                 `json:"reason,omitempty"`
+	Owner               string                 `json:"owner,omitempty"`
+	TaskID              string                 `json:"task_id,omitempty"`
+	IncludeDependencies bool                   `json:"include_dependencies,omitempty"`
+	SelectedPetID       string                 `json:"selected_pet_id,omitempty"`
+	CharacterBuild      *characterbuild.Policy `json:"character_build,omitempty"`
+	Targets             []AutomationTarget     `json:"targets,omitempty"`
+	TargetPolicy        string                 `json:"target_policy,omitempty"`
+	Budget              AutomationBudget       `json:"budget"`
+	MaximumSeconds      int                    `json:"maximum_seconds"`
+	MaximumDeaths       int                    `json:"maximum_deaths"`
+	OfflineContinue     bool                   `json:"offline_continue"`
+}
+
+func decodeAutomationStart(response http.ResponseWriter, request *http.Request) (automationStartHTTP, error) {
+	var value automationStartHTTP
+	if request.Body == nil {
+		return value, errors.New("automation start request is required")
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 64*1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return automationStartHTTP{}, fmt.Errorf("invalid automation start request: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return automationStartHTTP{}, errors.New("automation start request contains multiple JSON values")
+	}
+	if owner := strings.ToLower(strings.TrimSpace(value.Owner)); owner != "" && owner != string(aicontrol.Manual) {
+		return automationStartHTTP{}, errors.New("external automation owner is not accepted")
+	}
+	value.Mode = strings.ToLower(strings.TrimSpace(value.Mode))
+	value.Reason = strings.TrimSpace(value.Reason)
+	value.TaskID = strings.TrimSpace(value.TaskID)
+	value.TargetPolicy = strings.ToLower(strings.TrimSpace(value.TargetPolicy))
+	if value.IncludeDependencies && value.Mode != string(aicontrol.Quest) {
+		return automationStartHTTP{}, errors.New("自动前置任务仅适用于自动任务模式")
+	}
+	if err := validateWebCharacterBuild(aicontrol.Mode(value.Mode), value.CharacterBuild); err != nil {
+		return automationStartHTTP{}, err
+	}
+	return value, nil
+}
+
+func (handler *Handler) startAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	input, err := decodeAutomationStart(response, request)
+	if err != nil {
+		if strings.Contains(err.Error(), "external automation owner") {
+			http.Error(response, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	if input.Generation == nil || *input.Generation == 0 {
+		http.Error(response, "current control generation is required", http.StatusBadRequest)
+		return
+	}
+	var mode aicontrol.Mode
+	switch input.Mode {
+	case string(aicontrol.Quest):
+		mode = aicontrol.Quest
+		if input.TaskID == "" {
+			http.Error(response, "task_id is required for quest automation", http.StatusBadRequest)
+			return
+		}
+	case string(aicontrol.Leveling):
+		mode = aicontrol.Leveling
+		if len(input.Targets) == 0 || (input.TargetPolicy != "all" && input.TargetPolicy != "any") {
+			http.Error(response, "leveling targets and all/any policy are required", http.StatusBadRequest)
+			return
+		}
+		for _, target := range input.Targets {
+			if (target.Kind != "character" && target.Kind != "pet") || target.Level <= 0 || (target.Kind == "pet" && strings.TrimSpace(target.ID) == "") {
+				http.Error(response, "leveling targets require stable identity and positive level", http.StatusBadRequest)
+				return
+			}
+		}
+	default:
+		http.Error(response, "unsupported automation mode", http.StatusBadRequest)
+		return
+	}
+	if input.MaximumSeconds <= 0 || input.MaximumDeaths < 0 || input.Budget.MaximumSpend < 0 || input.Budget.Reserve < 0 {
+		http.Error(response, "invalid automation limits or budget", http.StatusBadRequest)
+		return
+	}
+	executor := handler.automationExecutor()
+	if executor == nil {
+		http.Error(response, errAutomationUnavailable.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	state := session.gate.State()
+	if state.Mode != aicontrol.Manual {
+		http.Error(response, "character is already under automation control", http.StatusConflict)
+		return
+	}
+	if offer, err := handler.recoveryOffer(request.Context(), session); err != nil {
+		http.Error(response, err.Error(), http.StatusServiceUnavailable)
+		return
+	} else if offer != nil {
+		http.Error(response, "请先恢复或取消断线前的自动任务", http.StatusConflict)
+		return
+	}
+	started, runContext, err := session.gate.Switch(*input.Generation, mode, input.Reason)
+	if err != nil {
+		controlError(response, err)
+		return
+	}
+	config := AutomationConfig{TaskID: input.TaskID, SelectedPetID: input.SelectedPetID, IncludeDependencies: input.IncludeDependencies, CharacterBuild: input.CharacterBuild.Clone(), Targets: append([]AutomationTarget(nil), input.Targets...), TargetPolicy: input.TargetPolicy, Budget: input.Budget, MaximumSeconds: input.MaximumSeconds, MaximumDeaths: input.MaximumDeaths, OfflineContinue: input.OfflineContinue}
+	handle, err := executor.Start(runContext, &AutomationSession{ID: session.id, session: session, mode: mode, generation: started.Generation}, AutomationStartRequest{SessionID: session.id, Mode: mode, Generation: started.Generation, Reason: input.Reason, Config: config})
+	if err != nil || handle == nil {
+		_, _ = session.gate.Takeover("automation failed to start")
+		if err == nil {
+			err = errors.New("automation executor returned no run")
+		}
+		http.Error(response, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if !session.setAutomation(handle, mode, started.Generation) {
+		stopAutomationHandle(handle)
+		http.Error(response, "automation control changed during start", http.StatusConflict)
+		return
+	}
+	activateAutomationHandle(handle)
+	handler.writeJSON(response, http.StatusAccepted, handler.controlSnapshot(session))
+}
+
+func (handler *Handler) previewAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	input, err := decodeAutomationStart(response, request)
+	if err != nil {
+		if strings.Contains(err.Error(), "external automation owner") {
+			http.Error(response, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	if input.Generation == nil || *input.Generation == 0 {
+		http.Error(response, "current control generation is required", http.StatusBadRequest)
+		return
+	}
+	executor := handler.automationExecutor()
+	previewer, ok := executor.(automationPreviewer)
+	if executor == nil || !ok {
+		http.Error(response, "automation budget preview unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	mode := aicontrol.Mode(input.Mode)
+	config := AutomationConfig{TaskID: input.TaskID, SelectedPetID: input.SelectedPetID, IncludeDependencies: input.IncludeDependencies, CharacterBuild: input.CharacterBuild.Clone(), Targets: append([]AutomationTarget(nil), input.Targets...), TargetPolicy: input.TargetPolicy, Budget: input.Budget, MaximumSeconds: input.MaximumSeconds, MaximumDeaths: input.MaximumDeaths, OfflineContinue: input.OfflineContinue}
+	value, err := previewer.Preview(request.Context(), &AutomationSession{ID: session.id, session: session, mode: mode, generation: *input.Generation}, AutomationStartRequest{SessionID: session.id, Mode: mode, Generation: *input.Generation, Reason: input.Reason, Config: config})
+	if err != nil {
+		http.Error(response, err.Error(), http.StatusBadGateway)
+		return
+	}
+	handler.writeJSON(response, http.StatusOK, value)
+}
+
 type sendRequest struct {
-	Packet string `json:"packet"`
+	Packet     string  `json:"packet"`
+	Generation *uint64 `json:"generation,omitempty"`
+	Owner      string  `json:"owner,omitempty"`
 }
 
 func (handler *Handler) sendPacket(response http.ResponseWriter, request *http.Request, session *tcpSession, closeAfter bool) {
@@ -1905,6 +2603,14 @@ func (handler *Handler) sendPacket(response http.ResponseWriter, request *http.R
 			http.Error(response, "invalid JSON packet", http.StatusBadRequest)
 			return
 		}
+		owner := strings.ToLower(strings.TrimSpace(encoded.Owner))
+		// Browser HTTP is always the human owner. In particular, accepting an
+		// owner=AI/agent field would let an external caller impersonate an
+		// executor without going through the injected Automation boundary.
+		if owner != "" && owner != string(aicontrol.Manual) {
+			http.Error(response, "external automation owner is not accepted", http.StatusForbidden)
+			return
+		}
 	} else {
 		encoded.Packet = base64.StdEncoding.EncodeToString(body)
 	}
@@ -1913,9 +2619,38 @@ func (handler *Handler) sendPacket(response http.ResponseWriter, request *http.R
 		http.Error(response, "packet must be non-empty base64", http.StatusBadRequest)
 		return
 	}
-	if err := session.write(packet); err != nil {
-		if errors.Is(err, net.ErrClosed) {
+	generation := uint64(0)
+	if encoded.Generation != nil {
+		generation = *encoded.Generation
+	}
+	// A missing/zero generation is the old browser protocol. It remains valid
+	// only for an untouched generation-1 manual session; once control changes,
+	// every request must carry the current fencing token explicitly.
+	if generation == 0 {
+		state := session.gate.State()
+		if state.Generation != 1 || state.Mode != aicontrol.Manual {
+			http.Error(response, "control generation is required", http.StatusConflict)
+			return
+		}
+		generation = 1
+	}
+	var writeErr error
+	err = session.dispatch(request.Context(), generation, aicontrol.Manual, func(context.Context) error {
+		writeErr = session.write(packet)
+		return writeErr
+	})
+	if writeErr != nil {
+		// write() deliberately leaves session finalization to this caller. That
+		// keeps a write failure from calling Gate.Close while Dispatch still
+		// owns Gate's mutex.
+		session.finish(writeErr.Error())
+		err = writeErr
+	}
+	if err != nil {
+		if errors.Is(err, net.ErrClosed) || errors.Is(err, aicontrol.ErrClosed) {
 			http.Error(response, "session is closed", http.StatusGone)
+		} else if errors.Is(err, aicontrol.ErrStale) || errors.Is(err, aicontrol.ErrOwner) {
+			http.Error(response, "control generation or owner is no longer valid", http.StatusConflict)
 		} else {
 			http.Error(response, err.Error(), http.StatusBadGateway)
 		}
@@ -2004,8 +2739,9 @@ func (handler *Handler) pollEvents(response http.ResponseWriter, request *http.R
 		closed = session.reliableClosed()
 	}
 	body := map[string]any{
-		"events": encoded,
-		"closed": closed,
+		"events":  encoded,
+		"closed":  closed,
+		"control": handler.controlSnapshot(session),
 	}
 	if reliable {
 		body["acknowledged"] = true

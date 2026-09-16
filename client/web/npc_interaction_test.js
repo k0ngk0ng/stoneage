@@ -42,7 +42,7 @@ async function run(){
       new Function("$","send","reportError",line)(bind,deps.send,deps.reportError);
     }
     sends.length=0;handlers.get("request-inventory")();handlers.get("request-pets")();
-    assert.deepEqual(sends,[["S",["i"]],...[0,1,2,3,4].map(slot=>["S",[`k${slot}`]]),["KS",[-1]]],
+    assert.deepEqual(sends,[["S",["i"]],...[0,1,2,3,4].map(slot=>["S",[`k${slot}`]]),["KS",[-1]],["S",["AI"]]],
       "refresh controls request player status categories instead of an unrelated actor");
   }
 

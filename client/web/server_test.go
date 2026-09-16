@@ -248,6 +248,33 @@ func TestHandlerServesPageAndHealth(t *testing.T) {
 	}
 }
 
+func TestHandlerServesAutomationModule(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/automation.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "application/javascript") {
+		t.Fatalf("automation module status=%d content-type=%q", response.StatusCode, response.Header.Get("Content-Type"))
+	}
+	if !bytes.Contains(body, []byte("StoneAgeAutomation")) || !bytes.Contains(body, []byte("automation/start")) {
+		t.Fatalf("automation module is incomplete: %q", body[:minInt(len(body), 160)])
+	}
+}
+
 func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 	fake := newFakeTCP(t, []byte{'L', 0}, nil)
 	cfg := testConfig(fake.address())

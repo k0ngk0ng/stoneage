@@ -138,6 +138,16 @@ func Open(path string) (*Store, error) {
 
 func (store *Store) Close() error { return store.db.Close() }
 
+// DB returns the process-owned database handle for internal packages which
+// need to add a tightly scoped schema beside the authentication tables. The
+// handle is never exposed outside the server process.
+func (store *Store) DB() *sql.DB {
+	if store == nil {
+		return nil
+	}
+	return store.db
+}
+
 func (store *Store) Migrate(ctx context.Context) error {
 	const schema = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -300,6 +310,12 @@ func (store *Store) CreateAccount(ctx context.Context, username string, password
 // action to actorID when it was initiated from the web console. A nil actor is
 // used by command-line imports and the game service itself.
 func (store *Store) CreateAccountAs(ctx context.Context, actorID *int64, username string, password []byte) (Account, error) {
+	return store.CreateAccountLinkedAs(ctx, actorID, username, password, nil)
+}
+
+// CreateAccountLinkedAs atomically creates an account, its audit entry and a
+// server-owned journal link. The callback must use only the supplied transaction.
+func (store *Store) CreateAccountLinkedAs(ctx context.Context, actorID *int64, username string, password []byte, link func(*sql.Tx, int64) error) (Account, error) {
 	username = CanonicalGameUsername(username)
 	if err := ValidateGameUsername([]byte(username)); err != nil {
 		return Account{}, err
@@ -308,10 +324,13 @@ func (store *Store) CreateAccountAs(ctx context.Context, actorID *int64, usernam
 	if err != nil {
 		return Account{}, err
 	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Account{}, err
+	}
+	defer tx.Rollback()
 	now := store.timestamp(store.now())
-	result, err := store.db.ExecContext(ctx, `
-INSERT INTO accounts(username,password_hash,status,must_change_password,created_at,updated_at)
-VALUES(?,?,?,0,?,?)`, username, hash, AccountActive, now, now)
+	result, err := tx.ExecContext(ctx, `INSERT INTO accounts(username,password_hash,status,must_change_password,created_at,updated_at) VALUES(?,?,?,0,?,?)`, username, hash, AccountActive, now, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return Account{}, fmt.Errorf("account already exists")
@@ -322,10 +341,26 @@ VALUES(?,?,?,0,?,?)`, username, hash, AccountActive, now, now)
 	if err != nil {
 		return Account{}, err
 	}
-	if err := store.recordAudit(ctx, actorID, "account_created", username, "", ""); err != nil {
+	if link != nil {
+		if err := link(tx, id); err != nil {
+			return Account{}, err
+		}
+	}
+	var actor any
+	if actorID != nil {
+		actor = *actorID
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO audit_events(actor_admin_id,event,username,source_ip,detail,created_at) VALUES(?,?,?,?,?,?)", actor, "account_created", username, "", "", now); err != nil {
 		return Account{}, err
 	}
-	return store.GetAccount(ctx, id)
+	account, err := scanAccount(tx.QueryRowContext(ctx, `SELECT id,username,status,must_change_password,created_at,updated_at,last_login_at,failed_attempts,locked_until FROM accounts WHERE id=?`, id))
+	if err != nil {
+		return Account{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Account{}, err
+	}
+	return account, nil
 }
 
 // ImportLegacyAccount creates an account entry for a pre-existing SAAC

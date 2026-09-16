@@ -22,10 +22,17 @@
 #include "battle.h"
 #include "char.h"
 #include "char_data.h"
+#include "configfile.h"
 #include "enemy.h"
 #include "item.h"
 #include "pet.h"
 #include "pet_skill.h"
+#include "stoneage_character_identity.h"
+
+/* char_base.c owns the table and does not expose it from char_base.h.  Keep
+ * the declaration local to this modern bridge, just like family.c and the
+ * legacy pet code do. */
+extern tagRidePetTable ridePetTable[296];
 
 #define STONEAGE_PA_VERSION 1
 #define STONEAGE_PA_MAX_REQUEST 65535
@@ -47,6 +54,7 @@
 #define STONEAGE_PA_MAX_BUNDLE_ENTRIES 20
 #define STONEAGE_PA_MIN_PET_MODAI 0
 #define STONEAGE_PA_MAX_PET_MODAI 1000000
+#define STONEAGE_PA_MAX_AI_PETS 5
 
 typedef struct tagStoneAgePAField {
     char key[64];
@@ -117,8 +125,25 @@ typedef struct tagStoneAgePAResponse {
     int failed;
 } StoneAgePAResponse;
 
+typedef struct tagStoneAgePAInitializePet {
+    int template_id;
+    int level;
+    int array;
+} StoneAgePAInitializePet;
+
+typedef struct tagStoneAgePAInitializePlan {
+    int version;
+    int level;
+    int weight[4];
+    int mount;
+    int pet_count;
+    StoneAgePAInitializePet pets[STONEAGE_PA_MAX_AI_PETS];
+} StoneAgePAInitializePlan;
+
 static void StoneAgePA_writeItemObject( StoneAgePAResponse *response,
                                         int itemindex, const char *prefix );
+static void StoneAgePA_responseError( StoneAgePAResponse *response,
+                                      const char *code, const char *message );
 
 static char StoneAgePA_dir[STONEAGE_PA_MAX_PATH] = "/run/stoneage/player-admin/gmsv";
 static int StoneAgePA_initialized = FALSE;
@@ -250,6 +275,158 @@ static int StoneAgePA_parseInt( const char *text, int *value )
     if( errno != 0 || *end != '\0' || parsed < INT_MIN || parsed > INT_MAX ) return FALSE;
     *value = (int)parsed;
     return TRUE;
+}
+
+/* initialize_ai uses a deliberately smaller grammar than the line-oriented
+ * bridge protocol.  Keep this parser decimal-only so signs, whitespace,
+ * embedded NULs, overflow, empty fields, and trailing separators cannot be
+ * interpreted as a different build. */
+static int StoneAgePA_parseAIInteger( const char **cursor, int separator,
+                                      int *value )
+{
+    const char *start;
+    const char *p;
+    int parsed = 0;
+    int digits = 0;
+    int digit;
+    if( cursor == NULL || *cursor == NULL || value == NULL ) return FALSE;
+    start = *cursor;
+    p = start;
+    while( *p != '\0' && (separator == '\0' || *p != (char)separator) ) {
+        if( *p < '0' || *p > '9' ) return FALSE;
+        digit = *p - '0';
+        if( digits > 0 && *start == '0' ) return FALSE;
+        if( parsed > (INT_MAX - digit) / 10 ) return FALSE;
+        parsed = parsed * 10 + digit;
+        digits++;
+        p++;
+    }
+    if( digits == 0 ) return FALSE;
+    if( separator != '\0' ) {
+        if( *p != (char)separator ) return FALSE;
+        p++;
+    }
+    *value = parsed;
+    *cursor = p;
+    return TRUE;
+}
+
+static int StoneAgePA_parseAIIntegerOrEnd( const char **cursor, int *value,
+                                           int *has_more )
+{
+    const char *start;
+    const char *p;
+    int parsed = 0;
+    int digits = 0;
+    int digit;
+    if( cursor == NULL || *cursor == NULL || value == NULL ||
+        has_more == NULL ) return FALSE;
+    start = *cursor;
+    p = start;
+    while( *p != '\0' && *p != '|' ) {
+        if( *p < '0' || *p > '9' ) return FALSE;
+        digit = *p - '0';
+        if( digits > 0 && *start == '0' ) return FALSE;
+        if( parsed > (INT_MAX - digit) / 10 ) return FALSE;
+        parsed = parsed * 10 + digit;
+        digits++;
+        p++;
+    }
+    if( digits == 0 ) return FALSE;
+    *has_more = (*p == '|');
+    if( *has_more ) p++;
+    *value = parsed;
+    *cursor = p;
+    return TRUE;
+}
+
+static int StoneAgePA_parseAIPlan( StoneAgePAResponse *response,
+                                   const char *payload,
+                                   StoneAgePAInitializePlan *plan )
+{
+    const char *cursor;
+    int version;
+    int weight_total;
+    int i;
+    int tarray;
+    int limit;
+    int has_pet_fields;
+    if( response == NULL ) return FALSE;
+    if( payload == NULL || plan == NULL || payload[0] == '\0' ) {
+        StoneAgePA_responseError(response, "invalid_payload",
+                                 "initialize_ai payload is invalid");
+        return FALSE;
+    }
+    for( i = 0; payload[i] != '\0'; i++ ) {
+        if( (unsigned char)payload[i] > 0x7f ) {
+            StoneAgePA_responseError(response, "invalid_payload",
+                                     "initialize_ai payload must be ASCII");
+            return FALSE;
+        }
+    }
+    memset(plan, 0, sizeof(*plan));
+    cursor = payload;
+    if( !StoneAgePA_parseAIInteger(&cursor, '|', &version) ||
+        (version != 1 && version != 2) ||
+        !StoneAgePA_parseAIInteger(&cursor, '|', &plan->level) ||
+        plan->level < 1 || plan->level > CHAR_MAXUPLEVEL ) goto INVALID;
+    plan->version = version;
+    weight_total = 0;
+    for( i = 0; i < 4; i++ ) {
+        if( !StoneAgePA_parseAIInteger(&cursor, '|', &plan->weight[i]) ||
+            plan->weight[i] < 0 || plan->weight[i] > 100 ) goto INVALID;
+        weight_total += plan->weight[i];
+    }
+    if( version == 2 ) {
+        if( !StoneAgePA_parseAIInteger(&cursor, '|', &plan->mount) ||
+            (plan->mount != 0 && plan->mount != 1) ) goto INVALID;
+    }
+    if( weight_total <= 0 ||
+        !StoneAgePA_parseAIIntegerOrEnd(&cursor, &plan->pet_count,
+                                        &has_pet_fields) ||
+        plan->pet_count < 0 || plan->pet_count > STONEAGE_PA_MAX_AI_PETS ) {
+        goto INVALID;
+    }
+    if( plan->mount && plan->pet_count < 1 ) goto INVALID;
+    if( (plan->pet_count > 0 && !has_pet_fields) ||
+        (plan->pet_count == 0 && has_pet_fields) ) goto INVALID;
+    for( i = 0; i < plan->pet_count; i++ ) {
+        if( !StoneAgePA_parseAIInteger(&cursor, ':',
+                                       &plan->pets[i].template_id) ||
+            !StoneAgePA_parseAIInteger(&cursor,
+                                       i + 1 < plan->pet_count ? '|' : '\0',
+                                       &plan->pets[i].level) ||
+            plan->pets[i].level < 1 || plan->pets[i].level > CHAR_MAXUPLEVEL ) {
+            goto INVALID;
+        }
+        plan->pets[i].array = ENEMY_getEnemyArrayFromTempNo(
+            plan->pets[i].template_id);
+        if( plan->pets[i].array < 0 ||
+            !ENEMY_CHECKINDEX(plan->pets[i].array) ) {
+            StoneAgePA_responseError(response, "invalid_template",
+                                     "pet template does not exist");
+            return FALSE;
+        }
+        tarray = ENEMYTEMP_getEnemyTempArray(plan->pets[i].array);
+        if( !ENEMYTEMP_CHECKINDEX(tarray) ) {
+            StoneAgePA_responseError(response, "invalid_template",
+                                     "pet template is incomplete");
+            return FALSE;
+        }
+        limit = ENEMYTEMP_getInt(tarray, E_T_LIMITLEVEL);
+        if( limit > 0 && plan->pets[i].level > limit ) {
+            StoneAgePA_responseError(response, "invalid_pet_level",
+                                     "pet level exceeds its template limit");
+            return FALSE;
+        }
+    }
+    if( *cursor != '\0' ) goto INVALID;
+    return TRUE;
+
+INVALID:
+    StoneAgePA_responseError(response, "invalid_payload",
+                             "initialize_ai payload has an invalid format");
+    return FALSE;
 }
 
 static int StoneAgePA_getField( const StoneAgePARequest *request,
@@ -403,6 +580,27 @@ static int StoneAgePA_parseRequest( char *data, size_t length,
         request->has_payload = TRUE;
         return TRUE;
     }
+    /* These two actions inspect the effective native catalog and deliberately
+     * do not target an online character.  Parse their small input shape before
+     * the common account/character requirements below. */
+    if( strcmp(request->action, "ai_mount_default") == 0 ) {
+        if( !StoneAgePA_getField(request, "value", encoded, sizeof(encoded)) ||
+            !StoneAgePA_parseInt(encoded, &request->value) ||
+            request->value <= 0 ) return FALSE;
+        request->has_value = TRUE;
+        return TRUE;
+    }
+    if( strcmp(request->action, "validate_ai") == 0 ) {
+        if( !StoneAgePA_getField(request, "payload", request->payload,
+                                 sizeof(request->payload)) ||
+            request->payload[0] == '\0' ||
+            !StoneAgePA_getField(request, "value", encoded, sizeof(encoded)) ||
+            !StoneAgePA_parseInt(encoded, &request->value) ||
+            request->value <= 0 ) return FALSE;
+        request->has_payload = TRUE;
+        request->has_value = TRUE;
+        return TRUE;
+    }
     if( !StoneAgePA_requiredString(request, "account", request->account,
                                    sizeof(request->account)) ||
         !StoneAgePA_requiredString(request, "character", request->character,
@@ -475,6 +673,8 @@ static int StoneAgePA_parseRequest( char *data, size_t length,
         if( !StoneAgePA_parseInt(encoded, &request->skill_id) ) return FALSE;
         request->has_skill_id = TRUE;
     }
+    if( strcmp(request->action, "initialize_ai") == 0 &&
+        (!request->has_payload || request->payload[0] == '\0') ) return FALSE;
     if( strcmp(request->action, "grant_bundle") == 0 ) {
         if( !StoneAgePA_parseBundle(request, request->bundle, &request->bundle_count) ) return FALSE;
         request->has_bundle = TRUE;
@@ -1105,6 +1305,8 @@ static void StoneAgePA_snapshot( StoneAgePAResponse *response,
     StoneAgePA_writeEncoded(response, "account", CHAR_getChar(index, CHAR_CDKEY));
     StoneAgePA_writeEncoded(response, "character", CHAR_getChar(index, CHAR_NAME));
     StoneAgePA_writeInt(response, "character.graphic_id", CHAR_getInt(index, CHAR_BASEIMAGENUMBER));
+    StoneAgePA_writeInt(response, "character.ride_pet_slot", CHAR_getInt(index, CHAR_RIDEPET));
+    StoneAgePA_writeInt(response, "character.learn_ride", CHAR_getInt(index, CHAR_LEARNRIDE));
     StoneAgePA_writeEncoded(response, "save_status", "not_requested");
     StoneAgePA_writeCharacterAttributes(response, index);
     for( i = 0; i < CHAR_MAXITEMHAVE; i++ ) {
@@ -1141,6 +1343,11 @@ static int StoneAgePA_save( int index, StoneAgePAResponse *response )
                                  "mutation was applied in memory but GMSV or SAAC is disconnected");
         return FALSE;
     }
+    /* Prepare the identity before taking the receipt snapshot.  The ordinary
+     * save path invokes the same helper again, but a nonempty identity is
+     * retained without consuming entropy.  Preserve ordinary save semantics
+     * when preparation fails (for example, an unavailable entropy source). */
+    (void)StoneAge_CharacterIdentityPrepareSave(CHAR_getCharPointer(index));
     if( !StoneAgePA_copySerialized(index, &serialized) ) {
         StoneAgePA_responseError(response, "mutation_applied_save_failed",
                                  "mutation was applied in memory but character could not be serialized");
@@ -1873,6 +2080,403 @@ static int StoneAgePA_setPetSkill( StoneAgePAResponse *response,
     return TRUE;
 }
 
+static int StoneAgePA_checkAIFresh( StoneAgePAResponse *response, int index,
+                                    int *birth_points )
+{
+    CHAR_DATAINT attrs[4];
+    int i;
+    int value;
+    int total = 0;
+    attrs[0] = CHAR_VITAL;
+    attrs[1] = CHAR_STR;
+    attrs[2] = CHAR_TOUGH;
+    attrs[3] = CHAR_DEX;
+
+    /* The Go provisioning flow owns the fresh/unpublished lifecycle.  The
+     * native bridge cannot observe publication state, so it accepts only the
+     * level-one character that flow has just created and entered. */
+    if( CHAR_getInt(index, CHAR_LV) != 1 ||
+        CHAR_getInt(index, CHAR_EXP) != 0 ||
+        CHAR_getInt(index, CHAR_OLDEXP) != 0 ||
+        CHAR_getInt(index, CHAR_LEVELUPPOINT) != 0 ||
+        CHAR_getInt(index, CHAR_SKILLUPPOINT) != 0 ) {
+        StoneAgePA_responseError(response, "not_fresh",
+                                 "initialize_ai requires a fresh level-one character");
+        return FALSE;
+    }
+    for( i = 0; i < 4; i++ ) {
+        value = CHAR_getInt(index, attrs[i]);
+        if( value < 0 || value % 100 != 0 || value / 100 > 20 ) {
+            StoneAgePA_responseError(response, "not_fresh",
+                                     "fresh character attributes are invalid");
+            return FALSE;
+        }
+        birth_points[i] = value / 100;
+        total += birth_points[i];
+    }
+    if( total != 20 ) {
+        StoneAgePA_responseError(response, "not_fresh",
+                                 "fresh character must have exactly twenty birth points");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* Return the ride sprite selected by the same native table used by
+ * FAMILY_RidePet and the login recovery path.  Keeping this lookup in the
+ * bridge makes preflight and initialization agree with the actual server
+ * sprite mapping. */
+static int StoneAgePA_getRideGraphic( int player_base, int pet_base )
+{
+    int i;
+    int count = (int)(sizeof(ridePetTable) / sizeof(ridePetTable[0]));
+    if( player_base <= 0 || pet_base <= 0 ) return 0;
+    for( i = 0; i < count; i++ ) {
+        if( ridePetTable[i].charNo == player_base &&
+            ridePetTable[i].petNo == pet_base &&
+            ridePetTable[i].rideNo > 0 ) return ridePetTable[i].rideNo;
+    }
+    return 0;
+}
+
+static int StoneAgePA_findDefaultMountTemplate( int player_base,
+                                                int *mount_graphic )
+{
+    int ride_index;
+    int enemy_index;
+    int enemy_count;
+    int template_id;
+    int canonical_enemy_index;
+    int tarray;
+    int pet_base;
+    int ride_count = (int)(sizeof(ridePetTable) / sizeof(ridePetTable[0]));
+
+    if( mount_graphic != NULL ) *mount_graphic = 0;
+    enemy_count = ENEMY_getEnemyNum();
+    for( ride_index = 0; ride_index < ride_count; ride_index++ ) {
+        if( ridePetTable[ride_index].charNo != player_base ||
+            ridePetTable[ride_index].petNo <= 0 ||
+            ridePetTable[ride_index].rideNo <= 0 ) continue;
+        pet_base = ridePetTable[ride_index].petNo;
+        for( enemy_index = 0; enemy_index < enemy_count; enemy_index++ ) {
+            if( !ENEMY_CHECKINDEX(enemy_index) ) continue;
+            template_id = ENEMY_getInt(enemy_index, ENEMY_TEMPNO);
+            if( template_id < 0 ) continue;
+            /* initialize_ai resolves a template through the first native
+             * enemy row. Only advertise that canonical row so preflight and
+             * creation cannot disagree when data contains duplicate tempnos. */
+            canonical_enemy_index = ENEMY_getEnemyArrayFromTempNo(template_id);
+            if( canonical_enemy_index != enemy_index ) continue;
+            tarray = ENEMYTEMP_getEnemyTempArray(enemy_index);
+            if( !ENEMYTEMP_CHECKINDEX(tarray) ) continue;
+            if( ENEMYTEMP_getInt(tarray, E_T_IMGNUMBER) != pet_base ||
+                ENEMYTEMP_getInt(tarray, E_T_PETFLG) <= 0 ) continue;
+            /* Level one is below every positive template cap; a zero or
+             * negative cap is the legacy unlimited value. */
+            if( mount_graphic != NULL ) *mount_graphic = ridePetTable[ride_index].rideNo;
+            return template_id;
+        }
+    }
+    return -1;
+}
+
+static int StoneAgePA_validateAIMount( StoneAgePAResponse *response,
+                                       const StoneAgePAInitializePlan *plan,
+                                       int player_base,
+                                       int *mount_graphic )
+{
+    int tarray;
+    int pet_base;
+    int graphic;
+    int ride_level;
+    if( mount_graphic != NULL ) *mount_graphic = 0;
+    if( plan == NULL || !plan->mount ) return TRUE;
+    if( plan->pet_count < 1 ) {
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "mounted initialization requires a pet");
+        return FALSE;
+    }
+    tarray = ENEMYTEMP_getEnemyTempArray(plan->pets[0].array);
+    if( !ENEMYTEMP_CHECKINDEX(tarray) ||
+        ENEMYTEMP_getInt(tarray, E_T_PETFLG) <= 0 ) {
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "the first pet cannot be ridden");
+        return FALSE;
+    }
+    pet_base = ENEMYTEMP_getInt(tarray, E_T_IMGNUMBER);
+    graphic = StoneAgePA_getRideGraphic(player_base, pet_base);
+    if( graphic <= 0 ) {
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "the first pet has no ride sprite for this character");
+        return FALSE;
+    }
+#ifdef _RIDELEVEL
+    ride_level = getRideLevel();
+#else
+    ride_level = 5;
+#endif
+    if( plan->pets[0].level - plan->level > ride_level ) {
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "the first pet exceeds the character ride level");
+        return FALSE;
+    }
+    if( mount_graphic != NULL ) *mount_graphic = graphic;
+    return TRUE;
+}
+
+static int StoneAgePA_aiMountDefault( StoneAgePAResponse *response,
+                                       const StoneAgePARequest *request )
+{
+    int graphic;
+    int template_id;
+    if( request == NULL || !request->has_value || request->value <= 0 ) {
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "a character image is required");
+        return FALSE;
+    }
+    template_id = StoneAgePA_findDefaultMountTemplate(request->value, &graphic);
+    if( template_id < 0 || graphic <= 0 ) {
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "no compatible default ride pet exists");
+        return FALSE;
+    }
+    StoneAgePA_responseSimpleOK(response, request);
+    StoneAgePA_writeInt(response, "template_id", template_id);
+    StoneAgePA_writeInt(response, "mounted", 1);
+    StoneAgePA_writeInt(response, "mount_graphic_id", graphic);
+    return TRUE;
+}
+
+static int StoneAgePA_validateAI( StoneAgePAResponse *response,
+                                  const StoneAgePARequest *request )
+{
+    StoneAgePAInitializePlan plan;
+    int graphic = 0;
+    if( request == NULL || !request->has_payload || !request->has_value ||
+        !StoneAgePA_parseAIPlan(response, request->payload, &plan) ) return FALSE;
+    if( !StoneAgePA_validateAIMount(response, &plan, request->value, &graphic) ) return FALSE;
+    StoneAgePA_responseSimpleOK(response, request);
+    StoneAgePA_writeInt(response, "mounted", plan.mount ? 1 : 0);
+    StoneAgePA_writeInt(response, "mount_graphic_id", graphic);
+    return TRUE;
+}
+
+static int StoneAgePA_aiSkillPoints( int level )
+{
+    int per_level;
+#ifdef _SKILLUPPOINT_CF
+    per_level = getSkup();
+#else
+    per_level = 3;
+#endif
+    if( per_level < 0 ) per_level = 0;
+    return (level - 1) * per_level;
+}
+
+static void StoneAgePA_applyAIStats( int index,
+                                     const StoneAgePAInitializePlan *plan,
+                                     const int *birth_points )
+{
+    CHAR_DATAINT attrs[4];
+    int allocated[4];
+    int remainder[4];
+    int weight_total = 0;
+    int points = 20 + StoneAgePA_aiSkillPoints(plan->level);
+    int distributed = 0;
+    int i;
+    int j;
+    int best;
+    int product;
+
+    attrs[0] = CHAR_VITAL;
+    attrs[1] = CHAR_STR;
+    attrs[2] = CHAR_TOUGH;
+    attrs[3] = CHAR_DEX;
+    /* birth_points was validated from the just-created character. The full
+     * twenty-point birth budget is allocated with the same policy as later
+     * level-up points, so a level-one custom build is deterministic too. */
+    (void)birth_points;
+    for( i = 0; i < 4; i++ ) weight_total += plan->weight[i];
+    for( i = 0; i < 4; i++ ) {
+        product = points * plan->weight[i];
+        allocated[i] = product / weight_total;
+        remainder[i] = product % weight_total;
+        distributed += allocated[i];
+    }
+    /* Largest remainder allocation is deterministic; lower native attribute
+     * order wins a tie so equal policies reproduce the same character. */
+    for( j = distributed; j < points; j++ ) {
+        best = -1;
+        for( i = 0; i < 4; i++ ) {
+            if( best < 0 || remainder[i] > remainder[best] ) best = i;
+        }
+        allocated[best]++;
+        remainder[best] = -1;
+    }
+    for( i = 0; i < 4; i++ ) {
+        CHAR_setInt(index, attrs[i], allocated[i] * 100);
+    }
+    CHAR_setInt(index, CHAR_LEVELUPPOINT, 0);
+    CHAR_setInt(index, CHAR_SKILLUPPOINT, 0);
+    CHAR_setInt(index, CHAR_OLDEXP, 0);
+    CHAR_setInt(index, CHAR_EXP, 0);
+    CHAR_setInt(index, CHAR_LV, plan->level);
+}
+
+static void StoneAgePA_discardAIPets( int index, int *created, int count )
+{
+    int i;
+    int j;
+    int petindex;
+    for( i = 0; i < count; i++ ) {
+        petindex = created[i];
+        if( petindex < 0 ) continue;
+        for( j = 0; j < CHAR_MAXPETHAVE; j++ ) {
+            if( CHAR_getCharPet(index, j) == petindex ) {
+                CHAR_setCharPet(index, j, -1);
+            }
+        }
+        for( j = 0; j < CHAR_MAXPOOLPETHAVE; j++ ) {
+            if( CHAR_getCharPoolPet(index, j) == petindex ) {
+                CHAR_setCharPoolPet(index, j, -1);
+            }
+        }
+        if( CHAR_CHECKINDEX(petindex) ) CHAR_endCharOneArray(petindex);
+    }
+}
+
+static void StoneAgePA_releaseOldAIPets( int *old_pets, int count )
+{
+    int i;
+    int j;
+    int petindex;
+    for( i = 0; i < count; i++ ) {
+        petindex = old_pets[i];
+        if( petindex < 0 || !CHAR_CHECKINDEX(petindex) ) continue;
+        for( j = 0; j < i; j++ ) {
+            if( old_pets[j] == petindex ) break;
+        }
+        if( j == i ) CHAR_endCharOneArray(petindex);
+    }
+}
+
+static int StoneAgePA_initializeAI( StoneAgePAResponse *response,
+                                    const StoneAgePARequest *request,
+                                    int index )
+{
+    StoneAgePAInitializePlan plan;
+    Char *before;
+    Char *current;
+    int birth_points[4];
+    int old_pets[CHAR_MAXPETHAVE];
+    int created[STONEAGE_PA_MAX_AI_PETS];
+    int created_count = 0;
+    int i;
+    int petindex;
+    int mount_graphic = 0;
+
+    if( !request->has_payload || request->payload[0] == '\0' ) {
+        StoneAgePA_responseError(response, "invalid_payload",
+                                 "initialize_ai requires a payload");
+        return FALSE;
+    }
+    if( !StoneAgePA_parseAIPlan(response, request->payload, &plan) ) return FALSE;
+    if( !StoneAgePA_checkAIFresh(response, index, birth_points) ) return FALSE;
+    if( !StoneAgePA_validateAIMount(
+            response, &plan,
+            CHAR_getInt(index, CHAR_BASEBASEIMAGENUMBER), &mount_graphic) ) return FALSE;
+    current = CHAR_getCharPointer(index);
+    if( current == NULL ) {
+        StoneAgePA_responseError(response, "initialize_failed",
+                                 "character state is unavailable");
+        return FALSE;
+    }
+    before = (Char *)malloc(sizeof(Char));
+    if( before == NULL ) {
+        StoneAgePA_responseError(response, "initialize_failed",
+                                 "character state snapshot could not be allocated");
+        return FALSE;
+    }
+    memcpy(before, current, sizeof(Char));
+    for( i = 0; i < CHAR_MAXPETHAVE; i++ ) {
+        old_pets[i] = CHAR_getCharPet(index, i);
+        created[i < STONEAGE_PA_MAX_AI_PETS ? i : 0] = -1;
+    }
+
+    StoneAgePA_applyAIStats(index, &plan, birth_points);
+    CHAR_setInt(index, CHAR_DEFAULTPET, -1);
+    CHAR_setInt(index, CHAR_RIDEPET, -1);
+    CHAR_setWorkInt(index, CHAR_WORKPETFOLLOW, -1);
+    for( i = 0; i < CHAR_MAXPETHAVE; i++ ) CHAR_setCharPet(index, i, -1);
+
+    for( i = 0; i < plan.pet_count; i++ ) {
+        petindex = ENEMY_createPetFromEnemyIndexAtLevel(
+            index, plan.pets[i].array, plan.pets[i].level);
+        if( petindex >= 0 && created_count < STONEAGE_PA_MAX_AI_PETS ) {
+            created[created_count++] = petindex;
+        }
+        if( petindex < 0 || !CHAR_CHECKINDEX(petindex) ||
+            CHAR_getCharPet(index, i) != petindex ) {
+            StoneAgePA_discardAIPets(index, created, created_count);
+            memcpy(current, before, sizeof(Char));
+            free(before);
+            StoneAgePA_responseError(response, "initialize_failed",
+                                     "one or more pets could not be created");
+            return FALSE;
+        }
+    }
+
+    if( plan.mount ) {
+        /* Slot zero is the physical mount. The legacy client cannot use a
+         * mounted pet as its default battle pet, so prefer slot one when it
+         * exists and leave the default unset for a single-pet build. */
+        CHAR_setInt(index, CHAR_DEFAULTPET, plan.pet_count > 1 ? 1 : -1);
+        CHAR_setInt(index, CHAR_RIDEPET, 0);
+        CHAR_setInt(index, CHAR_BASEIMAGENUMBER, mount_graphic);
+        if( CHAR_getInt(index, CHAR_LEARNRIDE) < plan.pets[0].level ) {
+            CHAR_setInt(index, CHAR_LEARNRIDE, plan.pets[0].level);
+        }
+    } else {
+        CHAR_setInt(index, CHAR_DEFAULTPET, plan.pet_count > 0 ? 0 : -1);
+        CHAR_setInt(index, CHAR_RIDEPET, -1);
+    }
+    CHAR_setWorkInt(index, CHAR_WORKPETFOLLOW, -1);
+    CHAR_complianceParameter(index);
+    CHAR_setInt(index, CHAR_HP, CHAR_getWorkInt(index, CHAR_WORKMAXHP));
+    CHAR_setInt(index, CHAR_MP, CHAR_getWorkInt(index, CHAR_WORKMAXMP));
+    for( i = 0; i < created_count; i++ ) {
+        if( plan.mount && i == 0 ) {
+            /* FAMILY_RidePet requires full loyalty for the physical mount.
+             * Keep the other explicitly requested pets unchanged. */
+            CHAR_setInt(created[i], CHAR_VARIABLEAI, CHAR_MAXVARIABLEAI);
+        }
+        CHAR_complianceParameter(created[i]);
+        CHAR_setInt(created[i], CHAR_HP,
+                    CHAR_getWorkInt(created[i], CHAR_WORKMAXHP));
+        CHAR_setInt(created[i], CHAR_MP,
+                    CHAR_getWorkInt(created[i], CHAR_WORKMAXMP));
+    }
+    if( plan.mount &&
+        (created_count < 1 ||
+         CHAR_getWorkInt(created[0], CHAR_WORKFIXAI) < 100 ||
+         CHAR_getInt(index, CHAR_RIDEPET) != 0 ||
+         CHAR_getInt(index, CHAR_LEARNRIDE) < plan.pets[0].level ||
+         CHAR_getInt(index, CHAR_BASEIMAGENUMBER) != mount_graphic ||
+         StoneAgePA_getRideGraphic(
+             CHAR_getInt(index, CHAR_BASEBASEIMAGENUMBER),
+             CHAR_getInt(created[0], CHAR_BASEBASEIMAGENUMBER)) != mount_graphic) ) {
+        StoneAgePA_discardAIPets(index, created, created_count);
+        memcpy(current, before, sizeof(Char));
+        free(before);
+        StoneAgePA_responseError(response, "invalid_mount",
+                                 "native ride state could not be established");
+        return FALSE;
+    }
+    StoneAgePA_releaseOldAIPets(old_pets, CHAR_MAXPETHAVE);
+    free(before);
+    return TRUE;
+}
+
 static int StoneAgePA_execute( StoneAgePAResponse *response,
                                StoneAgePARequest *request )
 {
@@ -1885,6 +2489,12 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
     }
     if( strcmp(request->action, "inspect_item") == 0 ) {
         return StoneAgePA_inspectItem(response, request);
+    }
+    if( strcmp(request->action, "ai_mount_default") == 0 ) {
+        return StoneAgePA_aiMountDefault(response, request);
+    }
+    if( strcmp(request->action, "validate_ai") == 0 ) {
+        return StoneAgePA_validateAI(response, request);
     }
     if( (strcmp(request->action, "set_item") == 0 ||
          strcmp(request->action, "delete_item") == 0 ||
@@ -1904,6 +2514,7 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
              strcmp(request->action, "set_item") == 0 ||
              strcmp(request->action, "delete_item") == 0 ||
              strcmp(request->action, "grant_pet") == 0 ||
+             strcmp(request->action, "initialize_ai") == 0 ||
              strcmp(request->action, "set_pet") == 0 ||
              strcmp(request->action, "delete_pet") == 0 ||
              strcmp(request->action, "set_pet_skill") == 0 ||
@@ -1924,13 +2535,21 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
     else if( strcmp(request->action, "set_item") == 0 ) ok = StoneAgePA_setItem(response, request, index);
     else if( strcmp(request->action, "delete_item") == 0 ) ok = StoneAgePA_deleteItem(response, request, index);
     else if( strcmp(request->action, "grant_pet") == 0 ) ok = StoneAgePA_grantPet(response, request, index);
+    else if( strcmp(request->action, "initialize_ai") == 0 ) ok = StoneAgePA_initializeAI(response, request, index);
     else if( strcmp(request->action, "set_pet") == 0 ) ok = StoneAgePA_setPet(response, request, index);
     else if( strcmp(request->action, "delete_pet") == 0 ) ok = StoneAgePA_deletePet(response, request, index);
     else if( strcmp(request->action, "set_pet_skill") == 0 ) ok = StoneAgePA_setPetSkill(response, request, index, FALSE);
     else if( strcmp(request->action, "delete_pet_skill") == 0 ) ok = StoneAgePA_setPetSkill(response, request, index, TRUE);
     if( !ok ) return FALSE;
-    CHAR_complianceParameter(index);
+    if( strcmp(request->action, "initialize_ai") != 0 ) CHAR_complianceParameter(index);
     if( !StoneAgePA_save(index, response) ) return FALSE;
+    if( strcmp(request->action, "initialize_ai") == 0 ) {
+        /* A mounted initialization changes the visible sprite. Broadcast it
+         * only after the durable save has been queued successfully, so a
+         * failed transaction cannot leak a transient ride state. */
+        CHAR_sendCToArroundCharacter(
+            CHAR_getWorkInt(index, CHAR_WORKOBJINDEX));
+    }
     CHAR_sendStatusString(index, "P");
     CHAR_sendStatusString(index, "I");
     if( strcmp(request->action, "grant_bundle") == 0 ) {
@@ -1949,6 +2568,13 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
             snprintf(category, sizeof(category), "%s%d",
                      strcmp(request->location, "warehouse") == 0 ? "W" : "K",
                      request->granted_slots[i]);
+            CHAR_sendStatusString(index, category);
+        }
+    } else if( strcmp(request->action, "initialize_ai") == 0 ) {
+        int i;
+        char category[8];
+        for( i = 0; i < CHAR_MAXPETHAVE; i++ ) {
+            snprintf(category, sizeof(category), "K%d", i);
             CHAR_sendStatusString(index, category);
         }
     } else if( strcmp(request->action, "set_pet") == 0 ||

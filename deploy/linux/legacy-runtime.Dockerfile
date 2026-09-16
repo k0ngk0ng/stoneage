@@ -15,7 +15,7 @@ COPY scripts/modernize-character-file-read.py \
 
 RUN sh /modern/build.sh
 
-FROM alpine:3.22
+FROM alpine:3.22 AS legacy-runtime
 
 # Use local time consistently for server announcements and runtime logs.
 ENV TZ=Asia/Shanghai

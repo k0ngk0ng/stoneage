@@ -1374,7 +1374,17 @@
   }
   function decodeString(value) {
     const bytes=typeof value === "string" ? ascii(value) : u8(value); const out=[];
-    for (let i=0;i<bytes.length;i++) { if (bytes[i]!==92) { out.push(bytes[i]); continue; } if (i+1>=bytes.length) break; const next=bytes[++i]; out.push(next===83?32:next===110?10:next===114?13:next===92?92:next); }
+    for (let i=0;i<bytes.length;i++) {
+      if (bytes[i]!==92) { out.push(bytes[i]); continue; }
+      if (i+1>=bytes.length) { out.push(bytes[i]); break; }
+      const next=bytes[++i];
+      if(next===83)out.push(32);
+      else if(next===110)out.push(10);
+      else if(next===114)out.push(13);
+      else if(next===92)out.push(92);
+      else { /* lssproto_descapeString preserves unknown inner escapes such
+               as the character-file \c/\z/\y layer for the caller. */ out.push(92,next); }
+    }
     return Uint8Array.from(out);
   }
   function decodeText(value) { return decodeLegacyText(decodeString(value)); }
@@ -1429,11 +1439,47 @@
   window.StoneAgeProtocol=Protocol;
 
   class HTTPTransport {
-    constructor(base="",serverID="") { this.base=base.replace(/\/$/,""); this.serverID=String(serverID||""); this.id=""; this.closed=false; this.sendChain=Promise.resolve(); this.eventAck=false; this.eventCursor=0; this.pollAbort=null; }
-    async connect(serverID=this.serverID) { const selected=String(serverID||this.serverID||"").trim(); const payload=selected?JSON.stringify({server_id:selected}):null; const request={method:"POST",headers:{"Accept":"application/json"}}; if(payload){request.body=payload;request.headers["Content-Type"]="application/json";} const response=await fetch(this.base+"/api/sessions",request); if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;} const data=await response.json(); this.id=data.id; this.eventAck=data.event_ack===true; this.eventCursor=0; return Protocol.fromBase64(data.greeting); }
+    constructor(base="",serverID="") { this.base=base.replace(/\/$/,""); this.serverID=String(serverID||""); this.id=""; this.closed=false; this.sendChain=Promise.resolve(); this.eventAck=false; this.eventCursor=0; this.pollAbort=null; this.control=null; this.automationAvailable=true; }
+    setControl(value) {
+      const envelope=value&&typeof value==="object"?value:null;
+      const envelopes=[];
+      let raw=envelope;
+      /* events wraps controlSnapshot inside its own control field, while the
+         create/control endpoints return controlSnapshot directly. Walk both
+         shapes so every response updates the same local fencing token. */
+      while(raw&&typeof raw==="object") {
+        envelopes.push(raw);
+        if(!raw.control||typeof raw.control!=="object")break;
+        raw=raw.control;
+      }
+      const generation=Number(raw?.generation);
+      const mode=String(raw?.mode||"").trim().toLowerCase();
+      if(!Number.isSafeInteger(generation)||generation<=0||!mode)return null;
+      const currentGeneration=Number(this.control?.generation);
+      /* A long poll that started before a takeover can finish afterwards.
+         Never let that older snapshot roll the browser's fencing token back. */
+      if(Number.isSafeInteger(currentGeneration)&&currentGeneration>generation)return this.control;
+      const next={...raw};
+      for(const item of envelopes) {
+        if(Object.prototype.hasOwnProperty.call(item,"automation_available"))next.automation_available=item.automation_available!==false;
+        if(Object.prototype.hasOwnProperty.call(item,"automation_active"))next.automation_active=item.automation_active===true;
+        if(Object.prototype.hasOwnProperty.call(item,"automation_mode"))next.automation_mode=String(item.automation_mode||"");
+        if(Object.prototype.hasOwnProperty.call(item,"automation_recovery"))next.automation_recovery=item.automation_recovery;
+        if(Object.prototype.hasOwnProperty.call(item,"automation_recovery_unavailable"))next.automation_recovery_unavailable=item.automation_recovery_unavailable===true;
+      }
+      this.control=next;
+      this.automationAvailable=next.automation_available!==false;
+      if(app)app.control=next;
+      try{root.dispatchEvent?.(new CustomEvent("stoneage-control",{detail:next}));}catch(_){/* optional WebView event API */}
+      return next;
+    }
+    getControl() { return this.control; }
+    currentGeneration() { const generation=Number(this.control?.generation); return Number.isSafeInteger(generation)&&generation>0?generation:0; }
+    async connect(serverID=this.serverID) { const selected=String(serverID||this.serverID||"").trim(); const payload=selected?JSON.stringify({server_id:selected}):null; const request={method:"POST",headers:{"Accept":"application/json"}}; if(payload){request.body=payload;request.headers["Content-Type"]="application/json";} const response=await fetch(this.base+"/api/sessions",request); if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;} const data=await response.json(); this.id=data.id; this.eventAck=data.event_ack===true; this.eventCursor=0; this.setControl(data); return Protocol.fromBase64(data.greeting); }
     async sendToID(id,packet,options={}) {
       if(!id) throw new Error("TCP session is closed");
-      const request={method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({packet:Protocol.toBase64(packet)})};
+      const generation=options?.generation===undefined?this.currentGeneration():Number(options.generation)||0;
+      const request={method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({packet:Protocol.toBase64(packet),generation})};
       /* A pagehide/beforeunload handler cannot keep a normal fetch alive.  The
          request is deliberately small (one legacy packet) so it is eligible
          for the browser's keepalive budget. */
@@ -1449,7 +1495,12 @@
          preserve that property without making local movement wait for the
          HTTP response: the movement animator starts immediately and only
          the wire writes are serialized here. */
-      const operation=this.sendChain.then(()=>this.sendNow(packet));
+      /* Capture the fencing token when the game command enters the queue. If
+         a takeover or pause happens while an earlier HTTP write is pending,
+         this item must retain its old token and be rejected as stale rather
+         than accidentally sent under the new owner. */
+      const generation=this.currentGeneration();
+      const operation=this.sendChain.then(()=>this.sendNow(packet,{generation}));
       this.sendChain=operation.catch(()=>{});
       return operation;
     }
@@ -1470,6 +1521,7 @@
             if(!response.ok){const error=new Error(await response.text()||`HTTP ${response.status}`);error.status=response.status;throw error;}
             const data=await response.json();
             if(!data||!Array.isArray(data.events))throw new Error("游戏事件响应格式无效");
+            if(data.control)this.setControl(data);
             if(data.events.some(event=>!event||typeof event!=="object"))throw new Error("游戏事件格式无效");
             if(this.eventAck){
               if(data.acknowledged!==true)throw new Error("服务器未确认可靠事件协议");
@@ -2946,6 +2998,18 @@
     #server-window-screen #server-window-options .data-card{width:240px;padding:2px 4px;background:transparent;border:0;box-shadow:none}
     #server-window-screen #server-window-options .window-item-icon{display:inline-block;width:32px;height:32px;margin:0 6px;object-fit:contain;vertical-align:middle;image-rendering:pixelated}
     #server-window-screen #server-window-form button{width:80px;height:16px;padding:0;color:transparent;font-size:0;border:0;box-shadow:none;background:url('/assets/bitmaps/bitmap_9211.png') center/100% 100% no-repeat}
+    #server-window-screen.server-window-pet-training #server-window-body,
+    #server-window-screen.server-window-pet-training #server-window-options{left:0;top:0;width:640px;height:480px;margin:0;padding:0;display:block;overflow:visible;pointer-events:none}
+    #server-window-screen.pet-training-catalog .legacy-native-frame{display:none}
+    #server-window-screen.legacy-native-window.pet-training-catalog::before{display:block}
+    #server-window-screen .pet-training-text{position:absolute;overflow:hidden;white-space:pre-wrap;color:#fff;text-align:left;font:12px/20px SimSun,"Songti SC",serif;text-shadow:1px 1px #080706}
+    #server-window-screen #server-window-options>.pet-training-row{position:absolute;display:flex;justify-content:space-between;gap:12px;height:22px;min-height:22px;margin:0;padding:0 3px;font:12px/22px SimSun,"Songti SC",serif;color:#fff;pointer-events:auto;white-space:nowrap;overflow:hidden}
+    #server-window-screen #server-window-options>.pet-training-pet-row{display:grid;grid-template-columns:minmax(0,1fr) 60px 88px}
+    #server-window-screen .pet-training-row span:first-child{overflow:hidden;text-overflow:ellipsis}
+    #server-window-screen .pet-training-row span:last-child{flex-shrink:0}
+    #server-window-screen #server-window-options>.pet-training-row:disabled{color:#999;cursor:default}
+    #server-window-screen #server-window-options>.pet-training-control{position:absolute;margin:0;pointer-events:auto}
+    #server-window-screen .pet-training-control:disabled{opacity:.4;cursor:default}
     /* shopWindow2()/shopWindow7() do not use MakeWindowDisp's nine-tile
        frame.  LOGIN.CPP paints CG_ITEMSHOP_WIN at its native 432x420 size
        and then places all text/hit boxes in the 640x480 back buffer. */
@@ -7724,7 +7788,7 @@
   }
   function renderPetSkills(list,pet,index){
     const root=document.createElement("div");root.className="pet-skill-page";
-    const skills=(app.petSkills[index]||[]).slice(0,7),capacity=Math.max(skills.length,Math.min(7,Math.max(0,decimal(pet.maxSkill??pet.slot,0))));
+    const skills=(app.petSkills[index]||[]).slice(0,7),capacity=Math.max(skills.length,petTrainingSlots(pet));
     /* StockDispBuffer() uses the window centre (mx=140,my=178) for every
        skill strip.  These origins are mx+xoffset/my+yoffset from manifest
        entries 26131..26137; keep them explicit because the strips differ by
@@ -8458,9 +8522,92 @@
     app.serverPositionReceivedAt=Date.now();
     noteServerMove(app.serverPosition);
   }
+  function splitAIObservationEscaped(value,delimiter=","){
+    const text=String(value??""),result=[];let token="",escaped=false;
+    for(const character of text){
+      if(escaped){token+=`\\${character}`;escaped=false;continue;}
+      if(character==="\\"){escaped=true;continue;}
+      if(character===delimiter){result.push(token);token="";continue;}
+      token+=character;
+    }
+    if(escaped)token+="\\";
+    result.push(token);
+    return result;
+  }
+  function parseAIObservation(data){
+    const tokens=String(data??"").split("|"),kind=tokens.shift()||"";
+    if(kind!=="AI")return null;
+    const observation={version:null,characterIndex:null,pets:[],endEvent:null,nowEvent:null,learnRide:null};
+    const petsBySlot=new Map();
+    let endSeen=false,nowSeen=false,rideSeen=false;
+    const strictInteger=(value,fallback=null)=>{
+      const text=String(value??"").trim();
+      if(!/^[+-]?\d+$/.test(text))return fallback;
+      const number=Number(text);
+      return Number.isSafeInteger(number)?number:fallback;
+    };
+    for(const token of tokens){
+      if(!token)continue;
+      const separator=token.indexOf("=");if(separator<=0)continue;
+      const key=token.slice(0,separator),raw=token.slice(separator+1);
+      if(key==="v")observation.version=strictInteger(raw);
+      else if(key==="chara")observation.characterIndex=strictInteger(raw);
+      else if(key==="pet"){
+        const fields=splitAIObservationEscaped(raw),slot=strictInteger(fields[0],-1),level=strictInteger(fields[2]);
+        if(slot<0||slot>=5||level===null)continue;
+        const uniqueRaw=String(fields[1]??""),decoded=unescapeCharacterOption(uniqueRaw,{stripSentinel:false});
+        petsBySlot.set(slot,{slot,unique:decoded&&decoded!=="unknown"?decoded:"unknown",level});
+      }else if(key==="end"||key==="now"){
+        const flags=splitAIObservationEscaped(raw).map(value=>strictInteger(value));
+        if(flags.length!==6||flags.some(value=>value===null))continue;
+        if(key==="end"){observation.endEvent=flags;endSeen=true;}
+        else{observation.nowEvent=flags;nowSeen=true;}
+      }else if(key==="ride"){
+        const ride=strictInteger(raw);if(ride!==null){observation.learnRide=ride;rideSeen=true;}
+      }else if(key==="stat_points"){
+        const points=strictInteger(raw);
+        if(points===null||points<0||points>2147483647||observation.statPoints!==undefined)return null;
+        observation.statPoints=points;
+      }
+    }
+    if(observation.version!==1||observation.characterIndex===null||!endSeen||!nowSeen||!rideSeen)return null;
+    observation.pets=[...petsBySlot.values()].sort((left,right)=>left.slot-right.slot);
+    return observation;
+  }
+  function applyAIObservation(data){
+    const observation=typeof data==="string"?parseAIObservation(data):data;
+    if(!observation||observation.version!==1)return null;
+    const previous=Array.isArray(app.petSlots)?app.petSlots:[],next=Array.from({length:5},()=>null);
+    for(const entry of (observation.pets||[]).slice().sort((left,right)=>Number(left.slot)-Number(right.slot))){
+      const slot=Number(entry.slot);if(!Number.isInteger(slot)||slot<0||slot>=5||next[slot])continue;
+      const prior=previous[slot],pet=prior&&typeof prior==="object"?{...prior}:{};
+      /* S("AI") is the authoritative stable identity refresh.  Remove every
+         old identity alias before applying this response so a missing unique
+         value cannot silently retain an ID from a previous pet or slot. */
+      ["id","petId","serial","uid","stableId","uniqueCode","unique"].forEach(key=>{delete pet[key];});
+      pet.slot=slot;pet.index=slot;pet.level=Number(entry.level);
+      if(String(entry.unique||"")!=="unknown")pet.id=String(entry.unique);
+      next[slot]=pet;
+    }
+    app.petSlots=next;
+    app.status.aiObservation=observation;
+    app.status.aiCharacterIndex=observation.characterIndex;
+    app.status.aiEndEvent=observation.endEvent.slice();
+    app.status.aiNowEvent=observation.nowEvent.slice();
+    app.status.aiLearnRide=observation.learnRide;
+    if(Number.isInteger(observation.statPoints)&&observation.statPoints>=0&&observation.statPoints<=2147483647)app.status.skillPoints=observation.statPoints;
+    app.serverState.aiObservation=observation;
+    if(!app.pc||typeof app.pc!=="object")app.pc={};
+    app.pc.learnRide=observation.learnRide;
+    return observation;
+  }
   function receiveSystemState(data){
     const parts=String(data||"").split("|"),kind=parts[0]||""; if(!kind)return;
     switch(kind[0]){
+      case "A": {
+        if(kind==="AI")applyAIObservation(data);
+        break;
+      }
       case "C": {
         const floor=stateNumber(kind.slice(1),app.floor),maxx=stateNumber(parts[1]),maxy=stateNumber(parts[2]),gx=stateNumber(parts[3],app.position[0]),gy=stateNumber(parts[4],app.position[1]),point=[gx,gy];
         /* The server emits S:C for login/warps, but a 2.5 walk can also be
@@ -14238,7 +14385,11 @@
         */
         {
           const bpValues=parts.slice(1).filter(value=>String(value||"")!=="");
-          const isTurnState=parts[0]==="BP"&&bpValues.length===3&&bpValues.every(value=>/^[0-9A-Fa-f]+$/.test(String(value)));
+          /* BP is also the movie envelope.  BE/e0/f1 are all valid hex
+             strings, so require the first value to be a native owner slot
+             before treating the tuple as a menu snapshot. */
+          const ownerNo=bpValues.length===3?battleNumber(bpValues[0]):-1;
+          const isTurnState=parts[0]==="BP"&&bpValues.length===3&&ownerNo>=0&&ownerNo<=20&&bpValues.every(value=>/^[0-9A-Fa-f]+$/.test(String(value)));
           if(isTurnState){
             const snapshot={myNo:battleNumber(bpValues[0]),bpFlags:battleNumber(bpValues[1]),myMp:battleNumber(bpValues[2])};
             /* BATTLE_PreCommandSeq() is sent before the native movie has
@@ -14514,7 +14665,7 @@
   }
   function clearItemShopFrame(){
     const screen=$("server-window-screen");if(!screen)return;
-    screen.classList.remove("server-window-shop-list","server-window-shop-quantity","server-window-select");
+    screen.classList.remove("server-window-shop-list","server-window-shop-quantity","server-window-select","server-window-pet-training","pet-training-catalog");
     for(const property of ["--legacy-bg","--legacy-bg-x","--legacy-bg-y","--legacy-bg-w","--legacy-bg-h"])screen.style.removeProperty(property);
   }
   function applyShopAcknowledgement(session){
@@ -14639,8 +14790,78 @@
   }
   function parsePetSkillShop(data){
     const tokens=splitWindowTokens(data),shop={valid:stateNumber(tokens[0]),title:tokens[1]||"",messages:[tokens[2]||""],skills:[]};
-    for(let index=0,cursor=3;index<120&&cursor<tokens.length;index++,cursor+=3){const name=tokens[cursor]||"";if(!name)break;shop.skills.push({index,name,price:stateNumber(tokens[cursor+1]),info:tokens[cursor+2]||""});}
+    // NPC_PetSkillShop sends name|price|comment|sealFlag for every skill.
+    for(let index=0,cursor=3;index<120&&cursor+3<tokens.length;index++,cursor+=4){const name=tokens[cursor]||"";if(!name)break;shop.skills.push({index,name,price:stateNumber(tokens[cursor+1]),info:tokens[cursor+2]||"",sealFlag:stateNumber(tokens[cursor+3])});}
     return shop;
+  }
+  // LOGIN.CPP serverWindowType6: catalog -> pet -> slot -> confirmation.
+  // Keep the actual sparse pet/skill indices; WN expects all three one-based.
+  // 2.5 has seven skill slots; K.slot is a storage position, not capacity.
+  function petTrainingSlots(pet){return pet?Math.min(7,Math.max(0,decimal(pet.maxSkill??7,7))):0;}
+  function renderPetSkillTraining(wnd,shop,state={page:0,step:"catalog"}){
+    if(app.activeWindow!==wnd)return;
+    const screen=$("server-window-screen"),body=$("server-window-body"),options=$("server-window-options");
+    clearItemShopFrame();screen.classList.add("server-window-pet-training");
+    body.replaceChildren();options.replaceChildren();options.className="";
+    const catalog=state.step==="catalog",petStep=state.step==="pet",slotStep=state.step==="slot";
+    const w=catalog?432:petStep?448:slotStep?320:512,h=catalog?428:petStep?240:slotStep?288:144,x=(640-w)/2,y=(456-h)/2;
+    for(const [key,value] of Object.entries({x,y,w,h}))screen.style.setProperty(`--legacy-${key}`,`${value}px`);
+    screen.classList.toggle("pet-training-catalog",catalog);
+    if(catalog){
+      screen.style.setProperty("--legacy-bg","url('/assets/bitmaps/bitmap_9247.png')");
+      for(const [key,value] of Object.entries({x,y:y+4,w,h:420}))screen.style.setProperty(`--legacy-bg-${key}`,`${value}px`);
+    }
+    const text=(label,left,top,width=w-40,height=20)=>{const el=shopAppendText(body,"pet-training-text",label);Object.assign(el.style,{left:`${left}px`,top:`${top}px`,width:`${width}px`,height:`${height}px`});return el;};
+    const row=(label,top,handler,width=w-82)=>{const el=button(label,handler);el.className="pet-training-row";Object.assign(el.style,{left:`${x+41}px`,top:`${top}px`,width:`${width}px`});options.append(el);return el;};
+    const control=(label,bitmap,left,top,handler,width=80)=>{const el=windowAssetButton(label,bitmap,handler,width,16);el.classList.add("pet-training-control");Object.assign(el.style,{left:`${left}px`,top:`${top}px`});options.append(el);return el;};
+    const go=step=>{state.step=step;renderPetSkillTraining(wnd,shop,state);};
+    const pet=app.petSlots[state.pet],skill=state.skill;
+    const petName=pet?.freeName||pet?.name||"宠物";
+    if(catalog){
+      text(shop.title||"宠物技能",x+20,y+18,w-40).style.textAlign="center";
+      text(shopLegacyLines(shop.messages[0],52,2).join("\n"),x+20,y+46,w-40,40);
+      const pages=Math.max(1,Math.ceil(shop.skills.length/8));
+      text(`${state.page+1} / ${pages} 页`,x+70,y+96,115);
+      text(`金钱  ${shopDisplayGold()} 石币`,x+244,y+84,174);
+      const prev=control("上一页",9270,x+16,y+92,()=>{state.page--;go("catalog");},32);prev.disabled=state.page===0;
+      const next=control("下一页",9272,x+184,y+92,()=>{state.page++;go("catalog");},32);next.disabled=state.page+1>=pages;
+      const detail=text("请选择要学习的技能",x+27,y+308,w-54,80);detail.setAttribute("aria-live","polite");
+      shop.skills.slice(state.page*8,state.page*8+8).forEach((entry,i)=>{
+        const el=row("",y+116+i*21,()=>{state.skill=entry;go("pet");},372);el.style.left=`${x+32}px`;
+        const name=document.createElement("span"),price=document.createElement("span");name.textContent=entry.name;price.textContent=`${entry.price} 石币`;el.append(name,price);el.setAttribute("aria-label",`${entry.name}，${entry.price} 石币`);
+        el.addEventListener("pointerenter",()=>{detail.textContent=shopLegacyLines(entry.info,52,4).join("\n");});el.addEventListener("focus",()=>{detail.textContent=shopLegacyLines(entry.info,52,4).join("\n");});
+        el.disabled=shop.valid!==1||entry.sealFlag!==0||entry.price>shopDisplayGold();
+      });
+      if(!shop.skills.length)detail.textContent="这里暂时没有可学习的技能。";
+      control("离开",9214,x+w/2-40,y+394,()=>closeServerWindow());
+    }else if(petStep){
+      text(`请选择学习「${skill.name}」的宠物`,x+30,y+22,w-60);
+      let count=0;
+      app.petSlots.forEach((entry,index)=>{
+        if(!entry)return;
+        const labels=[entry.freeName||entry.name||"宠物",`Lv.${entry.level??"-"}`,`HP ${entry.maxHp??"-"}`];
+        const el=row("",y+51+count++*26,()=>{state.pet=index;go("slot");});el.classList.add("pet-training-pet-row");el.setAttribute("aria-label",labels.join("，"));
+        labels.forEach(label=>shopAppendText(el,"",label));el.disabled=petTrainingSlots(entry)===0;
+      });
+      if(!count)text("没有可学习技能的宠物",x+41,y+70,w-82);
+      control("返回",9135,x+w/2-40,y+h-36,()=>go("catalog"));
+    }else if(slotStep){
+      if(!pet){go("pet");return;}
+      text(`${petName} · 请选择技能栏`,x+25,y+24,w-50);
+      const skills=app.petSkills[state.pet]||[];
+      for(let i=0;i<petTrainingSlots(pet);i++){
+        const old=skills.find(entry=>Number(entry.index)===i);
+        row(`技 ${i+1}：${old?.name||"（空技能栏）"}`,y+59+i*26,()=>{state.slot=i;state.oldName=old?.name||"";go("confirm");});
+      }
+      control("返回",9135,x+w/2-40,y+h-32,()=>go("pet"));
+    }else{
+      if(!pet||state.slot>=petTrainingSlots(pet)){go("pet");return;}
+      text(`让「${petName}」学习「${skill.name}」？`,x+20,y+20,w-40);
+      text(state.oldName?`替换技 ${state.slot+1}「${state.oldName}」`:`使用空技能栏 ${state.slot+1}`,x+20,y+44,w-40);
+      text(`费用：${skill.price} 石币`,x+20,y+68,w-40);
+      control("是",9212,x+110,y+108,()=>{if(app.activeWindow!==wnd)return;windowResponse(0,`${skill.index+1}|${state.pet+1}|${state.slot+1}|${skill.price}`).catch(reportError);});
+      control("否",9213,x+w-190,y+108,()=>go("slot"));
+    }
   }
   function windowAssetButton(label,bitmap,handler,width=80,height=16){return imageButton(label,bitmap,handler,width,height);}
   function closeLocalDialog(){
@@ -14828,7 +15049,7 @@
       );
     }
     else if(type===7||type===8){const shop=parseShopWindow(wnd.data,type),session=itemShopSession(wnd,shop);renderItemShopList(wnd,session);}
-    else if(type===9){const shop=parsePetSkillShop(wnd.data);body.textContent=[shop.title,...shop.messages].filter(Boolean).join("\n")||"宠物技能商店";for(const skill of shop.skills){const box=document.createElement("div");box.className="data-card";const line=document.createElement("span");line.textContent=`${skill.name} · ${skill.price}`;box.append(line,windowAssetButton("学习",9211,()=>{const petNo=app.selectedPet>=0?app.selectedPet:0;windowResponse(0,`${skill.index+1}|${petNo}|0|${skill.price}`);}));options.append(box);}}
+    else if(type===9){renderPetSkillTraining(wnd,parsePetSkillShop(wnd.data));}
     else if(type===12||type===13)appendShop(parsePoolShopWindow(wnd.data,type),true);
     else body.textContent=unescapeCharacterOption(wnd.data)||"（服务器窗口）";
     if(type===1||type===11){input.placeholder="";input.setAttribute("aria-label","输入原版窗口要求的文字");}
@@ -15594,6 +15815,7 @@
     if(sourceTransport&&(sourceTransport!==app.transport||sourceToken!==app.connectionToken))return;
     let message;
     try { message=Protocol.decodeMessage(packet); } catch(error) { addWire(`← 无法解码：${error.message}`); addEvent(`解码失败：${error.message}`); return; }
+    if(message.function==="S"&&String(message.textValues[0]||"").startsWith("AICHAT|"))return;
     if(deferMapTransitionPacket(packet,sourceTransport,sourceToken))return;
     const values=message.textValues; addWire(`← ${message.function}`); addEvent(`← ${message.function} ${values.map(value=>textOr(value)).join(" | ")}`);
     switch(message.function) {
@@ -20447,7 +20669,7 @@
   $("help-next")?.addEventListener("click",()=>{const max=Math.max(0,Math.ceil((app.taskLog?.length||0)/10)-1);if(Number(app.helpPage)<max){app.helpPage++;renderHelp();}});
   $("request-inventory").addEventListener("click",()=>send("S",["i"]).catch(reportError));
   $("inventory-pickup").addEventListener("click",()=>send("PI",[app.position[0],app.position[1],serverDirectionFromClient(app.direction)]).catch(reportError));
-  $("request-pets").addEventListener("click",()=>{for(let slot=0;slot<5;slot++)send("S",[`k${slot}`]).catch(reportError);send("KS",[-1]).catch(reportError);});
+  $("request-pets").addEventListener("click",()=>{for(let slot=0;slot<5;slot++)send("S",[`k${slot}`]).catch(reportError);send("KS",[-1]).catch(reportError);send("S",["AI"]).catch(reportError);});
   $("pet-follow").addEventListener("click",()=>toggleStandbyPet(app.selectedPet<0?0:app.selectedPet));
   $("pet-name-submit").addEventListener("click",()=>{const index=app.selectedPet<0?0:app.selectedPet;openLocalDialog("宠物改名","请输入新的宠物名称：",[{label:"确定",kind:"yes",handler:value=>{const name=String(value||"").trim();if(!name)return;closeLocalDialog();send("KN",[index,name]).catch(reportError);}},{label:"取消",kind:"no",handler:closeLocalDialog}],app.petSlots[index]?.name||"");});
   $("request-status").addEventListener("click",()=>{send("ProcGet",[]).catch(reportError);send("PlayerNumGet",[]).catch(reportError);send("Echo",["web-status"]).catch(reportError);});
@@ -20586,8 +20808,8 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginWorldLabelFrame,syncWorldLabelSurface,paintWorldLabels,presentWorldLabels,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState};
-    Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
+  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginWorldLabelFrame,syncWorldLabelSurface,paintWorldLabels,presentWorldLabels,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState,battleAnimationSpeed,setBattleAnimationSpeed};
+    Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,parseAIObservation,applyAIObservation,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);
   app.phase="login";
@@ -20595,5 +20817,6 @@
   window.setTimeout(focusLoginAccount,0);
 })();
 </script>
+<script src="/automation.js"></script>
 </body>
 </html>

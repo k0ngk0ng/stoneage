@@ -110,6 +110,14 @@ if ! grep -q 'STONEAGE_WHITE_TIGER_RIDE' /src/gmsv/char/family.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0011-white-tiger-ride-mapping.patch
 fi
 
+# Encounter tables can reference a group or enemy row which was not loaded.
+# ENEMY_getEnemy must reject those references before any legacy array accessor;
+# keep the data gap explicit instead of allowing an invalid -1 index or
+# inventing a replacement enemy.
+if ! grep -q 'STONEAGE_SAFE_ENEMY_GROUP_BOUNDS' /src/gmsv/char/enemy.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0014-safe-enemy-group-bounds.patch
+fi
+
 # The authenticated web console writes one atomic, fixed-path notice file.
 # Let the GMSV consume it in its normal main loop and deliver it to online
 # players through the same red system-message path as the built-in announce
@@ -125,6 +133,96 @@ if ! grep -q 'STONEAGE_PlayerAdminProcess' /src/gmsv/main.c; then
   cp /modern/stoneage_player_admin.c /src/gmsv/stoneage_player_admin.c
   cp /modern/stoneage_player_admin.h /src/gmsv/stoneage_player_admin.h
   patch -d /src/gmsv -p1 < /modern/patches/0009-player-admin-bridge.patch
+fi
+
+# AI funding is a server capability matched to the live account and save-file
+# slot. Policy files are read-only; charge and finite external-transfer audit
+# records are written to the separately configured ledger path. Keep the
+# modern implementation outside the CP936 archive and apply only integration
+# edits to the historical sources.
+cp /modern/stoneage_ai_funding.c /src/gmsv/stoneage_ai_funding.c
+cp /modern/stoneage_ai_funding.h /src/gmsv/include/stoneage_ai_funding.h
+if ! grep -q 'StoneAge_AIFundingRefresh' /src/gmsv/main.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0012-ai-funding.patch
+fi
+
+# The AI game bridge requests S("AI") through the normal authenticated
+# status path.  Keep its response read-only and character-scoped; the module
+# is copied from modern/ and only the small integration patch touches the
+# archived CP936 source tree.
+cp /modern/stoneage_ai_observation.c /src/gmsv/stoneage_ai_observation.c
+cp /modern/stoneage_ai_observation.h /src/gmsv/include/stoneage_ai_observation.h
+if ! grep -q 'StoneAge_AIObservationMake' /src/gmsv/callfromcli.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0013-ai-observation.patch
+fi
+
+# Prepare shop inventory before charging, and publish it only after funding
+# commits. These source edits follow the original funding integration patch.
+if ! grep -q 'STONEAGE_AI_PURCHASE_COMMIT' /src/gmsv/npc/npc_itemshop.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0015-ai-funding-transactions.patch
+fi
+
+if ! grep -q 'STONEAGE_AI_PET_FUNDING_COMMIT' /src/gmsv/npc/npc_petshop.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0016-ai-pet-funding.patch
+fi
+
+# NPC taxes are part of an already delivered service, not player deposits.
+# Preserve this origin on failed AC replies even after funding is revoked.
+if ! grep -q 'STONEAGE_NPC_TAX_NO_REFUND' /src/gmsv/callfromac.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0017-npc-tax-refund.patch
+fi
+
+# Publish both trade-quota entries together before the native exchange.
+if ! grep -q 'STONEAGE_AI_TRADE_PAIR_COMMIT' /src/gmsv/char/trade.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0018-ai-trade-pair-funding.patch
+fi
+
+# Commit drop quota before changing the purse or publishing ground gold.
+if ! grep -q 'STONEAGE_AI_DROP_COMMIT' /src/gmsv/char/char_item.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0019-ai-drop-funding.patch
+fi
+
+# Prepare the reviewed adult-ceremony reward before replacing its ingredients.
+cp /modern/stoneage_adult_exchange.c /src/gmsv/stoneage_adult_exchange.c
+cp /modern/stoneage_adult_exchange.h /src/gmsv/include/stoneage_adult_exchange.h
+if ! grep -q 'STONEAGE_ADULT_ITEM_EXCHANGE' /src/gmsv/npc/npc_exchangeman.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0020-adult-item-exchange.patch
+fi
+
+# AI character initialization needs deterministic pet levels. Keep the
+# historical random-level entry point intact and expose a checked helper for
+# the private player-admin bridge.
+if ! grep -q 'ENEMY_createPetFromEnemyIndexAtLevel' /src/gmsv/char/enemy.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0021-ai-initialize.patch
+fi
+
+# Dedicated immutable player IDs are persisted as a named char field. This
+# does not reuse pet ucode or account slots and does not expose unsaved IDs.
+cp /modern/stoneage_character_identity.c /src/gmsv/stoneage_character_identity.c
+cp /modern/stoneage_character_identity.h /src/gmsv/include/stoneage_character_identity.h
+if ! grep -q 'STONEAGE_CHARACTER_IDENTITY' /src/gmsv/include/char_base.h; then
+  patch -d /src/gmsv -p1 < /modern/patches/0022-character-identity.patch
+fi
+
+# Only a successfully loaded archive establishes externally visible identity.
+if ! grep -q 'STONEAGE_LOADED_CHARACTER_ID' /src/gmsv/include/char_base.h; then
+  patch -d /src/gmsv -p1 < /modern/patches/0023-loaded-character-identity.patch
+fi
+
+# Pair loaded player identity with the exact chat packet at send time.
+cp /modern/stoneage_chat_identity.c /src/gmsv/stoneage_chat_identity.c
+cp /modern/stoneage_chat_identity.h /src/gmsv/include/stoneage_chat_identity.h
+if ! grep -q 'StoneAge_ChatIdentitySend' /src/gmsv/char/char_talk.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0024-chat-identity.patch
+fi
+
+# Pair each visible player/party status record with its loaded persistent
+# identity. The helper emits companions through the ordinary S path and does
+# not alter the original C/N payload.
+cp /modern/stoneage_person_identity.c /src/gmsv/stoneage_person_identity.c
+cp /modern/stoneage_person_identity.h /src/gmsv/include/stoneage_person_identity.h
+if ! grep -q 'StoneAge_PersonIdentitySendC' /src/gmsv/lssproto_serv.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0025-person-identity.patch
 fi
 
 # Debug output in the historic login, delete, shutdown, and configuration

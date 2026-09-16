@@ -3,12 +3,14 @@ set -Eeuo pipefail
 
 # Bring up the single-host deployment described by docker-compose.yml.  This script
 # deliberately does not run `down -v`: the auth volume contains administrator
-# sessions and must survive an application image update.
+# sessions and must survive an application image update. Set
+# STONEAGE_AI_CONTAINER_MODE=true in .env to load the opt-in AI overlay.
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 docker_bin="${STONEAGE_DOCKER_BIN:-docker}"
 env_file="${STONEAGE_ENV_FILE:-$project_root/.env}"
 compose_file="$project_root/docker-compose.yml"
+ai_compose_file="$project_root/docker-compose.ai.yml"
 mode="pull"
 init_env=0
 check_only=0
@@ -34,7 +36,9 @@ Options:
   --env FILE         Read FILE instead of .env.
   -h, --help         Show this help.
 
-Images are pulled from the registry. Server-side compilation is not supported.
+When STONEAGE_AI_CONTAINER_MODE=true, the AI runtime image is pulled separately
+through the profile-only ai-runtime-image target; the broker later uses --pull
+never. Images are pulled from the registry. Server-side compilation is not supported.
 The generated .env is mode 0600.
 EOF
 }
@@ -81,6 +85,37 @@ env_value()
             exit
         }
     ' "$env_file"
+}
+
+read_ai_container_mode()
+{
+    local value="${STONEAGE_AI_CONTAINER_MODE:-}"
+    if [[ -z "$value" ]]; then
+        value="$(env_value STONEAGE_AI_CONTAINER_MODE || true)"
+    fi
+    local value_lower
+    value_lower="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+    case "$value_lower" in
+        ""|0|false|no|off)
+            ai_container=0
+            ;;
+        1|true|yes|on|container)
+            ai_container=1
+            ;;
+        *)
+            echo "STONEAGE_AI_CONTAINER_MODE must be false or true (got: $value)" >&2
+            return 2
+            ;;
+    esac
+}
+
+resolve_host_path()
+{
+    local value="$1"
+    case "$value" in
+        /*) printf '%s\n' "$value" ;;
+        *) printf '%s/%s\n' "$project_root" "${value#./}" ;;
+    esac
 }
 
 prepare_server_configs()
@@ -178,6 +213,12 @@ if [[ "$env_file" != /* ]]; then
     env_file="$(cd "$(dirname "$env_file")" && pwd)/$(basename "$env_file")"
 fi
 
+read_ai_container_mode
+if (( ai_container )) && [[ ! -f "$ai_compose_file" ]]; then
+    echo "AI Compose overlay not found: $ai_compose_file" >&2
+    exit 1
+fi
+
 if ! command -v "$docker_bin" >/dev/null 2>&1; then
     echo "Docker CLI not found: $docker_bin" >&2
     exit 1
@@ -195,6 +236,23 @@ compose_args=(--project-directory "$project_root" --env-file "$env_file" -f "$co
 compose()
 {
     "$docker_bin" compose "${compose_args[@]}" "$@"
+}
+
+verify_ai_image_present()
+{
+    (( ai_container )) || return 0
+    local image="$1"
+    if ! "$docker_bin" image inspect --format '{{.Id}}' "$image" >/dev/null 2>&1; then
+        echo "Configured AI runtime image is missing: $image (run '$0 --pull' first)" >&2
+        return 1
+    fi
+}
+
+pull_ai_image()
+{
+    (( ai_container )) || return 0
+    echo "Pulling configured AI runtime image: $ai_runtime_image"
+    compose --profile ai-container pull ai-runtime-image
 }
 
 # Compose file-backed object-storage secrets must exist before service-control is started.
@@ -245,6 +303,31 @@ legacy_image="$(env_value STONEAGE_LEGACY_IMAGE || true)"
 version="${version:-v0.1.16}"
 control_image="${control_image:-ghcr.io/k0ngk0ng/stoneage/control-plane}"
 legacy_image="${legacy_image:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}"
+ai_runtime_image="${STONEAGE_AI_RUNTIME_IMAGE:-$(env_value STONEAGE_AI_RUNTIME_IMAGE || true)}"
+ai_runtime_image="${ai_runtime_image:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:$version}"
+if (( ai_container )); then
+    release_tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$'
+    if [[ ! "$version" =~ $release_tag_re ]]; then
+        echo "STONEAGE_VERSION must be an explicit release tag when AI container mode is enabled (got: $version)" >&2
+        exit 2
+    fi
+    if [[ "$ai_runtime_image" == *@sha256:* ]]; then
+        if [[ ! "$ai_runtime_image" =~ ^[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-fA-F]{64}$ ]]; then
+            echo "STONEAGE_AI_RUNTIME_IMAGE must be a valid sha256 image reference" >&2
+            exit 2
+        fi
+    elif [[ ! "$ai_runtime_image" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ || "$ai_runtime_image" != *":$version" ]]; then
+        echo "STONEAGE_AI_RUNTIME_IMAGE must be tagged with STONEAGE_VERSION ($version) or pinned by sha256 digest" >&2
+        exit 2
+    fi
+    ai_network="${STONEAGE_AI_CONTAINER_NETWORK:-$(env_value STONEAGE_AI_CONTAINER_NETWORK || true)}"
+    ai_network="${ai_network:-stoneage-backend}"
+    if [[ ! "$ai_network" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$ ]]; then
+        echo "STONEAGE_AI_CONTAINER_NETWORK is invalid: $ai_network" >&2
+        exit 2
+    fi
+    compose_args+=( -f "$ai_compose_file" )
+fi
 admin_password="$(env_value STONEAGE_ADMIN_PASSWORD || true)"
 setup_token="$(env_value STONEAGE_ADMIN_SETUP_TOKEN || true)"
 cdn_base="$(env_value STONEAGE_WEB_CDN_BASE_URL || true)"
@@ -308,6 +391,33 @@ for data_key in STONEAGE_GMSV_DATA_ROOT STONEAGE_SAAC_DATA_ROOT STONEAGE_CLIENT_
     mkdir -p "$data_root"
 done
 
+if (( ai_container )); then
+    ai_gmsv_root="${STONEAGE_GMSV_DATA_ROOT:-$(env_value STONEAGE_GMSV_DATA_ROOT || true)}"
+    ai_gmsv_root="${ai_gmsv_root:-./data/gmsv}"
+    ai_gmsv_data="$(resolve_host_path "$ai_gmsv_root")/data"
+    if [[ ! -d "$ai_gmsv_data" ]]; then
+        echo "AI knowledge/map data directory is missing: $ai_gmsv_data" >&2
+        echo "Prepare the existing GMSV data tree before enabling container AI." >&2
+        exit 2
+    fi
+    ai_required_data_files=(
+        exp.txt
+        encount.txt
+        enemy.txt
+        enemybase.txt
+        group.txt
+        map/mapwarp.txt
+        map/mapset.txt
+    )
+    for ai_required_file in "${ai_required_data_files[@]}"; do
+        if [[ ! -f "$ai_gmsv_data/$ai_required_file" || ! -s "$ai_gmsv_data/$ai_required_file" ]]; then
+            echo "AI knowledge/map data file is missing or empty: $ai_gmsv_data/$ai_required_file" >&2
+            echo "Prepare the existing GMSV data tree before enabling container AI." >&2
+            exit 2
+        fi
+    done
+fi
+
 case "$web_config_file" in
     /*) ;;
     *) web_config_file="$project_root/$web_config_file" ;;
@@ -360,8 +470,16 @@ fi
 
 echo "Validating Compose configuration ($env_file)..."
 compose config --quiet
+if (( ai_container )); then
+    # Include the profile-only image target in validation without starting it.
+    compose --profile ai-container config --quiet
+fi
 if [[ "$check_only" == 1 ]]; then
     echo "Compose configuration is valid."
+    if (( ai_container )); then
+        echo "AI container image: $ai_runtime_image"
+        echo "AI container network: $ai_network"
+    fi
     echo "Web config: $web_config_file"
     if [[ -n "$cdn_base" ]]; then
         echo "Static CDN: ${cdn_base%/}/"
@@ -375,9 +493,11 @@ case "$mode" in
         source "$project_root/bin/registry-login.sh"
         stoneage_registry_login
         compose pull
+        pull_ai_image
         ;;
     none)
         echo "Using images already present on this host."
+        verify_ai_image_present "$ai_runtime_image"
         ;;
 esac
 

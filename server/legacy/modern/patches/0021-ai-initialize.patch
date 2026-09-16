@@ -1,0 +1,85 @@
+--- a/char/enemy.c
++++ b/char/enemy.c
+@@ -1459,7 +1459,7 @@
+     }
+     return found > 0 ? ENEMY_indextable : NULL;
+ }
+-int ENEMY_createPetFromEnemyIndex( int charaindex, int array)
++static int ENEMY_createPetFromEnemyIndexAtLevelInternal( int charaindex, int array, int level, int check_limit)
+ {
+     Char    CharNew;
+     int newindex;
+@@ -1467,7 +1467,6 @@
+     int		tp[E_T_DATAINTNUM];
+     int		tarray, i;
+     int     havepetelement;
+-	int		level;
+ 	int		enemyrank;
+     if( !ENEMY_CHECKINDEX( array)) return -1;
+     havepetelement = CHAR_getCharPetElement( charaindex);
+@@ -1476,6 +1475,9 @@
+     p = ENEMY_enemy[array].intdata;
+ 	tarray = ENEMYTEMP_getEnemyTempArray( array);
+ 	if( !ENEMYTEMP_CHECKINDEX( tarray)) return -1;
++    if( check_limit && (level < 1 || level > CHAR_MAXUPLEVEL) ) return -1;
++    if( check_limit && ENEMYTEMP_getInt( tarray, E_T_LIMITLEVEL) > 0 &&
++        level > ENEMYTEMP_getInt( tarray, E_T_LIMITLEVEL) ) return -1;
+ //    tp = ENEMYTEMP_enemy[tarray].intdata;
+ 	for( i = 0; i < E_T_DATAINTNUM; i ++ ){
+ 	    tp[i] = ENEMYTEMP_enemy[tarray].intdata[i];
+@@ -1485,7 +1487,6 @@
+     CharNew.data[CHAR_BASEBASEIMAGENUMBER]
+         = CharNew.data[CHAR_BASEIMAGENUMBER] = *(tp+E_T_IMGNUMBER);
+     CharNew.data[CHAR_WHICHTYPE] = CHAR_TYPEPET;
+-	level = RAND( (*(p + ENEMY_LV_MIN)), ( *(p+ ENEMY_LV_MAX)));
+ 
+ #define		E_PAR( a)		(*(p + (a)))
+ #define		ET_PAR( a)		(*(tp + (a)))
+@@ -1564,6 +1565,37 @@
+ 	  CHAR_setChar( newindex, CHAR_OWNERCHARANAME,
+ 		CHAR_getChar( charaindex, CHAR_NAME));
+     return newindex;
++}
++
++int ENEMY_createPetFromEnemyIndexAtLevel( int charaindex, int array, int level)
++{
++    return ENEMY_createPetFromEnemyIndexAtLevelInternal(
++        charaindex, array, level, TRUE);
++}
++
++int ENEMY_createPetFromEnemyIndex( int charaindex, int array)
++{
++    int level;
++    int tarray;
++    int limit;
++    if( !ENEMY_CHECKINDEX( array)) return -1;
++    /* Preserve the legacy no-slot and missing-template fast paths before
++     * consuming RNG state, as well as its random-level semantics. */
++    if( CHAR_getCharPetElement( charaindex) < 0 ) return -1;
++    tarray = ENEMYTEMP_getEnemyTempArray( array);
++    if( !ENEMYTEMP_CHECKINDEX( tarray)) return -1;
++    level = RAND( ENEMY_getInt( array, ENEMY_LV_MIN),
++                  ENEMY_getInt( array, ENEMY_LV_MAX));
++    limit = ENEMYTEMP_getInt( tarray, E_T_LIMITLEVEL);
++    if( level >= 1 && level <= CHAR_MAXUPLEVEL &&
++        (limit <= 0 || level <= limit) ) {
++        return ENEMY_createPetFromEnemyIndexAtLevel(
++            charaindex, array, level);
++    }
++    /* Historic data may intentionally exceed a stale limit; retain that
++     * old path rather than rejecting a random pet that used to be created. */
++    return ENEMY_createPetFromEnemyIndexAtLevelInternal(
++        charaindex, array, level, FALSE);
+ }
+ 
+ #ifdef _TEST_DROPITEMS
+--- a/include/enemy.h
++++ b/include/enemy.h
+@@ -196,6 +196,7 @@
+ int ENEMY_createEnemy( int array, int baselevel );
+ int *ENEMY_getEnemy( int charaindex, int x, int y);
+ int ENEMY_createPetFromEnemyIndex( int charaindex, int array);
++int ENEMY_createPetFromEnemyIndexAtLevel( int charaindex, int array, int level);
+ 
+ int ENEMY_getEnemyArrayFromId( int EnemyId);
+ int ENEMY_getEnemyArrayFromTempNo( int EnemyTempNo);

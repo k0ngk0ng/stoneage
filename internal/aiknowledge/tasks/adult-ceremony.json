@@ -1,0 +1,880 @@
+{
+  "id": "adult-ceremony",
+  "name": "成人仪式",
+  "description": "按 2.5 保存脚本领取十五个仪玉并交回审判，获得仪之兜及事件 4 完成标记。自动出发采用攻略建议 35 级，原生入场最低 30 级；必须单人并预留整个背包。",
+  "status": "unverified",
+  "preparation_reviewed": false,
+  "preparation_notes": "17173 成人仪式攻略 https://news.17173.com/z/stoneage/renwu/n10.htm 建议 35 级，本任务将其作为自动出发门槛；服务端入口 FREE:LV>29 的硬门槛为 30。未找到数值化宠物最低等级，不据此推断不需要宠物。宠物准备、装备、无背包补给时的生存方案和完整路径仍待审核。仅支持新接任务；进行中任务须使用已有执行记录恢复。不得自动出售、丢弃或存放玩家物品来腾空背包。",
+  "preconditions": [
+    {
+      "kind": "character_level",
+      "value": 35,
+      "evidence": [
+        {
+          "path": "npc/genout/wpm_10202_31_13",
+          "line": 1,
+          "sha256": "c0f6574f34fd32b19de3b4bc4fd268c16191e52b4bf7c23956e85e748daea120",
+          "line_end": 3
+        }
+      ]
+    },
+    {
+      "kind": "flag_set",
+      "id": "party:solo",
+      "evidence": [
+        {
+          "path": "npc/genout/wpm_10202_31_13",
+          "line": 6,
+          "sha256": "c0f6574f34fd32b19de3b4bc4fd268c16191e52b4bf7c23956e85e748daea120"
+        }
+      ]
+    },
+    {
+      "kind": "backpack_free_slots",
+      "value": 15,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_2",
+          "line": 5,
+          "sha256": "5b4bea387c16efa89d72072e82fa1e3fb4c071d8606767c8b33c08481832992b",
+          "line_end": 9
+        }
+      ]
+    },
+    {
+      "kind": "flag_clear",
+      "id": "now:4",
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 15,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 23
+        }
+      ]
+    },
+    {
+      "kind": "flag_clear",
+      "id": "end:4",
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 26,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 30
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "approach-entrance",
+      "kind": "move",
+      "description": "前往已标注的交互格；完整路线和遭遇准备仍待核实。",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 10202,
+          "x": 30,
+          "y": 14
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "position",
+          "x": 30,
+          "y": 14,
+          "value": 10202
+        }
+      ],
+      "timeout_seconds": 1800,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/genout/event04n.create",
+          "line": 7,
+          "sha256": "eb6715d3c5aeabdd1467f44d1f1bf32d570039c29ece4604e182538e0540b1a9",
+          "line_end": 16
+        }
+      ]
+    },
+    {
+      "id": "talk-to-guard",
+      "kind": "talk",
+      "description": "与目标 NPC 对话，等待对应服务端窗口。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "adult-guard",
+          "floor": 10202,
+          "x": 31,
+          "y": 13,
+          "command": "talk"
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "character_level",
+          "value": 30
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "adult-guard",
+          "value": 271
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/genout/wpm_10202_31_13",
+          "line": 1,
+          "sha256": "c0f6574f34fd32b19de3b4bc4fd268c16191e52b4bf7c23956e85e748daea120",
+          "line_end": 7
+        }
+      ]
+    },
+    {
+      "id": "enter-ceremony",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-guard",
+          "window_sequence": 271,
+          "choice": 4
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "character_level",
+          "value": 30
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "position",
+          "x": 2,
+          "y": 6,
+          "value": 10204
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/genout/wpm_10202_31_13",
+          "line": 1,
+          "sha256": "c0f6574f34fd32b19de3b4bc4fd268c16191e52b4bf7c23956e85e748daea120",
+          "line_end": 7
+        }
+      ]
+    },
+    {
+      "id": "approach-judge",
+      "kind": "move",
+      "description": "前往已标注的交互格；完整路线和遭遇准备仍待核实。",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 10204,
+          "x": 14,
+          "y": 7
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "position",
+          "x": 14,
+          "y": 7,
+          "value": 10204
+        }
+      ],
+      "timeout_seconds": 1800,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event.create",
+          "line": 28,
+          "sha256": "c36b440518d37db27083ca3835ea4902b79a0bfcd70e9702457c586bb53682be",
+          "line_end": 38
+        }
+      ]
+    },
+    {
+      "id": "request-ceremony",
+      "kind": "talk",
+      "description": "与目标 NPC 对话，等待对应服务端窗口。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "adult-judge",
+          "floor": 10204,
+          "x": 14,
+          "y": 6,
+          "command": "talk"
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_clear",
+          "id": "now:4"
+        },
+        {
+          "kind": "flag_clear",
+          "id": "end:4"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "adult-judge",
+          "value": 234
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 15,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 23
+        }
+      ]
+    },
+    {
+      "id": "accept-ceremony",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-judge",
+          "window_sequence": 234,
+          "choice": 4
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "window_sequence",
+          "id": "adult-judge",
+          "value": 231
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 15,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 23
+        }
+      ]
+    },
+    {
+      "id": "close-instructions",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-judge",
+          "window_sequence": 231,
+          "choice": 1
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_submitted",
+          "id": "adult-judge",
+          "value": 231
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 18,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 23
+        }
+      ]
+    },
+    {
+      "id": "approach-messenger",
+      "kind": "move",
+      "description": "前往已标注的交互格；完整路线和遭遇准备仍待核实。",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 10204,
+          "x": 188,
+          "y": 14
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "backpack_free_slots",
+          "value": 15
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "position",
+          "x": 188,
+          "y": 14,
+          "value": 10204
+        }
+      ],
+      "timeout_seconds": 1800,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event.create",
+          "line": 40,
+          "sha256": "c36b440518d37db27083ca3835ea4902b79a0bfcd70e9702457c586bb53682be",
+          "line_end": 50
+        }
+      ]
+    },
+    {
+      "id": "request-ritual-items",
+      "kind": "talk",
+      "description": "与目标 NPC 对话，等待对应服务端窗口。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "adult-messenger",
+          "floor": 10204,
+          "x": 188,
+          "y": 13,
+          "command": "talk"
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "backpack_free_slots",
+          "value": 15
+        },
+        {
+          "kind": "item_absent",
+          "id": "item:2417"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "adult-messenger",
+          "value": 235
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_2",
+          "line": 3,
+          "sha256": "5b4bea387c16efa89d72072e82fa1e3fb4c071d8606767c8b33c08481832992b",
+          "line_end": 10
+        }
+      ]
+    },
+    {
+      "id": "accept-ritual-items",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-messenger",
+          "window_sequence": 235,
+          "choice": 4
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "backpack_free_slots",
+          "value": 15
+        },
+        {
+          "kind": "item_absent",
+          "id": "item:2417"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "adult-messenger",
+          "value": 430
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_2",
+          "line": 3,
+          "sha256": "5b4bea387c16efa89d72072e82fa1e3fb4c071d8606767c8b33c08481832992b",
+          "line_end": 10
+        }
+      ]
+    },
+    {
+      "id": "receive-ritual-items",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-messenger",
+          "window_sequence": 430,
+          "choice": 1
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "backpack_free_slots",
+          "value": 15
+        },
+        {
+          "kind": "item_absent",
+          "id": "item:2417"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2417",
+          "value": 15
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_2",
+          "line": 3,
+          "sha256": "5b4bea387c16efa89d72072e82fa1e3fb4c071d8606767c8b33c08481832992b",
+          "line_end": 10
+        }
+      ]
+    },
+    {
+      "id": "return-to-judge",
+      "kind": "move",
+      "description": "前往已标注的交互格；完整路线和遭遇准备仍待核实。",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 10204,
+          "x": 14,
+          "y": 7
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2417",
+          "value": 15
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "position",
+          "x": 14,
+          "y": 7,
+          "value": 10204
+        }
+      ],
+      "timeout_seconds": 1800,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event.create",
+          "line": 28,
+          "sha256": "c36b440518d37db27083ca3835ea4902b79a0bfcd70e9702457c586bb53682be",
+          "line_end": 38
+        }
+      ]
+    },
+    {
+      "id": "offer-ritual-items",
+      "kind": "talk",
+      "description": "与目标 NPC 对话，等待对应服务端窗口。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "adult-judge",
+          "floor": 10204,
+          "x": 14,
+          "y": 6,
+          "command": "talk"
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2417",
+          "value": 15
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "adult-judge",
+          "value": 235
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 3,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 12
+        }
+      ]
+    },
+    {
+      "id": "accept-ceremony-reward",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-judge",
+          "window_sequence": 235,
+          "choice": 4
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2417",
+          "value": 15
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "adult-judge",
+          "value": 430
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 3,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 12
+        }
+      ]
+    },
+    {
+      "id": "complete-ceremony",
+      "kind": "confirm",
+      "description": "提交窗口选择，等待服务端状态或指定窗口；发送成功不等于任务完成。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "adult-judge",
+          "window_sequence": 430,
+          "choice": 1
+        }
+      },
+      "preconditions": [
+        {
+          "kind": "flag_set",
+          "id": "party:solo"
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:4"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2417",
+          "value": 15
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "flag_set",
+          "id": "end:4"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2418",
+          "value": 1
+        },
+        {
+          "kind": "item_absent",
+          "id": "item:2417"
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 3,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 12
+        }
+      ]
+    }
+  ],
+  "success": [
+    {
+      "kind": "flag_set",
+      "id": "end:4",
+      "description": "同时核对服务端事件结束、奖励物品和仪玉清空。",
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 3,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 12
+        }
+      ]
+    },
+    {
+      "kind": "item_count",
+      "id": "item:2418",
+      "value": 1,
+      "description": "同时核对服务端事件结束、奖励物品和仪玉清空。",
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 3,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 12
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:2417",
+      "description": "同时核对服务端事件结束、奖励物品和仪玉清空。",
+      "evidence": [
+        {
+          "path": "npc/jaruga/event/event04_1",
+          "line": 3,
+          "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+          "line_end": 12
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "gold_min": 0,
+    "gold_expected": 0,
+    "gold_max": 0,
+    "notes": "符合等级的入口免费；事件脚本没有石币收费。本预算不包含尚未审核的旅途补给。",
+    "evidence": [
+      {
+        "path": "npc/genout/wpm_10202_31_13",
+        "line": 1,
+        "sha256": "c0f6574f34fd32b19de3b4bc4fd268c16191e52b4bf7c23956e85e748daea120",
+        "line_end": 3
+      },
+      {
+        "path": "npc/jaruga/event/event04_1",
+        "line": 3,
+        "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+        "line_end": 23
+      },
+      {
+        "path": "npc/jaruga/event/event04_2",
+        "line": 3,
+        "sha256": "5b4bea387c16efa89d72072e82fa1e3fb4c071d8606767c8b33c08481832992b",
+        "line_end": 10
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "source": {
+        "path": "npc/genout/wpm_10202_31_13",
+        "line": 1,
+        "sha256": "c0f6574f34fd32b19de3b4bc4fd268c16191e52b4bf7c23956e85e748daea120",
+        "line_end": 7
+      },
+      "claim": "入口最低30级、单人提示及免费传送目的地。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/genout/event04n.create",
+        "line": 7,
+        "sha256": "eb6715d3c5aeabdd1467f44d1f1bf32d570039c29ece4604e182538e0540b1a9",
+        "line_end": 16
+      },
+      "claim": "入口NPC身份和位置。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/jaruga/event/event.create",
+        "line": 28,
+        "sha256": "c36b440518d37db27083ca3835ea4902b79a0bfcd70e9702457c586bb53682be",
+        "line_end": 50
+      },
+      "claim": "审判和差使身份、位置及脚本绑定。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/jaruga/event/event04_1",
+        "line": 3,
+        "sha256": "fcba69368d1f849cb8a22dbc5e1503ca89515698424f7f710844197a353ec570",
+        "line_end": 30
+      },
+      "claim": "事件4请求、十五仪玉交付、奖励和结束标记。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/jaruga/event/event04_2",
+        "line": 3,
+        "sha256": "5b4bea387c16efa89d72072e82fa1e3fb4c071d8606767c8b33c08481832992b",
+        "line_end": 10
+      },
+      "claim": "进行中事件4且无仪玉时，要求15空位并发放15仪玉。",
+      "verified": false
+    }
+  ],
+  "execution_verified": false,
+  "source": {
+    "path": "tasks/adult-ceremony.json"
+  },
+  "data_fingerprint": "82b2f9027b929e9146ad51afb8cec9457196ae7b16e799baffb6209618d06ee5"
+}

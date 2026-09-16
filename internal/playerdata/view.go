@@ -33,13 +33,22 @@ type PetSkillSlot struct {
 }
 
 type Snapshot struct {
-	GraphicID   int64          `json:"graphic_id"`
-	Online      bool           `json:"online"`
-	Name        string         `json:"name"`
-	Revision    string         `json:"revision"`
-	Attributes  []Attribute    `json:"attributes"`
-	Possessions []Possession   `json:"possessions"`
-	Capacities  map[string]int `json:"capacities"`
+	// Riding fields are observations only, deliberately absent from the editor
+	// attribute definitions. Nil distinguishes old archives from walking.
+	RidePetSlot *int64 `json:"ride_pet_slot,omitempty"`
+	LearnRide   *int64 `json:"learn_ride,omitempty"`
+	// PersistentCharacterID is read only. It is populated only when Snapshot
+	// was built from a parsed archive containing a valid native charid field.
+	// Online snapshots are assembled from native observations and therefore do
+	// not claim a persistent identity without persisted evidence.
+	PersistentCharacterID string         `json:"persistent_character_id,omitempty"`
+	GraphicID             int64          `json:"graphic_id"`
+	Online                bool           `json:"online"`
+	Name                  string         `json:"name"`
+	Revision              string         `json:"revision"`
+	Attributes            []Attribute    `json:"attributes"`
+	Possessions           []Possession   `json:"possessions"`
+	Capacities            map[string]int `json:"capacities"`
 }
 
 var characterAttributes = []Attribute{
@@ -195,12 +204,27 @@ func (d *Document) Snapshot() (Snapshot, error) {
 			"pet_warehouse":  PetWarehouseCapacity(transmigration),
 		},
 	}
+	// ParseSave is the only constructor that retains the SAAC envelope. Keep
+	// the identity observation scoped to that persisted source; SnapshotFromRecord
+	// is also used for online native responses and must remain identity-empty.
+	if len(d.envelope) == 3 {
+		result.PersistentCharacterID = persistentCharacterIDFromRecord(d.Character)
+	}
 	var err error
 	result.Name, err = d.Character.Text("name")
 	if err != nil {
 		return result, err
 	}
 	result.GraphicID, _ = d.Character.Integer("bi")
+	for key, target := range map[string]**int64{"ridepet": &result.RidePetSlot, "learnride": &result.LearnRide} {
+		if _, present := d.Character.Raw(key); present {
+			value, parseErr := d.Character.Integer(key)
+			if parseErr != nil {
+				return result, parseErr
+			}
+			*target = &value
+		}
+	}
 	if result.GraphicID == 0 {
 		result.GraphicID, _ = d.Character.Integer("bbi")
 	}

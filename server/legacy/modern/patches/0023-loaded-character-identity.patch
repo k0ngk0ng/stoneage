@@ -1,0 +1,21 @@
+--- a/include/char_base.h
++++ b/include/char_base.h
+@@ -938,6 +938,7 @@
+     CHAR_NPCWORKCHAR4,
+     CHAR_NPCWORKCHAR5,
+     CHAR_NPCWORKCHAR6,
++    CHAR_WORKPERSISTENTID_LOADED, /* STONEAGE_LOADED_CHARACTER_ID */
+ 	CHAR_WORKDATACHARNUM,
+     CHAR_WORKBATTLE_TACTICSOPTION = CHAR_NPCWORKCHAR1,
+ #ifdef _BATTLENPC_WARP_PLAYER
+--- a/char/char.c
++++ b/char/char.c
+@@ -686,6 +686,8 @@
+ 	}
+ 	/* setup.cf is authoritative for live players; old character files may retain a stale wint value. */
+ 	CHAR_setInt( charaindex, CHAR_WALKINTERVAL, getWalksendinterval() );
++    /* SAAC supplied this character archive; do not mark serializer copies. */
++    StoneAge_CharacterIdentityMarkLoaded(CHAR_getCharPointer(charaindex));
+ #ifdef _NEWSAVE
+ 	CHAR_setInt( charaindex, CHAR_SAVEINDEXNUMBER, saveindex);
+ 	print("´æµµ×°ÔØË÷Òý:%d\n", CHAR_getInt( charaindex, CHAR_SAVEINDEXNUMBER) );

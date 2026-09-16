@@ -1,0 +1,29 @@
+--- a/npc/npc_exchangeman.c
++++ b/npc/npc_exchangeman.c
+@@ -7,6 +7,7 @@
+ #include "npcutil.h"
+ #include "lssproto_serv.h"
+ #include "npc_exchangeman.h"
++#include "stoneage_adult_exchange.h"
+ #include "npc_eventaction.h"
+ #include "log.h"
+ #include "battle.h"
+@@ -2557,6 +2558,13 @@
+ 	evcnt = NPC_EventFile( meindex, talker, buf);
+ 	if(evcnt == -1) return FALSE;
+ 
++	/* STONEAGE_ADULT_ITEM_EXCHANGE: prepare all rewards before consuming inputs. */
++	if( mode == 0 ) {
++		int result = StoneAge_AdultExchange(talker, buf);
++		if( result == 0 ) CHAR_talkToCli(talker, -1, "任务物品交换未完成，请稍后再试。", CHAR_COLORYELLOW);
++		if( result >= 0 ) return result;
++	}
++
+ 	/*--涩烂白央奶伙  卞井井木化中月椭瘀毛  凶仄化中月手及毛  五请允--*/
+ //	if(NPC_EventFile(meindex,talker,buf)==FALSE) return FALSE;
+ 
+--- a/makefile
++++ b/makefile
+@@ -68,1 +68,1 @@
+-$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c

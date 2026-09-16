@@ -40,6 +40,7 @@ jobs:
           node client/web/login_credentials_test.js
           node client/web/mobile_interaction_test.js
           node client/web/npc_interaction_test.js
+          node client/web/pet_training_test.js
           node client/web/resource_loading_test.js
           node client/web/loading_diagnostics_test.js
           node client/web/resource_progress_test.js
@@ -51,15 +52,31 @@ jobs:
           node client/web/sprite_loading_test.js
           node client/web/sw_cache_test.js
           node client/web/world_frame_test.js
+          node client/web/ai_observation_test.js
+          node client/web/chat_identity_test.js
+          node --test client/web/automation_catalog_test.js client/web/automation_pet_test.js client/web/automation_recovery_test.js client/web/automation_supply_test.js
           node internal/admin/app_time_test.js
           node internal/admin/audit_test.js
           node internal/admin/players_test.js
           node internal/admin/gifts_test.js
+          node internal/admin/ai_test.js
+          node internal/admin/ai_initial_test.js
+          node internal/admin/ai_initial_recovery_test.js
+          node internal/admin/ai_recovery_test.js
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
+          python3 server/legacy/modern/tests/test-gmsv-admin-save-identity.py
           python3 server/legacy/modern/tests/test-gmsv-trusted-gateway.py
           python3 server/legacy/modern/tests/test-gmsv-ride-level.py
           python3 server/legacy/modern/tests/test-gmsv-white-tiger-ride.py
+          python3 server/legacy/modern/tests/test-gmsv-enemy-bounds.py
+          python3 server/legacy/modern/tests/test-ai-funding.py
+          python3 server/legacy/modern/tests/test-ai-observation.py
+          python3 server/legacy/modern/tests/test-ai-initialize.py
+          python3 server/legacy/modern/tests/test-character-identity.py
+          python3 server/legacy/modern/tests/test-chat-identity.py
+          python3 server/legacy/modern/tests/test-person-identity.py
+          STONEAGE_NATIVE_PERSON_FIXTURE="$PWD/build/ai/person-identity/native-fixture.json" go test -mod=readonly ./internal/aigame -run '^TestNativePersonIdentityFixture$'
       - name: Verify production deployment tools
         run: |
           python3 scripts/modernize-object-cstring_test.py
@@ -137,8 +154,16 @@ jobs:
         include:
           - image: control-plane
             file: deploy/linux/Dockerfile
+            target: control-plane
+            platforms: linux/amd64,linux/arm64
+          - image: ai-runtime
+            file: deploy/linux/Dockerfile
+            target: ai-runtime
+            platforms: linux/amd64,linux/arm64
           - image: legacy-runtime
             file: deploy/linux/legacy-runtime.Dockerfile
+            target: legacy-runtime
+            platforms: linux/amd64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,6 +173,9 @@ jobs:
             !/vendor/
             !/client/web/assets/
             !/reference/
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -160,9 +188,11 @@ jobs:
         with:
           context: .
           file: ${{ matrix.file }}
-          platforms: linux/amd64
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platforms }}
           build-args: |
             RELEASE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
+            CODEX_CLI_VERSION=0.154.0
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
           provenance: true
@@ -203,13 +233,14 @@ jobs:
       - name: Assemble image digests and checksums
         working-directory: dist
         run: |
-          cat digest-control-plane digest-legacy-runtime > IMAGE-DIGESTS
-          rm digest-control-plane digest-legacy-runtime
+          cat digest-control-plane digest-ai-runtime digest-legacy-runtime > IMAGE-DIGESTS
+          rm digest-control-plane digest-ai-runtime digest-legacy-runtime
           sha256sum ./* > SHA256SUMS
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
           files: dist/*

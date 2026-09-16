@@ -1,0 +1,48 @@
+--- a/char/char_item.c
++++ b/char/char_item.c
+@@ -1505,6 +1505,8 @@
+ 			long tmpamount = OBJECT_getIndex(index) + amount;
+ 			if( tmpamount  > MaxGold )
+ 				return -4;
++			/* STONEAGE_AI_DROP_COMMIT: quota before visible gold changes. */
++			if( !StoneAge_AIFundingRecordExternal(charaindex, STONEAGE_AI_EXTERNAL_DROP, amount) ) return -1;
+ 			OBJECT_setIndex(index,tmpamount);
+ 			CHAR_setInt(charaindex,CHAR_GOLD,
+ 						(unsigned int)CHAR_getInt(charaindex,
+@@ -1538,6 +1540,7 @@
+ 	/* ≥≥“˝∆•≤˜«Ì‘ ‘¬ŒÁ÷–µ§“«∑¥ﬁ•ΩÓË∂  ‘ ‘¬ */
+ 	{
+ 		Object  one;
++		memset(&one, 0, sizeof(one));
+ 		one.type = OBJTYPE_GOLD;
+ 		one.x = x;
+ 		one.y = y;
+@@ -1546,12 +1549,19 @@
+ 		if( amount > MaxGold )
+ 			return -4;
+ 
+-		one.index = amount;
++		/* Reserve the map/object slot with no transferable gold yet. */
++		one.index = 0;
+ 		*objindex = initObjectOne( &one );
+ 		/*  ◊Û∆§≥‚ƒ·€Õ–˛Ë∂  ‘ ‘¬    */
+ 		if( *objindex == -1 )
+ 			/*  Ë∂  ¡√      */
+ 			return -3;
++		if( !StoneAge_AIFundingRecordExternal(charaindex, STONEAGE_AI_EXTERNAL_DROP, amount) ) {
++			endObjectOne(*objindex);
++			*objindex = -1;
++			return -1;
++		}
++		OBJECT_setIndex(*objindex, amount);
+ 
+ 		/*‘∆‡≈√´”º»’‘ */
+ 		CHAR_setInt(charaindex,CHAR_GOLD,
+@@ -1711,7 +1721,6 @@
+ 	}
+ 
+ END:
+-	if( !StoneAge_AIFundingRecordExternal(charaindex, STONEAGE_AI_EXTERNAL_DROP, amount) ) return;
+ 	CHAR_sendWatchEvent(objindex,CHAR_ACTSTAND,NULL,0,TRUE );
+ 	CHAR_send_P_StatusString( charaindex, CHAR_P_STRING_GOLD);
+ 	return;

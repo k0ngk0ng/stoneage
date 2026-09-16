@@ -40,6 +40,14 @@ type Options struct {
 	Config              ConfigManager
 	SAACConfig          ConfigManager
 	CSRFSecret          []byte
+	// AIStore and AISecrets are optional so an admin process can be upgraded
+	// before the Codex runtime is deployed.  When omitted, the AI pages remain
+	// visible but accurately report that the runtime is stopped/unconfigured.
+	AIStore            AIStore
+	AISecrets          AISecretStore
+	AIRuntime          AIProfileRuntime
+	AIProvisioner      AIPlayerProvisioner
+	AIConnectionTester AIModelConnectionTester
 }
 
 type Server struct {
@@ -57,6 +65,12 @@ type Server struct {
 	gmsvConfig          ConfigManager
 	saacConfig          ConfigManager
 	csrfSecret          []byte
+	aiStore             AIStore
+	aiSecrets           AISecretStore
+	aiRuntime           AIProfileRuntime
+	aiProvisioner       AIPlayerProvisioner
+	aiConnectionTester  AIModelConnectionTester
+	aiDefaultID         string
 	giftMu              sync.Mutex
 	giftPreviews        map[string]*giftPreview
 	giftWorkerRunning   bool
@@ -71,46 +85,58 @@ type pageData struct {
 	OnlinePlayers    int64
 	UnknownServers   int
 
-	Title              string
-	Session            *auth.Session
-	CSRF               string
-	Error              string
-	Message            string
-	Query              string
-	FormUsername       string
-	Accounts           []auth.Account
-	Account            auth.Account
-	Events             []auth.AuditEvent
-	SetupTokenRequired bool
-	Status             ServiceStatus
-	Config             map[string]string
-	ConfigGroups       []ConfigGroup
-	ConfigError        string
-	OperatorError      string
-	Code               int
-	ConfigService      string
-	ConfigTitle        string
-	ConfigDescription  string
-	ConfigPath         string
-	ConfigEditable     bool
-	GatewayRunning     bool
-	GatewayStopped     bool
-	GameStatus         string
-	GameStatusLabel    string
-	GameRunning        bool
-	GameStopped        bool
-	GameAnyRunning     bool
-	GameKnown          bool
-	GMSVRunning        bool
-	GMSVStopped        bool
-	SAACRunning        bool
-	SAACStopped        bool
-	AnyServiceRunning  bool
-	AllServicesKnown   bool
-	AllServicesStopped bool
-	AssetSync          AssetSyncStatus
-	AssetSyncError     string
-	AssetSyncAvailable bool
+	Title                     string
+	Session                   *auth.Session
+	CSRF                      string
+	SourceIP                  string
+	Error                     string
+	Message                   string
+	Query                     string
+	FormUsername              string
+	Accounts                  []auth.Account
+	Account                   auth.Account
+	Events                    []auth.AuditEvent
+	SetupTokenRequired        bool
+	Status                    ServiceStatus
+	Config                    map[string]string
+	ConfigGroups              []ConfigGroup
+	ConfigError               string
+	OperatorError             string
+	Code                      int
+	ConfigService             string
+	ConfigTitle               string
+	ConfigDescription         string
+	ConfigPath                string
+	ConfigEditable            bool
+	GatewayRunning            bool
+	GatewayStopped            bool
+	GameStatus                string
+	GameStatusLabel           string
+	GameRunning               bool
+	GameStopped               bool
+	GameAnyRunning            bool
+	GameKnown                 bool
+	GMSVRunning               bool
+	GMSVStopped               bool
+	SAACRunning               bool
+	SAACStopped               bool
+	AnyServiceRunning         bool
+	AllServicesKnown          bool
+	AllServicesStopped        bool
+	AssetSync                 AssetSyncStatus
+	AssetSyncError            string
+	AssetSyncAvailable        bool
+	AIModels                  []aiModelView
+	AIModelCatalog            aiModelCatalogView
+	AISkills                  []aiSkillView
+	AIProfiles                []aiProfileView
+	AIDefaultModelID          string
+	AIError                   string
+	AIConfigured              bool
+	AIRuntimeConfigured       bool
+	AIProvisioningConfigured  bool
+	AIConnectionTestAvailable bool
+	AIRoleCanWrite            bool
 }
 
 const adminFlashCookieName = "stoneage_admin_flash"
@@ -134,10 +160,12 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
-		"assets":  "assets.html",
-		"players": "players.html",
-		"gifts":   "gifts.html",
-		"config":  "config.html", "error": "error.html",
+		"assets":      "assets.html",
+		"players":     "players.html",
+		"gifts":       "gifts.html",
+		"ai_models":   "ai_models.html",
+		"ai_profiles": "ai_profiles.html",
+		"config":      "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
 		if parseErr != nil {
@@ -159,6 +187,11 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		gmsvConfig:          options.Config,
 		saacConfig:          options.SAACConfig,
 		csrfSecret:          options.CSRFSecret,
+		aiStore:             options.AIStore,
+		aiSecrets:           options.AISecrets,
+		aiRuntime:           options.AIRuntime,
+		aiProvisioner:       options.AIProvisioner,
+		aiConnectionTester:  options.AIConnectionTester,
 		giftPreviews:        make(map[string]*giftPreview),
 		giftNowFunc:         time.Now,
 	}
@@ -213,7 +246,15 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		}
 		return
 	}
-	data := &pageData{Session: session, CSRF: server.csrfToken(token)}
+	data := &pageData{Session: session, CSRF: server.csrfToken(token), SourceIP: server.requestSourceIP(request)}
+	data.AIConfigured = server.aiStore != nil
+	data.AIRuntimeConfigured = server.aiRuntime != nil
+	data.AIProvisioningConfigured = server.aiProvisioner != nil
+	data.AIRoleCanWrite = session.Role == "admin"
+	if strings.HasPrefix(request.URL.Path, "/api/ai/") {
+		server.aiAPI(response, request, data)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/api/gift-") {
 		server.giftAPI(response, request, data)
 		return
@@ -225,6 +266,14 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		}
 		data.Title = "礼包管理"
 		server.render(response, "gifts", data)
+		return
+	}
+	if request.URL.Path == "/ai/models" {
+		server.aiModelsPage(response, request, data)
+		return
+	}
+	if request.URL.Path == "/ai/profiles" {
+		server.aiProfilesPage(response, request, data)
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/api/accounts/") || request.URL.Path == "/api/player-catalog" || strings.HasPrefix(request.URL.Path, "/api/player-assets/") {

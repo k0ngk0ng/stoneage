@@ -1,0 +1,21 @@
+--- a/lssproto_serv.c
++++ b/lssproto_serv.c
+@@ -6,2 +6,3 @@
+ #include "char.h"
++#include "stoneage_person_identity.h"
+ #include <stdio.h>
+@@ -1659,3 +1660,4 @@
+ void lssproto_C_send(int fd,char* data)
+ {
++	StoneAge_PersonIdentitySendC(fd, data);
+ #ifdef _DEBUG_SEND_CLI
+@@ -1731,3 +1732,4 @@
+ void lssproto_S_send(int fd,char* data)
+ {
++	StoneAge_PersonIdentitySendN(fd, data);
+ #ifdef _DEBUG_SEND_CLI
+--- a/makefile
++++ b/makefile
+@@ -68,1 +68,1 @@
+-$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c stoneage_character_identity.c stoneage_chat_identity.c
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c stoneage_character_identity.c stoneage_chat_identity.c stoneage_person_identity.c

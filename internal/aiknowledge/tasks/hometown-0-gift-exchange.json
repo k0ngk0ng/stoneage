@@ -1,0 +1,570 @@
+{
+  "id": "hometown-0-gift-exchange",
+  "name": "花与贝壳的交换（保存点 0 分支）",
+  "description": "面向已有保存点 0 记录的角色：在 1000 层向日美子领取花，再到 2000 层向弥生交花换取贝壳。保存点记录不代表当前地图或唯一出生村庄。NPC 别名、完整跨地图路线和运行时窗口仍需目标服务器验证。",
+  "status": "unverified",
+  "preconditions": [
+    {
+      "kind": "character_level",
+      "value": 1,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_2",
+          "line": 29,
+          "line_end": 39
+        }
+      ]
+    },
+    {
+      "kind": "flag_set",
+      "id": "savepoint:0",
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_2",
+          "line": 29,
+          "line_end": 39
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "stock-travel-meat",
+      "kind": "stock",
+      "description": "出发前将小块肉补足至 5 个，并保留至少 2 个空背包格用于花和贝壳。数量是本任务的初始补给策略，尚未证明足以完成全程；不自动补买或提高战斗上限。",
+      "action": {
+        "skill": "item.stock",
+        "arguments": {
+          "item": "small-meat",
+          "target_count": 5,
+          "reserve_slots": 2
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2344",
+          "value": 5
+        },
+        {
+          "kind": "backpack_free_slots",
+          "value": 2
+        }
+      ],
+      "timeout_seconds": 600,
+      "cost_known": true,
+      "maximum_cost": 60,
+      "evidence": [
+        {
+          "path": "npc/genout/shop_m.create",
+          "line": 103,
+          "line_end": 114
+        },
+        {
+          "path": "npc/genout/ss_1004_17_13",
+          "line": 1,
+          "line_end": 16
+        },
+        {
+          "path": "itemset.txt",
+          "line": 1945
+        }
+      ]
+    },
+    {
+      "id": "go-to-himiko",
+      "kind": "move",
+      "description": "前往 1000 层日美子前方的交互格 (56,124)；日美子实体位于 (57,124)。",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 1000,
+          "x": 56,
+          "y": 124
+        }
+      },
+      "floor": 1000,
+      "coordinates": {
+        "floor": 1000,
+        "x": 56,
+        "y": 124
+      },
+      "success_conditions": [
+        {
+          "kind": "position",
+          "value": 1000,
+          "x": 56,
+          "y": 124
+        }
+      ],
+      "timeout_seconds": 600,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02.create",
+          "line": 19,
+          "line_end": 27
+        },
+        {
+          "path": "map/mapwarp.txt",
+          "line": 1404,
+          "line_end": 1407
+        }
+      ]
+    },
+    {
+      "id": "talk-to-himiko",
+      "kind": "talk",
+      "description": "与服务端目录中的 `sainasu-himiko`（1000 层日美子）对话，打开请求窗口。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "sainasu-himiko",
+          "floor": 1000,
+          "x": 57,
+          "y": 124,
+          "command": "talk"
+        }
+      },
+      "floor": 1000,
+      "coordinates": {
+        "floor": 1000,
+        "x": 56,
+        "y": 124
+      },
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "sainasu-himiko",
+          "value": 234
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02.create",
+          "line": 19,
+          "line_end": 27
+        },
+        {
+          "path": "npc/sainasu/event/event02_2",
+          "line": 29,
+          "line_end": 39
+        }
+      ]
+    },
+    {
+      "id": "request-flower",
+      "kind": "select",
+      "description": "在请求窗口中确认帮助日美子；服务端应发放花（物品 2415），随后显示开始消息确认窗口 231。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "sainasu-himiko",
+          "window_sequence": 234,
+          "choice": 4
+        }
+      },
+      "inputs": [
+        "window=REQMAINMSG",
+        "choice=YES"
+      ],
+      "outputs": [
+        "item:2415",
+        "window=STARTMSG(231)"
+      ],
+      "success_conditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2415",
+          "value": 1
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:2"
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_2",
+          "line": 17,
+          "line_end": 39
+        }
+      ]
+    },
+    {
+      "id": "confirm-start-message",
+      "kind": "confirm",
+      "description": "提交日美子 STARTMSG(231) 的确定按钮。只确认当前窗口成功写入，不推断服务端关闭回执；此窗口不返回回执。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "sainasu-himiko",
+          "window_sequence": 231,
+          "choice": 1
+        }
+      },
+      "inputs": [
+        "window=STARTMSG(231)",
+        "choice=OK"
+      ],
+      "outputs": [
+        "local-window-submission:231"
+      ],
+      "preconditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2415",
+          "value": 1
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:2"
+        },
+        {
+          "kind": "window_sequence",
+          "id": "sainasu-himiko",
+          "value": 231
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_submitted",
+          "id": "sainasu-himiko",
+          "value": 231
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_2",
+          "line": 17,
+          "line_end": 39
+        }
+      ]
+    },
+    {
+      "id": "go-to-yayoi",
+      "kind": "move",
+      "description": "前往 2000 层弥生前方的交互格 (55,93)；弥生实体位于 (55,92)。完整跨地图路线尚未运行时验证。",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 2000,
+          "x": 55,
+          "y": 93
+        }
+      },
+      "floor": 2000,
+      "coordinates": {
+        "floor": 2000,
+        "x": 55,
+        "y": 93
+      },
+      "preconditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2415",
+          "value": 1
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:2"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "position",
+          "value": 2000,
+          "x": 55,
+          "y": 93
+        }
+      ],
+      "timeout_seconds": 1800,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02.create",
+          "line": 8,
+          "line_end": 16
+        },
+        {
+          "path": "map/mapwarp.txt",
+          "line": 1404,
+          "line_end": 1407
+        }
+      ]
+    },
+    {
+      "id": "talk-to-yayoi",
+      "kind": "talk",
+      "description": "与服务端目录中的 `sainasu-yayoi`（2000 层弥生）对话，打开接受窗口。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "sainasu-yayoi",
+          "floor": 2000,
+          "x": 55,
+          "y": 92,
+          "command": "talk"
+        }
+      },
+      "floor": 2000,
+      "coordinates": {
+        "floor": 2000,
+        "x": 55,
+        "y": 93
+      },
+      "preconditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2415",
+          "value": 1
+        },
+        {
+          "kind": "flag_set",
+          "id": "now:2"
+        }
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "sainasu-yayoi",
+          "value": 235
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02.create",
+          "line": 8,
+          "line_end": 16
+        },
+        {
+          "path": "npc/sainasu/event/event02_1",
+          "line": 17,
+          "line_end": 25
+        }
+      ]
+    },
+    {
+      "id": "accept-flower",
+      "kind": "select",
+      "description": "在接受窗口中确认交付花；服务端随后显示感谢确认窗口 430。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "sainasu-yayoi",
+          "window_sequence": 235,
+          "choice": 4
+        }
+      },
+      "inputs": [
+        "window=ACCMAINMSG",
+        "choice=YES"
+      ],
+      "outputs": [
+        "window=ACCTHANKNEW(430)"
+      ],
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "sainasu-yayoi",
+          "value": 430
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_1",
+          "line": 17,
+          "line_end": 25
+        }
+      ]
+    },
+    {
+      "id": "confirm-exchange",
+      "kind": "confirm",
+      "description": "在感谢窗口中确认，等待服务端完成物品交换并设置事件结束标志。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {
+          "npc": "sainasu-yayoi",
+          "window_sequence": 430,
+          "choice": 1
+        }
+      },
+      "inputs": [
+        "window=ACCTHANKNEW",
+        "choice=OK"
+      ],
+      "outputs": [
+        "item:2414",
+        "flag=end:2"
+      ],
+      "success_conditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2414",
+          "value": 1
+        },
+        {
+          "kind": "flag_set",
+          "id": "end:2"
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_1",
+          "line": 17,
+          "line_end": 25
+        }
+      ]
+    }
+  ],
+  "success": [
+    {
+      "kind": "flag_set",
+      "id": "end:2",
+      "expression": "end:2 == true",
+      "description": "服务端设置事件结束标志 2。",
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_1",
+          "line": 17,
+          "line_end": 25
+        }
+      ]
+    },
+    {
+      "kind": "item_count",
+      "id": "item:2414",
+      "value": 1,
+      "expression": "inventory[item:2414] >= 1",
+      "description": "服务端发放贝壳物品 2414。",
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event02_1",
+          "line": 17,
+          "line_end": 25
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "gold_min": 0,
+    "gold_expected": 60,
+    "gold_max": 60,
+    "notes": "任务交换本身未声明 DelStone。出发前小块肉补足 5 个，每个 12 石币，最多 60；已有库存只买差额。两格空位留给任务物品。此补给策略不代表全程生存已验证。",
+    "evidence": [
+      {
+        "path": "npc/sainasu/event/event02_1",
+        "line": 17,
+        "line_end": 25
+      },
+      {
+        "path": "npc/sainasu/event/event02_2",
+        "line": 17,
+        "line_end": 39
+      },
+      {
+        "path": "npc/genout/shop_m.create",
+        "line": 103,
+        "line_end": 114
+      },
+      {
+        "path": "npc/genout/ss_1004_17_13",
+        "line": 1,
+        "line_end": 16
+      },
+      {
+        "path": "itemset.txt",
+        "line": 1945
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "source": {
+        "path": "npc/sainasu/event/event02.create",
+        "line": 7,
+        "line_end": 27
+      },
+      "claim": "1000 层日美子与 2000 层弥生的实际 NPC 创建记录、坐标和事件脚本绑定。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/sainasu/event/event02_2",
+        "line": 17,
+        "line_end": 39
+      },
+      "claim": "保存点 0 分支的等级/保存点条件、花 2415 请求和服务端发放规则。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/sainasu/event/event02_1",
+        "line": 17,
+        "line_end": 25
+      },
+      "claim": "交花换贝壳 2414、删除花并设置结束标志 2 的接受分支。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "map/mapwarp.txt",
+        "line": 1404,
+        "line_end": 1407
+      },
+      "claim": "1000 层与已验证的 1006 层出口连接；到 2000 层的完整路线仍待验证。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/genout/shop_m.create",
+        "line": 103,
+        "line_end": 114
+      },
+      "claim": "肉店位置、2344 首项和单价 12 的补给来源；补足 5 个并预留 2 格是任务策略，全程尚待验证。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/genout/ss_1004_17_13",
+        "line": 1,
+        "line_end": 16
+      },
+      "claim": "肉店位置、2344 首项和单价 12 的补给来源；补足 5 个并预留 2 格是任务策略，全程尚待验证。",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "itemset.txt",
+        "line": 1945
+      },
+      "claim": "肉店位置、2344 首项和单价 12 的补给来源；补足 5 个并预留 2 格是任务策略，全程尚待验证。",
+      "verified": false
+    }
+  ],
+  "execution_verified": false,
+  "source": {
+    "path": "tasks/hometown-0-gift-exchange.json"
+  }
+}

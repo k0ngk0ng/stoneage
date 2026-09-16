@@ -1,0 +1,133 @@
+--- a/npc/npc_itemshop.c
++++ b/npc/npc_itemshop.c
+@@ -549,38 +549,57 @@
+  *--------------------------------------------*/
+ BOOL NPC_AddItemBuy(int meindex, int talker,int itemID,int kosuu,double rate)
+ {
+-
+-	int itemindex;
+-	int i;
+-	int gold;
+-	int ret;
+-	int maxgold;
+-	gold = ITEM_getcostFromITEMtabl( itemID);
+-	gold = (int)(gold * rate);
+-
+-	maxgold = gold * kosuu;
+-	if(!StoneAge_AIFundingCanCharge(talker, maxgold)) return FALSE;
+-
+-	if( addNpcFamilyTax( meindex, talker, maxgold*0.4 ) )
+-		print(" FamilyTaxDone! ");
+-	else
+-		print(" FamilyTaxError!");
+-	for(i = 0 ; i < kosuu ; i++){
+-		itemindex = ITEM_makeItemAndRegist( itemID);
+-		
+-		if(itemindex == -1) return FALSE;
+-		ret = CHAR_addItemSpecificItemIndex( talker, itemindex);
+-		if( ret < 0 || ret >= CHAR_MAXITEMHAVE ) {
+-			print( "npc_itemshop.c: additem error itemindex[%d]\n", itemindex);
+-			ITEM_endExistItemsOne( itemindex);
+-			return FALSE;
+-		}
+-		CHAR_sendItemDataOne( talker, ret);
+-	}
+-	if( !StoneAge_AIFundingCharge(talker, maxgold) ) return FALSE;
+-	//CHAR_send_P_StatusString( talker, CHAR_P_STRING_GOLD);
+-	return TRUE;
+-
++    /* STONEAGE_AI_PURCHASE_COMMIT: prepare without publishing inventory. */
++    int items[CHAR_MAXITEMHAVE];
++    int slots[CHAR_MAXITEMHAVE];
++    int count = 0;
++    int created = 0;
++    int i;
++    int unitgold;
++    int maxgold;
++    double scaled;
++
++    if( !CHAR_CHECKINDEX(talker) || kosuu <= 0 ||
++        kosuu > CHAR_MAXITEMHAVE - CHAR_STARTITEMARRAY ) return FALSE;
++    unitgold = ITEM_getcostFromITEMtabl(itemID);
++    if( unitgold < 0 || !(rate >= 0.0) ) return FALSE;
++    scaled = unitgold * rate;
++    if( !(scaled >= 0.0) || scaled > 2147483647.0 ) return FALSE;
++    unitgold = (int)scaled;
++    if( unitgold > 2147483647 / kosuu ) return FALSE;
++    maxgold = unitgold * kosuu;
++    if( !StoneAge_AIFundingCanCharge(talker, maxgold) ) return FALSE;
++
++    for( i = CHAR_STARTITEMARRAY; i < CHAR_MAXITEMHAVE && count < kosuu; i++ ) {
++        if( CHAR_getItemIndex(talker, i) == -1 ) slots[count++] = i;
++    }
++    if( count != kosuu ) return FALSE;
++    for( i = 0; i < kosuu; i++ ) {
++        int itemindex = ITEM_makeItemAndRegist(itemID);
++        if( !ITEM_CHECKINDEX(itemindex) ) goto cancel_purchase;
++        items[created++] = itemindex;
++    }
++    /* The GMSV dispatches this handler synchronously. Check reservations
++     * again before charging, then commit only infallible field assignments. */
++    for( i = 0; i < kosuu; i++ ) {
++        if( CHAR_getItemIndex(talker, slots[i]) != -1 ) goto cancel_purchase;
++    }
++    if( !StoneAge_AIFundingCharge(talker, maxgold) ) goto cancel_purchase;
++    for( i = 0; i < kosuu; i++ ) {
++        CHAR_setItemIndex(talker, slots[i], items[i]);
++        ITEM_setWorkInt(items[i], ITEM_WORKOBJINDEX, -1);
++        ITEM_setWorkInt(items[i], ITEM_WORKCHARAINDEX, talker);
++    }
++    if( addNpcFamilyTax(meindex, talker, maxgold * 0.4) )
++        print(" FamilyTaxDone! ");
++    else
++        print(" FamilyTaxError!");
++    for( i = 0; i < kosuu; i++ ) CHAR_sendItemDataOne(talker, slots[i]);
++    return TRUE;
++
++cancel_purchase:
++    for( i = 0; i < created; i++ ) ITEM_endExistItemsOne(items[i]);
++    return FALSE;
+ }
+ 
+ //Ñ¡Ôñ (Âò,Âô,³öÈ¥) µÄÐ¡ÊÓ´°
+--- a/npc/npc_petskillshop.c
++++ b/npc/npc_petskillshop.c
+@@ -156,9 +156,9 @@
+ 		CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD);
+ 		return;
+ 	}
++	/* Commit funding before changing the learned skill. */
++	if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return;
+ 	CHAR_setPetSkill( petindex, slot, skillID);
+-
+-	if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return;
+ 
+ 	snprintf( msgbuf, sizeof( msgbuf ), "W%d",pet-1);
+ 	CHAR_sendStatusString( talkerindex, msgbuf );
+--- a/npc/npc_freepetskillshop.c
++++ b/npc/npc_freepetskillshop.c
+@@ -236,8 +236,8 @@
+ 				return;
+ 			}
+ 
++			if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return;
+ 			CHAR_setPetSkill( petindex, slot, skillID);
+-			if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return;
+ 			snprintf( msgbuf, sizeof( msgbuf ), "W%d",pet-1);
+ 			CHAR_sendStatusString( talkerindex, msgbuf );
+ 			CHAR_sendStatusString( talkerindex, "P");
+--- a/npc/npc_exchangeman.c
++++ b/npc/npc_exchangeman.c
+@@ -3776,10 +3776,11 @@
+                          CHAR_WORKBATTLEMODE) != BATTLE_CHARMODE_NONE) return ;
+ 
+ 	/*--Ê¸ÓÀÐþ±å  Ã«´´Òü½ñÁùÔÂ--*/
++	if( !StoneAge_AIFundingCharge(talker, cost) ) return;
+ 	CHAR_setPetSkill( petindex, slot, skillID);
+ 			
+ 	/*--ÔÆàÅÃ«Ó¼ÈÕÔÊ--*/
+-	if( !StoneAge_AIFundingCharge(talker, cost) ) return FALSE;
++	/* Funding committed before the skill change above. */
+ 
+ 	snprintf( msgbuf, sizeof( msgbuf ), "W%d",pet-1);
+ 

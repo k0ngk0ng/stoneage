@@ -55,6 +55,7 @@ type Pet struct {
 	PetFlag     int    `json:"pet_flag"`
 	Size        int    `json:"size"`
 	PetSkillIDs []int  `json:"pet_skill_ids"`
+	LimitLevel  int    `json:"limit_level"`
 }
 
 // Item is one row from itemset.txt.

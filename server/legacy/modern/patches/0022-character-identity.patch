@@ -1,0 +1,44 @@
+--- a/include/char_base.h
++++ b/include/char_base.h
+@@ -535,6 +535,7 @@
+ 	CHAR_GMFUNCTION,   // Íæ¼ÒGMÃüÁî
+ #endif
+        CHAR_NEWNAME,
++    CHAR_PERSISTENTID, /* STONEAGE_CHARACTER_IDENTITY: immutable player ID */
+     CHAR_DATACHARNUM,
+ }CHAR_DATACHAR;
+ 
+--- a/char/char_base.c
++++ b/char/char_base.c
+@@ -845,6 +845,7 @@
+ 	"gmfunction", // Íæ¼ÒGMÃüÁî
+ #endif
+ 	"newname",
++    "charid", /* CHAR_PERSISTENTID */
+ };
+ 
+ INLINE BOOL _CHAR_CHECKINDEX( char *file, int line, int index )
+--- a/char/char.c
++++ b/char/char.c
+@@ -12,6 +12,7 @@
+ #include "char_base.h"
+ #include "char_data.h"
+ #include "char.h"
++#include "stoneage_character_identity.h"
+ #include "lssproto_serv.h"
+ #include "item.h"
+ #include "item_event.h"
+@@ -1409,6 +1410,8 @@
+ 	char*  chardata;
+   char   cdkey[CDKEYLEN];
+ 	
++    /* Generate only on the ordinary SAAC save path, never on inspection. */
++    StoneAge_CharacterIdentityPrepareSave(ch);
+ 	chardata = CHAR_makeStringFromCharData( ch );
+ 	if( chardata == "\0" )return FALSE;
+   CONNECT_getCdkey( fd, cdkey, sizeof(cdkey));
+--- a/makefile
++++ b/makefile
+@@ -68,1 +68,1 @@
+-$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c stoneage_character_identity.c

@@ -1,0 +1,143 @@
+{
+  "id": "riding-basic",
+  "name": "学习初级骑术",
+  "description": "在 1040 层的骑乘训练师处学习初级骑术，学会后骑术值为 40。课程标题中的 Lv40 不是人物或宠物的学习最低等级；实际骑乘另有条件。本任务仅覆盖此训练师，路线准备和目标服务器执行仍待验证。",
+  "status": "unverified",
+  "preconditions": [],
+  "preparation_reviewed": false,
+  "preparation_notes": "源码购买分支没有人物或宠物最低等级检查，也不检查玩家家族归属。尚未核实任意起点至 1040 层的安全路线及补给；不得将此任务用于自动出发。学会骑术不等于已满足实际骑乘条件。",
+  "steps": [
+    {
+      "id": "go-to-trainer",
+      "kind": "move",
+      "description": "前往 1040 层训练师的前方交互格 (60,45)；训练师实体在 (61,45)。NPC 的 family=1 用于学费收入归属，不是玩家家族前置条件。",
+      "action": {
+        "skill": "move",
+        "arguments": {"floor": 1040, "x": 60, "y": 45, "npc": "riderman"}
+      },
+      "npc": "riderman",
+      "floor": 1040,
+      "coordinates": {"floor": 1040, "x": 60, "y": 45},
+      "success_conditions": [
+        {"kind": "position", "value": 1040, "x": 60, "y": 45}
+      ],
+      "timeout_seconds": 120,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {"path": "npc/family/riderman.create", "line": 3, "line_end": 14},
+        {"path": "map/family/100/1040", "line": 0}
+      ]
+    },
+    {
+      "id": "open-course-menu",
+      "kind": "talk",
+      "description": "与 riderman 对话并打开训练师主菜单。",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {"npc": "riderman", "floor": 1040, "x": 61, "y": 45, "command": "talk"}
+      },
+      "npc": "riderman",
+      "success_conditions": [
+        {"kind": "window_sequence", "id": "riderman", "value": 101}
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {"path": "npc/family/riderman.conf", "line": 5, "line_end": 27}
+      ]
+    },
+    {
+      "id": "choose-riding-course",
+      "kind": "select",
+      "description": "在训练师主菜单中选择“学习骑乘宠物”，打开课程等级菜单。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {"npc": "riderman", "window_sequence": 101, "choice": 4}
+      },
+      "npc": "riderman",
+      "inputs": ["course=riding"],
+      "outputs": ["npc.window=200"],
+      "success_conditions": [
+        {"kind": "window_sequence", "id": "riderman", "value": 200}
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {"path": "npc/family/riderman.conf", "line": 5, "line_end": 27}
+      ]
+    },
+    {
+      "id": "choose-basic-course",
+      "kind": "select",
+      "description": "在课程等级菜单中选择初级课程，打开 5000 石币费用确认窗口。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {"npc": "riderman", "window_sequence": 200, "choice": 1}
+      },
+      "npc": "riderman",
+      "inputs": ["course=basic"],
+      "outputs": ["npc.window=210"],
+      "success_conditions": [
+        {"kind": "window_sequence", "id": "riderman", "value": 210}
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {"path": "npc/family/riderman.conf", "line": 29, "line_end": 51}
+      ]
+    },
+    {
+      "id": "confirm-course",
+      "kind": "confirm",
+      "description": "确认学习并等待服务端状态更新。",
+      "action": {
+        "skill": "npc.window",
+        "arguments": {"npc": "riderman", "window_sequence": 210, "choice": "confirm"}
+      },
+      "npc": "riderman",
+      "inputs": ["confirm=yes"],
+      "outputs": ["character.learn_ride=40"],
+      "success_conditions": [
+        {"kind": "character_skill_level", "id": "learn_ride", "value": 40}
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 5000,
+      "evidence": [
+        {"path": "npc/family/riderman.conf", "line": 58, "line_end": 66}
+      ]
+    }
+  ],
+  "success": [
+    {
+      "kind": "character_skill_level",
+      "id": "learn_ride",
+      "value": 40,
+      "expression": "character.learn_ride >= 40",
+      "description": "服务端将 CHAR_LEARNRIDE 设置为 40，并返回学习成功窗口。",
+      "evidence": [
+        {"path": "npc/family/riderman.create", "line": 3, "line_end": 14},
+        {"path": "npc/family/riderman.conf", "line": 54, "line_end": 68}
+      ]
+    }
+  ],
+  "budget": {
+    "gold_min": 5000,
+    "gold_expected": 5000,
+    "gold_max": 5000,
+    "notes": "静态配置确定的学费。普通角色需要持有石币；启用服务端 unlimited_funds 能力的 AI 玩家可在可见余额为零时执行，费用仍由服务端记录。",
+    "evidence": [
+      {"path": "npc/family/riderman.conf", "line": 54, "line_end": 66}
+    ]
+  },
+  "evidence": [
+    {"source": {"path": "npc/family/riderman.create", "line": 3, "line_end": 14}, "claim": "家族 1 骑术训练师的实际创建记录", "verified": false},
+    {"source": {"path": "npc/family/riderman.conf", "line": 29, "line_end": 68}, "claim": "实际骑术课程菜单和初级课程费用", "verified": false}
+  ],
+  "execution_verified": false,
+  "source": {"path": "tasks/riding-basic.json"}
+}

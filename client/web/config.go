@@ -19,16 +19,29 @@ import (
 // the production configuration readable and lets startup reject misspelled
 // keys instead of silently serving assets from the wrong origin.
 type webConfigFile struct {
-	ListenAddress string              `toml:"listen_address"`
-	TCPUpstream   string              `toml:"tcp_upstream"`
-	GatewayAPIURL string              `toml:"gateway_api_url"`
-	PacketLimit   int                 `toml:"packet_limit"`
-	MaxSessions   int                 `toml:"max_sessions"`
-	PollTimeout   string              `toml:"poll_timeout"`
-	IdleTimeout   string              `toml:"idle_timeout"`
-	DialTimeout   string              `toml:"dial_timeout"`
-	AllowedOrigin string              `toml:"allowed_origin"`
-	Static        webStaticConfigFile `toml:"static"`
+	ListenAddress string                  `toml:"listen_address"`
+	TCPUpstream   string                  `toml:"tcp_upstream"`
+	GatewayAPIURL string                  `toml:"gateway_api_url"`
+	PacketLimit   int                     `toml:"packet_limit"`
+	MaxSessions   int                     `toml:"max_sessions"`
+	PollTimeout   string                  `toml:"poll_timeout"`
+	IdleTimeout   string                  `toml:"idle_timeout"`
+	DialTimeout   string                  `toml:"dial_timeout"`
+	AllowedOrigin string                  `toml:"allowed_origin"`
+	Static        webStaticConfigFile     `toml:"static"`
+	Automation    webAutomationConfigFile `toml:"automation"`
+}
+
+type webAutomationConfigFile struct {
+	KnowledgeDataDir  string `toml:"knowledge_data_dir"`
+	MapDataDir        string `toml:"map_data_dir"`
+	StockItems        string `toml:"stock_items"`
+	HealingItems      string `toml:"healing_items"`
+	NPCRegistry       string `toml:"npc_registry"`
+	AutomationDB      string `toml:"automation_db"`
+	ReceiptDB         string `toml:"receipt_db"`
+	PollInterval      string `toml:"poll_interval"`
+	NoProgressTimeout string `toml:"no_progress_timeout"`
 }
 
 type webStaticConfigFile struct {
@@ -97,6 +110,13 @@ func loadWebConfigFile(filename string) (Config, error) {
 	applyNonEmpty(&cfg.OSS.Region, disk.Static.OSS.Region)
 	applyNonEmpty(&cfg.OSS.Bucket, disk.Static.OSS.Bucket)
 	applyNonEmpty(&cfg.OSS.Prefix, disk.Static.OSS.Prefix)
+	applyNonEmpty(&cfg.AutomationKnowledgeDataDir, disk.Automation.KnowledgeDataDir)
+	applyNonEmpty(&cfg.AutomationMapDataDir, disk.Automation.MapDataDir)
+	applyNonEmpty(&cfg.AutomationStockItems, disk.Automation.StockItems)
+	applyNonEmpty(&cfg.AutomationHealingItems, disk.Automation.HealingItems)
+	applyNonEmpty(&cfg.AutomationNPCRegistry, disk.Automation.NPCRegistry)
+	applyNonEmpty(&cfg.AutomationDB, disk.Automation.AutomationDB)
+	applyNonEmpty(&cfg.ReceiptDB, disk.Automation.ReceiptDB)
 	if disk.PacketLimit != 0 {
 		cfg.PacketLimit = disk.PacketLimit
 	}
@@ -112,6 +132,12 @@ func loadWebConfigFile(filename string) (Config, error) {
 	if err := applyFileDuration(&cfg.DialTimeout, disk.DialTimeout, "dial_timeout"); err != nil {
 		return Config{}, err
 	}
+	if err := applyFileDuration(&cfg.AutomationPollInterval, disk.Automation.PollInterval, "automation.poll_interval"); err != nil {
+		return Config{}, err
+	}
+	if err := applyFileDuration(&cfg.AutomationNoProgressTimeout, disk.Automation.NoProgressTimeout, "automation.no_progress_timeout"); err != nil {
+		return Config{}, err
+	}
 	if gatewayAPIURL, err := normalizeGatewayAPIURL(cfg.GatewayAPIURL); err != nil {
 		return Config{}, fmt.Errorf("invalid gateway_api_url: %w", err)
 	} else {
@@ -125,6 +151,17 @@ func configFromCommandLine(arguments []string) (Config, string, error) {
 	flags := flag.NewFlagSet("stoneage-web", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&configPath, "config", strings.TrimSpace(os.Getenv("STONEAGE_WEB_CONFIG")), "path to web TOML configuration")
+	var automationKnowledgeDataDir, automationMapDataDir, automationNPCRegistry, automationHealingItems, automationStockItems, automationDB, receiptDB string
+	var automationPollInterval, automationNoProgressTimeout time.Duration
+	flags.StringVar(&automationKnowledgeDataDir, "ai-knowledge-data-dir", strings.TrimSpace(os.Getenv("STONEAGE_AI_KNOWLEDGE_DATA_DIR")), "server-owned read-only data directory for AI knowledge")
+	flags.StringVar(&automationMapDataDir, "ai-map-data-dir", strings.TrimSpace(os.Getenv("STONEAGE_AI_MAP_DATA_DIR")), "server-owned read-only data directory for AI navigation")
+	flags.StringVar(&automationStockItems, "ai-stock-items", strings.TrimSpace(os.Getenv("STONEAGE_AI_STOCK_ITEMS")), "server-owned stock offers referencing reviewed NPC and healing catalogs")
+	flags.StringVar(&automationHealingItems, "ai-healing-items", strings.TrimSpace(os.Getenv("STONEAGE_AI_HEALING_ITEMS")), "server-owned healing item contracts matching the loaded knowledge fingerprint")
+	flags.StringVar(&automationNPCRegistry, "ai-npc-registry", strings.TrimSpace(os.Getenv("STONEAGE_AI_NPC_REGISTRY")), "server-owned NPC contracts matching the loaded knowledge fingerprint")
+	flags.StringVar(&automationDB, "ai-automation-db", strings.TrimSpace(os.Getenv("STONEAGE_AI_AUTOMATION_DB")), "private durable SQLite database for AI automation checkpoints")
+	flags.StringVar(&receiptDB, "ai-receipt-db", strings.TrimSpace(os.Getenv("STONEAGE_AI_RECEIPT_DB")), "private durable SQLite database for AI action receipts")
+	flags.DurationVar(&automationPollInterval, "ai-automation-poll-interval", 0, "AI automation polling interval")
+	flags.DurationVar(&automationNoProgressTimeout, "ai-automation-no-progress-timeout", 0, "AI automation no-progress timeout")
 	if err := flags.Parse(arguments); err != nil {
 		return Config{}, "", fmt.Errorf("parse web arguments: %w", err)
 	}
@@ -139,7 +176,22 @@ func configFromCommandLine(arguments []string) (Config, string, error) {
 			return Config{}, configPath, err
 		}
 	}
-	return applyEnvironmentConfig(cfg), configPath, nil
+	// Explicit command-line settings take precedence over environment values.
+	cfg = applyEnvironmentConfig(cfg)
+	applyNonEmpty(&cfg.AutomationKnowledgeDataDir, automationKnowledgeDataDir)
+	applyNonEmpty(&cfg.AutomationMapDataDir, automationMapDataDir)
+	applyNonEmpty(&cfg.AutomationStockItems, automationStockItems)
+	applyNonEmpty(&cfg.AutomationHealingItems, automationHealingItems)
+	applyNonEmpty(&cfg.AutomationNPCRegistry, automationNPCRegistry)
+	applyNonEmpty(&cfg.AutomationDB, automationDB)
+	applyNonEmpty(&cfg.ReceiptDB, receiptDB)
+	if automationPollInterval != 0 {
+		cfg.AutomationPollInterval = automationPollInterval
+	}
+	if automationNoProgressTimeout != 0 {
+		cfg.AutomationNoProgressTimeout = automationNoProgressTimeout
+	}
+	return cfg, configPath, nil
 }
 
 var (

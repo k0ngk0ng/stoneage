@@ -184,8 +184,13 @@ func (m *Manager) Apply(ctx context.Context, account string, slot int, mutation 
 }
 
 func (m *Manager) waitForSave(ctx context.Context, account string, slot int, want string) error {
+	_, err := m.waitForSavedArchive(ctx, account, slot, want)
+	return err
+}
+
+func (m *Manager) waitForSavedArchive(ctx context.Context, account string, slot int, want string) ([]byte, error) {
 	if len(want) != 16 {
-		return fmt.Errorf("%w: 游戏已接受修改，缺少落盘确认，请刷新检查", playerdata.ErrUnavailable)
+		return nil, fmt.Errorf("%w: 游戏已接受修改，缺少落盘确认，请刷新检查", playerdata.ErrUnavailable)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
@@ -193,11 +198,11 @@ func (m *Manager) waitForSave(ctx context.Context, account string, slot int, wan
 	defer ticker.Stop()
 	for {
 		if ctx.Err() != nil {
-			return fmt.Errorf("%w: 游戏已接受修改，保存仍待确认，请刷新检查", playerdata.ErrUnavailable)
+			return nil, fmt.Errorf("%w: 游戏已接受修改，保存仍待确认，请刷新检查", playerdata.ErrUnavailable)
 		}
 		data, err := m.Archives.Read(ctx, account, slot)
 		if ctx.Err() != nil {
-			return fmt.Errorf("%w: 游戏已接受修改，保存仍待确认，请刷新检查", playerdata.ErrUnavailable)
+			return nil, fmt.Errorf("%w: 游戏已接受修改，保存仍待确认，请刷新检查", playerdata.ErrUnavailable)
 		}
 		if err == nil {
 			doc, parseErr := playerdata.ParseSave(data)
@@ -205,13 +210,13 @@ func (m *Manager) waitForSave(ctx context.Context, account string, slot int, wan
 				hash := fnv.New64a()
 				hash.Write(doc.Character.Bytes())
 				if fmt.Sprintf("%016x", hash.Sum64()) == want {
-					return nil
+					return data, nil
 				}
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("%w: 游戏已接受修改，保存仍待确认，请刷新检查", playerdata.ErrUnavailable)
+			return nil, fmt.Errorf("%w: 游戏已接受修改，保存仍待确认，请刷新检查", playerdata.ErrUnavailable)
 		case <-ticker.C:
 		}
 	}
@@ -253,6 +258,13 @@ func onlineSnapshot(fields map[string]string, account string, slot int) (playerd
 	for _, a := range playerdata.Definitions("character") {
 		if value, ok := fields["attribute."+a.Key]; ok {
 			if err = record.SetRaw(a.Key, []byte(value)); err != nil {
+				return result, err
+			}
+		}
+	}
+	for field, key := range map[string]string{"character.ride_pet_slot": "ridepet", "character.learn_ride": "learnride"} {
+		if value, ok := fields[field]; ok {
+			if err = record.SetRaw(key, []byte(value)); err != nil {
 				return result, err
 			}
 		}

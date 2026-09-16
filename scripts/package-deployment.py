@@ -18,6 +18,7 @@ output = root / args.output
 output.mkdir(parents=True, exist_ok=True)
 files = {
     'docker-compose.yml': 'docker-compose.yml',
+    'docker-compose.ai.yml': 'docker-compose.ai.yml',
     '.env.compose.example': '.env.compose.example',
     'README.md': 'docs/docker-compose.md',
     **{f'bin/{name}': f'bin/{name}' for name in
@@ -39,7 +40,7 @@ with tarfile.open(archive, 'w:gz') as tar:
         if source_path.is_symlink():
             raise ValueError(f'refusing symlink: {source}')
         data = source_path.read_bytes()
-        if target in ('.env.compose.example', 'docker-compose.yml'):
+        if target in ('.env.compose.example', 'docker-compose.yml', 'docker-compose.ai.yml'):
             data = re.sub(rb'v\d+\.\d+\.\d+', args.version.encode(), data)
         info = tarfile.TarInfo(target)
         info.size = len(data)

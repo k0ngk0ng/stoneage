@@ -1,0 +1,666 @@
+--- a/npc/npc_petskillshop.c
++++ b/npc/npc_petskillshop.c
+@@ -152,13 +152,13 @@
+ 	cost = PETSKILL_getInt( petskillindex, PETSKILL_COST );
+ 	cost = cost * rate;
+ 
+-	if(CHAR_getInt(talkerindex,CHAR_GOLD) < cost){
++	if(!StoneAge_AIFundingCanCharge(talkerindex, cost)){
+ 		CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD);
+ 		return;
+ 	}
+ 	CHAR_setPetSkill( petindex, slot, skillID);
+ 
+-	CHAR_DelGold( talkerindex, cost );
++	if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return;
+ 
+ 	snprintf( msgbuf, sizeof( msgbuf ), "W%d",pet-1);
+ 	CHAR_sendStatusString( talkerindex, msgbuf );
+
+--- a/npc/npc_riderman.c
++++ b/npc/npc_riderman.c
+@@ -202,7 +202,7 @@
+ 				return;
+ 			}
+ 
+-			if( CHAR_getInt( talkerindex, CHAR_GOLD ) < w.takegold )
++			if( !StoneAge_AIFundingCanCharge(talkerindex, w.takegold) )
+ 			{
+ 				char buf2[512];
+ 				
+@@ -212,7 +212,7 @@
+ 					makeEscapeString( buf2, buf, sizeof(buf)));
+ 				return;
+ 			}
+-			CHAR_DelGold( talkerindex, w.takegold );
++			if( !StoneAge_AIFundingCharge(talkerindex, w.takegold) ) return;
+ 
+ 			CHAR_setInt( talkerindex, CHAR_LEARNRIDE, 40 );
+ 			CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD );
+@@ -280,7 +280,7 @@
+ 				return;
+ 			}
+ 
+-			if( CHAR_getInt( talkerindex, CHAR_GOLD ) < w.takegold )
++			if( !StoneAge_AIFundingCanCharge(talkerindex, w.takegold) )
+ 			{
+ 				char buf2[512];
+ 				
+@@ -290,7 +290,7 @@
+ 					makeEscapeString( buf2, buf, sizeof(buf)));
+ 				return;
+ 			}
+-			CHAR_DelGold( talkerindex, w.takegold );
++			if( !StoneAge_AIFundingCharge(talkerindex, w.takegold) ) return;
+ 
+ 			CHAR_setInt( talkerindex, CHAR_LEARNRIDE, 80 );
+ 			CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD );
+@@ -357,7 +357,7 @@
+ 				return;
+ 			}			
+ 
+-			if( CHAR_getInt( talkerindex, CHAR_GOLD ) < w.takegold )
++			if( !StoneAge_AIFundingCanCharge(talkerindex, w.takegold) )
+ 			{
+ 				char buf2[512];
+ 				
+@@ -367,7 +367,7 @@
+ 					makeEscapeString( buf2, buf, sizeof(buf)));
+ 				return;
+ 			}
+-			CHAR_DelGold( talkerindex, w.takegold );
++			if( !StoneAge_AIFundingCharge(talkerindex, w.takegold) ) return;
+ 
+ 			CHAR_setInt( talkerindex, CHAR_LEARNRIDE, 120 );
+ 			CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD );
+@@ -433,7 +433,7 @@
+ 				return;
+ 			}			
+ 
+-			if( CHAR_getInt( talkerindex, CHAR_GOLD ) < w.takegold )
++			if( !StoneAge_AIFundingCanCharge(talkerindex, w.takegold) )
+ 			{
+ 				char buf2[512];
+ 				
+@@ -443,7 +443,7 @@
+ 					makeEscapeString( buf2, buf, sizeof(buf)));
+ 				return;
+ 			}
+-			CHAR_DelGold( talkerindex, w.takegold );
++			if( !StoneAge_AIFundingCharge(talkerindex, w.takegold) ) return;
+ 
+ 			CHAR_setInt( talkerindex, CHAR_LEARNRIDE, 200 );
+ 			CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD );
+
+--- a/npc/npc_poolitemshop.c
++++ b/npc/npc_poolitemshop.c
+@@ -474,7 +474,7 @@
+ 		return FALSE;
+ 	}
+ #endif
+-	if( CHAR_DelGold( talkerindex, cost ) == 0 ) return FALSE;
++	if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return FALSE;
+ 
+ 	CHAR_setItemIndex( talkerindex, num, -1);
+ 	CHAR_sendItemDataOne( talkerindex, num);
+@@ -773,7 +773,7 @@
+ 		fprint( "err");
+ 		return FALSE;
+ 	}
+-	CHAR_DelGold( talkerindex, cost );
++	if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return FALSE;
+ 
+ 	CHAR_setPoolItemIndex( talkerindex, emptyindex, itemindex);
+ 
+
+--- a/npc/npc_quiz.c
++++ b/npc/npc_quiz.c
+@@ -1098,7 +1098,7 @@
+ 	cost= atoi( buf);
+ 	stone = CHAR_getInt( talker, CHAR_GOLD);
+ 
+-	if(cost > stone){
++	if(!StoneAge_AIFundingCanCharge(talker, cost)){
+ 		return FALSE;
+ 	}
+ 	
+@@ -1117,10 +1117,8 @@
+ 	cost= atoi( buf);
+ 	stone = CHAR_getInt( talker, CHAR_GOLD);
+ 	
+-	if((stone-cost) < 0){
+-		CHAR_setInt( talker, CHAR_GOLD, 0);
+-	}else{
+-		CHAR_DelGold( talker, cost );
++	if(!StoneAge_AIFundingCharge(talker, cost)){
++		return FALSE;
+ 	}
+ 
+ 	sprintf( token, "%d 交出stone。", cost);
+
+--- a/npc/npc_exchangeman.c
++++ b/npc/npc_exchangeman.c
+@@ -2152,7 +2152,7 @@
+ 		
+ 		stone = NPC_EventGetCost( meindex, talker, buff2);
+ 
+-		if( (CHAR_getInt( talker, CHAR_GOLD) - stone) < 0 ){
++		if( !StoneAge_AIFundingCanCharge(talker, stone) ){
+ 			NPC_MsgDisp( meindex, talker, 14);
+ 			return FALSE;
+ 		}
+@@ -2240,7 +2240,7 @@
+ 		
+ 		stone = NPC_EventGetCost( meindex, talker, buff2);
+ 
+-		CHAR_setInt(talker,CHAR_GOLD,CHAR_getInt( talker, CHAR_GOLD) - stone);
++		if( !StoneAge_AIFundingCharge(talker, stone) ) return FALSE;
+ 
+ 		/*--由仿丢□正霜曰--*/
+ 		CHAR_send_P_StatusString( talker, CHAR_P_STRING_GOLD);
+@@ -2573,7 +2573,7 @@
+ 		int stone;
+ 		stone = NPC_EventGetCost( meindex, talker, buff2);
+ 
+-		if( (CHAR_getInt( talker, CHAR_GOLD) - stone) < 0 ) {
++		if( !StoneAge_AIFundingCanCharge(talker, stone) ) {
+ 			NPC_MsgDisp( meindex, talker, 14);
+ 			return FALSE;
+ 		}
+@@ -2875,7 +2875,7 @@
+ 		
+ 		stone = NPC_EventGetCost( meindex, talker, buff2);
+ 
+-		CHAR_setInt(talker,CHAR_GOLD,CHAR_getInt( talker, CHAR_GOLD) - stone);
++		if( !StoneAge_AIFundingCharge(talker, stone) ) return FALSE;
+ 		/*--由仿丢□正霜曰--*/
+ 		CHAR_send_P_StatusString( talker, CHAR_P_STRING_GOLD);
+ 		sprintf( token, "付出%d的stone。", stone);
+@@ -3779,7 +3779,7 @@
+ 	CHAR_setPetSkill( petindex, slot, skillID);
+ 			
+ 	/*--云嗯毛蛹日允--*/
+-	CHAR_setInt( talker, CHAR_GOLD, (CHAR_getInt( talker, CHAR_GOLD) - cost));
++	if( !StoneAge_AIFundingCharge(talker, cost) ) return FALSE;
+ 
+ 	snprintf( msgbuf, sizeof( msgbuf ), "W%d",pet-1);
+ 
+
+--- a/npc/npc_warpman.c
++++ b/npc/npc_warpman.c
+@@ -474,12 +474,13 @@
+ 				}
+ #endif
+ 		}else	{
+-			if(CHAR_getInt(talkerindex,CHAR_GOLD) <
+-	                  CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD)){
++			if(!StoneAge_AIFundingCanCharge(talkerindex,
++	                  CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD))){
+ 				NPC_ERR_DiSP( meindex, talkerindex, 2);
+ 				return ;
+ 			}
+-			CHAR_DelGold( talkerindex, CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD ));
++			if( !StoneAge_AIFundingCharge(talkerindex,
++					CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD)) ) return;
+ 
+ 				CHAR_setWorkInt( talkerindex, CHAR_WORKWARPCHECK, FALSE );
+ #ifdef _NEW_WARPMAN	
+
+--- a/npc/npc_freepetskillshop.c
++++ b/npc/npc_freepetskillshop.c
+@@ -222,7 +222,7 @@
+ 		cost = cost * rate;
+ 
+ 		//条件判断
+-		if(CHAR_getInt(talkerindex,CHAR_GOLD) < cost){
++		if(!StoneAge_AIFundingCanCharge(talkerindex, cost)){
+ 			CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD);
+ 			return;
+ 		}
+@@ -237,7 +237,7 @@
+ 			}
+ 
+ 			CHAR_setPetSkill( petindex, slot, skillID);
+-			CHAR_setInt( talkerindex, CHAR_GOLD, ( CHAR_getInt( talkerindex, CHAR_GOLD) - cost) );
++			if( !StoneAge_AIFundingCharge(talkerindex, cost) ) return;
+ 			snprintf( msgbuf, sizeof( msgbuf ), "W%d",pet-1);
+ 			CHAR_sendStatusString( talkerindex, msgbuf );
+ 			CHAR_sendStatusString( talkerindex, "P");
+
+--- a/npc/npc_charm.c
++++ b/npc/npc_charm.c
+@@ -123,7 +123,7 @@
+ 		cost = NPC_CharmCost( meindex, toindex);
+ 		chartype = CHAR_getInt( toindex, CHAR_IMAGETYPE);
+ 		
+-		if(cost > CHAR_getInt( toindex, CHAR_GOLD)) {
++		if(!StoneAge_AIFundingCanCharge(toindex, cost)) {
+ 			sprintf(token,"　　　　         美容师      "
+ 					  "\n\n　　 哎呀!你的钱不够唷！"
+ 				        "\n　　    先去存好钱下次再来吧！"
+@@ -226,8 +226,7 @@
+ 
+ 	/*--云嗯毛蛹日仄引仄斤丹--*/
+ 	cost = NPC_CharmCost( meindex, talker);
+-	CHAR_setInt( talker, CHAR_GOLD,
+-			CHAR_getInt( talker, CHAR_GOLD) - cost);
++	if( !StoneAge_AIFundingCharge(talker, cost) ) return;
+ 	CHAR_send_P_StatusString( talker, CHAR_P_STRING_GOLD);
+ 
+ 	/*--    互ㄠㄟㄟ动晓卞卅月桦宁反雄娄卞ㄠㄟㄟ卞允月--*/
+
+--- a/npc/npc_windowhealer.c
++++ b/npc/npc_windowhealer.c
+@@ -611,11 +611,11 @@
+ 			cost=NPC_WindowCostCheck(meindex,talker);
+ 			/*--蜇箕反移涩烂---*/
+ 			/*---云嗯互箫曰月井升丹井及民尼永弁---*/
+-			if(CHAR_getInt(talker,CHAR_GOLD) < cost){
++			if(!StoneAge_AIFundingCanCharge(talker, cost)){
+ 				return FALSE;
+ 			
+ 			}
+-			CHAR_DelGold( talker, cost);
++			if( !StoneAge_AIFundingCharge(talker, cost) ) return FALSE;
+ 		}
+ 	}
+ 	if(mode==2){
+@@ -625,10 +625,10 @@
+ 	
+ 			/*--蜇箕反移涩烂---*/
+ 			/*---云嗯互箫曰月井升丹井及民尼永弁---*/
+-			if(CHAR_getInt(talker,CHAR_GOLD) < cost){
++			if(!StoneAge_AIFundingCanCharge(talker, cost)){
+ 				return FALSE;
+ 			}
+-			CHAR_DelGold( talker, cost);
++			if( !StoneAge_AIFundingCharge(talker, cost) ) return FALSE;
+ 		}
+ 	}
+ 
+@@ -646,12 +646,12 @@
+ 			}
+ 		
+ 			/*--移涩烂--*/
+-			if(CHAR_getInt(talker,CHAR_GOLD) < cost){
++			if(!StoneAge_AIFundingCanCharge(talker, cost)){
+ 				return FALSE;
+ 			}
+ 		
+ 			/*---云嗯毛蛹日允---*/
+-			CHAR_DelGold( talker, cost);
++			if( !StoneAge_AIFundingCharge(talker, cost) ) return FALSE;
+ 		}
+ 		
+ 	}
+
+--- a/npc/npc_newnpcman.c
++++ b/npc/npc_newnpcman.c
+@@ -268,7 +268,7 @@
+ 
+ 				cost = cost + (ltime*10000);
+ 
+-				if( CHAR_getInt( toindex, CHAR_GOLD) < cost ) {
++				if( !StoneAge_AIFundingCanCharge(toindex, cost) ) {
+ 					sprintf( buf1, "宠物已寄放%d天，共需%d石币才可领回。", ltime, cost);
+ 					CHAR_talkToCli( toindex, meindex, buf1, CHAR_COLORYELLOW);
+ 					return;	
+@@ -325,7 +325,7 @@
+ 					snprintf( msgbuf, sizeof( msgbuf ), "W%d", i );
+ 					CHAR_sendStatusString( toindex, msgbuf );
+ 				}
+-				CHAR_DelGold( toindex, cost);
++				if( !StoneAge_AIFundingCharge(toindex, cost) ) return;
+ 			}else{
+ 					CHAR_talkToCli( toindex, -1, "领取宠物失败！", CHAR_COLORYELLOW);
+ 					return;
+
+--- a/npc/npc_fmwarpman.c
++++ b/npc/npc_fmwarpman.c
+@@ -571,11 +571,11 @@
+ 				}
+ 			}
+ 			else{
+-				if(CHAR_getInt(talkerindex,CHAR_GOLD) < CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD)){
++				if(!StoneAge_AIFundingCanCharge(talkerindex, CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD))){
+ 					NPC_ERR_FMDiSP( meindex, talkerindex, 2);
+ 					return ;
+ 				}
+-				CHAR_DelGold( talkerindex, CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD ));
++				if( !StoneAge_AIFundingCharge(talkerindex, CHAR_getWorkInt(talkerindex,CHAR_WORKSHOPRELEVANTTRD)) ) return;
+ 				CHAR_setWorkInt( talkerindex, CHAR_WORKWARPCHECK, FALSE );
+ 				CHAR_warpToSpecificPoint(talkerindex, fl, x,y);
+ 			}
+
+--- a/npc/npc_luckyman.c
++++ b/npc/npc_luckyman.c
+@@ -162,7 +162,7 @@
+ 					}
+ 				}
+ 
+-				CHAR_DelGold( talkerindex, money );
++				if( !StoneAge_AIFundingCharge(talkerindex, money) ) return;
+ 
+ 				CHAR_send_P_StatusString( talkerindex, CHAR_P_STRING_GOLD);
+ 				NPC_LuckyDisp( meindex, talkerindex);
+@@ -213,7 +213,7 @@
+ {
+ 	/*--蜇箕反移涩烂---*/
+ 	/*---云嗯互箫曰月井升丹井及民尼永弁---*/
+-	if(CHAR_getInt( talker, CHAR_GOLD) < cost) {
++	if(!StoneAge_AIFundingCanCharge(talker, cost)) {
+ 		return FALSE;
+ 	}
+ 	return TRUE;
+
+--- a/npc/npc_itemshop.c
++++ b/npc/npc_itemshop.c
+@@ -559,7 +559,7 @@
+ 	gold = (int)(gold * rate);
+ 
+ 	maxgold = gold * kosuu;
+-	if(CHAR_getInt( talker, CHAR_GOLD) < maxgold ) return FALSE;
++	if(!StoneAge_AIFundingCanCharge(talker, maxgold)) return FALSE;
+ 
+ 	if( addNpcFamilyTax( meindex, talker, maxgold*0.4 ) )
+ 		print(" FamilyTaxDone! ");
+@@ -577,7 +577,7 @@
+ 		}
+ 		CHAR_sendItemDataOne( talker, ret);
+ 	}
+-	CHAR_DelGold( talker, maxgold);
++	if( !StoneAge_AIFundingCharge(talker, maxgold) ) return FALSE;
+ 	//CHAR_send_P_StatusString( talker, CHAR_P_STRING_GOLD);
+ 	return TRUE;
+ 
+
+--- a/npc/npc_petshop.c
++++ b/npc/npc_petshop.c
+@@ -249,8 +249,7 @@
+ 		windowno=CHAR_WINDOWTYPE_WINDOWPETSHOP_PETSELECT2; 
+ 		break;
+ 	  case 6:
+-		if( CHAR_getInt( toindex, CHAR_GOLD) 
+-			< NPC_GETPOOLCOST( toindex)) 
++		if( !StoneAge_AIFundingCanCharge(toindex, NPC_GETPOOLCOST(toindex)) ) 
+ 		{
+ 		  	NPC_MaxGoldOver(meindex, toindex, NPC_PETSHOP_MSG_COST, token);
+ 			buttontype = WINDOW_BUTTONTYPE_OK;
+@@ -266,7 +265,7 @@
+ 	  case 7:
+ 	  	if( CHAR_getWorkInt( meindex, CHAR_WORK_POOLFLG ) != 1 )
+ 	  		return;	    
+-		if( CHAR_getInt( toindex, CHAR_GOLD) < NPC_GETPOOLCOST( toindex)){
++		if( !StoneAge_AIFundingCanCharge(toindex, NPC_GETPOOLCOST(toindex)) ){
+ 		  	NPC_MaxGoldOver(meindex, toindex, NPC_PETSHOP_MSG_COST, token);
+ 		}else {
+ 			NPC_PetDel2( meindex, toindex, select, token);
+@@ -747,7 +746,7 @@
+ 	NPC_MaxGoldOver( meindex, talker, NPC_PETSHOP_MSG_POOLTHANKS, token);
+ 	// 云嗯蛹日允
+ 
+-	CHAR_DelGold( talker, NPC_GETPOOLCOST( talker) );
++	if( !StoneAge_AIFundingCharge(talker, NPC_GETPOOLCOST(talker)) ) return;
+ 
+ 	// 云嗯犯□正霜月
+ 	CHAR_send_P_StatusString(talker,CHAR_P_STRING_GOLD);
+
+--- a/npc/npc_doorman.c
++++ b/npc/npc_doorman.c
+@@ -116,7 +116,7 @@
+                       "打开门 %d的金子是必要的。", g );
+         } else if( g > 0 && yn == 1 ){
+             int now_g = CHAR_getInt( talkerindex, CHAR_GOLD );
+-            if( now_g < g ){
++            if( !StoneAge_AIFundingCanCharge(talkerindex, g) ){
+                 snprintf( msg , sizeof( msg ) ,
+                           "打开门 %d的金子是必要的。", g );
+             	CHAR_talkToCli( talkerindex, meindex , msg, CHAR_COLORWHITE );
+@@ -126,8 +126,8 @@
+             	CHAR_talkToCli( talkerindex, meindex , msg, CHAR_COLORWHITE );
+ 
+                 /* 云嗯毛必永玄 */
+-                now_g -= g;
+-                CHAR_setInt( talkerindex , CHAR_GOLD , now_g );
++                if( !StoneAge_AIFundingCharge(talkerindex, g) ) return;
++                now_g = CHAR_getInt(talkerindex, CHAR_GOLD);
+                 /* 丐凶日仄中旦  □正旦毛霜耨 */
+                 CHAR_send_P_StatusString(talkerindex, CHAR_P_STRING_GOLD);
+ 
+
+--- a/npc/npc_eventaction.c
++++ b/npc/npc_eventaction.c
+@@ -447,7 +447,7 @@
+ 	if( buf == NULL ) return FALSE;
+ 	Golds = atoi( buf);
+ 	PGold = CHAR_getInt( talker, CHAR_GOLD);
+-	if( PGold < Golds )	{
++	if( !StoneAge_AIFundingCanCharge(talker, Golds) )	{
+ 		CHAR_talkToCli( talker, -1, "你身上的钱不够喔！", CHAR_COLORYELLOW);
+ 		return FALSE;
+ 	}else	{
+@@ -455,7 +455,7 @@
+ 		sprintf( buf1, "交出%d石币", Golds);
+ 		CHAR_talkToCli( talker, -1, buf1, CHAR_COLORYELLOW);
+ 	}
+-	CHAR_setInt( talker, CHAR_GOLD, PGold-Golds);
++	if( !StoneAge_AIFundingCharge(talker, Golds) ) return FALSE;
+ 	CHAR_send_P_StatusString( talker , CHAR_P_STRING_GOLD);
+ 	return TRUE;
+ }
+
+--- a/npc/npc_familyman.c
++++ b/npc/npc_familyman.c
+@@ -222,7 +222,7 @@
+ 				return;
+                         }
+                         
+-			if( CHAR_getInt( talkerindex, CHAR_GOLD ) < 10000 )
++			if( !StoneAge_AIFundingCanCharge(talkerindex, 10000) )
+ 			{
+ 				lssproto_WN_send( fd, WINDOW_MESSAGETYPE_MESSAGE,
+ 					WINDOW_BUTTONTYPE_OK, -1, -1,
+
+--- a/npc/npc_bus.c
++++ b/npc/npc_bus.c
+@@ -597,7 +597,7 @@
+ 	if( gold == -1 ) {
+ 		return 0;
+ 	}
+-	if( CHAR_getInt( charaindex, CHAR_GOLD) >= gold ) return gold;
++	if( StoneAge_AIFundingCanCharge(charaindex, gold) ) return gold;
+ 	
+ 	return -1;
+ }
+@@ -712,8 +712,7 @@
+ 	if( ret != 0 ) {
+ 		char msgbuf[128];
+ 		/* 豢嗯毛午月 */
+-		CHAR_setInt( charaindex, CHAR_GOLD, 
+-					CHAR_getInt( charaindex, CHAR_GOLD) - ret);
++		if( !StoneAge_AIFundingCharge(charaindex, ret) ) return FALSE;
+ 		/* 霜耨 */
+ 		CHAR_send_P_StatusString( charaindex, CHAR_P_STRING_GOLD);
+ 		snprintf( msgbuf, sizeof( msgbuf), "支付了%d Stone！", ret);
+
+--- a/npc/npc_airplane.c
++++ b/npc/npc_airplane.c
+@@ -621,7 +621,7 @@
+ 	if( gold == -1 ) {
+ 		return 0;
+ 	}
+-	if( CHAR_getInt( charaindex, CHAR_GOLD) >= gold ) return gold;
++	if( StoneAge_AIFundingCanCharge(charaindex, gold) ) return gold;
+ 	
+ 	return -1;
+ }
+@@ -737,8 +737,7 @@
+ 	if( ret != 0 ) {
+ 		char msgbuf[128];
+ 		/* 豢嗯毛午月 */
+-		CHAR_setInt( charaindex, CHAR_GOLD, 
+-					CHAR_getInt( charaindex, CHAR_GOLD) - ret);
++		if( !StoneAge_AIFundingCharge(charaindex, ret) ) return FALSE;
+ 		/* 霜耨 */
+ 		CHAR_send_P_StatusString( charaindex, CHAR_P_STRING_GOLD);
+ 		snprintf( msgbuf, sizeof( msgbuf), "支付了%d Stone！", ret);
+
+--- a/char/trade.c
++++ b/char/trade.c
+@@ -589,9 +589,9 @@
+ 	if ((strcmp(d, "G") == 0) && (itemindex4 != -1))	gold2 += itemindex4;
+ 	if ((strcmp(e, "G") == 0) && (itemindex5 != -1))	gold2 += itemindex5;
+ 	if (gold1 > CHAR_getMaxHaveGold( meindex) )	return	-4;
+-	if (gold1 > CHAR_getInt(meindex, CHAR_GOLD))	return	-5;
++	if (!StoneAge_AIFundingCanExternal(meindex, STONEAGE_AI_EXTERNAL_TRADE, gold1))	return	-5;
+ 	if (gold2 > CHAR_getMaxHaveGold( toindex))	return	-6;
+-	if (gold2 > CHAR_getInt(toindex, CHAR_GOLD))	return	-7;
++	if (!StoneAge_AIFundingCanExternal(toindex, STONEAGE_AI_EXTERNAL_TRADE, gold2))	return	-7;
+ 	if ((gold2 + CHAR_getInt(meindex, CHAR_GOLD) - gold1) > CHAR_getMaxHaveGold( meindex) )	return	-8;
+ 	if ((gold1 + CHAR_getInt(toindex, CHAR_GOLD) - gold2) > CHAR_getMaxHaveGold( toindex))	return	-9;
+ 	// 检查双方宠物	
+@@ -655,6 +655,8 @@
+ 		 	return -15;
+ 	if ((pet3 != -1) && (CHAR_getInt(pet3, CHAR_PETFAMILY) == 1))
+ 		 	return -15;
++	if( gold1 > 0 && !StoneAge_AIFundingRecordExternal(meindex, STONEAGE_AI_EXTERNAL_TRADE, gold1) ) return -16;
++	if( gold2 > 0 && !StoneAge_AIFundingRecordExternal(toindex, STONEAGE_AI_EXTERNAL_TRADE, gold2) ) return -16;
+ 	TRADE_ChangeItem(meindex, toindex, a, d, item1, item4,
+ 		itemindex1, itemindex4);
+ 	TRADE_ChangeItem(meindex, toindex, b, e, item2, item5,
+@@ -925,7 +927,7 @@
+ 	tmpgold = CHAR_getInt(meindex, CHAR_GOLD);
+ 	if (getStringFromIndexWithDelim(message, "|", 6, token, sizeof(token)) == FALSE) return FALSE;
+ 	if( (gold = atoi(token)) < 0 ) return FALSE;
+-	if( gold > tmpgold )return FALSE;
++	if( !StoneAge_AIFundingCanExternal(meindex, STONEAGE_AI_EXTERNAL_TRADE, gold) )return FALSE;
+ 	sprintf( outmess, "%d", gold);
+ 	return TRUE;
+ }
+
+--- a/char/char_item.c
++++ b/char/char_item.c
+@@ -1592,6 +1592,7 @@
+ 	int objindex, MaxGold;
+ 
+ 	if( !CHAR_CHECKINDEX( charaindex ) )return;
++	if( !StoneAge_AIFundingCanExternal(charaindex, STONEAGE_AI_EXTERNAL_DROP, amount) ) return;
+ 
+ #ifdef _AVID_TRADETRYBUG //丢出石币
+ 	if( CHAR_getWorkInt( charaindex, CHAR_WORKTRADEMODE) == CHAR_TRADE_TRADING ){
+@@ -1710,6 +1711,7 @@
+ 	}
+ 
+ END:
++	if( !StoneAge_AIFundingRecordExternal(charaindex, STONEAGE_AI_EXTERNAL_DROP, amount) ) return;
+ 	CHAR_sendWatchEvent(objindex,CHAR_ACTSTAND,NULL,0,TRUE );
+ 	CHAR_send_P_StatusString( charaindex, CHAR_P_STRING_GOLD);
+ 	return;
+
+--- a/char/family.c
++++ b/char/family.c
+@@ -354,7 +354,7 @@
+ 	}
+ 
+ 	gold = CHAR_getInt(meindex, CHAR_GOLD);
+-	if( gold < 10000 )
++	if( !StoneAge_AIFundingCanCharge(meindex, 10000) )
+ 	{
+ 		lssproto_WN_send( fd, WINDOW_MESSAGETYPE_MESSAGE,
+ 			WINDOW_BUTTONTYPE_OK,
+@@ -363,7 +363,7 @@
+    	return;
+ 	}
+ 	else {
+-   	CHAR_setInt( meindex, CHAR_GOLD, gold-10000 );
++   	if( !StoneAge_AIFundingCharge(meindex, 10000) ) return;
+    	CHAR_send_P_StatusString( meindex , CHAR_P_STRING_GOLD);
+ 	}
+ 	
+@@ -1722,7 +1722,8 @@
+ 		cash = CHAR_getInt( meindex, CHAR_GOLD);
+ 		bank = CHAR_getInt( meindex, CHAR_BANKGOLD);
+ 		if( ((cash - toBank) >= 0) && ((cash - toBank) <= MaxGold )
+-			&&((bank + toBank) >= 0)&&((bank + toBank) <= CHAR_MAXBANKGOLDHAVE) ) {    
++			&&((bank + toBank) >= 0)&&((bank + toBank) <= CHAR_MAXBANKGOLDHAVE)
++			&& (toBank <= 0 || StoneAge_AIFundingCanExternal(meindex, STONEAGE_AI_EXTERNAL_BANK, toBank)) ) {    
+ 			// shan add       
+ 			if( toBank > 0 && CHAR_getInt( meindex, CHAR_FMINDEX ) < 1 ) {
+ 				sprintf(buf, "抱歉！你没有加入任何家族，所以仅能领取存款");
+@@ -1730,6 +1731,7 @@
+ 				return;
+ 			}
+ 			
++			if( toBank > 0 && !StoneAge_AIFundingRecordExternal(meindex, STONEAGE_AI_EXTERNAL_BANK, toBank) ) return;
+ 			CHAR_setInt( meindex, CHAR_GOLD, cash - toBank);
+ 			CHAR_setInt( meindex, CHAR_BANKGOLD, bank + toBank);
+ 			CHAR_send_P_StatusString( meindex , CHAR_P_STRING_GOLD);
+@@ -1809,6 +1811,7 @@
+ 		mygold = CHAR_getInt( meindex, CHAR_GOLD);
+ 		if( mygold < 0 || mygold > MaxGold || toTax == 0 )	return;
+ 		if( toTax > 0 )	{//+存款
++			if( !StoneAge_AIFundingCanExternal(meindex, STONEAGE_AI_EXTERNAL_BANK, toTax) ) return;//+存款
+ 			if( ((mygold-toTax) < 0) || (familyTax[ FMindex] + toTax) > CHAR_MAXFMBANKGOLDHAVE )	{
+ 				return;
+ 			}
+@@ -1820,6 +1823,7 @@
+ 		
+ 		
+ 		if( toTax>0 ) {	//存款预先扣款
++			if( !StoneAge_AIFundingRecordExternal(meindex, STONEAGE_AI_EXTERNAL_BANK, toTax) ) return;
+ 			CHAR_setInt( meindex, CHAR_GOLD, CHAR_getInt( meindex, CHAR_GOLD)-toTax );
+ 		}
+ 		sprintf( buf, "家族银行%s处理中....", (toTax>0)?"存款":"取款");
+
+--- a/include/char_base.h
++++ b/include/char_base.h
+@@ -1338,5 +1338,6 @@
+ 
+ void LodBadPetString( char *data, char *err, int ti);
+ 
+-
+-#endif
++#include "stoneage_ai_funding.h"
++
++#endif
+
+--- a/makefile
++++ b/makefile
+@@ -65,7 +65,7 @@
+ 
+ SRC=main.c init.c configfile.c util.c net.c buf.c msignal.c \
+ callfromac.c callfromcli.c object.c handletime.c function.c log.c autil.c \
+-$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c
+ 
+ OBJ=$(SRC:.c=.o)
+ 
+
+--- a/main.c
++++ b/main.c
+@@ -102,7 +102,8 @@
+ 
+ 	int itime=0;
+ 	while(1){
+ 		STONEAGE_PlayerAdminProcess();
++		StoneAge_AIFundingRefresh();
+ 		StoneAge_ProcessAdminNotice();
+ 		if(getCpuUse()!=-1){
+ 			itime++;
+--- a/npc/npc_gamblebank.c
++++ b/npc/npc_gamblebank.c
+@@ -429,12 +429,13 @@
+ 					);
+ 		return 1;
+ 	}else if( Gold > 0 )	{	//存款
+-		if( Gold > player_gold )	{
++		if( !StoneAge_AIFundingCanExternal(toindex, STONEAGE_AI_EXTERNAL_BANK, Gold) )	{
+ 			return 2;
+ 		}else if( (Gold + CHAR_getInt( toindex, CHAR_PERSONAGOLD ) ) > CHAR_MAXPERSONAGOLD )  {
+ 			return 4;
+ 		}
+ 
++		if( !StoneAge_AIFundingRecordExternal(toindex, STONEAGE_AI_EXTERNAL_BANK, Gold) ) return 2;
+ 		CHAR_DelGold( toindex, Gold );
+ 
+ 		CHAR_setInt( toindex, CHAR_PERSONAGOLD, (CHAR_getInt( toindex, CHAR_PERSONAGOLD ) + Gold ) );

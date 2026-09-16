@@ -1,0 +1,136 @@
+{{define "content"}}
+<link rel="stylesheet" href="/static/ai.css">
+<div class="ai-page" id="ai-profile-admin" data-csrf="{{.CSRF}}" data-can-write="{{.AIRoleCanWrite}}" data-provisioning="{{.AIProvisioningConfigured}}">
+  <div class="page-heading">
+    <div><h1>AI 玩家</h1><p class="muted">每个 AI 玩家是独立 agent profile，拥有独立人格、目标、skills、模型绑定和审计记录。</p></div>
+    <span class="page-kicker">Agent profiles</span>
+  </div>
+  {{if .AIError}}<div class="alert error">{{.AIError}}</div>{{end}}
+  <section class="card ai-runtime-note">
+    <div class="card-heading"><div><h2>在线状态</h2><p class="muted">配置状态和运行状态分开显示，避免把一个已保存的 profile 当成在线角色。</p></div><span class="status-pill stopped">{{if .AIRuntimeConfigured}}由 runtime 报告{{else}}stopped{{end}}</span></div>
+    <p class="hint">当前管理端固定显示 approval_policy=never、sandbox_mode=danger-full-access；游戏操作仍由 server-side skills 和游戏会话权限校验。</p>
+    {{if not .AIProvisioningConfigured}}<p class="hint">创建游戏 AI 角色需要完整的服务端 runtime 和游戏连接配置；当前创建服务不可用。</p>{{end}}
+  </section>
+
+  <section class="card ai-profiles-card">
+    <div class="card-heading"><div><h2>AI 玩家列表</h2><p class="muted">无限资金默认开启；这项权限只影响游戏内支付，不会暴露模型密钥。</p></div>{{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-profile-new"{{if not .AIProvisioningConfigured}} disabled title="创建服务尚未配置"{{end}}>创建游戏 AI 角色</button>{{end}}</div>
+    <div id="ai-profile-message" class="alert" hidden role="status"></div>
+    <div class="table-scroll"><table class="ai-table"><thead><tr><th>角色</th><th>模型</th><th>人格 / 目标</th><th>资金</th><th>状态</th><th>运行时</th><th>操作</th></tr></thead><tbody id="ai-profile-list">
+      {{range .AIProfiles}}
+      <tr data-profile-id="{{.ID}}" data-profile-version="{{.Version}}">
+        <td><strong>{{.Character.Name}}</strong><small>账号 {{.Account.Username}} · {{.Character.ID}}</small></td>
+        <td class="breakable">{{if .ModelConfigID}}{{.ModelConfigID}}{{else}}未绑定{{end}}</td>
+        <td><strong>{{.Personality.Name}}</strong><small>{{if .Goal.Description}}{{.Goal.Description}}{{else}}{{.Goal.Kind}}{{end}}</small></td>
+        <td>{{if .UnlimitedFunds}}<span class="badge ok">无限资金</span>{{else}}普通资金{{end}}</td>
+        <td><span class="badge">{{.ProfileStatus}}</span></td>
+        <td><span class="status-pill stopped">{{.Runtime.State}}</span><small>{{.Runtime.Message}}</small>{{if .Runtime.Activity}}<small>当前活动：{{.Runtime.Activity}} · 至 {{.Runtime.ActivityUntil.UTC.Format "15:04:05"}} UTC</small>{{end}}{{if and (eq .Runtime.State "waiting") (not .Runtime.NextDecisionAt.IsZero)}}<small>下次心跳：{{.Runtime.NextDecisionAt.UTC.Format "2006-01-02 15:04:05"}} UTC</small>{{end}}{{if .Runtime.CLIVersion}}<small>CLI {{.Runtime.CLIVersion}}</small>{{end}}</td>
+        <td class="ai-actions"><button type="button" class="button ai-view-profile" data-id="{{.ID}}">查看</button>{{if $.AIRoleCanWrite}}<button type="button" class="button ai-edit-profile" data-id="{{.ID}}">编辑</button>{{if $.AIRuntimeConfigured}}<button type="button" class="button ai-profile-recovery" data-id="{{.ID}}">异常核查</button><button type="button" class="button ai-profile-control" data-action="start" data-id="{{.ID}}">启动</button><button type="button" class="button ai-profile-control" data-action="pause" data-id="{{.ID}}">暂停</button><button type="button" class="button ai-profile-control danger" data-action="stop" data-id="{{.ID}}">停止</button>{{else}}<button type="button" class="button" disabled title="AI runtime 尚未接入">runtime stopped</button>{{end}}<button type="button" class="button danger ai-delete-profile" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
+      </tr>
+      {{else}}<tr><td colspan="7" class="empty">还没有 AI 玩家配置。</td></tr>{{end}}
+    </tbody></table></div>
+  </section>
+
+  <section class="card ai-profiles-card" id="ai-initializations-card">
+    <div class="card-heading"><div><h2>未完成的创建</h2><p class="muted">这里显示尚未完成创建的 AI 角色。未确认的创建不会自动重试；恢复发布后不会自动启动，请在玩家列表查看当前状态。</p></div><button class="button" type="button" id="ai-initializations-refresh">刷新</button></div>
+    <div id="ai-initializations-message" class="alert" hidden role="status"></div>
+    <div class="table-scroll"><table class="ai-table"><thead><tr><th>玩家编号</th><th>角色</th><th>创建状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="ai-initializations-list"><tr><td colspan="5" class="empty">正在读取…</td></tr></tbody></table></div>
+  </section>
+
+  {{if .AIRoleCanWrite}}
+  <section class="card ai-editor-card" id="ai-profile-editor" hidden>
+    <div class="card-heading"><div><h2 id="ai-profile-editor-title">创建游戏 AI 角色</h2><p class="muted">创建时由服务器生成专用游戏账号、角色和密码；页面只提交角色名及 AI 配置，密码不会返回。</p></div><button class="button" type="button" id="ai-profile-cancel">取消</button></div>
+    <form id="ai-profile-form" class="ai-form" novalidate>
+      <input type="hidden" name="id"><input type="hidden" name="expected_version">
+      <div class="ai-form-grid">
+        <label id="ai-account-id-field" hidden>账号 ID（服务端生成）<input name="account_id" maxlength="128" readonly></label>
+        <label id="ai-account-username-field" hidden>账号名称（服务端生成）<input name="account_username" maxlength="128" readonly></label>
+        <label id="ai-character-id-field" hidden>角色 ID（服务端生成）<input name="character_id" maxlength="128" readonly></label>
+        <label>角色名称<input name="character_name" maxlength="64" required></label>
+        <label>角色槽位<select name="character_slot"><option value="0" selected>0</option><option value="1">1</option></select></label>
+        <label>模型<select name="model_config_id"><option value="">使用 runtime 默认</option>{{range .AIModels}}<option value="{{.ID}}">{{.Name}} · {{.Backend}}/{{.Model}}</option>{{end}}</select></label>
+        <label>状态<select name="status"><option value="stopped" selected>stopped</option><option value="paused">paused</option><option value="active">active（需 runtime）</option></select></label>
+        <label>日 token 限额<input name="daily_token_budget" type="number" min="0" max="2000000000" value="100000" required></label>
+        <label>对外支出限额<input name="external_spend_limit" type="number" min="0" max="2000000000" value="0" required></label>
+      </div>
+      <div class="ai-subheading">人格</div>
+      <div class="ai-form-grid"><label>人格名称<input name="personality_name" maxlength="128" placeholder="StoneAge 冒险者"></label><label class="wide">人格提示词<textarea name="personality_prompt" maxlength="16000" rows="3" placeholder="描述行为风格和长期偏好"></textarea></label></div>
+      <div class="ai-subheading">目标</div>
+      <div class="ai-form-grid"><label>目标类型<input name="goal_kind" maxlength="64" list="ai-goal-kinds" placeholder="life"><datalist id="ai-goal-kinds"><option value="life">自主生活</option><option value="leveling">自动练级</option><option value="quest">完成任务</option></datalist></label><label>目标等级<input name="target_level" type="number" min="0" max="1000" value="0"></label><label class="wide">目标描述<textarea name="goal_description" maxlength="16000" rows="2" placeholder="例如：喜欢在村里交朋友，闲暇时照顾宠物"></textarea></label></div>
+      <div id="ai-life-policy" hidden>
+        <label>空闲时重新安排活动的间隔（秒）<input name="life_decision_interval" type="number" min="60" max="3600" value="300"></label>
+        <p class="hint">自主生活模式默认提供 24 项活动，涵盖村内探索、结识玩家、邮件往来、宠物照顾、背包整理、记忆回顾、安排提醒及成长。空闲时随机选择活动，再结合人格、经历和当前能力执行；有任务在执行时先继续当前任务。单次活动完成后仍会继续心跳，没有新事件时也会定期思考。每次思考消耗模型 token，仍受日限额约束。</p>
+      </div>
+      <div class="ai-form-grid">
+        <label>练级对象<input name="target_kind" maxlength="64" list="ai-target-kinds" placeholder="留空按目标类型判断"><datalist id="ai-target-kinds"><option value="character">当前角色</option><option value="pet">指定宠物</option></datalist></label>
+        <label>目标身份<input name="target_character_id" maxlength="128" placeholder="角色可留空；宠物需填写稳定身份"></label>
+      </div>
+      <p class="hint">宠物身份请从角色观察中的宠物 ID 复制，不使用宠物名称或槽位。角色目标留空时使用当前绑定角色。</p>
+      <label class="checkbox"><input name="stop_when_completed" type="checkbox" checked> 达到目标等级后停止</label>
+      <div class="ai-subheading">角色配点</div>
+      <label class="checkbox"><input name="character_build_enabled" type="checkbox"> 按比例自动分配角色属性点</label>
+      <div class="ai-form-grid">
+        <label>体力比例<input name="build_vital" type="number" min="0" max="100" value="0"></label>
+        <label>腕力比例<input name="build_strength" type="number" min="0" max="100" value="0"></label>
+        <label>耐力比例<input name="build_toughness" type="number" min="0" max="100" value="0"></label>
+        <label>速度比例<input name="build_dexterity" type="number" min="0" max="100" value="0"></label>
+        <label>保留未分配点数<input name="build_reserve_points" type="number" min="0" max="1000" value="0"></label>
+      </div>
+      <p class="hint">不开启时保留属性点。开启后至少一项比例大于 0；0 表示不加该项。例如腕力 1、速度 1 表示逐步平衡这两项已有基础属性，每次只加一点，不是每级固定顺序。此设置只控制人物配点，不改变宠物成长。</p>
+      <fieldset class="wide" id="ai-initial-section"><legend>创建时的初始状态</legend>
+        <label>生成方式<select name="initial_mode"><option value="birth">出生状态</option><option value="random">按范围随机</option><option value="custom">自定义</option></select></label>
+        <p class="hint">只在创建时应用一次。随机结果会保存，重启不重新生成。初始化完成后再开放 AI 启动。</p>
+        <label class="checkbox"><input name="initial_mount" type="checkbox" value="true" checked>创建后默认骑宠</label>
+        <p class="hint">默认骑乘第一只宠物：出生状态自动匹配可骑宠物；自定义模式首只所选宠物必须可骑；随机模式全部候选必须可骑。关闭后按所选方式创建，不要求骑乘。</p>
+        <div id="ai-initial-custom" hidden class="form-grid">
+          <label>人物等级<input name="initial_level" type="number" min="1" max="140" value="35"></label>
+          <label>出生村<select name="initial_hometown"><option value="0">萨姆吉尔村</option><option value="1">玛丽娜丝村</option><option value="2">加加村</option><option value="3">卡鲁它那村</option></select></label>
+          <label>体力权重<input name="initial_vital" type="number" min="0" max="100" value="1"></label>
+          <label>腕力权重<input name="initial_strength" type="number" min="0" max="100" value="1"></label>
+          <label>耐力权重<input name="initial_toughness" type="number" min="0" max="100" value="1"></label>
+          <label>速度权重<input name="initial_dexterity" type="number" min="0" max="100" value="1"></label>
+        </div>
+        <p class="hint">随机或自定义模式按生成或设置的权重分配出生点数及该等级应得的升级点数；这是创建时配置，后续升级配点由上方设置控制。</p>
+        <div id="ai-initial-random" hidden class="form-grid">
+          <label>人物最低等级<input name="initial_level_min" type="number" min="1" max="140" value="10"></label>
+          <label>人物最高等级<input name="initial_level_max" type="number" min="1" max="140" value="60"></label>
+          <label>宠物最低等级<input name="initial_pet_min" type="number" min="1" max="140" value="5"></label>
+          <label>宠物最高等级<input name="initial_pet_max" type="number" min="1" max="140" value="10"></label>
+          <label>最少宠物数<input name="initial_count_min" type="number" min="0" max="5" value="1"></label>
+          <label>最多宠物数<input name="initial_count_max" type="number" min="0" max="5" value="2"></label>
+          <p class="hint">出生村从四村中随机选择；四项配点权重各随机取 1–10，宠物从下方候选中抽取。开启骑宠时，建议人物最低等级覆盖宠物最高等级；默认人物最低 10 级、宠物最高 10 级。</p>
+        </div>
+        <div id="ai-initial-pets" hidden>
+          <p class="hint">自定义模式：按列表生成宠物，最多 5 只；关闭骑乘后可留空，表示无宠物。随机模式：下方列表作为宠物种类候选，可抽到重复种类；替换服务器的出生宠物。</p>
+          <label>搜索宠物<input name="initial_pet_search" type="search"></label><button id="ai-initial-search" type="button">搜索</button>
+          <select id="ai-initial-results" aria-label="宠物搜索结果"></select>
+          <label id="ai-initial-pet-level-field">自定义宠物等级<input name="initial_pet_level" type="number" min="1" max="140" value="35"></label><button id="ai-initial-add" type="button">添加宠物</button>
+          <div id="ai-initial-selected" role="status"></div>
+        </div>
+      </fieldset>
+      <p class="wide hint" id="ai-initial-summary" hidden></p>
+      <label class="checkbox"><input name="unlimited_funds" type="checkbox" value="true" checked> 无限资金（默认开启）</label>
+      <fieldset class="wide ai-skills-fieldset"><legend>原生 Skills</legend><p class="hint">以下选项来自服务端 hash 固定的原生技能目录。新建时只提交名称，版本和 digest 由服务端生成；stoneage-play 是必选核心技能。</p><div class="ai-skill-options">
+        {{range .AISkills}}
+        <label class="checkbox ai-skill-option"><input name="skill_names" type="checkbox" value="{{.Name}}" data-version="{{.Version}}"{{if eq .Name "stoneage-play"}} checked{{end}}><span><strong>{{.Name}}</strong><small>v{{.Version}} · {{.Usage}}</small></span></label>
+        {{end}}
+      </div></fieldset>
+      <div class="form-footer"><small>active 只代表配置状态；未接入运行时仍显示 stopped。</small><button class="primary" id="ai-profile-save" type="submit">创建游戏 AI 角色</button></div>
+    </form>
+  </section>
+  {{end}}
+
+  {{if .AIRoleCanWrite}}
+  <section class="card" id="ai-recovery-panel" hidden>
+    <div class="card-heading"><h2>异常轮次核查</h2><button type="button" class="button" id="ai-recovery-close">关闭</button></div>
+    <p id="ai-recovery-summary"></p>
+    <p>先核对角色位置、任务、背包及战斗状态。确认后保留旧轮次的未知结果和预算占用，下次启动会重新观察游戏并开启新轮次。</p>
+    <label class="checkbox"><input type="checkbox" id="ai-recovery-ack">我已核对游戏状态，接受旧轮次结果未知。</label>
+    <button type="button" class="button danger" id="ai-recovery-submit" disabled>完成核查，保持暂停</button>
+    <p id="ai-recovery-message" role="status"></p>
+  </section>
+  {{end}}
+
+  <section class="card ai-audit-card" id="ai-profile-audit" hidden><div class="card-heading"><div><h2>审计事件</h2><p class="muted" id="ai-profile-audit-title"></p></div><button class="button" type="button" id="ai-profile-audit-close">关闭</button></div><pre id="ai-profile-audit-content" class="ai-audit-content"></pre></section>
+</div>
+<script src="/static/ai.js" defer></script>
+{{end}}

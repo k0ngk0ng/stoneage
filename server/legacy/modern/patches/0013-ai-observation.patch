@@ -1,0 +1,35 @@
+--- a/callfromcli.c
++++ b/callfromcli.c
+@@ -10,6 +10,7 @@
+ #include "char.h"
+ #include "object.h"
+ #include "readmap.h"
++#include "stoneage_ai_observation.h"
+ #include "addressbook.h"
+ #include "handletime.h"
+ #include "configfile.h"
+@@ -775,6 +776,13 @@
+     int fd_charaindex;
+ 
+     fd_charaindex = CONNECT_getCharaindex( fd );
++    if( category != NULL && (strcmp(category, "AI") == 0 ||
++                             strncmp(category, "AI:", 3) == 0) ) {
++        string = StoneAge_AIObservationMakeWithRequest(
++            fd_charaindex, category[2] == '\0' ? NULL : category + 3 );
++        if( string != NULL ) lssproto_S_send( fd, string );
++        return;
++    }
+     string = CHAR_makeStatusString( fd_charaindex, category );
+     if( string != NULL )
+         lssproto_S_send( fd , string );
+--- a/makefile
++++ b/makefile
+@@ -65,7 +65,7 @@
+ 
+ SRC=main.c init.c configfile.c util.c net.c buf.c msignal.c \
+ callfromac.c callfromcli.c object.c handletime.c function.c log.c autil.c \
+-$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c
+ 
+ OBJ=$(SRC:.c=.o)
+ 

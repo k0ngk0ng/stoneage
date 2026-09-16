@@ -1,0 +1,62 @@
+--- a/npc/npcutil.c
++++ b/npc/npcutil.c
+@@ -1562,7 +1562,7 @@
+ 			fmindexi = atoi(token);
+ 			saacproto_ACFixFMData_send(acfd, fmname, fmindex,
+ 						   fmindexi, FM_FIX_FMGOLD,
+-						   buf2, "",
++						   buf2, "npc_tax",
+ 						   CHAR_getWorkInt(meindex,
+ 								   CHAR_WORKFMCHARINDEX),
+ 						   CONNECT_getFdid(clifd));
+--- a/npc/npc_riderman.c
++++ b/npc/npc_riderman.c
+@@ -243,7 +243,7 @@
+ 					getStringFromIndexWithDelim(fmpointlist.pointlistarray[i], "|", 8, token, sizeof(token));
+ 					fmindexi = atoi(token);
+ 					saacproto_ACFixFMData_send( acfd, fmname, fmindex, fmindexi,
+-						FM_FIX_FMGOLD, buf2 , "",
++						FM_FIX_FMGOLD, buf2 , "npc_tax",
+ 						CHAR_getWorkInt(meindex, CHAR_WORKFMCHARINDEX),
+ 						CONNECT_getFdid(fd) );
+ 					
+@@ -320,7 +320,7 @@
+ 					getStringFromIndexWithDelim(fmpointlist.pointlistarray[i], "|", 8, token, sizeof(token));
+ 					fmindexi = atoi(token);
+ 					saacproto_ACFixFMData_send( acfd, fmname, fmindex, fmindexi,
+-						FM_FIX_FMGOLD, buf2 , "",
++						FM_FIX_FMGOLD, buf2 , "npc_tax",
+ 						CHAR_getWorkInt(meindex, CHAR_WORKFMCHARINDEX),
+ 						CONNECT_getFdid(fd) );
+ 					
+@@ -397,7 +397,7 @@
+ 					getStringFromIndexWithDelim(fmpointlist.pointlistarray[i], "|", 8, token, sizeof(token));
+ 					fmindexi = atoi(token);
+ 					saacproto_ACFixFMData_send( acfd, fmname, fmindex, fmindexi,
+-						FM_FIX_FMGOLD, buf2 , "",
++						FM_FIX_FMGOLD, buf2 , "npc_tax",
+ 						CHAR_getWorkInt(meindex, CHAR_WORKFMCHARINDEX),
+ 						CONNECT_getFdid(fd) );
+ 					
+@@ -473,7 +473,7 @@
+ 					getStringFromIndexWithDelim(fmpointlist.pointlistarray[i], "|", 8, token, sizeof(token));
+ 					fmindexi = atoi(token);
+ 					saacproto_ACFixFMData_send( acfd, fmname, fmindex, fmindexi,
+-						FM_FIX_FMGOLD, buf2 , "",
++						FM_FIX_FMGOLD, buf2 , "npc_tax",
+ 						CHAR_getWorkInt(meindex, CHAR_WORKFMCHARINDEX),
+ 						CONNECT_getFdid(fd) );
+ 					
+--- a/callfromac.c
++++ b/callfromac.c
+@@ -627,7 +627,9 @@
+ 	}else if( kindflag == FM_FIX_FMGOLD ) {
+ 		intdata = atoi( data1 );
+ 		if( ret == 0 ) {
+-			if( atoi(data1) > 0 )	{
++			/* STONEAGE_NPC_TAX_NO_REFUND: the delivered NPC service paid
++			 * this tax. A treasury failure is not a player deposit refund. */
++			if( atoi(data1) > 0 && strcmp(data2, "npc_tax") != 0 )	{
+ 				CHAR_setInt( charaindex, CHAR_GOLD, CHAR_getInt( charaindex, CHAR_GOLD ) +atoi(data1) );
+ 			}
+ 			CHAR_send_P_StatusString( charaindex , CHAR_P_STRING_GOLD);

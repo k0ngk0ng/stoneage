@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "knowledge_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+  "npcs": [
+    {
+      "alias": "adult-guard",
+      "floor": 10202,
+      "x": 31,
+      "y": 13,
+      "name": "仪的值班者",
+      "talk_range": 1,
+      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "verified": false,
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 271,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "adult-judge",
+      "floor": 10204,
+      "x": 14,
+      "y": 6,
+      "name": "仪式的审判",
+      "talk_range": 1,
+      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "verified": false,
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 234,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 231,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 235,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 430,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "adult-messenger",
+      "floor": 10204,
+      "x": 188,
+      "y": 13,
+      "name": "仪式审判的差使",
+      "talk_range": 1,
+      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "verified": false,
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 235,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 430,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "",
+              "maximum_cost": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

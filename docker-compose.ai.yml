@@ -1,0 +1,87 @@
+# Optional container-backed AI wiring.
+#
+# This file is loaded only when STONEAGE_AI_CONTAINER_MODE is enabled by the
+# existing bin/stoneage entry point. The base Compose deployment never mounts
+# the Docker socket into admin. The ai-runtime-image service is an image-only
+# pull target; deploy.sh never starts it.
+
+services:
+  # Pull this service explicitly with `--profile ai-container`; the broker
+  # starts one short-lived container per request and uses --pull never.
+  ai-runtime-image:
+    profiles: ["ai-container"]
+    image: ${STONEAGE_AI_RUNTIME_IMAGE:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:${STONEAGE_VERSION:-v0.1.16}}
+    entrypoint: ["/bin/true"]
+    networks: []
+
+  admin:
+    environment:
+      # These values are container-local and intentionally do not expose a
+      # host path or a model credential to the AI runtime container.
+      # aigame speaks the named LSSPROTO dialect; always go through the
+      # compatibility gateway rather than dialing the raw GMSV listener.
+      STONEAGE_AI_GAME_ADDRESS: gateway:9065
+      STONEAGE_AI_RUNTIME_ROOT: /var/lib/stoneage-ai/runtime
+      STONEAGE_AI_SKILL_ROOT: /opt/stoneage/ai/skills
+      STONEAGE_AI_RUNTIME_IMAGE: ${STONEAGE_AI_RUNTIME_IMAGE:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:${STONEAGE_VERSION:-v0.1.16}}
+      STONEAGE_AI_CONTAINER_NETWORK: ${STONEAGE_AI_CONTAINER_NETWORK:-stoneage-backend}
+      STONEAGE_AI_DOCKER_BINARY: /usr/bin/docker
+      STONEAGE_AI_BROKER_DB: /var/lib/stoneage-ai/runtime/broker/broker.db
+      STONEAGE_AI_CONTAINER_GATEWAY_URL: http://admin:8081/v1/game
+      STONEAGE_AI_FUNDING_DIR: /run/stoneage-ai-funding/policies
+      STONEAGE_AI_KNOWLEDGE_DATA_DIR: /game/gmsv/data
+      STONEAGE_AI_MAP_DATA_DIR: /game/gmsv/data
+      STONEAGE_AI_HEALING_ITEMS: ${STONEAGE_AI_HEALING_ITEMS:-}
+      STONEAGE_AI_STOCK_ITEMS: ${STONEAGE_AI_STOCK_ITEMS:-}
+      STONEAGE_AI_NPC_REGISTRY: ${STONEAGE_AI_NPC_REGISTRY:-}
+      STONEAGE_AI_AUTOMATION_DB: /var/lib/stoneage-ai/automation/automation.db
+      STONEAGE_AI_RECEIPT_DB: /var/lib/stoneage-ai/receipts/receipts.db
+      STONEAGE_AI_GATEWAY_LISTEN: 0.0.0.0:8081
+    volumes:
+      # The admin process owns runtime metadata, broker journal and shared
+      # automation/receipt state. Profile volumes are created by the broker
+      # and are never mounted into this service.
+      - ai-runtime-state:/var/lib/stoneage-ai/runtime
+      - ai-broker:/var/lib/stoneage-ai/runtime/broker
+      - ai-automation:/var/lib/stoneage-ai/automation
+      - ai-receipts:/var/lib/stoneage-ai/receipts
+      # Keep the AI map/knowledge source explicitly read-only even though the
+      # admin's player catalog mount covers the surrounding GMSV tree.
+      - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}/data:/game/gmsv/data:ro
+      # This is the only additional host capability enabled by this overlay.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  web:
+    environment:
+      # Web automation reads the same reviewed data and durable stores as the
+      # admin runtime. The browser never receives these paths or a Docker
+      # capability.
+      STONEAGE_AI_KNOWLEDGE_DATA_DIR: /game/gmsv/data
+      STONEAGE_AI_MAP_DATA_DIR: /game/gmsv/data
+      STONEAGE_AI_HEALING_ITEMS: ${STONEAGE_AI_HEALING_ITEMS:-}
+      STONEAGE_AI_STOCK_ITEMS: ${STONEAGE_AI_STOCK_ITEMS:-}
+      STONEAGE_AI_NPC_REGISTRY: ${STONEAGE_AI_NPC_REGISTRY:-}
+      STONEAGE_AI_AUTOMATION_DB: /var/lib/stoneage-ai/automation/automation.db
+      STONEAGE_AI_RECEIPT_DB: /var/lib/stoneage-ai/receipts/receipts.db
+    volumes:
+      - ai-automation:/var/lib/stoneage-ai/automation
+      - ai-receipts:/var/lib/stoneage-ai/receipts
+      - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}/data:/game/gmsv/data:ro
+
+networks:
+  # The broker receives this exact Docker network name. All regular services
+  # and profile containers therefore share the existing private backend.
+  backend:
+    name: ${STONEAGE_AI_CONTAINER_NETWORK:-stoneage-backend}
+
+volumes:
+  # These names are explicit so state survives service replacement. Operators
+  # may set the four *_VOLUME values in their env file to add a project prefix.
+  ai-runtime-state:
+    name: ${STONEAGE_AI_RUNTIME_VOLUME:-stoneage-ai-runtime}
+  ai-broker:
+    name: ${STONEAGE_AI_BROKER_VOLUME:-stoneage-ai-broker}
+  ai-automation:
+    name: ${STONEAGE_AI_AUTOMATION_VOLUME:-stoneage-ai-automation}
+  ai-receipts:
+    name: ${STONEAGE_AI_RECEIPT_VOLUME:-stoneage-ai-receipts}

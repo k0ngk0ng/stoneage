@@ -17,17 +17,18 @@ import (
 const (
 	// enemybase.txt is parsed by ENEMYTEMP_initEnemy.  The first six columns
 	// are strings; the integer columns start at fields[6].
-	petTemplateField = 6  // E_T_TEMPNO
-	petImageField    = 36 // E_T_IMGNUMBER
-	petEarthField    = 15 // E_T_EARTHAT
-	petWaterField    = 16 // E_T_WATERAT
-	petFireField     = 17 // E_T_FIREAT
-	petWindField     = 18 // E_T_WINDAT
-	petSkillsFirst   = 25 // E_T_PETSKILL1
-	petSkillsLast    = 31 // E_T_PETSKILL7
-	petSlotField     = 35 // E_T_SLOT
-	petFlagField     = 37 // E_T_PETFLG
-	petSizeField     = 38 // E_T_SIZE
+	petTemplateField   = 6  // E_T_TEMPNO
+	petImageField      = 36 // E_T_IMGNUMBER
+	petEarthField      = 15 // E_T_EARTHAT
+	petWaterField      = 16 // E_T_WATERAT
+	petFireField       = 17 // E_T_FIREAT
+	petWindField       = 18 // E_T_WINDAT
+	petSkillsFirst     = 25 // E_T_PETSKILL1
+	petSkillsLast      = 31 // E_T_PETSKILL7
+	petSlotField       = 35 // E_T_SLOT
+	petFlagField       = 37 // E_T_PETFLG
+	petSizeField       = 38 // E_T_SIZE
+	petLimitLevelField = 54 // E_T_LIMITLEVEL, after five atom triples
 
 	// itemset.txt is parsed by ITEM_readItemConfFile.  These are the two
 	// fields which are easy to confuse: ITEM_ID is field 16 and the logical
@@ -184,6 +185,7 @@ func ParsePets(r io.Reader) ([]Pet, error) {
 			PetFlag:     optionalInt(fields, petFlagField),
 			Size:        optionalInt(fields, petSizeField),
 			PetSkillIDs: skills,
+			LimitLevel:  optionalInt(fields, petLimitLevelField),
 		}, nil
 	})
 }

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "knowledge_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+  "offers": [
+    {
+      "alias": "small-meat",
+      "name": "小的肉（萨姆吉尔村）",
+      "item": "small-meat",
+      "npc": "samgil-meat-shop",
+      "shop_index": 1,
+      "unit_price": 12,
+      "x": 17,
+      "y": 15
+    },
+    {
+      "alias": "hometown-1-small-meat",
+      "name": "小的肉（玛丽娜丝村）",
+      "item": "small-meat",
+      "npc": "marinas-meat-shop",
+      "shop_index": 1,
+      "unit_price": 12,
+      "x": 17,
+      "y": 15
+    }
+  ]
+}

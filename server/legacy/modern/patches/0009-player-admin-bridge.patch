@@ -18,9 +18,10 @@
  			itime++;
 --- a/makefile
 +++ b/makefile
-@@ -66,4 +66,4 @@
+@@ -66,5 +66,5 @@
  SRC=main.c init.c configfile.c util.c net.c buf.c msignal.c \
  callfromac.c callfromcli.c object.c handletime.c function.c log.c autil.c \
 -$(CLIRPCSRC) $(SERVRPCSRC)
 +$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c
- PETSKILLGEN=~/bin/makedefs.perl
+ 
+ OBJ=$(SRC:.c=.o)

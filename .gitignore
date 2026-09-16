@@ -76,6 +76,7 @@ dogfood-output/
 /assets/
 /backups/
 /config/secrets/
+/vendor/deepseek/key
 /config/registry/username
 /config/registry/token
 /config/registry/docker/

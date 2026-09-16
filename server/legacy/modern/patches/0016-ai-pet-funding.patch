@@ -1,0 +1,53 @@
+--- a/npc/npc_petshop.c
++++ b/npc/npc_petshop.c
+@@ -733,6 +733,8 @@
+ 	}
+ 
+ 	// æÙ  …Õ  Â√ ∏”¿–˛ÿ¶»’£›π´ƒæº∞Ë∂  √´€’‘ £€
++	/* STONEAGE_AI_PET_FUNDING_COMMIT: charge before changing ownership. */
++	if( !StoneAge_AIFundingCharge(talker, NPC_GETPOOLCOST(talker)) ) return;
+ 	if( CHAR_getInt( talker, CHAR_DEFAULTPET) == selectpet) {
+ 		CHAR_setInt( talker, CHAR_DEFAULTPET, -1);
+ 		lssproto_KS_send( fd, -1, TRUE);
+@@ -746,7 +748,7 @@
+ 	NPC_MaxGoldOver( meindex, talker, NPC_PETSHOP_MSG_POOLTHANKS, token);
+ 	// ‘∆‡≈”º»’‘ 
+ 
+-	if( !StoneAge_AIFundingCharge(talker, NPC_GETPOOLCOST(talker)) ) return;
++
+ 
+ 	// ‘∆‡≈∑∏°ı’˝À™‘¬
+ 	CHAR_send_P_StatusString(talker,CHAR_P_STRING_GOLD);
+--- a/npc/npc_newnpcman.c
++++ b/npc/npc_newnpcman.c
+@@ -277,7 +277,7 @@
+ 
+ 
+ 			ret = CHAR_makePetFromStringToArg( petstring1, &ch, -2);
+-			strcpy( petstring[ti-1], "");
++
+ 			if( ret ) {
+ 				char buf1[256];
+ 				int petindex = PET_initCharOneArray( &ch );
+@@ -285,6 +285,12 @@
+ 					CHAR_talkToCli( toindex, -1, "¡Ï»°≥ËŒÔ ß∞‹£°", CHAR_COLORYELLOW);
+ 					return;
+ 				}
++				/* Keep the lost-pet record until its detached replacement is funded. */
++				if( !StoneAge_AIFundingCharge(toindex, cost) ) {
++					CHAR_endCharOneArray(petindex);
++					return;
++				}
++				strcpy( petstring[ti-1], "");
+ 				print("ANDY petindex:%d[%s]\n", petindex, CHAR_getChar( petindex, CHAR_NAME) );
+ 
+ 				CHAR_complianceParameter( petindex );
+@@ -325,7 +331,7 @@
+ 					snprintf( msgbuf, sizeof( msgbuf ), "W%d", i );
+ 					CHAR_sendStatusString( toindex, msgbuf );
+ 				}
+-				if( !StoneAge_AIFundingCharge(toindex, cost) ) return;
++
+ 			}else{
+ 					CHAR_talkToCli( toindex, -1, "¡Ï»°≥ËŒÔ ß∞‹£°", CHAR_COLORYELLOW);
+ 					return;

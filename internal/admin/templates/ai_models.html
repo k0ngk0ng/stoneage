@@ -1,0 +1,96 @@
+{{define "content"}}
+<link rel="stylesheet" href="/static/ai.css">
+<div class="ai-page" id="ai-model-admin" data-csrf="{{.CSRF}}" data-can-write="{{.AIRoleCanWrite}}" data-connection-test-available="{{.AIConnectionTestAvailable}}" data-catalog-backend="{{.AIModelCatalog.Backend}}" data-catalog-provider="{{.AIModelCatalog.Provider}}" data-catalog-base-url="{{.AIModelCatalog.BaseURL}}" data-catalog-model="{{.AIModelCatalog.Slug}}" data-catalog-default-reasoning="{{.AIModelCatalog.DefaultReasoning}}">
+  <div class="page-heading">
+    <div>
+      <h1>AI 模型配置</h1>
+      <p class="muted">配置 Codex runtime 使用的 OpenAI-compatible 模型。API key 只写入服务器固定私有目录，页面和审计日志永远不回传密钥。</p>
+    </div>
+    <span class="page-kicker">Codex runtime</span>
+  </div>
+  {{if .AIError}}<div class="alert error">{{.AIError}}</div>{{end}}
+
+  <section class="card ai-runtime-note">
+    <div class="card-heading">
+      <div><h2>运行约束</h2><p class="muted">管理端只保存配置；是否在线由独立 AI runtime 报告。</p></div>
+      <span class="status-pill {{if .AIRuntimeConfigured}}configured{{else}}stopped{{end}}">{{if .AIRuntimeConfigured}}已接入{{else}}未接入{{end}}</span>
+    </div>
+    <div class="ai-runtime-facts">
+      <span><strong>backend</strong> codex</span>
+      <span><strong>approval_policy</strong> never</span>
+      <span><strong>sandbox_mode</strong> danger-full-access</span>
+      <span><strong>wire_api</strong> responses</span>
+    </div>
+    <p class="hint">模型配置不会自动启动 agent。当前 Codex runtime 使用 Responses API；保存模型前会校验 endpoint、模型标识和协议。</p>
+    <div class="ai-template">
+      <div>
+        <strong>模型预置</strong>
+        <small>DeepSeek、OpenAI 和自定义 OpenAI-compatible。预置只负责填入初始值，地址、模型标识和推理级别仍可编辑；协议固定为 Responses。</small>
+      </div>
+      {{if .AIRoleCanWrite}}<button class="button" type="button" id="ai-apply-deepseek">填入 DeepSeek 预置</button>{{end}}
+    </div>
+  </section>
+
+  <section class="card ai-models-card">
+    <div class="card-heading">
+      <div><h2>已配置模型</h2><p class="muted">默认模型由 runtime 持久化；同一时间只保留一个默认选择。</p></div>
+      {{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-model-new">新增模型</button>{{end}}
+    </div>
+    {{if not .AIConnectionTestAvailable}}<p class="hint" role="status">当前运行环境未接入模型连接测试，可通过启动 AI 玩家查看运行结果。</p>{{end}}
+    <div id="ai-model-message" class="alert" hidden role="status"></div>
+    <div class="table-scroll">
+      <table class="ai-table"><thead><tr><th>名称</th><th>provider / model</th><th>协议</th><th>地址</th><th>限制</th><th>密钥</th><th>默认</th><th>操作</th></tr></thead>
+      <tbody id="ai-model-list">
+      {{range .AIModels}}
+        <tr data-model-id="{{.ID}}" data-model-version="{{.Version}}">
+          <td><strong>{{.Name}}</strong><small>{{.ID}}</small></td>
+          <td><span class="badge">{{.Provider}}</span><br><small>{{.Model}}</small><br><small>推理 {{if .ReasoningEffort}}{{.ReasoningEffort}}{{else}}未指定{{end}}</small></td>
+          <td><span class="badge">{{.WireAPI}}</span></td>
+          <td class="breakable">{{.BaseURL}}</td>
+          <td>{{.TimeoutSeconds}}s / {{.MaxOutputTokens}} tokens<br><small>日限额 {{.DailyTokenBudget}}</small></td>
+          <td>{{if .HasKey}}<span class="badge ok">已配置</span>{{else}}<span class="badge off">未配置</span>{{end}}</td>
+          <td>{{if .Default}}<span class="badge ok">默认</span>{{else}}—{{end}}</td>
+          <td class="ai-actions"><button type="button" class="button ai-edit-model" data-id="{{.ID}}">编辑</button><button type="button" class="button ai-test-model" data-id="{{.ID}}"{{if not $.AIConnectionTestAvailable}} disabled aria-disabled="true" title="当前运行环境未接入模型连接测试"{{end}}>测试</button>{{if $.AIRoleCanWrite}}<button type="button" class="button danger ai-delete-model" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="8" class="empty">还没有模型配置。请新增一个 Codex 模型，或等待 runtime 接入。</td></tr>
+      {{end}}
+      </tbody></table>
+    </div>
+  </section>
+
+  {{if .AIRoleCanWrite}}
+  <section class="card ai-editor-card" id="ai-model-editor" hidden>
+    <div class="card-heading"><div><h2 id="ai-model-editor-title">新增模型</h2><p class="muted">保存时只提交当前表单；密钥为空表示沿用已有密钥。</p></div><button class="button" type="button" id="ai-model-cancel">取消</button></div>
+    <form id="ai-model-form" class="ai-form" novalidate>
+      <input type="hidden" name="id"><input type="hidden" name="expected_version">
+      <div class="ai-form-grid">
+        <label>预置
+          <select name="preset" id="ai-model-preset">
+            {{range .AIModelCatalog.Presets}}
+            <option value="{{.ID}}" data-provider="{{.Provider}}" data-base-url="{{.BaseURL}}" data-model="{{.Model}}" data-wire-api="{{.WireAPI}}" data-default-reasoning="{{.DefaultReasoning}}" data-reasoning-levels="{{range $index, $level := .ReasoningLevels}}{{if $index}},{{end}}{{$level}}{{end}}">{{.Label}}{{if .DisplayName}}（{{.DisplayName}}）{{end}}</option>
+            {{end}}
+          </select>
+          <small>预置只是初始值；选择后仍可改成任意合法的 HTTP(S) endpoint 和模型。</small>
+        </label>
+        <label>名称<input name="name" maxlength="128" required placeholder="例如：DeepSeek Flash 或团队模型"></label>
+        <label>backend<input name="backend" value="{{.AIModelCatalog.Backend}}" readonly required></label>
+        <label>provider<input name="provider" maxlength="64" required placeholder="openai / deepseek / custom"></label>
+        <label class="wide">Base URL<input name="base_url" type="url" maxlength="2048" required placeholder="https://api.example.com/v1"><small>支持 HTTP/HTTPS，包括 localhost 和 Docker 内部地址；不得包含凭据、query 或 fragment。</small></label>
+        <label>模型标识<input name="model" maxlength="128" required placeholder="例如：gpt-5、deepseek-flash"></label>
+        <label>wire_api<input name="wire_api" value="responses" readonly required><small>当前 Codex runtime 固定使用 Responses API。</small></label>
+        <label>推理级别<select name="reasoning_effort"><option value="">不指定</option>{{range $level := .AIModelCatalog.ReasoningLevels}}<option value="{{$level}}">{{$level}}</option>{{end}}</select><small>DeepSeek-Flash 由内置目录限定为 low / high / max；其他模型可留空。</small></label>
+        <label>超时（秒）<input name="timeout_seconds" type="number" min="1" max="86400" value="120" required></label>
+        <label>单次最大输出 token<input name="max_output_tokens" type="number" min="1" max="1000000" value="4096" required></label>
+        <label>日 token 限额<input name="daily_token_budget" type="number" min="0" max="2000000000" value="100000" required><small>0 表示不设置日限额。</small></label>
+        <label>API key（只在修改时填写）<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空则不改动"></label>
+      </div>
+      <label class="checkbox ai-key-clear"><input name="clear_key" type="checkbox" value="true"> 清除服务器上已保存的 key</label>
+      <label class="checkbox"><input name="default" type="checkbox" value="true"> 设为默认模型</label>
+      <div class="form-footer"><small>Codex 的 backend、approval_policy=never 与 sandbox_mode=danger-full-access 由服务器固定配置；模型 key 只由服务端读取。</small><button class="primary" type="submit">保存模型</button></div>
+    </form>
+  </section>
+  {{end}}
+</div>
+<script src="/static/ai.js" defer></script>
+{{end}}

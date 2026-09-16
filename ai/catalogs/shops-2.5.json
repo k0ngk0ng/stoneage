@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "knowledge_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+  "npcs": [
+    {
+      "alias": "samgil-meat-shop",
+      "floor": 1004,
+      "x": 17,
+      "y": 13,
+      "name": "萨姆吉尔的肉店",
+      "talk_range": 2,
+      "verified": true,
+      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 12
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "marinas-meat-shop",
+      "floor": 2004,
+      "x": 17,
+      "y": 13,
+      "name": "玛丽那丝的肉店",
+      "talk_range": 2,
+      "verified": true,
+      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 12
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

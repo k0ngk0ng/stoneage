@@ -1,0 +1,18 @@
+--- a/char/trade.c
++++ b/char/trade.c
+@@ -399,4 +399,6 @@
+    if (result == -1)
+    	strcpy(msg, TRADE_FAILED);
++   else if (result == -16)
++   	strcpy(msg, "资金记账未确认，交易已停止，请联系管理员核对后再操作。");
+    else if (result == -2)
+    	sprintf(msg, TRADE_ITEMFULL, mycharaname);
+@@ -656,6 +658,6 @@
+ 	if ((pet3 != -1) && (CHAR_getInt(pet3, CHAR_PETFAMILY) == 1))
+ 		 	return -15;
+-	if( gold1 > 0 && !StoneAge_AIFundingRecordExternal(meindex, STONEAGE_AI_EXTERNAL_TRADE, gold1) ) return -16;
+-	if( gold2 > 0 && !StoneAge_AIFundingRecordExternal(toindex, STONEAGE_AI_EXTERNAL_TRADE, gold2) ) return -16;
++	/* STONEAGE_AI_TRADE_PAIR_COMMIT: one quota commit before native exchange. */
++	if( !StoneAge_AIFundingRecordTradePair(meindex, gold1, toindex, gold2) ) return -16;
+ 	TRADE_ChangeItem(meindex, toindex, a, d, item1, item4,
+ 		itemindex1, itemindex4);

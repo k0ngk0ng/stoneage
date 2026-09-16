@@ -1,0 +1,42 @@
+--- a/char/char_talk.c
++++ b/char/char_talk.c
+@@ -12,6 +12,7 @@
+ #include "log.h"
+ #include "configfile.h"
+ #include "lssproto_serv.h"
++#include "stoneage_chat_identity.h"
+ #include "saacproto_cli.h"
+ #include "family.h"
+ #include "net.h"
+@@ -1233,7 +1234,7 @@
+ 		talkchar = -1;
+ 	else
+ 		talkchar = CHAR_getWorkInt(talkcharaindex,CHAR_WORKOBJINDEX);
+-	lssproto_TK_send( fd, talkchar, lastbuf, color);
++	StoneAge_ChatIdentitySend( fd, talkcharaindex, talkchar, lastbuf, color);
+ 	return TRUE;
+ }
+ 
+--- a/char/char_event.c
++++ b/char/char_event.c
+@@ -8,6 +8,7 @@
+ #include "item.h"
+ #include "object.h"
+ #include "lssproto_serv.h"
++#include "stoneage_chat_identity.h"
+ #include "util.h"
+ #include "char_data.h"
+ #include "readmap.h"
+@@ -498,5 +499,5 @@
+ 				makeEscapeString(CHAR_appendNameAndTitle(talkindex, message,mesgbuf,sizeof(mesgbuf)),
+ 				escapebuf,sizeof(escapebuf) ));
+ 	}
+-	lssproto_TK_send( fd, CHAR_getWorkInt( talkindex, CHAR_WORKOBJINDEX ),lastbuf, color);
+-}
++	StoneAge_ChatIdentitySend( fd, talkindex, CHAR_getWorkInt( talkindex, CHAR_WORKOBJINDEX ),lastbuf, color);
++}
+--- a/makefile
++++ b/makefile
+@@ -68,1 +68,1 @@
+-$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c stoneage_character_identity.c
++$(CLIRPCSRC) $(SERVRPCSRC) stoneage_player_admin.c stoneage_ai_funding.c stoneage_ai_observation.c stoneage_adult_exchange.c stoneage_character_identity.c stoneage_chat_identity.c
