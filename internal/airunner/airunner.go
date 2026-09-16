@@ -801,7 +801,7 @@ func validateHTTPURL(value string) error {
 		return errors.New("URL contains control characters")
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path == "" {
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return errors.New("URL must use http or https")
 	}
 	return nil

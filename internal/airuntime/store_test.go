@@ -343,6 +343,28 @@ func TestGenericReasoningEffortsRoundTripAndDeepSeekDefaults(t *testing.T) {
 	}
 }
 
+func TestModelConfigOriginOnlyBaseURLRoundTrips(t *testing.T) {
+	store := testStore(t)
+	config, err := store.CreateModelConfig(context.Background(), ModelConfig{
+		ID: "origin-only-model", Name: "DeepSeek origin", Backend: ModelBackendCodex,
+		Provider: "deepseek", BaseURL: "https://api.deepseek.com/", Model: "deepseek-flash",
+		Timeout: time.Second, MaxOutputTokens: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.BaseURL != "https://api.deepseek.com" {
+		t.Fatalf("created base URL = %q, want origin-only URL", config.BaseURL)
+	}
+	loaded, err := store.GetModelConfig(context.Background(), config.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BaseURL != "https://api.deepseek.com" {
+		t.Fatalf("loaded base URL = %q, want origin-only URL", loaded.BaseURL)
+	}
+}
+
 func TestModelConfigRejectsUnsupportedWireAPI(t *testing.T) {
 	store := testStore(t)
 	config := ModelConfig{

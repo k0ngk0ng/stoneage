@@ -234,6 +234,14 @@ func TestValidateMCPRejectsControlCharacterIdentity(t *testing.T) {
 	}
 }
 
+func TestValidateHTTPURLAcceptsOriginOnlyBaseURL(t *testing.T) {
+	for _, value := range []string{"https://api.deepseek.com", "http://127.0.0.1:8080"} {
+		if err := validateHTTPURL(value); err != nil {
+			t.Errorf("validateHTTPURL(%q)=%v, want nil", value, err)
+		}
+	}
+}
+
 func writeRunnerTestExecutable(t *testing.T, root, content string) string {
 	t.Helper()
 	path := filepath.Join(root, fmt.Sprintf("runner-test-%d", time.Now().UnixNano()))

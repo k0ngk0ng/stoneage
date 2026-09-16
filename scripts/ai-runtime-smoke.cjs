@@ -26,7 +26,7 @@ async function main() {
         assert(raw.length <= 8 * 1024 * 1024);
       }
       assert.equal(req.method, 'POST');
-      assert.equal(req.url, '/v1/responses');
+      assert.equal(req.url, '/responses');
       assert.equal(req.headers.authorization, `Bearer ${key}`);
       const body = JSON.parse(raw);
       assert.equal(body.model, 'stoneage-image-smoke');
@@ -80,7 +80,7 @@ async function main() {
     async function turn(id, thread) {
       const request = {profile_id: profile, request_id: id,
         run_request: {prompt: `Image smoke ${id}: reply with the supplied response.`, ...(thread ? {resume: true, thread_id: thread} : {})},
-        model: {provider: 'custom', base_url: `${endpoint}/v1`, model: 'stoneage-image-smoke', api_key: key},
+        model: {provider: 'custom', base_url: endpoint, model: 'stoneage-image-smoke', api_key: key},
         skills: [{name: 'stoneage-play'}],
         mcp: {endpoint: `${endpoint}/v1/game`, token, character_id: 'image-character', generation: 1}};
       const output = await new Promise((resolve, reject) => {
