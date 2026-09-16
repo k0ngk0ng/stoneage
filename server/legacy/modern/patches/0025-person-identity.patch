@@ -4,13 +4,11 @@
  #include "char.h"
 +#include "stoneage_person_identity.h"
  #include <stdio.h>
-@@ -1659,3 +1660,4 @@
- void lssproto_C_send(int fd,char* data)
+@@ -1660,2 +1661,3 @@ void lssproto_C_send(int fd,char* data)
  {
 +	StoneAge_PersonIdentitySendC(fd, data);
  #ifdef _DEBUG_SEND_CLI
-@@ -1731,3 +1732,4 @@
- void lssproto_S_send(int fd,char* data)
+@@ -1732,2 +1734,3 @@ void lssproto_S_send(int fd,char* data)
  {
 +	StoneAge_PersonIdentitySendN(fd, data);
  #ifdef _DEBUG_SEND_CLI

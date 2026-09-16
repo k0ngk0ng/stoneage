@@ -115,7 +115,7 @@ static int write_policy(const char *dir, const char *account, int slot,
 int main(int argc, char **argv)
 {
     char policy_dir[1024];
-    char policy_path[1024];
+    char policy_path[sizeof(policy_dir) + sizeof("/ai.0.policy")];
     char ledger_path[1024];
     long before_pair;
     int fault;
