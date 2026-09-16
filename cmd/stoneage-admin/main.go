@@ -78,7 +78,7 @@ func serve(arguments []string) error {
 	aiCodexWorkRoot := flags.String("ai-codex-work-root", os.Getenv("STONEAGE_AI_CODEX_WORK_ROOT"), "private root for disposable AI connection-test workspaces")
 	aiCodexWorkspaceRoot := flags.String("ai-codex-workspace-root", os.Getenv("STONEAGE_AI_CODEX_WORKSPACE_ROOT"), "alias for -ai-codex-work-root")
 	aiCodexStateRoot := flags.String("ai-codex-state-root", os.Getenv("STONEAGE_AI_CODEX_STATE_ROOT"), "private root for disposable AI connection-test state")
-	aiConnectionTimeout := flags.Duration("ai-model-test-timeout", durationEnv("STONEAGE_AI_MODEL_TEST_TIMEOUT", 30*time.Second), "maximum duration for an explicit model connection test")
+	aiConnectionTimeout := flags.Duration("ai-model-test-timeout", durationEnv("STONEAGE_AI_MODEL_TEST_TIMEOUT", 60*time.Second), "maximum duration for an explicit model connection test")
 	aiGameAddress := flags.String("ai-game-address", os.Getenv("STONEAGE_AI_GAME_ADDRESS"), "server-owned StoneAge named-protocol address for AI sessions")
 	aiRuntimeRoot := flags.String("ai-runtime-root", os.Getenv("STONEAGE_AI_RUNTIME_ROOT"), "private root for persistent AI agent runtime state (enables game agents)")
 	aiMCPBinary := flags.String("ai-mcp-binary", os.Getenv("STONEAGE_AI_MCP_BINARY"), "absolute server stoneage-game-mcp executable path")
@@ -201,7 +201,37 @@ func serve(arguments []string) error {
 	}
 	if aiRuntime != nil {
 		defer aiRuntime.Close()
+		if aiContainerRequested(aiOptions) && aiRuntime.broker != nil {
+			tester, testerErr := admin.NewAIContainerModelConnectionTester(admin.AIContainerModelConnectionTesterOptions{
+				Models: aiStore, Secrets: aiSecrets, Broker: aiRuntime.broker,
+				ConnectionTimeout: *aiConnectionTimeout,
+			})
+			if testerErr != nil {
+				return fmt.Errorf("configure AI container connection tester: %w", testerErr)
+			}
+			connectionTester = tester
+		}
 	} else {
+		// Model-only container probes do not require the optional gameplay
+		// runtime. If game data or Gateway wiring is incomplete, keep the
+		// administrator's model test available through a standalone broker.
+		if aiContainerProbeRequested(aiOptions) {
+			probeBroker, probeErr := configureAIContainerModelProbeBroker(aiOptions, aiDataRoot)
+			if probeErr != nil {
+				log.Printf("AI container model tester unavailable: %v", probeErr)
+			} else if probeBroker != nil {
+				defer probeBroker.Close()
+				tester, testerErr := admin.NewAIContainerModelConnectionTester(admin.AIContainerModelConnectionTesterOptions{
+					Models: aiStore, Secrets: aiSecrets, Broker: probeBroker,
+					ConnectionTimeout: *aiConnectionTimeout,
+				})
+				if testerErr != nil {
+					log.Printf("AI container model tester unavailable: %v", testerErr)
+				} else {
+					connectionTester = tester
+				}
+			}
+		}
 		missing := missingAIRuntimeOptions(aiOptions)
 		if len(missing) > 0 {
 			log.Printf("AI runtime unavailable; missing server-owned settings: %s", strings.Join(missing, ", "))

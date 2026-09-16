@@ -815,7 +815,8 @@ func (factory *Factory) newLocalRunner(ctx context.Context, profile airuntime.Pr
 		ModelCatalog: runtimeFiles.CatalogPath, ReasoningEffort: model.ReasoningEffort,
 		WebSearch: "disabled", GitBinary: factory.cfg.GitBinary,
 		Environment: factory.cfg.Environment, TerminationGrace: factory.cfg.TerminationGrace,
-		SecretEnv: "", Limits: aicodex.Limits{MaxStdoutBytes: maxCodexOutput(model.MaxOutputTokens)},
+		TurnTimeout: model.Timeout,
+		SecretEnv:   "", Limits: aicodex.Limits{MaxStdoutBytes: maxCodexOutput(model.MaxOutputTokens)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: create Codex runner failed", ErrFactoryProvision)
@@ -842,6 +843,7 @@ func (factory *Factory) newContainerRunner(profile airuntime.Profile, binding ai
 	}
 	return NewContainerRunner(ContainerRunnerConfig{
 		ProfileID: profile.ID, StateRoot: stateDir, Broker: factory.cfg.ContainerBroker,
+		TurnTimeout: model.Timeout,
 		RequestTemplate: airunner.ExecuteRequest{
 			ProfileID: profile.ID,
 			Model: airunner.Model{Provider: model.Provider, BaseURL: model.BaseURL, Model: model.Model,

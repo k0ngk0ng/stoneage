@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/aibroker"
+	"github.com/k0ngk0ng/stoneage/internal/airunner"
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 	"github.com/k0ngk0ng/stoneage/internal/aisupervisor"
 )
@@ -240,6 +242,98 @@ func writeAdminConnectionTestCodexWithMarker(t *testing.T, root, marker string) 
 		t.Fatal(err)
 	}
 	return path
+}
+
+type probeModelReader struct {
+	config airuntime.ModelConfig
+	err    error
+}
+
+func (reader probeModelReader) GetModelConfig(context.Context, string) (airuntime.ModelConfig, error) {
+	if reader.err != nil {
+		return airuntime.ModelConfig{}, reader.err
+	}
+	return reader.config, nil
+}
+
+type probeSecretReader struct {
+	key string
+	err error
+}
+
+func (reader probeSecretReader) ReadKey(string) (string, error) { return reader.key, reader.err }
+
+type probeBroker struct {
+	request airunner.ExecuteRequest
+	err     error
+	block   bool
+	calls   int
+}
+
+func (broker *probeBroker) Run(ctx context.Context, request airunner.ExecuteRequest) (aibroker.RunResult, error) {
+	broker.calls++
+	broker.request = request
+	if broker.block {
+		<-ctx.Done()
+		return aibroker.RunResult{}, ctx.Err()
+	}
+	if broker.err != nil {
+		return aibroker.RunResult{}, broker.err
+	}
+	return aibroker.RunResult{State: aibroker.RunCompleted, Response: airunner.Response{
+		OK: true, ProfileID: request.ProfileID, RequestID: request.RequestID,
+		Result: &airunner.Result{ProfileID: request.ProfileID, ThreadID: "probe-thread", LastMessage: "STONEAGE_CONNECTION_TEST_OK"},
+	}}, nil
+}
+
+func TestAIContainerModelConnectionTesterUsesCapabilityFreeProbe(t *testing.T) {
+	broker := &probeBroker{}
+	tester, err := NewAIContainerModelConnectionTester(AIContainerModelConnectionTesterOptions{
+		Models:  probeModelReader{config: airuntime.ModelConfig{ID: "model-1", Backend: airuntime.ModelBackendCodex, Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", WireAPI: airuntime.ModelProviderResponses, ReasoningEffort: airuntime.ReasoningEffortHigh, Timeout: time.Second}},
+		Secrets: probeSecretReader{key: "private-probe-key"}, Broker: broker,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tester.TestModelConfig(context.Background(), "model-1"); err != nil {
+		t.Fatalf("probe failed: %v", err)
+	}
+	request := broker.request
+	if broker.calls != 1 || !request.Probe || request.MCP != (airunner.MCP{}) || len(request.Skills) != 0 || request.Run.Resume || request.Run.ThreadID != "" {
+		t.Fatalf("probe request carries game state: calls=%d request=%+v", broker.calls, request)
+	}
+	if request.Model.APIKey != "private-probe-key" || request.Run.Prompt != modelConnectionProbePrompt {
+		t.Fatalf("probe request model/prompt = %+v", request)
+	}
+}
+
+func TestAIContainerModelConnectionTesterClassifiesMissingKeyAndTimeout(t *testing.T) {
+	broker := &probeBroker{}
+	tester, err := NewAIContainerModelConnectionTester(AIContainerModelConnectionTesterOptions{
+		Models:  probeModelReader{config: airuntime.ModelConfig{ID: "model-1", Backend: airuntime.ModelBackendCodex, Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", WireAPI: airuntime.ModelProviderResponses, ReasoningEffort: airuntime.ReasoningEffortHigh, Timeout: time.Second}},
+		Secrets: probeSecretReader{}, Broker: broker,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tester.TestModelConfig(context.Background(), "model-1")
+	var coded interface{ ConnectionTestCode() string }
+	if !errors.Is(err, ErrAIModelConnectionTest) || !errors.As(err, &coded) || coded.ConnectionTestCode() != "missing_key" || broker.calls != 0 {
+		t.Fatalf("missing key error=%v code=%v calls=%d", err, coded, broker.calls)
+	}
+
+	broker = &probeBroker{block: true}
+	tester, err = NewAIContainerModelConnectionTester(AIContainerModelConnectionTesterOptions{
+		Models:  probeModelReader{config: airuntime.ModelConfig{ID: "model-1", Backend: airuntime.ModelBackendCodex, Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", WireAPI: airuntime.ModelProviderResponses, ReasoningEffort: airuntime.ReasoningEffortHigh, Timeout: 5 * time.Millisecond}},
+		Secrets: probeSecretReader{key: "key"}, Broker: broker,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tester.TestModelConfig(context.Background(), "model-1")
+	if !errors.As(err, &coded) || coded.ConnectionTestCode() != "timeout" || broker.calls != 1 {
+		t.Fatalf("timeout error=%v code=%v calls=%d", err, coded, broker.calls)
+	}
 }
 
 func writeAdminConnectionTestCodexWithMessage(t *testing.T, root, message string) string {

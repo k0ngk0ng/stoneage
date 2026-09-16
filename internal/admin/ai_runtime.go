@@ -2,14 +2,20 @@ package admin
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/aibroker"
 	"github.com/k0ngk0ng/stoneage/internal/aicodex"
 	"github.com/k0ngk0ng/stoneage/internal/aimodels"
+	"github.com/k0ngk0ng/stoneage/internal/airunner"
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 	"github.com/k0ngk0ng/stoneage/internal/aisupervisor"
 	"github.com/k0ngk0ng/stoneage/internal/runtimepath"
@@ -290,6 +296,251 @@ func (tester *AICodexModelConnectionTester) TestModelConfig(ctx context.Context,
 		return ErrAIModelConnectionTest
 	}
 	return nil
+}
+
+const (
+	defaultAIContainerConnectionTimeout = 60 * time.Second
+	modelConnectionProbePrompt          = "Reply with exactly STONEAGE_CONNECTION_TEST_OK. Do not use tools."
+)
+
+// AIContainerModelProbeBroker is the narrow broker surface needed by the
+// model-only connection tester. A *aibroker.Broker implements it; tests can
+// provide a fake without constructing Docker or a game service.
+type AIContainerModelProbeBroker interface {
+	Run(context.Context, airunner.ExecuteRequest) (aibroker.RunResult, error)
+}
+
+// AIContainerModelConnectionTesterOptions contains only server-owned handles.
+// The broker owns the image, network, runtime UID and profile volume policy;
+// no HTTP or model profile value can replace them.
+type AIContainerModelConnectionTesterOptions struct {
+	Models            AIModelConfigReader
+	Secrets           AIModelSecretReader
+	Broker            AIContainerModelProbeBroker
+	ConnectionTimeout time.Duration
+}
+
+// AIContainerModelConnectionTester runs one pure Responses request in a
+// disposable broker profile. Probe requests carry no MCP capability or
+// skills, and the broker's container is independent from every game profile.
+type AIContainerModelConnectionTester struct {
+	models            AIModelConfigReader
+	secrets           AIModelSecretReader
+	broker            AIContainerModelProbeBroker
+	connectionTimeout time.Duration
+	probeMu           sync.Mutex
+}
+
+var _ AIModelConnectionTester = (*AIContainerModelConnectionTester)(nil)
+
+func NewAIContainerModelConnectionTester(options AIContainerModelConnectionTesterOptions) (*AIContainerModelConnectionTester, error) {
+	if options.Models == nil {
+		return nil, errors.New("AI model store is required")
+	}
+	if options.Secrets == nil {
+		return nil, errors.New("AI secret store is required")
+	}
+	if options.Broker == nil {
+		return nil, errors.New("AI container broker is required")
+	}
+	if options.ConnectionTimeout <= 0 {
+		options.ConnectionTimeout = defaultAIContainerConnectionTimeout
+	}
+	if options.ConnectionTimeout > 10*time.Minute {
+		return nil, errors.New("container connection test timeout is too long")
+	}
+	return &AIContainerModelConnectionTester{
+		models: options.Models, secrets: options.Secrets, broker: options.Broker,
+		connectionTimeout: options.ConnectionTimeout,
+	}, nil
+}
+
+// TestModelConfig performs a bounded model-only request. It returns a stable,
+// secret-free error while retaining a private category for the admin HTTP
+// layer. The shorter of the configured model timeout and the server-owned
+// connection-test timeout bounds the probe.
+func (tester *AIContainerModelConnectionTester) TestModelConfig(ctx context.Context, modelID string) error {
+	if tester == nil || tester.models == nil || tester.secrets == nil || tester.broker == nil {
+		return newAIModelConnectionTestFailure("runtime_unavailable", ErrAIRuntimeUnavailable)
+	}
+	// The broker serializes requests per profile, while every probe gets a
+	// fresh random profile. Keep the administrator endpoint process-wide
+	// single-flight so multiple tabs cannot start several bounded containers at
+	// once and exhaust the host before the broker can apply its per-profile
+	// lock.
+	if !tester.probeMu.TryLock() {
+		return newAIModelConnectionTestFailure("busy", aibroker.ErrProfileBusy)
+	}
+	defer tester.probeMu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return newAIModelConnectionTestFailure("timeout", err)
+	}
+	timeout := tester.connectionTimeout
+	if timeout <= 0 {
+		timeout = defaultAIContainerConnectionTimeout
+	}
+	lookupCtx, lookupCancel := context.WithTimeout(ctx, timeout)
+	defer lookupCancel()
+	config, err := tester.models.GetModelConfig(lookupCtx, modelID)
+	if err != nil {
+		if lookupErr := lookupCtx.Err(); lookupErr != nil {
+			return newAIModelConnectionTestFailure("timeout", lookupErr)
+		}
+		return newAIModelConnectionTestFailure("runtime_unavailable", err)
+	}
+	if config.Backend != airuntime.ModelBackendCodex || strings.TrimSpace(config.WireAPI) != airuntime.ModelProviderResponses {
+		return newAIModelConnectionTestFailure("failed", ErrAIModelConnectionTest)
+	}
+	key, err := tester.secrets.ReadKey(modelID)
+	if err != nil || strings.TrimSpace(key) == "" {
+		return newAIModelConnectionTestFailure("missing_key", err)
+	}
+	if config.Timeout > 0 && config.Timeout < timeout {
+		timeout = config.Timeout
+	}
+	testCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	profileID, requestID, err := newAIModelProbeIDs()
+	if err != nil {
+		return newAIModelConnectionTestFailure("runtime_unavailable", err)
+	}
+	request := airunner.ExecuteRequest{
+		ProfileID: profileID, RequestID: requestID, Probe: true,
+		Run: airunner.RunRequest{Prompt: modelConnectionProbePrompt},
+		Model: airunner.Model{Provider: config.Provider, BaseURL: config.BaseURL, Model: config.Model,
+			ReasoningEffort: config.ReasoningEffort, APIKey: key},
+	}
+	outcome, runErr := tester.broker.Run(testCtx, request)
+	// Cleanup is deliberately optional so the tester remains easy to exercise
+	// with a fake broker. The concrete broker verifies the exact probe payload,
+	// checks the container lifecycle, and removes the container before its
+	// volume; a normal game request never reaches this cleanup path.
+	if cleaner, ok := tester.broker.(interface {
+		CleanupProbe(context.Context, airunner.ExecuteRequest) error
+	}); ok {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = cleaner.CleanupProbe(cleanupCtx, request)
+		cleanupCancel()
+	}
+	if err := testCtx.Err(); err != nil {
+		return newAIModelConnectionTestFailure("timeout", err)
+	}
+	if runErr != nil {
+		return classifyAIContainerProbeFailure(outcome, runErr)
+	}
+	if !outcome.Response.OK || outcome.Response.Result == nil || outcome.Response.Result.LastMessage != "STONEAGE_CONNECTION_TEST_OK" {
+		return newAIModelConnectionTestFailure("invalid_response", ErrAIModelConnectionTest)
+	}
+	return nil
+}
+
+type aiModelConnectionTestFailure struct {
+	code   string
+	causes error
+}
+
+func (failure *aiModelConnectionTestFailure) Error() string {
+	return ErrAIModelConnectionTest.Error()
+}
+
+func (failure *aiModelConnectionTestFailure) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.causes
+}
+
+func (failure *aiModelConnectionTestFailure) ConnectionTestCode() string {
+	if failure == nil || failure.code == "" {
+		return "failed"
+	}
+	return failure.code
+}
+
+func newAIModelConnectionTestFailure(code string, cause error) error {
+	switch code {
+	case "missing_key", "timeout", "authentication", "rate_limit", "model_unavailable", "network", "invalid_response", "runtime_unavailable", "busy", "failed":
+	default:
+		code = "failed"
+	}
+	if cause == nil {
+		cause = ErrAIModelConnectionTest
+	} else {
+		cause = errors.Join(ErrAIModelConnectionTest, cause)
+	}
+	return &aiModelConnectionTestFailure{code: code, causes: cause}
+}
+
+func classifyAIContainerProbeFailure(outcome aibroker.RunResult, runErr error) error {
+	if errors.Is(runErr, context.DeadlineExceeded) {
+		return newAIModelConnectionTestFailure("timeout", runErr)
+	}
+	if errors.Is(runErr, aibroker.ErrProfileBusy) || errors.Is(runErr, aicodex.ErrProfileBusy) {
+		return newAIModelConnectionTestFailure("busy", runErr)
+	}
+	if errors.Is(runErr, aibroker.ErrResponse) || errors.Is(runErr, airunner.ErrOutput) || errors.Is(runErr, airunner.ErrInvalidRequest) {
+		return newAIModelConnectionTestFailure("invalid_response", runErr)
+	}
+	if errors.Is(runErr, aibroker.ErrDocker) || errors.Is(runErr, aibroker.ErrInvalidConfig) || errors.Is(runErr, aibroker.ErrClosed) {
+		return newAIModelConnectionTestFailure("runtime_unavailable", runErr)
+	}
+	// Codex/provider diagnostics are redacted by airunner/aicodex before they
+	// reach this process. Only broad, reviewed words are used for UI category;
+	// the original text is never returned or logged. Status codes are accepted
+	// only when they appear with an explicit HTTP/status label, so an unrelated
+	// number in a model diagnostic cannot select an error category.
+	diagnostic := strings.ToLower("")
+	if outcome.Response.Result != nil {
+		diagnostic = strings.ToLower(outcome.Response.Result.Turn.Error + " " + outcome.Response.Result.Stderr)
+	}
+	switch {
+	case hasAIProbeNetworkDiagnostic(diagnostic):
+		return newAIModelConnectionTestFailure("network", runErr)
+	case hasAIProbeHTTPStatus(diagnostic, "401"), hasAIProbeHTTPStatus(diagnostic, "403"), strings.Contains(diagnostic, "unauthorized"), strings.Contains(diagnostic, "forbidden"), strings.Contains(diagnostic, "invalid api key"), strings.Contains(diagnostic, "invalid_api_key"), strings.Contains(diagnostic, "authentication failed"), strings.Contains(diagnostic, "authentication error"):
+		return newAIModelConnectionTestFailure("authentication", runErr)
+	case hasAIProbeHTTPStatus(diagnostic, "429"), strings.Contains(diagnostic, "too many requests"), strings.Contains(diagnostic, "rate limit"), strings.Contains(diagnostic, "rate_limit"), strings.Contains(diagnostic, "quota exceeded"), strings.Contains(diagnostic, "insufficient quota"):
+		return newAIModelConnectionTestFailure("rate_limit", runErr)
+	case hasAIProbeHTTPStatus(diagnostic, "404"), strings.Contains(diagnostic, "model_not_found"), strings.Contains(diagnostic, "model not found"), strings.Contains(diagnostic, "unknown model"), strings.Contains(diagnostic, "no such model"), strings.Contains(diagnostic, "model does not exist"), strings.Contains(diagnostic, "the model") && strings.Contains(diagnostic, "does not exist"):
+		return newAIModelConnectionTestFailure("model_unavailable", runErr)
+	default:
+		return newAIModelConnectionTestFailure("failed", runErr)
+	}
+}
+
+var aiProbeHTTPStatusPattern = regexp.MustCompile(`\b(?:http(?:/\d(?:\.\d)?)?(?:\s+status)?|status(?:\s+code)?|response(?:\s+code)?|code)\s*[:=]?\s*(\d{3})\b`)
+
+func hasAIProbeHTTPStatus(diagnostic, expected string) bool {
+	for _, match := range aiProbeHTTPStatusPattern.FindAllStringSubmatch(diagnostic, -1) {
+		if len(match) == 2 && match[1] == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAIProbeNetworkDiagnostic(diagnostic string) bool {
+	for _, phrase := range []string{
+		"connection refused", "connection reset", "connection timed out", "dial tcp",
+		"no such host", "temporary failure in name resolution", "network is unreachable",
+		"dns", "tls", "ssl", "certificate verify failed", "i/o timeout",
+	} {
+		if strings.Contains(diagnostic, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func newAIModelProbeIDs() (string, string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", "", err
+	}
+	encoded := hex.EncodeToString(random[:])
+	return "model-probe-" + encoded, "probe-" + encoded, nil
 }
 
 func genericAIModelConnectionError(ctx context.Context, err error) error {

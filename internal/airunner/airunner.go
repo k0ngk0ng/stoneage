@@ -133,12 +133,18 @@ type MCP struct {
 // The broker should obtain it from the authenticated admin/control plane; a
 // model prompt cannot manufacture a second profile or path.
 type ExecuteRequest struct {
-	ProfileID string     `json:"profile_id"`
-	RequestID string     `json:"request_id"`
-	Run       RunRequest `json:"run_request"`
-	Model     Model      `json:"model"`
-	Skills    []Skill    `json:"skills,omitempty"`
-	MCP       MCP        `json:"mcp"`
+	ProfileID string `json:"profile_id"`
+	RequestID string `json:"request_id"`
+	// Probe selects the model-only connection-test path. Probe requests are
+	// accepted only by the server-side broker and must not carry a game
+	// capability or skills. Keeping this on the existing finite DTO lets the
+	// container retain one audited stdin protocol without making the probe
+	// impersonate a game session.
+	Probe  bool       `json:"probe,omitempty"`
+	Run    RunRequest `json:"run_request"`
+	Model  Model      `json:"model"`
+	Skills []Skill    `json:"skills,omitempty"`
+	MCP    MCP        `json:"mcp"`
 }
 
 // Usage is a JSON-safe copy of the bounded Codex token counters.
@@ -330,6 +336,9 @@ func (executor *Executor) Execute(ctx context.Context, request ExecuteRequest) (
 	if err := ctx.Err(); err != nil {
 		return responseForRequest(request, err), err
 	}
+	if request.Probe {
+		return executor.executeProbeLocked(ctx, request)
+	}
 	if err := executor.ensureProfile(request); err != nil {
 		return responseForRequest(request, err), err
 	}
@@ -373,6 +382,48 @@ func (executor *Executor) Execute(ctx context.Context, request ExecuteRequest) (
 	})
 	response := Response{OK: runErr == nil, ProfileID: request.ProfileID, RequestID: request.RequestID,
 		Result: redactResult(result, request.Model.APIKey, request.MCP.Token)}
+	if runErr != nil {
+		response.Error = ErrorCode(runErr)
+	}
+	return response, runErr
+}
+
+// executeProbeLocked executes one model-only request in the same isolated
+// runtime boundary as a game turn. It deliberately skips the owner marker,
+// game-capability token, skill installation and MCP configuration. The
+// caller must hold executor.mu; the probe volume is disposable and is owned
+// by the container broker rather than by a game profile.
+func (executor *Executor) executeProbeLocked(ctx context.Context, request ExecuteRequest) (Response, error) {
+	if err := executor.ensureProbeProfile(); err != nil {
+		return responseForRequest(request, err), err
+	}
+	paths := executor.profiles
+	runtimeFiles, err := aimodels.Materialize(paths.codexHome, aimodels.RuntimeSettings{
+		Model: request.Model.Model, Provider: request.Model.Provider, BaseURL: request.Model.BaseURL,
+		ReasoningEffort: request.Model.ReasoningEffort, ContextWindow: request.Model.ContextWindow,
+		APIKey: request.Model.APIKey,
+	})
+	if err != nil {
+		wrapped := fmt.Errorf("%w: materialize model", ErrModelConfig)
+		return responseForRequest(request, wrapped), wrapped
+	}
+	runner, err := aicodex.New(aicodex.Config{
+		Binary: executor.cfg.CodexBinary, WorkspaceRoot: paths.workRoot, StateRoot: paths.stateRoot,
+		CodexHome: paths.codexHome, ConfigFile: runtimeFiles.ConfigPath,
+		Model:        request.Model.Model,
+		Provider:     aicodex.ProviderConfig{Name: runtimeFiles.ProviderID, BaseURL: request.Model.BaseURL, WireAPI: "responses"},
+		ModelCatalog: runtimeFiles.CatalogPath, ReasoningEffort: request.Model.ReasoningEffort,
+		WebSearch: "disabled", GitBinary: executor.cfg.GitBinary,
+		Environment: executor.cfg.Environment, TerminationGrace: executor.cfg.TerminationGrace,
+		SecretEnv: "", Limits: executor.cfg.Limits, Clock: executor.cfg.Clock,
+	})
+	if err != nil {
+		wrapped := fmt.Errorf("%w: create Codex runner", ErrExecution)
+		return responseForRequest(request, wrapped), wrapped
+	}
+	result, runErr := runner.Run(ctx, aicodex.RunRequest{ProfileID: request.ProfileID, Prompt: request.Run.Prompt})
+	response := Response{OK: runErr == nil, ProfileID: request.ProfileID, RequestID: request.RequestID,
+		Result: redactResult(result, request.Model.APIKey)}
 	if runErr != nil {
 		response.Error = ErrorCode(runErr)
 	}
@@ -544,25 +595,34 @@ func (executor *Executor) validateRequest(request ExecuteRequest) error {
 	if err := validateHTTPURL(request.Model.BaseURL); err != nil {
 		return fmt.Errorf("%w: model base URL", ErrModelConfig)
 	}
-	if len(request.Skills) > maxSkillCount {
-		return fmt.Errorf("%w: too many skills", ErrInvalidRequest)
-	}
-	seenSkills := make(map[string]struct{}, len(request.Skills))
-	for _, skill := range request.Skills {
-		name := strings.TrimSpace(skill.Name)
-		if name == "" || len([]byte(name)) > maxSkillNameBytes || hasControl(name) {
-			return ErrSkillMismatch
+	if request.Probe {
+		// A model probe has no game identity or tool surface. Reject rather
+		// than silently ignore either field so a caller cannot accidentally
+		// turn a connection check into a capability-bearing request.
+		if request.Run.Resume || request.Run.ThreadID != "" || len(request.Skills) != 0 || request.MCP != (MCP{}) {
+			return fmt.Errorf("%w: model probe cannot carry game state", ErrInvalidRequest)
 		}
-		if _, exists := seenSkills[name]; exists {
-			return ErrSkillMismatch
+	} else {
+		if len(request.Skills) > maxSkillCount {
+			return fmt.Errorf("%w: too many skills", ErrInvalidRequest)
 		}
-		seenSkills[name] = struct{}{}
-		if len([]byte(skill.Version)) > maxSkillVerBytes || hasControl(skill.Version) || len([]byte(skill.Digest)) > maxDigestBytes || hasControl(skill.Digest) {
-			return ErrSkillMismatch
+		seenSkills := make(map[string]struct{}, len(request.Skills))
+		for _, skill := range request.Skills {
+			name := strings.TrimSpace(skill.Name)
+			if name == "" || len([]byte(name)) > maxSkillNameBytes || hasControl(name) {
+				return ErrSkillMismatch
+			}
+			if _, exists := seenSkills[name]; exists {
+				return ErrSkillMismatch
+			}
+			seenSkills[name] = struct{}{}
+			if len([]byte(skill.Version)) > maxSkillVerBytes || hasControl(skill.Version) || len([]byte(skill.Digest)) > maxDigestBytes || hasControl(skill.Digest) {
+				return ErrSkillMismatch
+			}
 		}
-	}
-	if err := validateMCP(request.MCP); err != nil {
-		return err
+		if err := validateMCP(request.MCP); err != nil {
+			return err
+		}
 	}
 	promptLimit := executor.cfg.Limits.MaxPromptBytes
 	if promptLimit <= 0 {
@@ -643,6 +703,27 @@ func (executor *Executor) ensureProfile(request ExecuteRequest) error {
 	for _, path := range []string{paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome} {
 		if err := ensurePrivateDir(path); err != nil {
 			return fmt.Errorf("%w: profile directory: %v", ErrInvalidConfig, err)
+		}
+	}
+	return nil
+}
+
+// ensureProbeProfile prepares only the private directories required by the
+// Codex model probe. In particular it does not create an owner marker or a
+// game-capability token, so a probe cannot be mistaken for a logged-in game
+// profile even if its disposable volume is inspected while the container is
+// running.
+func (executor *Executor) ensureProbeProfile() error {
+	paths := executor.profiles
+	if err := executor.guard.CheckAll(paths.root, paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome); err != nil {
+		return fmt.Errorf("%w: probe path is not isolated", ErrInvalidConfig)
+	}
+	if err := ensurePrivateDir(paths.root); err != nil {
+		return fmt.Errorf("%w: probe state root", ErrInvalidConfig)
+	}
+	for _, path := range []string{paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome} {
+		if err := ensurePrivateDir(path); err != nil {
+			return fmt.Errorf("%w: probe directory", ErrInvalidConfig)
 		}
 	}
 	return nil

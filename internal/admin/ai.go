@@ -721,16 +721,18 @@ func (server *Server) aiModelAPI(response http.ResponseWriter, request *http.Req
 			playerJSONError(response, http.StatusServiceUnavailable, "AI runtime 尚未接入连接测试适配器")
 			return
 		}
-		ctx, cancel := context.WithTimeout(request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(request.Context(), 120*time.Second)
 		defer cancel()
+		started := time.Now()
 		if err := server.aiConnectionTester.TestModelConfig(ctx, parts[0]); err != nil {
 			// Never forward an HTTP response body, a provider error, or a key.
-			_ = server.recordAIAudit(request.Context(), data, "ai_model_test_failed", parts[0], map[string]any{"result": "failed"})
-			playerJSONError(response, http.StatusBadGateway, "AI 模型连接失败")
+			status, code, message := aiModelConnectionFailure(err)
+			_ = server.recordAIAudit(request.Context(), data, "ai_model_test_failed", parts[0], map[string]any{"result": "failed", "code": code})
+			playerJSON(response, status, map[string]any{"error": message, "code": code, "duration_ms": time.Since(started).Milliseconds()})
 			return
 		}
 		_ = server.recordAIAudit(request.Context(), data, "ai_model_test_succeeded", parts[0], map[string]any{"result": "succeeded"})
-		playerJSON(response, http.StatusOK, map[string]any{"ok": true})
+		playerJSON(response, http.StatusOK, map[string]any{"ok": true, "duration_ms": time.Since(started).Milliseconds()})
 		return
 	}
 	if len(parts) != 1 || !aiIDPattern.MatchString(parts[0]) {

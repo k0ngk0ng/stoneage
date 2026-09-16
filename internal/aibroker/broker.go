@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,9 +21,10 @@ import (
 )
 
 var (
-	profileIDPattern  = mustNamePattern(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-	requestIDPattern  = mustNamePattern(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
-	namePrefixPattern = mustNamePattern(`^[a-z0-9][a-z0-9_.-]{0,24}$`)
+	profileIDPattern   = mustNamePattern(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	requestIDPattern   = mustNamePattern(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+	namePrefixPattern  = mustNamePattern(`^[a-z0-9][a-z0-9_.-]{0,24}$`)
+	memoryLimitPattern = regexp.MustCompile(`(?i)^([0-9]+(?:\.[0-9]+)?)(b|k|kb|m|mb|g|gb|t|tb|p|pb)?$`)
 )
 
 const (
@@ -67,6 +70,21 @@ func New(config Config) (*Broker, error) {
 	}
 	if hasControlOrSpace(config.Network) || strings.HasPrefix(config.Network, "-") {
 		return nil, fmt.Errorf("%w: network is invalid", ErrInvalidConfig)
+	}
+	if config.CPUs == 0 {
+		config.CPUs = DefaultCPUs
+	}
+	if config.Memory == "" {
+		config.Memory = DefaultMemory
+	}
+	if config.MemorySwap == "" {
+		config.MemorySwap = DefaultMemorySwap
+	}
+	if config.PidsLimit == 0 {
+		config.PidsLimit = DefaultPidsLimit
+	}
+	if err := validateResourceLimits(config.CPUs, config.Memory, config.MemorySwap, config.PidsLimit); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
 	config.NamePrefix = strings.ToLower(strings.TrimSpace(config.NamePrefix))
 	if config.NamePrefix == "" {
@@ -400,6 +418,107 @@ func (broker *Broker) ContainerName(profileID, requestID string) string {
 		prefix = broker.config.NamePrefix
 	}
 	return deterministicName(prefix, "run", profileID, requestID)
+}
+
+// CleanupProbe removes the disposable container and profile volume belonging
+// to one exact model-only probe. The request must still carry Probe=true and
+// its complete payload hash must match the journal row created by Run; this
+// prevents an administrator cleanup call from addressing another profile or
+// from deleting a volume after its request credentials have changed.
+//
+// Cleanup is fail-closed. A Docker inspector is required to prove the
+// container is absent or terminal. Running, transitional, inspection-error,
+// and removal-error cases leave both the container and volume in place. Game
+// requests and their unknown outcomes never use this method.
+func (broker *Broker) CleanupProbe(ctx context.Context, request airunner.ExecuteRequest) error {
+	if broker == nil || broker.docker == nil || broker.journal == nil {
+		return fmt.Errorf("%w: broker is not configured", ErrInvalidConfig)
+	}
+	if !request.Probe {
+		return fmt.Errorf("%w: probe cleanup requires a model-only request", ErrInvalidRequest)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := validateRequest(request); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("%w: encode probe request", ErrInvalidRequest)
+	}
+	if len(payload) > broker.config.MaxRequestBytes {
+		return ErrRequestTooLarge
+	}
+	hash := sha256.Sum256(payload)
+	payloadHash := hex.EncodeToString(hash[:])
+	entry, err := broker.journal.Get(ctx, request.ProfileID, request.RequestID)
+	if err != nil {
+		return err
+	}
+	if entry.PayloadHash != payloadHash || entry.ContainerName != broker.ContainerName(request.ProfileID, request.RequestID) || entry.VolumeName != broker.VolumeName(request.ProfileID) {
+		return ErrJournalConflict
+	}
+	if entry.State == RunRunning {
+		return ErrRunRunning
+	}
+	if entry.State != RunCompleted && entry.State != RunUnknown {
+		return ErrResponse
+	}
+
+	// Keep a locally active run from being removed between the journal read and
+	// lifecycle inspection. A broker process cannot normally have an active
+	// run for a completed/unknown row, but this fence also covers cancellation
+	// and concurrent cleanup calls.
+	broker.mu.Lock()
+	if broker.closed {
+		broker.mu.Unlock()
+		return ErrClosed
+	}
+	if _, active := broker.active[entry.ContainerName]; active {
+		broker.mu.Unlock()
+		return ErrProfileBusy
+	}
+	broker.mu.Unlock()
+
+	inspector, ok := broker.docker.(DockerInspector)
+	if !ok {
+		return fmt.Errorf("%w: probe container inspector is required", ErrDocker)
+	}
+	inspectCtx, inspectCancel := context.WithTimeout(ctx, broker.config.StopTimeout)
+	state, inspectErr := inspector.Inspect(inspectCtx, entry.ContainerName)
+	inspectCancel()
+	containerAbsent := errors.Is(inspectErr, ErrContainerNotFound)
+	if inspectErr != nil && !containerAbsent {
+		return fmt.Errorf("%w: inspect probe container", ErrDocker)
+	}
+	if !containerAbsent {
+		if !terminalContainerState(state) {
+			return ErrRunRunning
+		}
+		remover, removable := broker.docker.(DockerRemover)
+		if !removable {
+			return fmt.Errorf("%w: probe container remover is required", ErrDocker)
+		}
+		removeCtx, removeCancel := context.WithTimeout(ctx, broker.config.StopTimeout)
+		removeErr := remover.Remove(removeCtx, entry.ContainerName)
+		removeCancel()
+		if removeErr != nil && !errors.Is(removeErr, ErrContainerNotFound) {
+			return removeErr
+		}
+	}
+
+	volumeRemover, removable := broker.docker.(DockerVolumeRemover)
+	if !removable {
+		return fmt.Errorf("%w: probe volume remover is required", ErrDocker)
+	}
+	volumeCtx, volumeCancel := context.WithTimeout(ctx, broker.config.StopTimeout)
+	volumeErr := volumeRemover.RemoveVolume(volumeCtx, entry.VolumeName)
+	volumeCancel()
+	if volumeErr != nil {
+		return volumeErr
+	}
+	return nil
 }
 
 // ProfileVolumeName is the default-prefix helper for schedulers that need to
@@ -881,7 +1000,8 @@ func (broker *Broker) runSpec(profileID, volumeName, containerName string) RunSp
 	command := append([]string(nil), broker.config.RunnerCommand...)
 	command = append(command, profileArg, profileID)
 	mount := VolumeMount{Name: volumeName, Target: runtimeStateRoot, ReadOnly: false}
-	return RunSpec{Image: broker.config.Image, Network: broker.config.Network, ContainerName: containerName,
+	return RunSpec{Image: broker.config.Image, Network: broker.config.Network, CPUs: broker.config.CPUs,
+		Memory: broker.config.Memory, MemorySwap: broker.config.MemorySwap, PidsLimit: broker.config.PidsLimit, ContainerName: containerName,
 		VolumeName: volumeName, Mounts: []VolumeMount{mount}, Volumes: []VolumeMount{mount}, User: runtimeUser,
 		ReadOnlyRootfs: true, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"},
 		NoNewPrivileges: true, Tmpfs: map[string]string{"/run": "rw,noexec,nosuid,nodev,size=" + DefaultRunTmpfsSize,
@@ -1087,7 +1207,14 @@ func validateRequest(request airunner.ExecuteRequest) error {
 	if request.Model.ContextWindow < 0 || request.Model.ContextWindow > 16*1024*1024 || len([]byte(request.Model.ReasoningEffort)) > 64 || strings.ContainsAny(request.Model.ReasoningEffort, "\x00\r\n") {
 		return fmt.Errorf("%w: model limits are invalid", ErrInvalidRequest)
 	}
-	if request.MCP.Endpoint == "" || !validHTTPURL(request.MCP.Endpoint) || !validGameToken(request.MCP.Token) || request.MCP.CharacterID == "" || len([]byte(request.MCP.CharacterID)) > 128 || strings.ContainsAny(request.MCP.CharacterID, "\x00\r\n") || len([]byte(request.MCP.CharacterName)) > 4096 || strings.ContainsAny(request.MCP.CharacterName, "\x00\r\n") {
+	if request.Probe {
+		// Probe requests are model-only. The runtime performs the same strict
+		// check, but keep it at the broker boundary so a malformed request is
+		// rejected before it can claim a container/profile volume.
+		if len(request.Skills) != 0 || request.MCP != (airunner.MCP{}) || request.Run.Resume || request.Run.ThreadID != "" {
+			return fmt.Errorf("%w: model probe cannot carry game capability", ErrInvalidRequest)
+		}
+	} else if request.MCP.Endpoint == "" || !validHTTPURL(request.MCP.Endpoint) || !validGameToken(request.MCP.Token) || request.MCP.CharacterID == "" || len([]byte(request.MCP.CharacterID)) > 128 || strings.ContainsAny(request.MCP.CharacterID, "\x00\r\n") || len([]byte(request.MCP.CharacterName)) > 4096 || strings.ContainsAny(request.MCP.CharacterName, "\x00\r\n") {
 		return fmt.Errorf("%w: game capability is incomplete", ErrInvalidRequest)
 	}
 	seenSkills := make(map[string]struct{}, len(request.Skills))
@@ -1191,6 +1318,56 @@ func validateEnvironment(environment map[string]string) error {
 		}
 	}
 	return nil
+}
+
+const maxRuntimePids = 1 << 20
+
+func validateResourceLimits(cpus float64, memory, memorySwap string, pidsLimit int) error {
+	if math.IsNaN(cpus) || math.IsInf(cpus, 0) || cpus <= 0 || cpus > 64 {
+		return fmt.Errorf("CPU limit is invalid")
+	}
+	memoryBytes, ok := parseMemoryLimit(memory)
+	if !ok {
+		return fmt.Errorf("memory limit is invalid")
+	}
+	swapBytes, ok := parseMemoryLimit(memorySwap)
+	if !ok || swapBytes < memoryBytes {
+		return fmt.Errorf("memory-swap limit is invalid")
+	}
+	if pidsLimit <= 0 || pidsLimit > maxRuntimePids {
+		return fmt.Errorf("pids limit is invalid")
+	}
+	return nil
+}
+
+func parseMemoryLimit(value string) (int64, bool) {
+	matches := memoryLimitPattern.FindStringSubmatch(value)
+	if len(matches) != 3 {
+		return 0, false
+	}
+	amount, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil || math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+		return 0, false
+	}
+	multiplier := float64(1)
+	switch strings.ToLower(matches[2]) {
+	case "k", "kb":
+		multiplier = 1 << 10
+	case "m", "mb":
+		multiplier = 1 << 20
+	case "g", "gb":
+		multiplier = 1 << 30
+	case "t", "tb":
+		multiplier = 1 << 40
+	case "p", "pb":
+		multiplier = 1 << 50
+	}
+	bytes := amount * multiplier
+	maxInt64 := float64(int64(^uint64(0) >> 1))
+	if bytes < 1 || bytes > maxInt64 {
+		return 0, false
+	}
+	return int64(bytes), true
 }
 
 func cloneEnvironment(source map[string]string) map[string]string {

@@ -23,6 +23,8 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <time.h>
+#include <sys/time.h>
 #include <limits.h>
 
 #define CHARDATASIZE 65536
@@ -68,6 +70,7 @@ static void makeDirFilename(char *out, int outlen, char *base, int hash,
 #define BRIDGE_HEADER_MAX 4096
 #define BRIDGE_ARCHIVE_MAX (CHARDATASIZE - 1)
 #define BRIDGE_REQUEST_MAX (BRIDGE_HEADER_MAX + BRIDGE_ARCHIVE_MAX * 2)
+#define STONEAGE_SAAC_ADMIN_BRIDGE_POLL_INTERVAL_MS 25
 
 struct bridge_request {
     char id[BRIDGE_ID_MAX + 1];
@@ -99,6 +102,31 @@ struct bridge_response {
     const unsigned char *payload;
     size_t payload_length;
 };
+
+/* The legacy SAAC loop can run thousands of times per second. Directory
+ * setup is a process-start concern, and scanning an empty queue on every
+ * iteration needlessly turns the file bridge into a busy poller. Keep the
+ * security checks on startup (and after a queue disappears), while limiting
+ * normal scans to the same 25 ms cadence used by the Go queue client. */
+static int stoneage_admin_bridge_initialized = 0;
+static unsigned long long stoneage_admin_bridge_next_poll_ms = 0;
+static unsigned long long stoneage_admin_bridge_retry_ms = 0;
+
+static unsigned long long stoneage_admin_bridge_now_ms(void)
+{
+    struct timespec monotonic;
+    struct timeval now;
+    if (clock_gettime(CLOCK_MONOTONIC, &monotonic) == 0) {
+        return (unsigned long long)monotonic.tv_sec * 1000ULL +
+               (unsigned long long)monotonic.tv_nsec / 1000000ULL;
+    }
+    /* Linux always provides CLOCK_MONOTONIC. Keep a usable fallback for
+     * older test/build environments; production scheduling never depends on
+     * wall-clock adjustments. */
+    if (gettimeofday(&now, NULL) != 0) return 0;
+    return (unsigned long long)now.tv_sec * 1000ULL +
+           (unsigned long long)now.tv_usec / 1000ULL;
+}
 
 static const char *bridge_directory(void)
 {
@@ -705,6 +733,8 @@ int stoneage_admin_bridge_init(void)
     char responses[PATH_MAX];
     struct stat info;
 
+    if (stoneage_admin_bridge_initialized) return 0;
+
     if (mkdir(bridge_directory(), 0700) < 0 && errno != EEXIST) {
         log("admin bridge mkdir failed: %s\n", strerror(errno));
         return -1;
@@ -728,6 +758,7 @@ int stoneage_admin_bridge_init(void)
         log("admin bridge queue directories are unavailable\n");
         return -1;
     }
+    stoneage_admin_bridge_initialized = 1;
     return 0;
 }
 
@@ -739,12 +770,29 @@ void stoneage_admin_bridge_poll(void)
     char request_directory[PATH_MAX];
     struct stat info;
     size_t name_length;
+    unsigned long long now_ms;
 
-    if (stoneage_admin_bridge_init() < 0) return;
+    now_ms = stoneage_admin_bridge_now_ms();
+    if (stoneage_admin_bridge_initialized &&
+        now_ms < stoneage_admin_bridge_next_poll_ms) return;
+    if (!stoneage_admin_bridge_initialized &&
+        now_ms < stoneage_admin_bridge_retry_ms) return;
+    if (stoneage_admin_bridge_init() < 0) {
+        stoneage_admin_bridge_retry_ms = now_ms + 1000ULL;
+        return;
+    }
+    stoneage_admin_bridge_next_poll_ms =
+        now_ms + STONEAGE_SAAC_ADMIN_BRIDGE_POLL_INTERVAL_MS;
     if (!bridge_subdirectory(request_directory, sizeof(request_directory),
                              "requests")) return;
     directory = opendir(request_directory);
-    if (directory == NULL) return;
+    if (directory == NULL) {
+        /* Allow a recreated/mounted queue to be revalidated, but avoid
+         * repeating mkdir/chmod/lstat on every failed main-loop iteration. */
+        stoneage_admin_bridge_initialized = 0;
+        stoneage_admin_bridge_retry_ms = now_ms + 1000ULL;
+        return;
+    }
     while ((entry = readdir(directory)) != NULL) {
         name_length = strlen(entry->d_name);
         if (name_length <= 4 ||

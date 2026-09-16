@@ -16,7 +16,7 @@
 | 出生、随机、自定义人物与宠物等级，默认骑乘 | 真实管理员 HTTP 创建、独立原生存档、实际重新登录 | 随机计划只生成一次 |
 | 独立容器运行 | 已发布 rc.4 镜像通过真实 DeepSeek/Codex、Factory/broker 与 QA 游戏完整链路；角色 1→2 级 | 短时联调通过，长期自主生活仍待观察 |
 
-当前工作树普通回归已通过：`internal/ai...`、`internal/admin`、`cmd/stoneage-admin`、`cmd/stoneage-ai-runner` 和 `cmd/stoneage-game-mcp`。日志：`build/ai/delivery-current-regression.log`。这项回归默认跳过显式 opt-in 的真实模型/游戏测试，不能代替表中的实测记录。已发布 `v0.1.47-rc.4` 候选版，尚未部署到生产。
+当前工作树普通回归已通过：`internal/ai...`、`internal/admin`、`cmd/stoneage-admin`、`cmd/stoneage-ai-runner` 和 `cmd/stoneage-game-mcp`。日志：`build/ai/delivery-current-regression.log`。这项回归默认跳过显式 opt-in 的真实模型/游戏测试，不能代替表中的实测记录。已发布并部署 `v0.1.47-rc.4` 候选版；下述新修复仍需单独发布。
 
 部署包检查 `scripts/test-deployment-package.py` 也已通过，日志为 `build/ai/delivery-package-regression.log`；检查覆盖 AI Compose 文件随包分发、配置变量和项目发布入口的接线，使用模拟 Docker，不构建、拉取或验证实际镜像。
 
@@ -24,7 +24,7 @@
 
 ## 已发布镜像联调（2026-09-17）
 
-候选版：[v0.1.47-rc.4](https://github.com/k0ngk0ng/stoneage/releases/tag/v0.1.47-rc.4)，发布提交 `59b8fc0364f67ee009c504f08ffab34869b4c395`。GitHub Actions 全部检查及三组镜像发布成功，临时公开后已恢复仓库私有；未执行生产部署。
+候选版：[v0.1.47-rc.4](https://github.com/k0ngk0ng/stoneage/releases/tag/v0.1.47-rc.4)，发布提交 `59b8fc0364f67ee009c504f08ffab34869b4c395`。GitHub Actions 全部检查及三组镜像发布成功，临时公开后已恢复仓库私有；后续已部署到生产。
 
 AI 镜像固定引用：
 
@@ -42,7 +42,7 @@ macOS OrbStack 的 Docker CLI 是按程序名分发的多命令二进制；本�
 
 ## 管理端操作
 
-1. 进入 `/ai/models`，配置 DeepSeek `deepseek-flash`、OpenAI 或自定义 Base URL / 模型。统一使用 Responses API。保存密钥后，已接入连接测试器的本地模式可点击测试；容器模式目前需启动 AI 玩家并查看运行结果来验证连接，不会改用宿主机 Codex 测试。
+1. 进入 `/ai/models`，配置 DeepSeek `deepseek-flash`、OpenAI 或自定义 Base URL / 模型。统一使用 Responses API。保存密钥后点击测试。新版容器模式通过实际 AI 运行镜像执行独立的 Responses 请求，不需要创建或启动游戏玩家；会产生少量模型用量。测试最长默认 60 秒，模型配置的更短超时优先生效，同一管理进程同时只运行一个连接测试。旧版 rc.4 尚不支持此按钮。
 2. 进入 `/ai/profiles` 创建 AI 玩家，绑定模型，填写人格和生活目标。默认目标为“自主生活”，调试时可把心跳间隔设为 60 秒，正常默认 300 秒。
 3. 选择出生、随机或自定义初始状态。人物等级、配点、出生村、宠物种类和宠物等级均属于创建时配置，重启不会重新生成。默认开启骑宠和无限游戏资金。
 4. 初始化成功后点击启动。观察“运行时”的当前活动、活动期限、下次心跳和会话状态；点击“查看”读取私人笔记、定时提醒及审计事件。笔记显示最近 50 条，提醒优先显示待处理项，超出时明确提示；这只是读取，不会启动或完成活动。仅把配置设成 `active` 不代表运行时已启动。
@@ -166,3 +166,17 @@ STONEAGE_ADMIN_INITIAL_LIVE_TEST=1 GOCACHE="$PWD/build/ai/go-cache" \
 ```
 
 此测试还依赖独立 QA 的 `build/player-integration/queues` 原生管理队列。旧 QA 二进制不含初始化接口，本轮使用已存在的 GCC 镜像离线编译当前模块与补丁 0020–0025，并仅更新 `stoneage-player-qa-gmsv-1`；没有下载或构建 Docker 镜像。当前 QA 程序来源及 SHA-256 见 `build/ai/initial-state-qa-20260916/manifest.json`。更新后普通角色重新登录、双向公屏与邮件也重新通过，日志分别为 `build/ai/provision-current-native-live.log`、`build/ai/social-current-native-live.log`。初始化相关 Go 竞态检查和原生解析/配点/回滚/保存测试通过，Go 日志为 `build/ai/admin-initial-regression.log`。
+
+## 启动卡顿与模型连接修复（待发布）
+
+生产只读采样发现：双核主机上，GMSV 约占 86% CPU、SAAC 约占 50%，当时等待模型的 AI 容器接近 0%。SAAC 的文件队列在三秒内重复执行约 12,000 次 mkdir、chmod、lstat；这是已确认的持续负载来源，不能据此认定已捕获启动瞬间的全部峰值。
+
+本次修复将 SAAC 目录初始化缓存，并让 SAAC/GMSV 文件队列最多每 25ms 扫描一次；使用单调时钟，SAAC 目录故障每秒重试。AI 游戏回合及模型测试容器默认限制为 0.5 CPU、512 MiB 内存、无额外 swap、128 个进程。这些是单容器上限，多玩家总量仍需依据主机容量控制。
+
+游戏模型回合现在使用所选模型的超时配置；连接不通时不再仅依赖外层默认 30 分钟期限。未知结果仍保留恢复检查，不通过立即重复提交来重试游戏操作。模型地址必须能从 AI 容器访问，容器内的 127.0.0.1 指向容器自身；地址由管理员配置。
+
+审计事件显示中文时间线，包含执行者、动作、结果和原因，原始 JSON 可展开查看。模型测试返回耗时及固定的中文错误分类，不向界面返回供应商原始错误或密钥。
+
+上述变更在工作树中实现，启动峰值和 CPU 改善仍须用发布镜像实测；旧版生产容器不会自动获得新资源限制。
+
+本次独立验证：8 个相关 Go 包的完整竞态测试通过（`build/ai/incident-regression.log`）；新增 probe 测试后 admin、airunner、管理入口通过，broker 测试的模拟失败配置纠正后完整竞态回归通过（`build/ai/incident-probe-final.log`、`build/ai/incident-broker-final.log`）。管理端 6 组 JS 测试及 SAAC native harness 通过。真实本机 Codex 与本地合成 Responses 服务完成纯模型 probe、两轮恢复与技能安装检查（`build/ai/incident-image-smoke.log`）；部署包检查通过（`build/ai/incident-package.log`）。这些结果不等于 Linux 发布镜像或生产启动峰值验收。

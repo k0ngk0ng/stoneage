@@ -93,6 +93,323 @@
   }
   window.StoneAgeAIInitial = {config:initialConfig, ridingText:initialRidingText};
 
+  const aiAuditEventNames = Object.freeze({
+    "profile.created": "创建 AI 玩家配置",
+    "profile.updated": "更新 AI 玩家配置",
+    "profile.deleted": "删除 AI 玩家配置",
+    "memory.confirmed": "确认长期记忆",
+    "checkpoint.saved": "保存运行检查点",
+    "decision.started": "开始模型决策",
+    "decision.finished": "模型决策完成",
+    "decision.failed": "模型决策失败",
+    "budget.exceeded": "模型预算不足",
+    "game.observation": "记录游戏观察",
+    "schedule.created": "创建定时提醒",
+    "schedule.claimed": "领取定时提醒",
+    "schedule.completed": "完成定时提醒投递",
+    "schedule.cancelled": "取消定时提醒",
+    "ai_unknown_attempt_reviewed": "核查未知模型回合",
+    "supervisor.turn_completed": "模型回合完成",
+    "supervisor.turn_failed": "模型回合失败",
+    "supervisor.no_progress": "检测到游戏没有进展",
+    "supervisor.goal_completed": "游戏目标完成"
+  });
+
+  const aiAuditFieldNames = Object.freeze({
+    account_id: "账号",
+    character_id: "角色",
+    status: "状态",
+    model_config_id: "模型配置",
+    personality: "人格",
+    goal: "目标",
+    skills: "Skills",
+    unlimited_funds: "无限资金",
+    daily_token_budget: "日 token 限额",
+    external_spend_limit: "对外支出限额",
+    initial_state: "初始状态",
+    life: "生活策略",
+    changed: "变更项"
+  });
+
+  function aiAuditDetailObject(detail) {
+    return detail && typeof detail === "object" && !Array.isArray(detail) ? detail : {};
+  }
+
+  function aiAuditText(value) {
+    return value === undefined || value === null ? "" : String(value);
+  }
+
+  function aiAuditFirstText(detail, keys) {
+    for (const key of keys) {
+      const value = detail[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+  }
+
+  function aiAuditTokens(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "";
+    return number.toLocaleString("zh-CN") + " tokens";
+  }
+
+  function aiAuditTime(value) {
+    if (!value) return "时间未知";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return aiAuditText(value);
+    return date.toLocaleString("zh-CN");
+  }
+
+  function aiAuditDateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  }
+
+  function aiAuditDuration(value) {
+    const nanoseconds = Number(value);
+    if (!Number.isFinite(nanoseconds) || nanoseconds <= 0) return "";
+    let seconds = Math.round(nanoseconds / 1000000000);
+    if (seconds < 60) return seconds + " 秒";
+    const minutes = Math.floor(seconds / 60);
+    seconds %= 60;
+    if (minutes < 60) return minutes + " 分钟" + (seconds ? " " + seconds + " 秒" : "");
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours < 24) return hours + " 小时" + (remainingMinutes ? " " + remainingMinutes + " 分钟" : "");
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return days + " 天" + (remainingHours ? " " + remainingHours + " 小时" : "");
+  }
+
+  function aiAuditChangedFields(value) {
+    if (!Array.isArray(value)) return "";
+    return value.map(function (field) { return aiAuditFieldNames[field] || aiAuditText(field); }).filter(Boolean).join("、");
+  }
+
+  function aiAuditUnknownName(kind) {
+    if (kind.indexOf("supervisor.") === 0) return "运行监督事件（" + kind + "）";
+    if (kind.indexOf("game.") === 0) return "游戏事件（" + kind + "）";
+    if (kind.indexOf("schedule.") === 0) return "定时任务事件（" + kind + "）";
+    return "系统事件（" + kind + "）";
+  }
+
+  function describeAIEvent(event) {
+    const kind = aiAuditText(event && event.kind).trim() || "unknown";
+    const detail = aiAuditDetailObject(event && event.detail);
+    const description = {
+      name: aiAuditEventNames[kind] || aiAuditUnknownName(kind),
+      action: "系统记录事件类型「" + kind + "」",
+      result: "事件已记录",
+      reasonLabel: "",
+      reason: "",
+      next: "",
+      compact: kind === "checkpoint.saved",
+      severity: "normal"
+    };
+    const id = aiAuditText(detail.schedule_id);
+    const runAt = detail.run_at ? aiAuditTime(detail.run_at) : "";
+    const nextRunAt = detail.next_run_at ? aiAuditTime(detail.next_run_at) : "";
+    const scheduleName = aiAuditText(detail.kind || detail.title).trim();
+    const scheduleTarget = scheduleName ? "「" + scheduleName + "」" : (id ? "「" + id + "」" : "");
+    const attemptTokens = aiAuditTokens(detail.charged_tokens);
+    switch (kind) {
+      case "profile.created":
+        description.action = "创建 AI 玩家配置";
+        description.result = detail.version ? "配置已创建，版本 " + detail.version : "配置已创建";
+        break;
+      case "profile.updated":
+        description.action = aiAuditChangedFields(detail.changed) ? "更新：" + aiAuditChangedFields(detail.changed) : "更新 AI 玩家配置";
+        description.result = detail.version ? "配置已保存，版本 " + detail.version : "配置已保存";
+        break;
+      case "profile.deleted":
+        description.action = "删除 AI 玩家配置";
+        description.result = detail.version ? "配置已删除（最后版本 " + detail.version + "）" : "配置已删除";
+        break;
+      case "memory.confirmed":
+        description.action = detail.subject ? "确认关于「" + detail.subject + "」的记忆" : "确认一条记忆";
+        description.result = "已写入长期记忆";
+        break;
+      case "checkpoint.saved":
+        description.action = "保存运行检查点";
+        description.result = detail.version ? "检查点版本 " + detail.version + " 已保存" : "检查点已保存";
+        break;
+      case "decision.started":
+        description.action = detail.reserved_tokens ? "预留 " + aiAuditTokens(detail.reserved_tokens) + "，开始一次模型决策" : "开始一次模型决策";
+        description.result = "等待模型返回";
+        break;
+      case "decision.finished":
+        description.action = "结算一次模型决策";
+        description.result = attemptTokens ? "模型决策已完成并结算 " + attemptTokens : "模型决策已完成并结算";
+        break;
+      case "decision.failed":
+        description.action = "结算一次失败的模型决策";
+        description.result = attemptTokens ? "失败回合已结算 " + attemptTokens : "失败回合已结算";
+        description.reasonLabel = "失败原因";
+        description.reason = aiAuditFirstText(detail, ["error", "reason", "message"]) || "事件详情未记录失败原因";
+        description.severity = "error";
+        break;
+      case "budget.exceeded":
+        description.action = detail.requested_tokens ? "尝试预留 " + aiAuditTokens(detail.requested_tokens) : "尝试预留模型 token";
+        description.result = "未启动模型决策：已超过每日 token 限额" + (detail.budget ? "（限额 " + aiAuditTokens(detail.budget) + "）" : "");
+        description.reasonLabel = "说明";
+        description.reason = detail.date ? "计费日期：" + detail.date : "本次请求被预算检查拦截";
+        description.severity = "warning";
+        break;
+      case "game.observation":
+        description.action = detail.kind ? "记录「" + detail.kind + "」游戏观察" : "记录一次游戏观察";
+        if (detail.subject) description.action += "（" + detail.subject + "）";
+        description.result = "观察已写入玩家记忆";
+        break;
+      case "schedule.created":
+        description.action = "安排" + scheduleTarget + "定时提醒";
+        description.result = runAt ? "已创建，计划于 " + runAt + " 处理" : "定时提醒已创建";
+        const createdRepeat = aiAuditDuration(detail.repeat_interval_ns);
+        if (createdRepeat) description.result += "，每 " + createdRepeat + "重复";
+        break;
+      case "schedule.claimed":
+        description.action = "领取" + scheduleTarget + "定时提醒";
+        description.result = runAt ? "已领取，原计划时间为 " + runAt + "，等待投递" : "已领取，等待投递";
+        break;
+      case "schedule.completed":
+        description.action = "处理" + scheduleTarget + "定时提醒";
+        if (detail.status === "pending") {
+          description.result = nextRunAt ? "本次提醒已投递并保留，下一次为 " + nextRunAt : "本次提醒已投递并保留";
+        } else {
+          description.result = "定时提醒已投递完成";
+        }
+        break;
+      case "schedule.cancelled":
+        description.action = "取消" + scheduleTarget + "定时提醒";
+        description.result = "定时提醒已取消";
+        description.reasonLabel = "取消原因";
+        description.reason = aiAuditFirstText(detail, ["reason"]) || "事件详情未记录取消原因";
+        description.severity = "warning";
+        break;
+      case "ai_unknown_attempt_reviewed":
+        description.action = detail.attempt_id ? "核查未知模型回合 " + detail.attempt_id : "核查未知模型回合";
+        description.result = "核查已记录；模型结果仍保持未知";
+        description.reasonLabel = "核查说明";
+        description.reason = aiAuditFirstText(detail, ["reason"]) || "事件详情未记录核查说明";
+        description.severity = "warning";
+        break;
+      case "supervisor.turn_completed":
+        description.action = "监督器确认模型回合完成";
+        description.result = detail.game_goal_completed === true ? "模型回合完成，游戏目标也已完成" : "模型回合完成，等待后续游戏进展";
+        break;
+      case "supervisor.turn_failed":
+        description.action = "监督器处理一次失败的模型回合";
+        description.result = detail.failure_count ? "第 " + detail.failure_count + " 次失败" : "模型回合失败";
+        description.reasonLabel = "失败原因";
+        description.reason = aiAuditFirstText(detail, ["error", "reason", "message"]) || "事件详情未记录失败原因";
+        description.severity = "error";
+        break;
+      case "supervisor.no_progress":
+        description.action = detail.count ? "记录第 " + detail.count + " 次无进展诊断" : "记录一次无进展诊断";
+        description.result = detail.window_seconds ? "在 " + detail.window_seconds + " 秒窗口内未观察到游戏进展" : "未观察到游戏进展";
+        description.reasonLabel = "处理";
+        description.reason = "达到配置阈值后会暂停玩家；当前事件只表示已进行诊断";
+        description.severity = "warning";
+        break;
+      case "supervisor.goal_completed":
+        description.action = "监督器确认游戏目标完成";
+        description.result = "游戏目标已完成，玩家运行被停止";
+        break;
+    }
+    if (!description.next) description.next = aiAuditFirstText(detail, ["next_step", "next", "follow_up"]);
+    return description;
+  }
+
+  function aiAuditJSON(value) {
+    try { return JSON.stringify(value === undefined ? {} : value, null, 2); }
+    catch (_) { return String(value); }
+  }
+
+  function aiAuditElement(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+  }
+
+  function aiAuditField(parent, label, text, className) {
+    if (!text) return;
+    const row = aiAuditElement("div", "ai-audit-field" + (className ? " " + className : ""));
+    row.appendChild(aiAuditElement("dt", "ai-audit-label", label));
+    row.appendChild(aiAuditElement("dd", "ai-audit-value", text));
+    parent.appendChild(row);
+  }
+
+  function renderAIAuditEvents(parent, events) {
+    const section = aiAuditElement("section", "ai-audit-events");
+    section.appendChild(aiAuditElement("h3", "ai-audit-heading", "审计时间线"));
+    section.appendChild(aiAuditElement("p", "muted ai-audit-hint", "最新事件在前；每条记录的原始 JSON 可展开查看。"));
+    const timeline = aiAuditElement("div", "ai-audit-timeline");
+    if (!Array.isArray(events) || !events.length) {
+      timeline.appendChild(aiAuditElement("p", "empty", "暂无审计事件"));
+      section.appendChild(timeline);
+      parent.appendChild(section);
+      return;
+    }
+    events.forEach(function (event) {
+      const description = describeAIEvent(event);
+      const item = aiAuditElement("article", "ai-audit-event ai-audit-event-" + description.severity + (description.compact ? " ai-audit-event-compact" : ""));
+      const heading = aiAuditElement("div", "ai-audit-event-heading");
+      const name = aiAuditElement("strong", "ai-audit-event-name", description.name);
+      const time = aiAuditElement("time", "ai-audit-event-time", aiAuditTime(event.created_at));
+      const dateTime = aiAuditDateTime(event.created_at);
+      if (dateTime) time.dateTime = dateTime;
+      heading.appendChild(name);
+      heading.appendChild(time);
+      item.appendChild(heading);
+      if (event.actor) item.appendChild(aiAuditElement("p", "ai-audit-actor", "执行者：" + event.actor));
+      if (description.compact) {
+        item.appendChild(aiAuditElement("p", "ai-audit-compact-line", description.action + " · " + description.result));
+      } else {
+        const fields = aiAuditElement("dl", "ai-audit-fields");
+        aiAuditField(fields, "动作 / 活动", description.action);
+        aiAuditField(fields, "结果", description.result);
+        if (description.reason) aiAuditField(fields, description.reasonLabel || "说明", description.reason, "ai-audit-reason");
+        if (description.next) aiAuditField(fields, "下一步", description.next, "ai-audit-next");
+        item.appendChild(fields);
+      }
+      const raw = aiAuditElement("details", "ai-audit-raw");
+      raw.appendChild(aiAuditElement("summary", "", "查看原始 JSON"));
+      raw.appendChild(aiAuditElement("pre", "ai-audit-raw-content", aiAuditJSON(event)));
+      item.appendChild(raw);
+      timeline.appendChild(item);
+    });
+    section.appendChild(timeline);
+    parent.appendChild(section);
+  }
+
+  function renderAIAuditState(parent, state) {
+    const section = aiAuditElement("section", "ai-audit-state");
+    section.appendChild(aiAuditElement("h3", "ai-audit-heading", "生活记录"));
+    section.appendChild(aiAuditElement("p", "muted ai-audit-hint", "私人笔记和定时提醒由 AI 自己维护，不能直接视为已确认的游戏事实。"));
+    if (!state || state.available !== true) {
+      section.appendChild(aiAuditElement("p", "empty", "生活记录暂不可用"));
+      parent.appendChild(section);
+      return;
+    }
+    const notes = Array.isArray(state.notes) ? state.notes : [];
+    const schedules = Array.isArray(state.schedules) ? state.schedules : [];
+    const notesLabel = "私人笔记（" + notes.length + " 条" + (state.notes_truncated ? "，仅显示最近 50 条" : "") + "）";
+    const schedulesLabel = "定时提醒（" + schedules.length + " 条" + (state.schedules_truncated ? "，仅显示前 50 条，待处理提醒优先" : "") + "）";
+    [
+      {label: notesLabel, value: notes},
+      {label: schedulesLabel, value: schedules}
+    ].forEach(function (item) {
+      const details = aiAuditElement("details", "ai-audit-state-details");
+      details.appendChild(aiAuditElement("summary", "", item.label + " · 查看原始数据"));
+      details.appendChild(aiAuditElement("pre", "ai-audit-raw-content", aiAuditJSON(item.value)));
+      section.appendChild(details);
+    });
+    parent.appendChild(section);
+  }
+
+  window.StoneAgeAIAudit = {describe: describeAIEvent, render: renderAIAuditEvents, formatTime: aiAuditTime};
+
   function initModels() {
     if (!modelRoot) return;
     const editor = document.getElementById("ai-model-editor");
@@ -100,7 +417,8 @@
     const title = document.getElementById("ai-model-editor-title");
     const canWrite = modelRoot.dataset.canWrite === "true";
     const connectionTestAvailable = modelRoot.dataset.connectionTestAvailable === "true";
-    const connectionTestUnavailableMessage = "当前运行环境未接入模型连接测试，可通过启动 AI 玩家查看运行结果。";
+    const connectionTestUnavailableMessage = "模型测试服务尚未就绪，请检查运行环境配置。";
+    let connectionTestRunning = false;
     const newButton = document.getElementById("ai-model-new");
     const preset = form && form.elements.namedItem("preset");
     const catalog = {
@@ -253,24 +571,32 @@
     });
 
     function prepareConnectionTestButton(button) {
-      if (!connectionTestAvailable) {
-        button.disabled = true;
-        button.setAttribute("aria-disabled", "true");
-        button.title = connectionTestUnavailableMessage;
-      }
+      button.disabled = !connectionTestAvailable || !canWrite || connectionTestRunning;
+      button.setAttribute("aria-disabled", String(button.disabled));
+      button.title = !canWrite ? "需要模型管理权限" : !connectionTestAvailable ? connectionTestUnavailableMessage : "使用已保存的模型配置发送一次测试请求";
     }
 
     document.querySelectorAll(".ai-test-model").forEach(function (button) {
       prepareConnectionTestButton(button);
       button.addEventListener("click", async function () {
-        if (!connectionTestAvailable || button.disabled) return;
-        button.disabled = true;
-        message(modelRoot, "正在请求 Codex runtime 测试连接…", false);
+        if (!connectionTestAvailable || !canWrite || connectionTestRunning || button.disabled) return;
+        connectionTestRunning = true;
+        document.querySelectorAll(".ai-test-model").forEach(prepareConnectionTestButton);
+        const originalText = button.textContent;
+        button.textContent = "测试中…";
+        const name = button.dataset.modelName || "模型";
+        message(modelRoot, "正在测试「" + name + "」的已保存配置，请稍候…", false);
         try {
-          await api(modelRoot, "/api/ai/models/" + encodeURIComponent(button.dataset.id) + "/test", "POST", {});
-          message(modelRoot, "模型连接测试成功。", false);
-        } catch (error) { message(modelRoot, error.message, true); }
-        button.disabled = false;
+          const result = await api(modelRoot, "/api/ai/models/" + encodeURIComponent(button.dataset.id) + "/test", "POST", {});
+          if (result.ok !== true) throw new Error("未收到有效测试结果，请刷新页面确认登录状态后重试。");
+          const duration = Number.isFinite(result.duration_ms) ? "，耗时 " + (result.duration_ms / 1000).toFixed(1) + " 秒" : "";
+          message(modelRoot, "「" + name + "」测试成功：已收到预期模型响应" + duration + "。", false);
+        } catch (error) { message(modelRoot, "「" + name + "」" + error.message, true); }
+        finally {
+          connectionTestRunning = false;
+          button.textContent = originalText;
+          document.querySelectorAll(".ai-test-model").forEach(prepareConnectionTestButton);
+        }
       });
     });
 
@@ -648,15 +974,11 @@
         if (requestID !== auditRequest) return;
         if (results[0].status !== "fulfilled") throw results[0].reason;
         const state = results[1].status === "fulfilled" ? results[1].value : null;
-        let details = "生活记录暂不可用";
-        if (state?.available) {
-          details = "私人笔记（AI 自己的计划与回忆，不是已确认的游戏事实）" +
-            (state.notes_truncated ? " · 仅显示最近 50 条" : "") + "\n" + JSON.stringify(state.notes || [], null, 2) +
-            "\n\n定时提醒（delivered 表示已投递给模型，不代表游戏任务完成）" +
-            (state.schedules_truncated ? " · 仅显示前 50 条，待处理提醒优先" : "") + "\n" + JSON.stringify(state.schedules || [], null, 2);
-        }
         heading.textContent = (profile.character && profile.character.name ? profile.character.name : id) + " · 只读生活记录与审计";
-        content.textContent = initialText(profile) + "\n\n" + details + "\n\n审计事件\n" + JSON.stringify(results[0].value.events || [], null, 2);
+        content.replaceChildren();
+        content.appendChild(aiAuditElement("p", "ai-audit-initial", initialText(profile)));
+        renderAIAuditState(content, state);
+        renderAIAuditEvents(content, results[0].value.events || []);
         show(audit);
         audit.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) { message(profileRoot, error.message, true); }

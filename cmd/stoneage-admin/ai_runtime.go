@@ -320,6 +320,42 @@ func aiConnectionTesterRequested(options aiRuntimeOptions) bool {
 	return strings.TrimSpace(options.CodexBinary) != "" && !aiContainerRequested(options)
 }
 
+// aiContainerProbeRequested identifies the minimal server-owned settings for
+// a model-only container probe. It intentionally does not require game
+// address, map/NPC data, funding, or a Gateway: the probe must remain usable
+// while the optional gameplay runtime is unavailable.
+func aiContainerProbeRequested(options aiRuntimeOptions) bool {
+	return strings.TrimSpace(options.RuntimeImage) != "" &&
+		strings.TrimSpace(options.ContainerNetwork) != "" &&
+		strings.TrimSpace(options.DockerBinary) != ""
+}
+
+// configureAIContainerModelProbeBroker constructs the standalone broker used
+// when gameplay runtime composition is incomplete. A complete runtime shares
+// its already-open broker instead, so the journal lock is never duplicated.
+// The fallback journal lives under the private AI database directory and is
+// used only for short-lived probe request records.
+func configureAIContainerModelProbeBroker(options aiRuntimeOptions, dataRoot string) (*aibroker.Broker, error) {
+	options = normalizeAIRuntimeOptions(options)
+	if !aiContainerProbeRequested(options) {
+		return nil, nil
+	}
+	journalPath := strings.TrimSpace(options.BrokerDB)
+	if journalPath == "" {
+		dataRoot = strings.TrimSpace(dataRoot)
+		if dataRoot == "" || !filepath.IsAbs(dataRoot) || dataRoot == string(filepath.Separator) {
+			return nil, errors.New("AI container probe requires a private data root")
+		}
+		journalPath = filepath.Join(dataRoot, "connection-probe.db")
+	}
+	return aibroker.New(aibroker.Config{
+		DockerBinary: options.DockerBinary,
+		Image:        options.RuntimeImage,
+		Network:      options.ContainerNetwork,
+		JournalPath:  journalPath,
+	})
+}
+
 // normalizeAIRuntimeOptions applies only safe, deterministic defaults. The
 // broker journal may be derived from an explicitly supplied absolute runtime
 // root; image, network, Docker and the advertised URL remain explicit so a

@@ -34,7 +34,9 @@ async function main() {
       requests.push(body);
       const id = `resp-smoke-${requests.length}`;
       const itemID = `msg-smoke-${requests.length}`;
-      const part = {type: 'output_text', text: expected, annotations: []};
+      const probeExpected = 'STONEAGE_CONNECTION_TEST_OK';
+      const responseText = JSON.stringify(body).includes(probeExpected) ? probeExpected : expected;
+      const part = {type: 'output_text', text: responseText, annotations: []};
       const item = {id: itemID, type: 'message', role: 'assistant', status: 'completed', content: [part]};
       const response = (status, output) => ({id, object: 'response', status, model: body.model, output});
       res.writeHead(200, {'Content-Type': 'text/event-stream'});
@@ -42,8 +44,8 @@ async function main() {
       send('response.created', {response: response('in_progress', [])});
       send('response.output_item.added', {output_index: 0, item: {...item, status: 'in_progress', content: []}});
       send('response.content_part.added', {item_id: itemID, output_index: 0, content_index: 0, part: {...part, text: ''}});
-      send('response.output_text.delta', {item_id: itemID, output_index: 0, content_index: 0, delta: expected});
-      send('response.output_text.done', {item_id: itemID, output_index: 0, content_index: 0, text: expected});
+      send('response.output_text.delta', {item_id: itemID, output_index: 0, content_index: 0, delta: responseText});
+      send('response.output_text.done', {item_id: itemID, output_index: 0, content_index: 0, text: responseText});
       send('response.content_part.done', {item_id: itemID, output_index: 0, content_index: 0, part});
       send('response.output_item.done', {output_index: 0, item});
       send('response.completed', {response: response('completed', [item])});
@@ -121,7 +123,42 @@ async function main() {
       assert(new RegExp(`${name}\\s*=\\s*['"]${value}['"]`).test(config), `missing fixed ${name}`);
     }
     assert(fs.readFileSync(path.join(root, 'workspaces', profile, '.agents', 'skills', 'stoneage-play', 'SKILL.md'), 'utf8').includes('game_observe'));
-    console.log('AI image smoke passed: real runner/Codex, Responses, exact-thread resume, installed Skill and unattended config; synthetic provider, no game execution.');
+
+    // Exercise the model-only connection path through the real packaged
+    // runner. The request must not materialize a game token, owner marker,
+    // Skill, or MCP server configuration, while still completing a real
+    // Responses request through Codex.
+    const probeState = fs.mkdtempSync(path.join(root, 'probe-state-'));
+    const probeRequest = {profile_id: profile, request_id: 'pure-probe', probe: true,
+      run_request: {prompt: 'Reply with exactly STONEAGE_CONNECTION_TEST_OK. Do not use tools.'},
+      model: {provider: 'custom', base_url: endpoint, model: 'stoneage-image-smoke', api_key: key}};
+    const probeOutput = await new Promise((resolve, reject) => {
+      const child = spawn(runner, ['-profile', profile, '-state', probeState], {detached: true, stdio: ['pipe', 'pipe', 'pipe']});
+      let stdout = '', stderr = '';
+      const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} };
+      const timeout = setTimeout(kill, 60000);
+      child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 8 * 1024 * 1024) kill(); });
+      child.stderr.on('data', chunk => { stderr += chunk; if (stderr.length > 256 * 1024) kill(); });
+      child.stdin.on('error', () => {});
+      child.once('error', err => { clearTimeout(timeout); reject(err); });
+      child.once('close', code => {
+        clearTimeout(timeout);
+        if (code !== 0) return reject(new Error(`pure probe runner failed: exit=${code}; ${stderr.slice(0, 512)}`));
+        resolve({stdout, stderr});
+      });
+      child.stdin.end(JSON.stringify(probeRequest));
+    });
+    for (const secret of [key, token]) assert(!JSON.stringify(probeOutput).includes(secret), 'pure probe leaked credential to process output');
+    const probeResponse = JSON.parse(probeOutput.stdout);
+    assert.equal(probeResponse.ok, true);
+    assert.equal(probeResponse.result.last_message, 'STONEAGE_CONNECTION_TEST_OK');
+    const probeConfig = fs.readFileSync(path.join(probeState, 'codex', 'config.toml'), 'utf8');
+    assert(!probeConfig.includes('mcp_servers'), 'pure probe unexpectedly configured MCP');
+    assert(!fs.existsSync(path.join(probeState, '.stoneage-ai-owner.json')), 'pure probe created game owner marker');
+    assert(!fs.existsSync(path.join(probeState, 'state', profile, 'game-capability.token')), 'pure probe created game token');
+    assert(!fs.existsSync(path.join(probeState, 'workspaces', profile, '.agents', 'skills')), 'pure probe installed a Skill');
+    assert.equal(requests.length, 3);
+    console.log('AI image smoke passed: real runner/Codex, Responses, exact-thread resume, installed Skill, unattended config and pure model Probe without MCP/game state; synthetic provider, no game execution.');
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(root, {recursive: true, force: true});

@@ -36,7 +36,7 @@
       <div><h2>已配置模型</h2><p class="muted">默认模型由 runtime 持久化；同一时间只保留一个默认选择。</p></div>
       {{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-model-new">新增模型</button>{{end}}
     </div>
-    {{if not .AIConnectionTestAvailable}}<p class="hint" role="status">当前运行环境未接入模型连接测试，可通过启动 AI 玩家查看运行结果。</p>{{end}}
+    {{if .AIConnectionTestAvailable}}<p class="hint">测试会使用已保存的配置发送一次真实模型请求，验证连接和响应并显示耗时；会消耗少量模型额度。</p>{{else}}<p class="hint" role="status">模型测试服务尚未就绪，请检查运行环境配置。</p>{{end}}
     <div id="ai-model-message" class="alert" hidden role="status"></div>
     <div class="table-scroll">
       <table class="ai-table"><thead><tr><th>名称</th><th>provider / model</th><th>协议</th><th>地址</th><th>限制</th><th>密钥</th><th>默认</th><th>操作</th></tr></thead>
@@ -50,7 +50,7 @@
           <td>{{.TimeoutSeconds}}s / {{.MaxOutputTokens}} tokens<br><small>日限额 {{.DailyTokenBudget}}</small></td>
           <td>{{if .HasKey}}<span class="badge ok">已配置</span>{{else}}<span class="badge off">未配置</span>{{end}}</td>
           <td>{{if .Default}}<span class="badge ok">默认</span>{{else}}—{{end}}</td>
-          <td class="ai-actions"><button type="button" class="button ai-edit-model" data-id="{{.ID}}">编辑</button><button type="button" class="button ai-test-model" data-id="{{.ID}}"{{if not $.AIConnectionTestAvailable}} disabled aria-disabled="true" title="当前运行环境未接入模型连接测试"{{end}}>测试</button>{{if $.AIRoleCanWrite}}<button type="button" class="button danger ai-delete-model" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
+          <td class="ai-actions"><button type="button" class="button ai-edit-model" data-id="{{.ID}}">编辑</button><button type="button" class="button ai-test-model" data-id="{{.ID}}" data-model-name="{{.Name}}"{{if not $.AIRoleCanWrite}} disabled aria-disabled="true" title="需要模型管理权限"{{else if not $.AIConnectionTestAvailable}} disabled aria-disabled="true" title="模型测试服务尚未就绪"{{end}}>测试</button>{{if $.AIRoleCanWrite}}<button type="button" class="button danger ai-delete-model" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
         </tr>
       {{else}}
         <tr><td colspan="8" class="empty">还没有模型配置。请新增一个 Codex 模型，或等待 runtime 接入。</td></tr>

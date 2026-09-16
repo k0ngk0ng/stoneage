@@ -240,6 +240,27 @@ func (docker *DockerCLI) Remove(ctx context.Context, containerName string) error
 	return nil
 }
 
+// RemoveVolume removes a named profile volume without force. It is used only
+// for disposable model-probe profiles after the broker has cleaned their
+// container. Docker itself rejects the operation while any container remains
+// attached, so a transient cleanup failure cannot delete live state.
+func (docker *DockerCLI) RemoveVolume(ctx context.Context, volumeName string) error {
+	if docker == nil || strings.TrimSpace(docker.Binary) == "" {
+		return fmt.Errorf("%w: Docker client is nil", ErrInvalidConfig)
+	}
+	if !volumeNamePattern.MatchString(volumeName) {
+		return fmt.Errorf("%w: volume name is invalid", ErrInvalidRequest)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	command := exec.CommandContext(ctx, docker.Binary, "volume", "rm", volumeName)
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("%w: remove volume", ErrDocker)
+	}
+	return nil
+}
+
 // Inspect reads the daemon's state for exactly one deterministic container.
 // The preliminary `ps -a` query distinguishes a successful, empty lookup
 // (the container is absent) from a Docker/daemon error. A second read obtains
@@ -357,6 +378,7 @@ func (capture *boundedCapture) Write(data []byte) (int, error) {
 func dockerArgs(spec RunSpec) []string {
 	args := []string{"run", "--interactive", "--pull", "never", "--log-driver", "local", "--log-opt", "max-size=" + dockerLogMaxSize, "--log-opt", "max-file=" + dockerLogMaxFile, "--log-opt", "compress=false", "--name", spec.ContainerName, "--network", spec.Network,
 		"--user", spec.User, "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true"}
+	args = append(args, "--cpus", strconv.FormatFloat(spec.CPUs, 'f', -1, 64), "--memory", spec.Memory, "--memory-swap", spec.MemorySwap, "--pids-limit", strconv.Itoa(spec.PidsLimit))
 	paths := make([]string, 0, len(spec.Tmpfs))
 	for path := range spec.Tmpfs {
 		paths = append(paths, path)
@@ -398,6 +420,9 @@ func validateRunSpec(spec RunSpec) error {
 	}
 	if strings.TrimSpace(spec.Network) == "" || hasControlOrSpace(spec.Network) || strings.HasPrefix(spec.Network, "-") {
 		return fmt.Errorf("%w: network is invalid", ErrInvalidRequest)
+	}
+	if err := validateResourceLimits(spec.CPUs, spec.Memory, spec.MemorySwap, spec.PidsLimit); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	}
 	if spec.User != "10001" || !spec.ReadOnlyRootfs || !spec.NoNewPrivileges {
 		return fmt.Errorf("%w: runtime security options are incomplete", ErrInvalidRequest)

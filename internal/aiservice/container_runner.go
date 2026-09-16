@@ -79,6 +79,7 @@ type ContainerRunnerConfig struct {
 	StateRoot       string
 	RequestTemplate airunner.ExecuteRequest
 	Broker          ContainerBroker
+	TurnTimeout     time.Duration
 }
 
 // ContainerRunner implements aisupervisor.Runner over one private container
@@ -86,13 +87,14 @@ type ContainerRunnerConfig struct {
 // the request template outside memory except for the credential-free local
 // checkpoint.
 type ContainerRunner struct {
-	profileID  string
-	stateRoot  string
-	checkpoint string
-	lockPath   string
-	template   airunner.ExecuteRequest
-	broker     ContainerBroker
-	guard      runtimepath.Guard
+	profileID   string
+	stateRoot   string
+	checkpoint  string
+	lockPath    string
+	template    airunner.ExecuteRequest
+	broker      ContainerBroker
+	guard       runtimepath.Guard
+	turnTimeout time.Duration
 }
 
 type containerRunState string
@@ -128,6 +130,9 @@ type containerRunCheckpoint struct {
 // private state directory. It never contacts the broker and never starts a
 // model turn.
 func NewContainerRunner(config ContainerRunnerConfig) (*ContainerRunner, error) {
+	if config.TurnTimeout < 0 || config.TurnTimeout > 24*time.Hour {
+		return nil, ErrContainerRunnerConfig
+	}
 	profileID := strings.TrimSpace(config.ProfileID)
 	if !containerRunnerProfileIDPattern.MatchString(profileID) {
 		return nil, ErrContainerRunnerConfig
@@ -185,7 +190,7 @@ func NewContainerRunner(config ContainerRunnerConfig) (*ContainerRunner, error) 
 	template.ProfileID = profileID
 	template.RequestID = ""
 	template.Run = airunner.RunRequest{}
-	return &ContainerRunner{profileID: profileID, stateRoot: abs, checkpoint: checkpoint, lockPath: lockPath, template: template, broker: config.Broker, guard: guard}, nil
+	return &ContainerRunner{profileID: profileID, stateRoot: abs, checkpoint: checkpoint, lockPath: lockPath, template: template, broker: config.Broker, guard: guard, turnTimeout: config.TurnTimeout}, nil
 }
 
 // CheckpointPath exposes the credential-free local journal location for
@@ -222,6 +227,11 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if runner.turnTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, runner.turnTimeout)
+		defer cancel()
 	}
 	if err := validateContainerIntent(runner.profileID, request); err != nil {
 		return aicodex.Result{ProfileID: runner.profileID}, err

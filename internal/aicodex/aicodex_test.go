@@ -106,15 +106,20 @@ esac
 	return path
 }
 
-func newTestRunner(t *testing.T, binary string, root string) *Runner {
+func newTestRunner(t *testing.T, binary string, root string, timeouts ...time.Duration) *Runner {
 	t.Helper()
 	work := filepath.Join(root, "work")
 	state := filepath.Join(root, "state")
 	if err := os.Mkdir(work, 0700); err != nil {
 		t.Fatal(err)
 	}
+	var timeout time.Duration
+	if len(timeouts) > 0 {
+		timeout = timeouts[0]
+	}
 	runner, err := New(Config{
 		Binary: binary, CWD: work, StateRoot: state,
+		TurnTimeout: timeout,
 		Environment: testHelperEnvironment(),
 		SecretProvider: SecretProviderFunc(func(context.Context, string) (string, error) {
 			return "test-secret-value", nil

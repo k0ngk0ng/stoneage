@@ -185,6 +185,33 @@ func TestBrokerBuildsIsolatedSpecAndReplaysCompletedRun(t *testing.T) {
 	}
 }
 
+func TestBrokerAcceptsCapabilityFreeModelProbe(t *testing.T) {
+	docker := &fakeDocker{run: func(_ context.Context, _ RunSpec, payload []byte) (DockerResult, error) {
+		var request airunner.ExecuteRequest
+		if err := json.Unmarshal(payload, &request); err != nil {
+			return DockerResult{}, err
+		}
+		if !request.Probe || request.MCP != (airunner.MCP{}) || len(request.Skills) != 0 {
+			return DockerResult{}, errors.New("probe carried game capability")
+		}
+		return DockerResult{Stdout: []byte(`{"ok":true,"result":{"thread_id":"probe-thread","last_message":"STONEAGE_CONNECTION_TEST_OK","turn":{"status":"completed"},"process":{"status":"exited","exit_code":0}}}`)}, nil
+	}}
+	broker := newFakeBroker(t, docker, NewMemoryJournal())
+	request := airunner.ExecuteRequest{
+		ProfileID: "model-probe", RequestID: "probe-request", Probe: true,
+		Run:   airunner.RunRequest{Prompt: "Reply with exactly STONEAGE_CONNECTION_TEST_OK. Do not use tools."},
+		Model: airunner.Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: "private-probe-key"},
+	}
+	response, err := broker.Execute(context.Background(), request)
+	if err != nil || !response.OK || response.Result == nil || response.Result.LastMessage != "STONEAGE_CONNECTION_TEST_OK" {
+		t.Fatalf("probe response=%+v err=%v", response, err)
+	}
+	calls := docker.Calls()
+	if len(calls) != 1 || len(calls[0].spec.Mounts) != 1 || calls[0].spec.User != "10001" || !calls[0].spec.ReadOnlyRootfs || !calls[0].spec.NoNewPrivileges {
+		t.Fatalf("probe did not use isolated container spec: %+v", calls)
+	}
+}
+
 type cancelAtUpdateJournal struct {
 	Journal
 	cancel context.CancelFunc

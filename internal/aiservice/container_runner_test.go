@@ -66,13 +66,18 @@ func (broker *containerRunnerFakeBroker) runRequests() []airunner.ExecuteRequest
 	return result
 }
 
-func newContainerRunnerForTest(t *testing.T, broker ContainerBroker) (*ContainerRunner, string) {
+func newContainerRunnerForTest(t *testing.T, broker ContainerBroker, timeouts ...time.Duration) (*ContainerRunner, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "profile-state")
 	key := "container-model-secret"
 	token := strings.Repeat("z", 43)
+	var timeout time.Duration
+	if len(timeouts) > 0 {
+		timeout = timeouts[0]
+	}
 	runner, err := NewContainerRunner(ContainerRunnerConfig{
 		ProfileID: "container-profile", StateRoot: root, Broker: broker,
+		TurnTimeout: timeout,
 		RequestTemplate: airunner.ExecuteRequest{
 			Model:  airunner.Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com/", Model: "deepseek-flash", APIKey: key},
 			Skills: []airunner.Skill{{Name: "stoneage-play", Version: "1.0.0", Digest: "sha256:digest"}},

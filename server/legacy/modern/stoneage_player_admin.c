@@ -17,6 +17,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "battle.h"
@@ -55,6 +57,7 @@ extern tagRidePetTable ridePetTable[296];
 #define STONEAGE_PA_MIN_PET_MODAI 0
 #define STONEAGE_PA_MAX_PET_MODAI 1000000
 #define STONEAGE_PA_MAX_AI_PETS 5
+#define STONEAGE_PA_POLL_INTERVAL_MS 25
 
 typedef struct tagStoneAgePAField {
     char key[64];
@@ -148,6 +151,22 @@ static void StoneAgePA_responseError( StoneAgePAResponse *response,
 static char StoneAgePA_dir[STONEAGE_PA_MAX_PATH] = "/run/stoneage/player-admin/gmsv";
 static int StoneAgePA_initialized = FALSE;
 static unsigned long StoneAgePA_response_serial = 0;
+static unsigned long long StoneAgePA_next_poll_ms = 0;
+
+static unsigned long long StoneAgePA_now_ms( void )
+{
+    struct timespec monotonic;
+    struct timeval now;
+    if( clock_gettime(CLOCK_MONOTONIC, &monotonic) == 0 ) {
+        return (unsigned long long)monotonic.tv_sec * 1000ULL +
+               (unsigned long long)monotonic.tv_nsec / 1000000ULL;
+    }
+    /* The deployed Linux image has CLOCK_MONOTONIC. This fallback keeps the
+     * bridge usable when compiling the compatibility module on older hosts. */
+    if( gettimeofday(&now, NULL) != 0 ) return 0;
+    return (unsigned long long)now.tv_sec * 1000ULL +
+           (unsigned long long)now.tv_usec / 1000ULL;
+}
 
 static int StoneAgePA_isHex( int c )
 {
@@ -2667,6 +2686,10 @@ void STONEAGE_PlayerAdminProcess( void )
     char id[STONEAGE_PA_MAX_ID + 1];
     char request_path[STONEAGE_PA_MAX_PATH];
     int processed = 0;
+    unsigned long long now_ms;
+    now_ms = StoneAgePA_now_ms();
+    if( now_ms < StoneAgePA_next_poll_ms ) return;
+    StoneAgePA_next_poll_ms = now_ms + STONEAGE_PA_POLL_INTERVAL_MS;
     if( !StoneAgePA_initialized ) StoneAgePA_init();
     snprintf(request_path, sizeof(request_path), "%s/requests", StoneAgePA_dir);
     dir = opendir(request_path);

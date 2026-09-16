@@ -191,6 +191,7 @@ type Config struct {
 	DisableWorkspaceGit bool
 
 	Limits           Limits
+	TurnTimeout      time.Duration // zero preserves the caller's deadline
 	TerminationGrace time.Duration
 	// IgnoreUserConfig is retained for callers that build Config values from
 	// older settings. Isolation always implies this behavior when ConfigFile
@@ -339,6 +340,9 @@ func (c Config) normalized() (Config, error) {
 	}
 	c.pathGuard = pathGuard
 	c.Limits = c.Limits.withDefaults()
+	if c.TurnTimeout < 0 || c.TurnTimeout > 24*time.Hour {
+		return Config{}, fmt.Errorf("%w: TurnTimeout is invalid", ErrInvalidConfig)
+	}
 	if c.TerminationGrace <= 0 {
 		c.TerminationGrace = 2 * time.Second
 	}
@@ -560,6 +564,11 @@ func validateProfileID(profileID string) error {
 }
 
 func (r *Runner) runLocked(ctx context.Context, req RunRequest, stateDir string) (Result, error) {
+	if r.cfg.TurnTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.cfg.TurnTimeout)
+		defer cancel()
+	}
 	workspace, home, processHome, processTemp, configSecrets, err := r.prepareProfile(req.ProfileID, stateDir)
 	if err != nil {
 		return Result{ProfileID: req.ProfileID}, err

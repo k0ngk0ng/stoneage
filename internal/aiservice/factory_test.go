@@ -438,6 +438,9 @@ func TestFactoryAcceptsGenericResponsesProviderAndUsesMaterializedProviderID(t *
 				t.Fatalf("runner type = %T", session.Runner)
 			}
 			runnerConfig := runner.Config()
+			if runnerConfig.TurnTimeout != model.Timeout {
+				t.Fatal("model timeout was not passed to the local runner")
+			}
 			if runnerConfig.Provider.Name != test.providerID || runnerConfig.Provider.WireAPI != airuntime.ModelProviderResponses || runnerConfig.Provider.BaseURL != test.baseURL || runnerConfig.ModelCatalog != "" || runnerConfig.ReasoningEffort != "" {
 				t.Fatalf("generic runner config = %+v", runnerConfig)
 			}

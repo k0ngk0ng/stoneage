@@ -60,6 +60,8 @@ jobs:
           node internal/admin/players_test.js
           node internal/admin/gifts_test.js
           node internal/admin/ai_test.js
+          node internal/admin/ai_model_connection_test.js
+          node internal/admin/ai_audit_test.js
           node internal/admin/ai_initial_test.js
           node internal/admin/ai_initial_recovery_test.js
           node internal/admin/ai_recovery_test.js

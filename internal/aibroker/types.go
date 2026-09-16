@@ -23,6 +23,10 @@ const (
 	DefaultStopTimeout     = 10 * time.Second
 	DefaultTmpfsSize       = "64m"
 	DefaultRunTmpfsSize    = "8m"
+	DefaultCPUs            = 0.5
+	DefaultMemory          = "512m"
+	DefaultMemorySwap      = "512m"
+	DefaultPidsLimit       = 128
 )
 
 var (
@@ -77,6 +81,14 @@ type Config struct {
 	Image   string
 	Network string
 
+	// Resource limits are server-owned controls applied to every runtime
+	// container. Zero values select the safe defaults above; callers cannot
+	// override them through an airunner.ExecuteRequest.
+	CPUs       float64
+	Memory     string
+	MemorySwap string
+	PidsLimit  int
+
 	// RunnerCommand is appended after the image. The normal image has
 	// /usr/local/bin/stoneage-ai-runner as its ENTRYPOINT, so this should be
 	// left empty; the broker then passes only the fixed profile selector.
@@ -117,6 +129,10 @@ type Mount = VolumeMount
 type RunSpec struct {
 	Image         string
 	Network       string
+	CPUs          float64
+	Memory        string
+	MemorySwap    string
+	PidsLimit     int
 	ContainerName string
 	VolumeName    string
 	Mounts        []VolumeMount
@@ -173,6 +189,13 @@ type DockerResultReader interface {
 // retried by a later Lookup.
 type DockerRemover interface {
 	Remove(context.Context, string) error
+}
+
+// DockerVolumeRemover is an optional cleanup seam for callers that own a
+// disposable profile volume, such as a model-only connection probe. It must
+// refuse removal while a container is attached and never use force removal.
+type DockerVolumeRemover interface {
+	RemoveVolume(context.Context, string) error
 }
 
 // DockerContainerState is the daemon-reported lifecycle state of a named

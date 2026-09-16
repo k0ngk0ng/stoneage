@@ -242,6 +242,63 @@ func TestValidateHTTPURLAcceptsOriginOnlyBaseURL(t *testing.T) {
 	}
 }
 
+func TestExecutorProbeSkipsGameCapabilityAndSkills(t *testing.T) {
+	root := t.TempDir()
+	argsLog := filepath.Join(root, "probe.args")
+	codex := writeRunnerTestExecutable(t, root, `#!/bin/sh
+set -eu
+: > "$PROBE_ARGS_LOG"
+for arg in "$@"; do printf '%s\n' "$arg" >> "$PROBE_ARGS_LOG"; done
+if grep -q 'mcp_servers' "$CODEX_HOME/config.toml"; then exit 41; fi
+printf '%s\n' '{"type":"thread.started","thread_id":"probe-thread-1"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"STONEAGE_CONNECTION_TEST_OK"}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"total_tokens":1}}'
+`)
+	mcp := writeRunnerTestExecutable(t, root, "#!/bin/sh\nexit 99\n")
+	executor, err := New(Config{
+		ProfileID: "probe-profile", StateRoot: filepath.Join(root, "state"), CodexBinary: codex,
+		MCPBinary: mcp, SkillRoot: repositorySkillRoot(t), Environment: map[string]string{"PROBE_ARGS_LOG": argsLog},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "probe-private-key"
+	response, err := executor.Execute(context.Background(), ExecuteRequest{
+		ProfileID: "probe-profile", RequestID: "probe-request", Probe: true,
+		Run:   RunRequest{Prompt: "Reply with exactly STONEAGE_CONNECTION_TEST_OK. Do not use tools."},
+		Model: Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", ReasoningEffort: "high", APIKey: key},
+	})
+	if err != nil || !response.OK || response.Result == nil || response.Result.LastMessage != "STONEAGE_CONNECTION_TEST_OK" {
+		t.Fatalf("probe response=%+v err=%v", response, err)
+	}
+	if _, err := os.Stat(filepath.Join(executor.profiles.stateDir, tokenFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("probe created game token: %v", err)
+	}
+	if _, err := os.Stat(executor.profiles.owner); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("probe created game owner marker: %v", err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil || bytes.Contains(encoded, []byte(key)) {
+		t.Fatalf("probe response leaked model key: %s", encoded)
+	}
+}
+
+func TestExecutorProbeRejectsGameCapability(t *testing.T) {
+	root := t.TempDir()
+	codex := writeRunnerTestExecutable(t, root, "#!/bin/sh\nexit 1\n")
+	mcp := writeRunnerTestExecutable(t, root, "#!/bin/sh\nexit 1\n")
+	executor, err := New(Config{ProfileID: "probe-profile", StateRoot: filepath.Join(root, "state"), CodexBinary: codex, MCPBinary: mcp, SkillRoot: repositorySkillRoot(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ExecuteRequest{ProfileID: "probe-profile", RequestID: "probe-request", Probe: true,
+		Run: RunRequest{Prompt: "probe"}, Model: Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: "key"},
+		MCP: MCP{Endpoint: "http://127.0.0.1:1/v1/game", Token: strings.Repeat("x", 43), CharacterID: "game-character", Generation: 1}}
+	if _, err := executor.Execute(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("probe accepted game capability: %v", err)
+	}
+}
+
 func writeRunnerTestExecutable(t *testing.T, root, content string) string {
 	t.Helper()
 	path := filepath.Join(root, fmt.Sprintf("runner-test-%d", time.Now().UnixNano()))

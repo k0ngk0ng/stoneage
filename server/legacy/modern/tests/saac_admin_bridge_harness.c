@@ -4,13 +4,57 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 char chardir[64] = "char";
 int stoneage_admin_bridge_test_locked = 0;
 
+static unsigned long bridge_test_mkdir_calls;
+static unsigned long bridge_test_chmod_calls;
+static unsigned long bridge_test_lstat_calls;
+static unsigned long bridge_test_opendir_calls;
+
+static int bridge_test_mkdir(const char *, mode_t);
+static int bridge_test_chmod(const char *, mode_t);
+static int bridge_test_lstat(const char *, struct stat *);
+static DIR *bridge_test_opendir(const char *);
+
 #define STONEAGE_ADMIN_BRIDGE_TEST
+#define mkdir bridge_test_mkdir
+#define chmod bridge_test_chmod
+#define lstat bridge_test_lstat
+#define opendir bridge_test_opendir
 #include "../saac_admin_bridge.c"
+#undef mkdir
+#undef chmod
+#undef lstat
+#undef opendir
+
+static int bridge_test_mkdir(const char *path, mode_t mode)
+{
+    bridge_test_mkdir_calls++;
+    return mkdir(path, mode);
+}
+
+static int bridge_test_chmod(const char *path, mode_t mode)
+{
+    bridge_test_chmod_calls++;
+    return chmod(path, mode);
+}
+
+static int bridge_test_lstat(const char *path, struct stat *info)
+{
+    bridge_test_lstat_calls++;
+    return lstat(path, info);
+}
+
+static DIR *bridge_test_opendir(const char *path)
+{
+    bridge_test_opendir_calls++;
+    return opendir(path);
+}
 
 static int make_directory(const char *path)
 {
@@ -28,6 +72,15 @@ static int write_all(int fd, const unsigned char *data, size_t length)
         offset += (size_t)written;
     }
     return 0;
+}
+
+/* The production bridge deliberately scans at a bounded cadence. Keep the
+ * harness calls on that same schedule instead of relying on filesystem work
+ * to take long enough to advance the poll clock. */
+static void poll_bridge(void)
+{
+    usleep(30000);
+    stoneage_admin_bridge_poll();
 }
 
 static int write_request(const char *id, const char *text, size_t text_length,
@@ -167,6 +220,26 @@ int main(int argc, char **argv)
         write_archive("qa.slot2", 1,
         dotted_original, sizeof(dotted_original) - 1) < 0) return 2;
     if (stoneage_admin_bridge_init() < 0) return 2;
+    {
+        unsigned long mkdir_calls = bridge_test_mkdir_calls;
+        unsigned long chmod_calls = bridge_test_chmod_calls;
+        unsigned long lstat_calls = bridge_test_lstat_calls;
+        unsigned long opendir_calls;
+        int i;
+        /* The first poll is allowed to inspect the empty queue. Calls made
+         * during the same 25 ms window must return before opening it again. */
+        stoneage_admin_bridge_poll();
+        opendir_calls = bridge_test_opendir_calls;
+        for (i = 0; i < 8; i++) stoneage_admin_bridge_poll();
+        errors += expect(bridge_test_mkdir_calls == mkdir_calls,
+                         "dense polls repeated mkdir");
+        errors += expect(bridge_test_chmod_calls == chmod_calls,
+                         "dense polls repeated chmod");
+        errors += expect(bridge_test_lstat_calls == lstat_calls,
+                         "dense polls repeated lstat");
+        errors += expect(bridge_test_opendir_calls == opendir_calls,
+                         "dense polls repeated opendir");
+    }
     online_payload_length = sizeof(original) - 1 + sizeof(replacement) - 1;
     memcpy(online_payload, original, sizeof(original) - 1);
     memcpy(online_payload + sizeof(original) - 1, replacement,
@@ -190,7 +263,7 @@ int main(int argc, char **argv)
     errors += expect(write_request("online", request, strlen(request),
                                    online_payload, online_payload_length) == 0,
                      "write online request");
-    if (!errors) stoneage_admin_bridge_poll();
+    if (!errors) poll_bridge();
     errors += expect(response_has("online", "code=online\n"), "online write rejected");
     errors += expect(read_archive("alice", 0, archive, sizeof(archive),
                                   &archive_length) == 0 && archive_length == sizeof(original) - 1 &&
@@ -206,7 +279,7 @@ int main(int argc, char **argv)
     errors += expect(write_request("conflict", request, strlen(request),
                                    conflict_payload, conflict_payload_length) == 0,
                      "write conflict request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("conflict", "code=conflict\n"), "CAS conflict rejected");
 
     snprintf(request, sizeof(request),
@@ -217,7 +290,7 @@ int main(int argc, char **argv)
     errors += expect(write_request("save", request, strlen(request),
                                    online_payload, online_payload_length) == 0,
                      "write save request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("save", "code=ok\n"), "atomic save failed");
     errors += expect(read_archive("alice", 0, archive, sizeof(archive),
                                   &archive_length) == 0 && archive_length == sizeof(replacement) - 1 &&
@@ -235,7 +308,7 @@ int main(int argc, char **argv)
              "version=1\nid=list\nop=list\naccount=alice\n---\n");
     errors += expect(write_request("list", request, strlen(request), NULL, 0) == 0,
                      "list request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("list", "code=ok\n") &&
                      response_has("list", "present=1\n"), "list failed");
 
@@ -243,7 +316,7 @@ int main(int argc, char **argv)
              "version=1\nid=read\nop=read\naccount=alice\nslot=0\n---\n");
     errors += expect(write_request("read", request, strlen(request), NULL, 0) == 0,
                      "read request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     snprintf(read_length, sizeof(read_length), "length=%lu\n",
              (unsigned long)(sizeof(replacement) - 1));
     errors += expect(response_has("read", "code=ok\n") &&
@@ -253,7 +326,7 @@ int main(int argc, char **argv)
              "version=1\nid=dotted-read\nop=read\naccount=qa.slot2\nslot=1\n---\n");
     errors += expect(write_request("dotted-read", request, strlen(request), NULL, 0) == 0,
                      "dotted account read request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     snprintf(read_length, sizeof(read_length), "length=%lu\n",
              (unsigned long)(sizeof(dotted_original) - 1));
     errors += expect(response_has("dotted-read", "code=ok\n") &&
@@ -269,7 +342,7 @@ int main(int argc, char **argv)
                                    dotted_payload,
                                    dotted_payload_length) == 0,
                      "dotted account write request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("dotted-write", "code=ok\n"),
                      "dotted account write rejected");
     errors += expect(read_archive("qa.slot2", 1, archive, sizeof(archive),
@@ -282,14 +355,14 @@ int main(int argc, char **argv)
              "version=1\nid=path\nop=read\naccount=../escape\nslot=0\n---\n");
     errors += expect(write_request("path", request, strlen(request), NULL, 0) == 0,
                      "path request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("path", "code=bad_request\n"), "path rejected");
 
     snprintf(request, sizeof(request),
              "version=1\nid=slot\nop=read\naccount=alice\nslot=2\n---\n");
     errors += expect(write_request("slot", request, strlen(request), NULL, 0) == 0,
                      "slot request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("slot", "code=bad_request\n"), "slot rejected");
 
     snprintf(request, sizeof(request),
@@ -297,7 +370,7 @@ int main(int argc, char **argv)
              "expected-length=0\nnew-length=65536\n---\n");
     errors += expect(write_request("range", request, strlen(request), NULL, 0) == 0,
                      "range request");
-    stoneage_admin_bridge_poll();
+    poll_bridge();
     errors += expect(response_has("range", "code=bad_request\n"), "range rejected");
 
     return errors == 0 ? 0 : 1;
