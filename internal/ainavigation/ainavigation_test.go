@@ -179,7 +179,7 @@ func TestRouteContextWithOptionsAvoidsBlockedCells(t *testing.T) {
 }
 
 func TestLoadActualStoneAge25Maps(t *testing.T) {
-	dataDir := filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data")
+	dataDir := filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data")
 	navigator, err := Load(context.Background(), Options{DataDir: dataDir})
 	if err != nil {
 		t.Fatal(err)

@@ -13,7 +13,7 @@ import (
 func TestLevelingKnowledgePreservesSourceVerification(t *testing.T) {
 	b, game := gameFixture(t)
 	var err error
-	b.Knowledge, err = aiknowledge.LoadDataDir(context.Background(), filepath.Join(movementCrossMapLiveRepositoryRoot(t), "runtime", "legacy-server", "gmsv", "data"))
+	b.Knowledge, err = aiknowledge.LoadDataDir(context.Background(), filepath.Join(movementCrossMapLiveRepositoryRoot(t), "server", "legacy", "source", "2.5", "gmsv", "data"))
 	if err != nil {
 		t.Fatal(err)
 	}

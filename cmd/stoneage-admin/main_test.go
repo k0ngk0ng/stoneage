@@ -112,8 +112,8 @@ func TestConfigureAIRuntimeWiresFakeDependenciesAndOwnsGateway(t *testing.T) {
 		GameAddress: "127.0.0.1:3333", RuntimeRoot: filepath.Join(root, "runtime"),
 		MCPBinary: mcp, SkillRoot: skillRoot, FundingDir: filepath.Join(root, "funding"),
 		CodexBinary: codex, GatewayListen: "127.0.0.1:0", GatewayPort: -1,
-		KnowledgeDataDir: filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data"),
-		MapDataDir:       filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data"),
+		KnowledgeDataDir: filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data"),
+		MapDataDir:       filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data"),
 		AutomationDB:     filepath.Join(root, "automation.db"), ReceiptDB: filepath.Join(root, "receipts.db"),
 	}
 	invalid := options
@@ -400,7 +400,7 @@ func mustSkillRoot(t *testing.T) string {
 
 func mustGameDataDir(t *testing.T) string {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data"))
+	root, err := filepath.Abs(filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data"))
 	if err != nil {
 		t.Fatal(err)
 	}

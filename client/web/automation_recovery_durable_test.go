@@ -259,7 +259,7 @@ func TestConfiguredAutomationRuntimeRestoresBeforeAcceptingSessions(t *testing.T
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	data := filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data")
+	data := filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data")
 	runtime, closeRuntime, err := configureAutomationRuntime(Config{AutomationKnowledgeDataDir: data, AutomationMapDataDir: data, AutomationDB: path, ReceiptDB: filepath.Join(root, "receipts.db")})
 	if err != nil {
 		t.Fatal(err)

@@ -91,7 +91,7 @@ func TestAutomationHealingItemsConfigurationPrecedence(t *testing.T) {
 
 func TestAutomationRuntimeLoadsHealingItemCatalog(t *testing.T) {
 	root := t.TempDir()
-	data := filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data")
+	data := filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data")
 	config := Config{
 		AutomationKnowledgeDataDir: data, AutomationMapDataDir: data,
 		AutomationDB: filepath.Join(root, "plans.db"), ReceiptDB: filepath.Join(root, "receipts.db"),
@@ -136,7 +136,7 @@ func TestAutomationStockItemsConfigurationPrecedence(t *testing.T) {
 
 func TestAutomationRuntimeLoadsStockCatalogAndRequiresDependencies(t *testing.T) {
 	root := t.TempDir()
-	data := filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data")
+	data := filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data")
 	catalog := filepath.Join("..", "..", "ai", "catalogs")
 	config := Config{
 		AutomationKnowledgeDataDir: data, AutomationMapDataDir: data,

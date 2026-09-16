@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -83,7 +82,7 @@ func (docker *DockerCLI) Run(ctx context.Context, spec RunSpec, payload []byte) 
 	args := dockerArgs(spec)
 	command := exec.Command(docker.Binary, args...)
 	command.Stdin = bytes.NewReader(payload)
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureDockerProcess(command)
 	grace := docker.StopTimeout
 	if grace <= 0 || grace > 30*time.Second {
 		grace = DefaultStopTimeout
@@ -110,7 +109,7 @@ func (docker *DockerCLI) Run(ctx context.Context, spec RunSpec, payload []byte) 
 	if interrupted != nil {
 		// Terminate the CLI group and keep draining its output. The broker also
 		// stops the exact container; killing a Docker client alone is insufficient.
-		_ = syscall.Kill(-command.Process.Pid, syscall.SIGTERM)
+		terminateDockerProcess(command)
 		timer := time.NewTimer(grace)
 		select {
 		case waitErr = <-waitDone:
@@ -118,7 +117,7 @@ func (docker *DockerCLI) Run(ctx context.Context, spec RunSpec, payload []byte) 
 				<-timer.C
 			}
 		case <-timer.C:
-			_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			forceKillDockerProcess(command)
 			waitErr = <-waitDone
 		}
 	}
