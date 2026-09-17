@@ -521,10 +521,18 @@ func (h *Hub) Inspect(ctx context.Context, containerName string) (aibroker.Docke
 	}
 	worker, err := h.workerForRoute(route)
 	if err != nil {
+		if state, inspectErr, ok := durableRouteContainerState(route); ok {
+			log.Printf("event=ai_remote_terminal_state_restored profile=%q request_id=%q worker=%q epoch=%d state=%q source=durable_route", route.ProfileID, route.RequestID, route.WorkerID, route.WorkerEpoch, route.State)
+			return state, inspectErr
+		}
 		return "", err
 	}
 	wait, err := h.enqueue(worker, &Command{ProtocolVersion: ProtocolVersion, CommandID: newID("cmd"), Kind: KindInspect, WorkerID: worker.id, WorkerEpoch: worker.epoch, ProfileID: route.ProfileID, RequestID: route.RequestID, ContainerName: route.ContainerName, VolumeName: route.VolumeName, PayloadHash: route.PayloadHash, CreatedAt: h.now()})
 	if err != nil {
+		if state, inspectErr, ok := durableRouteContainerState(route); ok {
+			log.Printf("event=ai_remote_terminal_state_restored profile=%q request_id=%q worker=%q epoch=%d state=%q source=durable_route", route.ProfileID, route.RequestID, route.WorkerID, route.WorkerEpoch, route.State)
+			return state, inspectErr
+		}
 		return "", err
 	}
 	outcome := h.wait(ctx, wait)
@@ -542,6 +550,24 @@ func (h *Hub) Inspect(ctx context.Context, containerName string) (aibroker.Docke
 		return "", aibroker.ErrDocker
 	}
 	return state, nil
+}
+
+// durableRouteContainerState returns a terminal state that was already
+// authenticated by the worker and durably persisted in the routing journal.
+// It is only used after the route's worker cannot be reached. A missing or
+// stale worker is never itself evidence of termination, so running/unknown
+// routes deliberately return ok=false and continue to fail closed.
+func durableRouteContainerState(route RouteRecord) (aibroker.DockerContainerState, error, bool) {
+	switch route.State {
+	case string(aibroker.DockerContainerExited):
+		return aibroker.DockerContainerExited, nil, true
+	case string(aibroker.DockerContainerDead), "stopped":
+		return aibroker.DockerContainerDead, nil, true
+	case "removed":
+		return "", aibroker.ErrContainerNotFound, true
+	default:
+		return "", nil, false
+	}
 }
 
 func (h *Hub) ReadResult(ctx context.Context, containerName string) (aibroker.DockerResult, error) {

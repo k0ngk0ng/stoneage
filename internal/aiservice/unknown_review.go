@@ -3,6 +3,7 @@ package aiservice
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -27,7 +28,18 @@ type containerUnknownReconciler interface {
 // ReconcileUnknown drains the old broker/container execution for an explicit
 // supervisor Start. It is intentionally separate from InspectUnknown so the
 // admin recovery/status query remains read-only.
-func (factory *Factory) ReconcileUnknown(ctx context.Context, profileID, attemptID string) error {
+func (factory *Factory) ReconcileUnknown(ctx context.Context, profileID, attemptID string) (resultErr error) {
+	started := time.Now()
+	stage := "open_recovery_journal"
+	log.Printf("event=ai_recovery_started profile=%q request_id=%q", profileID, attemptID)
+	defer func() {
+		outcome := "completed"
+		if resultErr != nil {
+			outcome = "failed"
+		}
+		log.Printf("event=ai_recovery_%s profile=%q request_id=%q stage=%s duration_ms=%d error_code=%s", outcome, profileID, attemptID, stage, time.Since(started).Milliseconds(), recoveryErrorCode(resultErr))
+	}()
+
 	factory.mu.Lock()
 	defer factory.mu.Unlock()
 	if factory.active[profileID] != nil {
@@ -37,6 +49,7 @@ func (factory *Factory) ReconcileUnknown(ctx context.Context, profileID, attempt
 	if err != nil {
 		return err
 	}
+	stage = "reconcile_previous_execution"
 	return runner.reconcileUnknown(ctx, attemptID)
 }
 
@@ -204,4 +217,27 @@ func (runner *ContainerRunner) inspectUndispatched(ctx context.Context, attemptI
 		return aisupervisor.UnknownExecution{}, false, err
 	}
 	return aisupervisor.UnknownExecution{}, false, ErrContainerRunnerRecovery
+}
+
+func recoveryErrorCode(err error) string {
+	switch {
+	case err == nil:
+		return "none"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, aisupervisor.ErrAttemptStillRunning), errors.Is(err, aibroker.ErrRunRunning):
+		return "previous_execution_running"
+	case errors.Is(err, ErrContainerRunnerConfig):
+		return "recovery_config_invalid"
+	case errors.Is(err, ErrContainerRunnerRecovery):
+		return "checkpoint_mismatch"
+	case errors.Is(err, aibroker.ErrDocker):
+		return "previous_executor_unavailable"
+	case errors.Is(err, aibroker.ErrJournalNotFound):
+		return "execution_journal_missing"
+	default:
+		return "recovery_failed"
+	}
 }

@@ -25,6 +25,18 @@ func (d *fakeDocker) Run(context.Context, aibroker.RunSpec, []byte) (aibroker.Do
 }
 func (d *fakeDocker) Stop(context.Context, string) error { d.stops++; return nil }
 
+type failingRemoteStore struct {
+	*MemoryStore
+	fail bool
+}
+
+func (s *failingRemoteStore) Save(ctx context.Context, snapshot Snapshot) error {
+	if s.fail {
+		return errors.New("fixture route store failure")
+	}
+	return s.MemoryStore.Save(ctx, snapshot)
+}
+
 type remoteHarness struct {
 	hub    *Hub
 	worker ConnectResponse
@@ -104,6 +116,209 @@ func TestInviteRotatesConsumedOfflineEnrollment(t *testing.T) {
 		if _, err := New(Config{Store: corrupt}); !errors.Is(err, aibroker.ErrInvalidConfig) {
 			t.Fatalf("mixed profile record=%+v error=%v, want invalid config", mixed, err)
 		}
+	}
+}
+
+func TestHubInspectRestoresDurableTerminalRouteAfterWorkerReplacement(t *testing.T) {
+	tests := []struct {
+		name       string
+		routeState string
+		wantState  aibroker.DockerContainerState
+		wantErr    error
+	}{
+		{name: "exited", routeState: string(aibroker.DockerContainerExited), wantState: aibroker.DockerContainerExited},
+		{name: "dead", routeState: string(aibroker.DockerContainerDead), wantState: aibroker.DockerContainerDead},
+		{name: "stopped", routeState: "stopped", wantState: aibroker.DockerContainerDead},
+		{name: "removed", routeState: "removed", wantErr: aibroker.ErrContainerNotFound},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := NewMemoryStore()
+			hub, err := New(Config{Store: store, LeaseTimeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			invite, err := hub.Invite(context.Background(), "profile-1", "https://public.example")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldWorker, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-old", ProfileID: "profile-1", EnrollmentToken: invite.Token})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := hub.saveRoute(RouteRecord{
+				ProfileID: "profile-1", WorkerID: oldWorker.WorkerID, WorkerEpoch: oldWorker.Epoch,
+				RequestID: "request-1", ContainerName: "stoneage-run-terminal", VolumeName: "stoneage-profile-1",
+				PayloadHash: strings.Repeat("a", 64), State: test.routeState, UpdatedAt: time.Now().UTC(),
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			// Reloading loses the in-memory old worker while retaining its durable
+			// route and profile binding. Invite then explicitly fences that old
+			// enrollment before the replacement worker connects.
+			reloaded, err := New(Config{Store: store, LeaseTimeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rotated, err := reloaded.Invite(context.Background(), "profile-1", "https://public.example")
+			if err != nil || rotated.Token == "" {
+				t.Fatalf("rotate offline enrollment: invitation=%+v err=%v", rotated, err)
+			}
+			if _, err := reloaded.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-new", ProfileID: "profile-1", EnrollmentToken: rotated.Token}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := reloaded.Inspect(context.Background(), "stoneage-run-terminal")
+			if test.wantErr != nil {
+				if !errors.Is(err, test.wantErr) {
+					t.Fatalf("inspect error=%v, want %v", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil || got != test.wantState {
+				t.Fatalf("inspect state=%q err=%v, want state=%q", got, err, test.wantState)
+			}
+		})
+	}
+}
+
+func TestHubInspectRejectsOfflineNonTerminalRouteAfterWorkerReplacement(t *testing.T) {
+	for _, routeState := range []string{string(aibroker.RunRunning), string(aibroker.RunUnknown)} {
+		t.Run(routeState, func(t *testing.T) {
+			store := NewMemoryStore()
+			hub, err := New(Config{Store: store, LeaseTimeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			invite, err := hub.Invite(context.Background(), "profile-1", "https://public.example")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldWorker, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-old", ProfileID: "profile-1", EnrollmentToken: invite.Token})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := hub.saveRoute(RouteRecord{
+				ProfileID: "profile-1", WorkerID: oldWorker.WorkerID, WorkerEpoch: oldWorker.Epoch,
+				RequestID: "request-1", ContainerName: "stoneage-run-nonterminal", VolumeName: "stoneage-profile-1",
+				PayloadHash: strings.Repeat("b", 64), State: routeState, UpdatedAt: time.Now().UTC(),
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			reloaded, err := New(Config{Store: store, LeaseTimeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rotated, err := reloaded.Invite(context.Background(), "profile-1", "https://public.example")
+			if err != nil || rotated.Token == "" {
+				t.Fatalf("rotate offline enrollment: invitation=%+v err=%v", rotated, err)
+			}
+			if _, err := reloaded.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-new", ProfileID: "profile-1", EnrollmentToken: rotated.Token}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reloaded.Inspect(context.Background(), "stoneage-run-nonterminal"); !errors.Is(err, aibroker.ErrDocker) {
+				t.Fatalf("inspect state=%q err=%v, want Docker error", routeState, err)
+			}
+		})
+	}
+}
+
+func TestHubRouteStateSaveFailureDoesNotCreateTerminalProof(t *testing.T) {
+	store := &failingRemoteStore{MemoryStore: NewMemoryStore()}
+	hub, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := RouteRecord{
+		ProfileID: "profile-1", WorkerID: "worker-old", WorkerEpoch: 1,
+		RequestID: "request-1", ContainerName: "stoneage-run-save-failure", VolumeName: "stoneage-profile-1",
+		PayloadHash: strings.Repeat("c", 64), State: string(aibroker.RunRunning), UpdatedAt: time.Now().UTC(),
+	}
+	if err := hub.saveRoute(route); err != nil {
+		t.Fatal(err)
+	}
+	store.fail = true
+	if err := hub.updateRouteState(route.ContainerName, string(aibroker.DockerContainerExited)); !errors.Is(err, aibroker.ErrDocker) {
+		t.Fatalf("failed route update error=%v, want Docker error", err)
+	}
+	inMemory, _, err := hub.routeForContainer(route.ContainerName)
+	if err != nil || inMemory.State != string(aibroker.RunRunning) {
+		t.Fatalf("failed route update changed memory route=%+v err=%v", inMemory, err)
+	}
+	persisted, err := store.Load(context.Background())
+	if err != nil || len(persisted.Routes) != 1 || persisted.Routes[0].State != string(aibroker.RunRunning) {
+		t.Fatalf("failed route update changed durable route=%+v err=%v", persisted.Routes, err)
+	}
+	store.fail = false
+	if err := hub.updateRouteState(route.ContainerName, string(aibroker.DockerContainerExited)); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err = store.Load(context.Background())
+	if err != nil || len(persisted.Routes) != 1 || persisted.Routes[0].State != string(aibroker.DockerContainerExited) {
+		t.Fatalf("successful route update was not durable route=%+v err=%v", persisted.Routes, err)
+	}
+}
+
+func TestHubDurableTerminalRouteSupportsBrokerUnknownReviewAfterWorkerReplacement(t *testing.T) {
+	store := NewMemoryStore()
+	hub, err := New(Config{Store: store, LeaseTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invite, err := hub.Invite(context.Background(), "profile-1", "https://public.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldWorker, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-old", ProfileID: "profile-1", EnrollmentToken: invite.Token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const containerName = "stoneage-run-review-terminal"
+	const requestID = "request-review"
+	if err := hub.saveRoute(RouteRecord{
+		ProfileID: "profile-1", WorkerID: oldWorker.WorkerID, WorkerEpoch: oldWorker.Epoch,
+		RequestID: requestID, ContainerName: containerName, VolumeName: "stoneage-profile-1",
+		PayloadHash: strings.Repeat("d", 64), State: string(aibroker.DockerContainerExited), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := New(Config{Store: store, LeaseTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := reloaded.Invite(context.Background(), "profile-1", "https://public.example")
+	if err != nil || rotated.Token == "" {
+		t.Fatalf("rotate offline enrollment: invitation=%+v err=%v", rotated, err)
+	}
+	if _, err := reloaded.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-new", ProfileID: "profile-1", EnrollmentToken: rotated.Token}); err != nil {
+		t.Fatal(err)
+	}
+
+	journal := aibroker.NewMemoryJournal()
+	entry := aibroker.JournalEntry{ProfileID: "profile-1", RequestID: requestID, PayloadHash: strings.Repeat("d", 64), State: aibroker.RunUnknown, ContainerName: containerName, VolumeName: "stoneage-profile-1", UpdatedAt: time.Now().UTC()}
+	if created, err := journal.Create(context.Background(), entry); err != nil || !created {
+		t.Fatalf("seed unknown journal: created=%v err=%v", created, err)
+	}
+	broker, err := aibroker.New(aibroker.Config{Docker: reloaded, Journal: journal, Image: "fixture:local", Network: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer broker.Close()
+	ready, err := broker.UnknownReviewReady(context.Background(), entry.ProfileID, entry.RequestID, entry.UpdatedAt)
+	if err != nil || !ready {
+		t.Fatalf("unknown review readiness=%v err=%v", ready, err)
+	}
+	reviewed, err := broker.ReviewUnknown(context.Background(), entry.ProfileID, entry.RequestID, entry.UpdatedAt, "operator", aibroker.ReviewReasonAcceptUncertainOutcome)
+	if err != nil || reviewed.Review == nil {
+		t.Fatalf("unknown review result=%+v err=%v", reviewed, err)
+	}
+	if reviewed.State != aibroker.RunUnknown {
+		t.Fatalf("unknown review changed outcome state=%s", reviewed.State)
+	}
+	route, _, err := reloaded.routeForContainer(containerName)
+	if err != nil || route.State != string(aibroker.DockerContainerExited) {
+		t.Fatalf("unknown review removed/changed route=%+v err=%v", route, err)
 	}
 }
 

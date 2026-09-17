@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
@@ -135,7 +136,13 @@ func (supervisor *Supervisor) ReviewUnknown(ctx context.Context, request Unknown
 		supervisor.mu.Unlock()
 		supervisor.wg.Done()
 	}()
-	return supervisor.reviewUnknown(ctx, request)
+	err := supervisor.reviewUnknown(ctx, request)
+	outcome := "completed"
+	if err != nil {
+		outcome = "failed"
+	}
+	log.Printf("event=ai_unknown_turn_review_%s profile=%q request_id=%q execution_state=%s stopped=%t", outcome, request.ProfileID, request.AttemptID, request.Execution.State, request.Execution.ContainerStopped)
+	return err
 }
 
 // reviewUnknown contains the durable review transaction shared by the
@@ -260,6 +267,7 @@ func (supervisor *Supervisor) recoverUnknownBeforeStart(ctx context.Context, pro
 	// still use the same review protocol. A production container factory
 	// implements it to drain the old broker/container claim first.
 	if reconciler, ok := supervisor.factory.(UnknownReviewReconciler); ok {
+		log.Printf("event=ai_unknown_turn_reconcile profile=%q request_id=%q", profileID, attempt.ID)
 		if err := reconciler.ReconcileUnknown(ctx, profileID, attempt.ID); err != nil {
 			return err
 		}
@@ -285,5 +293,11 @@ func (supervisor *Supervisor) recoverUnknownBeforeStart(ctx context.Context, pro
 		Actor:  actor,
 		Reason: airuntime.UnknownReviewReason,
 	}
-	return supervisor.reviewUnknown(ctx, request)
+	err = supervisor.reviewUnknown(ctx, request)
+	outcome := "completed"
+	if err != nil {
+		outcome = "failed"
+	}
+	log.Printf("event=ai_unknown_turn_review_%s profile=%q request_id=%q execution_state=%s stopped=%t", outcome, profileID, attempt.ID, execution.State, execution.ContainerStopped)
+	return err
 }
