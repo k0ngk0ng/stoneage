@@ -31,13 +31,17 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aisupervisor"
 	"github.com/k0ngk0ng/stoneage/internal/auth"
 	"github.com/k0ngk0ng/stoneage/internal/automation"
+	"github.com/k0ngk0ng/stoneage/internal/websession"
 )
 
 // aiRuntimeOptions contains only command-line/environment configuration. It
 // is intentionally separate from airuntime.Profile so a model or profile
 // cannot choose a socket, executable, or filesystem boundary.
 type aiRuntimeOptions struct {
-	GameAddress         string
+	WebBaseURL          string
+	WebPublicURL        string
+	WebServerID         string
+	WebAgentSocket      string
 	RuntimeRoot         string
 	MCPBinary           string
 	SkillRoot           string
@@ -69,16 +73,23 @@ type aiRuntimeWiring struct {
 	broker       *aibroker.Broker
 	remote       *airemote.Hub
 	runtimeImage string
-	gateway      *aiservice.Gateway
-	listener     net.Listener
-	gatewayHTTP  *http.Server
-	plans        *automation.SQLiteStore
-	receipts     *aiservice.ReceiptStore
-	factory      *aiservice.Factory
-	supervisor   *aisupervisor.Supervisor
-	profiles     aiProfileLister
-	restorer     aiProfileRestorer
-	admin        admin.AIProfileRuntime
+	webBaseURL   string
+	webPublicURL string
+	webConnector *websession.Connector
+	// gatewayEndpoint is the fixed Web-facing endpoint advertised to runners.
+	// Keep it on the wiring so startup tests and diagnostics can verify that a
+	// host runner did not regress to the private listener address.
+	gatewayEndpoint string
+	gateway         *aiservice.Gateway
+	listener        net.Listener
+	gatewayHTTP     *http.Server
+	plans           *automation.SQLiteStore
+	receipts        *aiservice.ReceiptStore
+	factory         *aiservice.Factory
+	supervisor      *aisupervisor.Supervisor
+	profiles        aiProfileLister
+	restorer        aiProfileRestorer
+	admin           admin.AIProfileRuntime
 
 	closeOnce sync.Once
 	closeErr  error
@@ -213,6 +224,11 @@ func (w *aiRuntimeWiring) Close() error {
 				errs = append(errs, err)
 			}
 		}
+		if w.webConnector != nil {
+			if err := w.webConnector.Close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
 		if w.gateway != nil {
 			w.gateway.Close()
 		}
@@ -265,9 +281,11 @@ func (w *aiRuntimeWiring) Close() error {
 func missingAIRuntimeOptions(options aiRuntimeOptions) []string {
 	options = normalizeAIRuntimeOptions(options)
 	container := aiContainerRequested(options)
-	missing := make([]string, 0, 13)
+	missing := make([]string, 0, 16)
 	required := []aiRuntimeRequirement{
-		{"ai-game-address", options.GameAddress},
+		{"ai-web-base-url", options.WebBaseURL},
+		{"ai-web-server-id", options.WebServerID},
+		{"ai-web-agent-socket", options.WebAgentSocket},
 		{"ai-runtime-root", options.RuntimeRoot},
 	}
 	if container {
@@ -369,7 +387,10 @@ func configureAIContainerModelProbeBroker(options aiRuntimeOptions, dataRoot str
 // root; image, network, Docker and the advertised URL remain explicit so a
 // partial container setup cannot silently change execution mode.
 func normalizeAIRuntimeOptions(options aiRuntimeOptions) aiRuntimeOptions {
-	options.GameAddress = strings.TrimSpace(options.GameAddress)
+	options.WebBaseURL = strings.TrimSpace(options.WebBaseURL)
+	options.WebPublicURL = strings.TrimSpace(options.WebPublicURL)
+	options.WebServerID = strings.TrimSpace(options.WebServerID)
+	options.WebAgentSocket = strings.TrimSpace(options.WebAgentSocket)
 	options.RuntimeRoot = strings.TrimSpace(options.RuntimeRoot)
 	options.MCPBinary = strings.TrimSpace(options.MCPBinary)
 	options.SkillRoot = strings.TrimSpace(options.SkillRoot)
@@ -468,7 +489,7 @@ func configureAIRuntime(ctx context.Context, authStore *auth.Store, modelStore *
 	if err != nil {
 		return nil, fmt.Errorf("open AI automation store: %w", err)
 	}
-	wiring := &aiRuntimeWiring{plans: plans, profiles: modelStore}
+	wiring := &aiRuntimeWiring{plans: plans, profiles: modelStore, webBaseURL: options.WebBaseURL, webPublicURL: options.WebPublicURL}
 	cleanupOnError := true
 	defer func() {
 		if cleanupOnError {
@@ -533,6 +554,13 @@ func configureAIRuntime(ctx context.Context, authStore *auth.Store, modelStore *
 	if err != nil {
 		return nil, fmt.Errorf("configure AI game secrets: %w", err)
 	}
+	webConnector, err := websession.NewConnector(websession.Config{
+		BaseURL: options.WebBaseURL, ServerID: options.WebServerID, SocketPath: options.WebAgentSocket,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure AI Web session connector: %w", err)
+	}
+	wiring.webConnector = webConnector
 	funding, err := aifunding.NewManager(options.FundingDir)
 	if err != nil {
 		return nil, fmt.Errorf("configure AI funding: %w", err)
@@ -541,8 +569,8 @@ func configureAIRuntime(ctx context.Context, authStore *auth.Store, modelStore *
 		ProviderConfig: aiprovision.ProviderConfig{
 			Auth:       authStore,
 			Secrets:    gameSecrets,
-			Game:       aiprovision.AigameConnector{},
-			GameConfig: aigame.Config{Address: options.GameAddress},
+			Game:       webConnector,
+			GameConfig: aigame.Config{Address: options.WebServerID},
 		},
 		Profiles: modelStore,
 	})
@@ -570,7 +598,15 @@ func configureAIRuntime(ctx context.Context, authStore *auth.Store, modelStore *
 	wiring.gatewayHTTP = gatewayHTTP
 	if containerMode {
 		endpoint = containerGatewayEndpoint
+	} else {
+		// Codex must always reach the game capability through the Web bridge.
+		// The listener above remains the private Web upstream; exposing its
+		// loopback address in the generated runtime config would bypass the
+		// Web session/lease boundary and is unreachable from a split Web
+		// process. WebBaseURL is already validated by websession.NewConnector.
+		endpoint = webAgentGameEndpoint(options.WebBaseURL)
 	}
+	wiring.gatewayEndpoint = endpoint
 
 	sessions := &fundedAIProfileProvider{provisioner: provisioner, provider: provider, funding: funding}
 	factoryConfig := aiservice.FactoryConfig{
@@ -612,6 +648,13 @@ func configureAIRuntime(ctx context.Context, authStore *auth.Store, modelStore *
 	wiring.admin = adapter
 	cleanupOnError = false
 	return wiring, nil
+}
+
+// webAgentGameEndpoint is the endpoint advertised to a host Codex runner.
+// Both host and container runners use the Web frontdoor so the same session,
+// lease and capability checks apply regardless of where the runner executes.
+func webAgentGameEndpoint(baseURL string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/v1/game"
 }
 
 // fundedAIProfileProvider translates the provisioner's lease type into the

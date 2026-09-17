@@ -84,8 +84,14 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
         assert 'profiles: ["ai-container"]' in ai_compose
         assert 'STONEAGE_AI_RUNTIME_IMAGE:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:' in ai_compose
         assert '-v0.1.14}}' in ai_compose
-        assert 'STONEAGE_AI_GAME_ADDRESS: gateway:9065' in ai_compose
-        assert 'STONEAGE_AI_CONTAINER_GATEWAY_URL: http://admin:8081/v1/game' in ai_compose
+        assert 'STONEAGE_AI_WEB_BASE_URL: ${STONEAGE_AI_WEB_BASE_URL:-http://web:8088}' in ai_compose
+        assert 'STONEAGE_AI_WEB_PUBLIC_URL: ${STONEAGE_AI_WEB_PUBLIC_URL:-}' in ai_compose
+        assert 'STONEAGE_AI_WEB_SERVER_ID: ${STONEAGE_AI_WEB_SERVER_ID:-line-1}' in ai_compose
+        assert 'STONEAGE_AI_WEB_AGENT_SOCKET: /run/stoneage-web/agent.sock' in ai_compose
+        assert 'STONEAGE_AI_CONTAINER_GATEWAY_URL: http://web:8088/v1/game' in ai_compose
+        assert 'STONEAGE_WEB_AGENT_SOCKET: /run/stoneage-web/agent.sock' in ai_compose
+        assert 'STONEAGE_WEB_AGENT_GAME_UPSTREAM: http://admin:8081/v1/game' in ai_compose
+        assert 'STONEAGE_WEB_AGENT_WORKER_UPSTREAM: http://admin:8080' in ai_compose
         assert 'STONEAGE_AI_BROKER_DB: /var/lib/stoneage-ai/runtime/broker/broker.db' in ai_compose
         assert 'STONEAGE_AI_GATEWAY_LISTEN: 0.0.0.0:8081' in ai_compose
         assert 'STONEAGE_AI_KNOWLEDGE_DATA_DIR: /game/gmsv/data' in ai_compose

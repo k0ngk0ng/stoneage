@@ -212,16 +212,17 @@ type factoryLease struct {
 type factoryCleanupState struct {
 	mu sync.Mutex
 
-	closed        bool
-	gate          *aicontrol.Gate
-	backend       aimcp.Backend
-	tasks         TaskController
-	revoke        func()
-	tokenPath     string
-	providerClose func()
-	release       func()
-	forgetMemory  func()
-	once          sync.Once
+	closed         bool
+	gate           *aicontrol.Gate
+	backend        aimcp.Backend
+	tasks          TaskController
+	revoke         func()
+	tokenPath      string
+	providerClose  func()
+	release        func()
+	forgetMemory   func()
+	stopLeaseWatch func()
+	once           sync.Once
 }
 
 func (state *factoryCleanupState) isClosed() bool {
@@ -320,6 +321,26 @@ func (state *factoryCleanupState) setTokenPath(path string) bool {
 	return true
 }
 
+func (state *factoryCleanupState) setLeaseWatch(stop func()) bool {
+	if state == nil {
+		if stop != nil {
+			stop()
+		}
+		return false
+	}
+	state.mu.Lock()
+	if state.closed {
+		state.mu.Unlock()
+		if stop != nil {
+			stop()
+		}
+		return false
+	}
+	state.stopLeaseWatch = stop
+	state.mu.Unlock()
+	return true
+}
+
 func (state *factoryCleanupState) cleanup() {
 	if state == nil {
 		return
@@ -328,11 +349,15 @@ func (state *factoryCleanupState) cleanup() {
 		state.mu.Lock()
 		state.closed = true
 		gate, backend, tasks, revoke, tokenPath := state.gate, state.backend, state.tasks, state.revoke, state.tokenPath
+		stopLeaseWatch := state.stopLeaseWatch
 		providerClose, release, forgetMemory := state.providerClose, state.release, state.forgetMemory
 		state.mu.Unlock()
 
 		// Fencing first cancels any in-flight game/task work before the
 		// provider tears down the authenticated socket.
+		if stopLeaseWatch != nil {
+			stopLeaseWatch()
+		}
 		if gate != nil {
 			_, _ = gate.Takeover("AI agent session closed")
 		}
@@ -658,6 +683,9 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	if !cleanupState.setGate(gate) {
 		return aisupervisor.AgentSession{}, aisupervisor.ErrClosed
 	}
+	if !cleanupState.setLeaseWatch(watchSessionLeaseGate(gate, lease.Session)) {
+		return aisupervisor.AgentSession{}, aisupervisor.ErrClosed
+	}
 	// The protocol session observes the login name, while Account.ID is an
 	// auth-database reference. Bind the gateway to the former so GameBackend's
 	// authoritative snapshot check cannot reject or accidentally cross-bind a
@@ -749,6 +777,7 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	if err != nil {
 		return aisupervisor.AgentSession{}, err
 	}
+	runner = bindRunnerToSessionLease(runner, leaseContext, lease.Session)
 
 	failed = false
 	factory.mu.Lock()

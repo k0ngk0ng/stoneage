@@ -9,15 +9,18 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/admin"
 )
 
-func (w *aiRuntimeWiring) CreateCommand(ctx context.Context, profileID, baseURL string) (admin.AILocalCommand, error) {
-	if w == nil || w.remote == nil || w.runtimeImage == "" {
+func (w *aiRuntimeWiring) CreateCommand(ctx context.Context, profileID, _ string) (admin.AILocalCommand, error) {
+	if w == nil || w.remote == nil || w.runtimeImage == "" || strings.TrimSpace(w.webPublicURL) == "" {
 		return admin.AILocalCommand{}, admin.ErrAIRuntimeUnavailable
 	}
-	invitation, err := w.remote.Invite(ctx, profileID, baseURL)
+	// The worker must use the explicitly configured public Web origin. The
+	// admin request origin may be an internal/private hostname and is never a
+	// safe source for a copy-paste endpoint.
+	invitation, err := w.remote.Invite(ctx, profileID, w.webPublicURL)
 	if err != nil {
 		return admin.AILocalCommand{}, err
 	}
-	identity := sha256.Sum256([]byte(baseURL + "\x00" + profileID))
+	identity := sha256.Sum256([]byte(w.webPublicURL + "\x00" + profileID))
 	name := "stoneage-ai-local-" + hex.EncodeToString(identity[:12])
 	args := []string{
 		"docker", "run", "--rm", "-d", "--init", "--name", name,

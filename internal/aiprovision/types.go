@@ -44,7 +44,7 @@ type Binding struct {
 }
 
 // GameSession is the narrow game surface needed by aiservice and by the
-// provider's returned lease. The concrete implementation is aigame.Session.
+// provider's returned lease. Production uses the Web-owned session adapter.
 type GameSession interface {
 	Observe(context.Context) (aigame.Snapshot, error)
 	ExecuteExpected(context.Context, uint64, aigame.Action) error
@@ -64,7 +64,8 @@ type HeadlessSession interface {
 }
 
 // SessionConnector is the only seam that receives game credentials. The
-// production implementation is AigameConnector, which calls aigame.Login.
+// production runtime supplies the Web session connector; tests and standalone
+// protocol tools may use AigameConnector.
 type SessionConnector interface {
 	Login(context.Context, aigame.Config, aigame.Credentials) (HeadlessSession, error)
 }
@@ -79,8 +80,8 @@ func (connector SessionConnectorFunc) Login(ctx context.Context, config aigame.C
 	return connector(ctx, config, credentials)
 }
 
-// AigameConnector is the production connector for the real named-protocol
-// headless client.
+// AigameConnector is a direct native-protocol adapter for tests and standalone
+// tools. The managed AI runtime must use the Web session connector instead.
 type AigameConnector struct{}
 
 func (AigameConnector) Login(ctx context.Context, config aigame.Config, credentials aigame.Credentials) (HeadlessSession, error) {

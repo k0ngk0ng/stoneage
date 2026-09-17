@@ -16,8 +16,11 @@ import (
 )
 
 func TestAIRuntimeRemainsUnavailableUntilAllServerOwnedSettingsArePresent(t *testing.T) {
-	if got := missingAIRuntimeOptions(aiRuntimeOptions{GameAddress: "game:3333"}); len(got) != 9 {
-		t.Fatalf("missing settings = %v, want nine", got)
+	got := missingAIRuntimeOptions(aiRuntimeOptions{})
+	for _, name := range []string{"ai-web-base-url", "ai-web-server-id", "ai-web-agent-socket", "ai-runtime-root"} {
+		if !containsString(got, name) {
+			t.Fatalf("missing settings = %v, want %s", got, name)
+		}
 	}
 	if runtime, err := configureAIRuntime(context.Background(), nil, nil, nil, aiRuntimeOptions{}); runtime != nil || err != nil {
 		t.Fatalf("incomplete runtime = %v, err=%v; model-only startup should remain available", runtime, err)
@@ -27,7 +30,8 @@ func TestAIRuntimeRemainsUnavailableUntilAllServerOwnedSettingsArePresent(t *tes
 func TestContainerAIRuntimeRequiresContainerSettingsWithoutHostBinaries(t *testing.T) {
 	root := t.TempDir()
 	options := aiRuntimeOptions{
-		GameAddress: "game:3333", RuntimeRoot: filepath.Join(root, "runtime"),
+		RuntimeRoot: filepath.Join(root, "runtime"),
+		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
 		SkillRoot: filepath.Join(root, "skills"), FundingDir: filepath.Join(root, "funding"),
 		KnowledgeDataDir: filepath.Join(root, "knowledge"), MapDataDir: filepath.Join(root, "maps"),
 		AutomationDB: filepath.Join(root, "automation.db"), ReceiptDB: filepath.Join(root, "receipts.db"),
@@ -70,7 +74,8 @@ func TestContainerAIRuntimeRequiresContainerSettingsWithoutHostBinaries(t *testi
 func TestAIRuntimeRemainsUnavailableWhenGameplayDataIsMissing(t *testing.T) {
 	root := t.TempDir()
 	options := aiRuntimeOptions{
-		GameAddress: "127.0.0.1:3333", RuntimeRoot: filepath.Join(root, "runtime"),
+		RuntimeRoot: filepath.Join(root, "runtime"),
+		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
 		MCPBinary: filepath.Join(root, "mcp"), SkillRoot: filepath.Join(root, "skills"),
 		FundingDir: filepath.Join(root, "funding"), CodexBinary: filepath.Join(root, "codex"),
 		KnowledgeDataDir: filepath.Join(root, "knowledge"), MapDataDir: filepath.Join(root, "maps"),
@@ -109,7 +114,8 @@ func TestConfigureAIRuntimeWiresFakeDependenciesAndOwnsGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	options := aiRuntimeOptions{
-		GameAddress: "127.0.0.1:3333", RuntimeRoot: filepath.Join(root, "runtime"),
+		RuntimeRoot: filepath.Join(root, "runtime"),
+		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
 		MCPBinary: mcp, SkillRoot: skillRoot, FundingDir: filepath.Join(root, "funding"),
 		CodexBinary: codex, GatewayListen: "127.0.0.1:0", GatewayPort: -1,
 		KnowledgeDataDir: filepath.Join("..", "..", "server", "legacy", "source", "2.5", "gmsv", "data"),
@@ -155,6 +161,9 @@ func TestConfigureAIRuntimeWiresFakeDependenciesAndOwnsGateway(t *testing.T) {
 	}
 	if runtime == nil || runtime.AdminRuntime() == nil || runtime.listener == nil || runtime.gatewayHTTP == nil || runtime.factory == nil || runtime.plans == nil || runtime.receipts == nil {
 		t.Fatalf("runtime wiring incomplete: %#v", runtime)
+	}
+	if got, want := runtime.gatewayEndpoint, webAgentGameEndpoint(options.WebBaseURL); got != want {
+		t.Fatalf("local runner gateway endpoint = %q, want Web frontdoor %q", got, want)
 	}
 	address := runtime.listener.Addr().String()
 	if err := runtime.Close(); err != nil {
@@ -213,6 +222,21 @@ func TestNormalizeAIGatewayListenRequiresLoopback(t *testing.T) {
 	}
 	if _, err := normalizeAIGatewayListen("127.0.0.1:8080", 65536); err == nil {
 		t.Fatal("out-of-range gateway port was accepted")
+	}
+}
+
+func TestWebAgentGameEndpointUsesWebFrontdoor(t *testing.T) {
+	for _, test := range []struct {
+		base string
+		want string
+	}{
+		{base: "http://web.example", want: "http://web.example/v1/game"},
+		{base: "http://web.example/", want: "http://web.example/v1/game"},
+		{base: "  https://web.example  ", want: "https://web.example/v1/game"},
+	} {
+		if got := webAgentGameEndpoint(test.base); got != test.want {
+			t.Errorf("webAgentGameEndpoint(%q) = %q, want %q", test.base, got, test.want)
+		}
 	}
 }
 
@@ -291,7 +315,8 @@ func TestConfigureAIRuntimeWiresContainerBrokerWithoutHostBinaries(t *testing.T)
 	port := freeTCPPort(t)
 	runtimeRoot := filepath.Join(root, "runtime")
 	options := aiRuntimeOptions{
-		GameAddress: "127.0.0.1:3333", RuntimeRoot: runtimeRoot,
+		RuntimeRoot: runtimeRoot,
+		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
 		SkillRoot: skillRoot, FundingDir: filepath.Join(root, "funding"),
 		// These host paths are intentionally unusable: container mode must
 		// never pass them into Factory or require them to construct the agent.
@@ -309,6 +334,9 @@ func TestConfigureAIRuntimeWiresContainerBrokerWithoutHostBinaries(t *testing.T)
 	}
 	if runtime == nil || runtime.broker == nil || runtime.factory == nil || runtime.listener == nil {
 		t.Fatalf("container runtime wiring incomplete: %#v", runtime)
+	}
+	if runtime.gatewayEndpoint != options.ContainerGatewayURL {
+		t.Fatalf("container runner gateway endpoint = %q, want %q", runtime.gatewayEndpoint, options.ContainerGatewayURL)
 	}
 	brokerConfig := runtime.broker.Config()
 	if brokerConfig.Image != options.RuntimeImage || brokerConfig.Network != options.ContainerNetwork || brokerConfig.DockerBinary != dockerPath {
@@ -348,7 +376,8 @@ func TestConfigureAIRuntimeFailureReleasesContainerResources(t *testing.T) {
 	port := freeTCPPort(t)
 	runtimeRoot := filepath.Join(root, "runtime")
 	options := aiRuntimeOptions{
-		GameAddress: "127.0.0.1:3333", RuntimeRoot: runtimeRoot,
+		RuntimeRoot: runtimeRoot,
+		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
 		// The missing skill root passes the incomplete-settings gate, then
 		// forces NewFactory to fail after the broker and Gateway are owned.
 		SkillRoot: filepath.Join(root, "missing-skills"), FundingDir: filepath.Join(root, "funding"),

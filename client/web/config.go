@@ -22,6 +22,7 @@ type webConfigFile struct {
 	ListenAddress string                  `toml:"listen_address"`
 	TCPUpstream   string                  `toml:"tcp_upstream"`
 	GatewayAPIURL string                  `toml:"gateway_api_url"`
+	Agent         webAgentConfigFile      `toml:"agent"`
 	PacketLimit   int                     `toml:"packet_limit"`
 	MaxSessions   int                     `toml:"max_sessions"`
 	PollTimeout   string                  `toml:"poll_timeout"`
@@ -30,6 +31,12 @@ type webConfigFile struct {
 	AllowedOrigin string                  `toml:"allowed_origin"`
 	Static        webStaticConfigFile     `toml:"static"`
 	Automation    webAutomationConfigFile `toml:"automation"`
+}
+
+type webAgentConfigFile struct {
+	SocketPath     string `toml:"socket_path"`
+	GameUpstream   string `toml:"game_upstream"`
+	WorkerUpstream string `toml:"worker_upstream"`
 }
 
 type webAutomationConfigFile struct {
@@ -99,6 +106,9 @@ func loadWebConfigFile(filename string) (Config, error) {
 	applyNonEmpty(&cfg.ListenAddress, disk.ListenAddress)
 	applyNonEmpty(&cfg.TCPUpstream, disk.TCPUpstream)
 	applyNonEmpty(&cfg.GatewayAPIURL, disk.GatewayAPIURL)
+	applyNonEmpty(&cfg.AgentSocketPath, disk.Agent.SocketPath)
+	applyNonEmpty(&cfg.AgentGameUpstream, disk.Agent.GameUpstream)
+	applyNonEmpty(&cfg.AgentWorkerUpstream, disk.Agent.WorkerUpstream)
 	applyNonEmpty(&cfg.AssetsDirectory, disk.Static.AssetsDirectory)
 	applyNonEmpty(&cfg.MapDirectory, disk.Static.MapsDirectory)
 	applyNonEmpty(&cfg.AudioDirectory, disk.Static.AudioDirectory)

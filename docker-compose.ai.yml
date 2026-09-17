@@ -18,16 +18,20 @@ services:
     environment:
       # These values are container-local and intentionally do not expose a
       # host path or a model credential to the AI runtime container.
-      # aigame speaks the named LSSPROTO dialect; always go through the
-      # compatibility gateway rather than dialing the raw GMSV listener.
-      STONEAGE_AI_GAME_ADDRESS: gateway:9065
+      # AI identity/login is owned by the Web bridge. The public origin is
+      # explicit so local workers never derive an endpoint from an admin
+      # request Host header.
+      STONEAGE_AI_WEB_BASE_URL: ${STONEAGE_AI_WEB_BASE_URL:-http://web:8088}
+      STONEAGE_AI_WEB_PUBLIC_URL: ${STONEAGE_AI_WEB_PUBLIC_URL:-}
+      STONEAGE_AI_WEB_SERVER_ID: ${STONEAGE_AI_WEB_SERVER_ID:-line-1}
+      STONEAGE_AI_WEB_AGENT_SOCKET: /run/stoneage-web/agent.sock
       STONEAGE_AI_RUNTIME_ROOT: /var/lib/stoneage-ai/runtime
       STONEAGE_AI_SKILL_ROOT: /opt/stoneage/ai/skills
       STONEAGE_AI_RUNTIME_IMAGE: ${STONEAGE_AI_RUNTIME_IMAGE:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:${STONEAGE_VERSION:-v0.1.16}}
       STONEAGE_AI_CONTAINER_NETWORK: ${STONEAGE_AI_CONTAINER_NETWORK:-stoneage-backend}
       STONEAGE_AI_DOCKER_BINARY: /usr/bin/docker
       STONEAGE_AI_BROKER_DB: /var/lib/stoneage-ai/runtime/broker/broker.db
-      STONEAGE_AI_CONTAINER_GATEWAY_URL: http://admin:8081/v1/game
+      STONEAGE_AI_CONTAINER_GATEWAY_URL: http://web:8088/v1/game
       STONEAGE_AI_FUNDING_DIR: /run/stoneage-ai-funding/policies
       STONEAGE_AI_KNOWLEDGE_DATA_DIR: /game/gmsv/data
       STONEAGE_AI_MAP_DATA_DIR: /game/gmsv/data
@@ -45,6 +49,7 @@ services:
       - ai-broker:/var/lib/stoneage-ai/runtime/broker
       - ai-automation:/var/lib/stoneage-ai/automation
       - ai-receipts:/var/lib/stoneage-ai/receipts
+      - ai-web-agent:/run/stoneage-web
       # Keep the AI map/knowledge source explicitly read-only even though the
       # admin's player catalog mount covers the surrounding GMSV tree.
       - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}/data:/game/gmsv/data:ro
@@ -63,9 +68,13 @@ services:
       STONEAGE_AI_NPC_REGISTRY: ${STONEAGE_AI_NPC_REGISTRY:-}
       STONEAGE_AI_AUTOMATION_DB: /var/lib/stoneage-ai/automation/automation.db
       STONEAGE_AI_RECEIPT_DB: /var/lib/stoneage-ai/receipts/receipts.db
+      STONEAGE_WEB_AGENT_SOCKET: /run/stoneage-web/agent.sock
+      STONEAGE_WEB_AGENT_GAME_UPSTREAM: http://admin:8081/v1/game
+      STONEAGE_WEB_AGENT_WORKER_UPSTREAM: http://admin:8080
     volumes:
       - ai-automation:/var/lib/stoneage-ai/automation
       - ai-receipts:/var/lib/stoneage-ai/receipts
+      - ai-web-agent:/run/stoneage-web
       - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}/data:/game/gmsv/data:ro
 
 networks:
@@ -76,7 +85,7 @@ networks:
 
 volumes:
   # These names are explicit so state survives service replacement. Operators
-  # may set the four *_VOLUME values in their env file to add a project prefix.
+  # may set the *_VOLUME values in their env file to add a project prefix.
   ai-runtime-state:
     name: ${STONEAGE_AI_RUNTIME_VOLUME:-stoneage-ai-runtime}
   ai-broker:
@@ -85,3 +94,5 @@ volumes:
     name: ${STONEAGE_AI_AUTOMATION_VOLUME:-stoneage-ai-automation}
   ai-receipts:
     name: ${STONEAGE_AI_RECEIPT_VOLUME:-stoneage-ai-receipts}
+  ai-web-agent:
+    name: ${STONEAGE_AI_WEB_AGENT_VOLUME:-stoneage-ai-web-agent}

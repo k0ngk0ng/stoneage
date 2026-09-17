@@ -14,12 +14,12 @@ func TestLocalCommandUsesPublishedIsolatedWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer hub.Close()
-	w := &aiRuntimeWiring{remote: hub, runtimeImage: "ghcr.io/example/ai-runtime@sha256:" + strings.Repeat("a", 64)}
-	result, err := w.CreateCommand(context.Background(), "player-1", "https://game.example")
+	w := &aiRuntimeWiring{remote: hub, runtimeImage: "ghcr.io/example/ai-runtime@sha256:" + strings.Repeat("a", 64), webPublicURL: "https://web.example"}
+	result, err := w.CreateCommand(context.Background(), "player-1", "https://admin.internal.example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, part := range []string{"docker run --rm -d", "--read-only", "--cap-drop ALL", "--entrypoint /usr/local/bin/stoneage-ai-worker", "--profile player-1", "--endpoint https://game.example/api/ai/worker", "--start", w.runtimeImage} {
+	for _, part := range []string{"docker run --rm -d", "--read-only", "--cap-drop ALL", "--entrypoint /usr/local/bin/stoneage-ai-worker", "--profile player-1", "--endpoint https://web.example/api/ai/worker", "--start", w.runtimeImage} {
 		if !strings.Contains(result.Command, part) {
 			t.Fatalf("command missing %q", part)
 		}

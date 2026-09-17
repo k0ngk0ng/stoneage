@@ -79,7 +79,10 @@ func serve(arguments []string) error {
 	aiCodexWorkspaceRoot := flags.String("ai-codex-workspace-root", os.Getenv("STONEAGE_AI_CODEX_WORKSPACE_ROOT"), "alias for -ai-codex-work-root")
 	aiCodexStateRoot := flags.String("ai-codex-state-root", os.Getenv("STONEAGE_AI_CODEX_STATE_ROOT"), "private root for disposable AI connection-test state")
 	aiConnectionTimeout := flags.Duration("ai-model-test-timeout", durationEnv("STONEAGE_AI_MODEL_TEST_TIMEOUT", 60*time.Second), "maximum duration for an explicit model connection test")
-	aiGameAddress := flags.String("ai-game-address", os.Getenv("STONEAGE_AI_GAME_ADDRESS"), "server-owned StoneAge named-protocol address for AI sessions")
+	aiWebBaseURL := flags.String("ai-web-base-url", os.Getenv("STONEAGE_AI_WEB_BASE_URL"), "Web HTTP origin used by admin AI sessions")
+	aiWebPublicURL := flags.String("ai-web-public-url", os.Getenv("STONEAGE_AI_WEB_PUBLIC_URL"), "explicit public Web base URL used in copied worker commands")
+	aiWebServerID := flags.String("ai-web-server-id", envOr("STONEAGE_AI_WEB_SERVER_ID", "line-1"), "server-owned Web game server identifier")
+	aiWebAgentSocket := flags.String("ai-web-agent-socket", envOr("STONEAGE_AI_WEB_AGENT_SOCKET", "/run/stoneage-web/agent.sock"), "private Web agent Unix socket")
 	aiRuntimeRoot := flags.String("ai-runtime-root", os.Getenv("STONEAGE_AI_RUNTIME_ROOT"), "private root for persistent AI agent runtime state (enables game agents)")
 	aiMCPBinary := flags.String("ai-mcp-binary", os.Getenv("STONEAGE_AI_MCP_BINARY"), "absolute server stoneage-game-mcp executable path")
 	aiSkillRoot := flags.String("ai-skill-root", os.Getenv("STONEAGE_AI_SKILL_ROOT"), "absolute server root containing the hash-pinned native AI skills")
@@ -126,7 +129,10 @@ func serve(arguments []string) error {
 		*aiCodexStateRoot = filepath.Join(aiDataRoot, "ai-state")
 	}
 	aiOptions := aiRuntimeOptions{
-		GameAddress:         *aiGameAddress,
+		WebBaseURL:          *aiWebBaseURL,
+		WebPublicURL:        *aiWebPublicURL,
+		WebServerID:         *aiWebServerID,
+		WebAgentSocket:      *aiWebAgentSocket,
 		RuntimeRoot:         *aiRuntimeRoot,
 		MCPBinary:           *aiMCPBinary,
 		SkillRoot:           *aiSkillRoot,
@@ -515,7 +521,8 @@ serve environment:
 	STONEAGE_AI_SECRET_DIR, STONEAGE_AI_MODEL_KEY_FILE, STONEAGE_AI_CODEX_BINARY,
 	STONEAGE_AI_CODEX_WORK_ROOT, STONEAGE_AI_CODEX_WORKSPACE_ROOT,
 	STONEAGE_AI_CODEX_STATE_ROOT, STONEAGE_AI_MODEL_TEST_TIMEOUT,
-	STONEAGE_AI_GAME_ADDRESS, STONEAGE_AI_RUNTIME_ROOT, STONEAGE_AI_MCP_BINARY,
+	STONEAGE_AI_WEB_BASE_URL, STONEAGE_AI_WEB_PUBLIC_URL, STONEAGE_AI_WEB_SERVER_ID,
+	STONEAGE_AI_WEB_AGENT_SOCKET, STONEAGE_AI_RUNTIME_ROOT, STONEAGE_AI_MCP_BINARY,
 	STONEAGE_AI_SKILL_ROOT, STONEAGE_AI_RUNTIME_IMAGE, STONEAGE_AI_CONTAINER_NETWORK,
 	STONEAGE_AI_DOCKER_BINARY, STONEAGE_AI_BROKER_DB, STONEAGE_AI_CONTAINER_GATEWAY_URL,
 	STONEAGE_AI_FUNDING_DIR, STONEAGE_AI_GATEWAY_LISTEN,
