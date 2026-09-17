@@ -485,3 +485,69 @@ func waitUntil(t *testing.T, timeout time.Duration, predicate func() bool) {
 	}
 	t.Fatal("condition did not become true")
 }
+
+func TestStopBeforeQueuedRunPersistsCancellation(t *testing.T) {
+	root := t.TempDir()
+	jobs, err := openJobStore(root, filepath.Join(root, "runner"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("{}")) }))
+	defer server.Close()
+	request := workerRequest("queued-request", "complete")
+	payload, _ := json.Marshal(request)
+	command := airemote.Command{CommandID: "queued", Kind: airemote.KindRun, ProfileID: "profile-1", RequestID: request.RequestID, ContainerName: "queued-container", PayloadHash: hashBytes(payload), Payload: payload}
+	var calls atomic.Int32
+	w := &worker{opts: options{server: server.URL, profile: "profile-1"}, client: server.Client(), jobs: jobs, processes: make(map[string]*processState),
+		executeTurn: func(context.Context, options, airunner.ExecuteRequest) (airunner.Response, error) {
+			calls.Add(1)
+			return airunner.Response{}, nil
+		}}
+	stop := command
+	stop.Kind = airemote.KindStop
+	w.executeStop(context.Background(), stop)
+	w.executeRun(context.Background(), command)
+	reopened, err := openJobStore(root, filepath.Join(root, "runner"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.jobs = reopened
+	w.executeRun(context.Background(), command)
+	if calls.Load() != 0 {
+		t.Fatal("stopped queued run called model")
+	}
+	record, ok := reopened.get(command.ContainerName)
+	if !ok || record.State != "stopped" {
+		t.Fatalf("cancellation was not durable: %+v", record)
+	}
+}
+
+func TestRunLogsExecutionAndPostFailureSeparately(t *testing.T) {
+	root := t.TempDir()
+	jobs, err := openJobStore(root, filepath.Join(root, "runner"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "session-secret", http.StatusBadRequest) }))
+	defer server.Close()
+	request := workerRequest("log-request", "private-prompt")
+	payload, _ := json.Marshal(request)
+	command := airemote.Command{CommandID: "log", Kind: airemote.KindRun, ProfileID: "profile-1", RequestID: request.RequestID, ContainerName: "log-container", PayloadHash: hashBytes(payload), Payload: payload}
+	var output bytes.Buffer
+	w := &worker{opts: options{server: server.URL, profile: "profile-1"}, client: server.Client(), logger: log.New(&output, "", 0), jobs: jobs, processes: make(map[string]*processState),
+		executeTurn: func(context.Context, options, airunner.ExecuteRequest) (airunner.Response, error) {
+			return airunner.Response{Error: "secret-key"}, context.DeadlineExceeded
+		}}
+	w.executeRun(context.Background(), command)
+	logs := output.String()
+	for _, want := range []string{"event=runner_finished", "exit_code=-1", "reason=deadline_exceeded", "event=result_posted", "status=failed"} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("missing diagnostic %q: %s", want, logs)
+		}
+	}
+	for _, secret := range []string{"secret-key", "private-prompt", "session-secret"} {
+		if strings.Contains(logs, secret) {
+			t.Fatal("diagnostics exposed private data")
+		}
+	}
+}

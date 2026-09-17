@@ -621,7 +621,17 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "journal_failed", PayloadHash: command.PayloadHash})
 		return
 	}
-	response, execErr := w.executeTurn(runCtx, w.opts, request)
+	var response airunner.Response
+	var execErr error
+	if runCtx.Err() != nil {
+		execErr = runCtx.Err()
+	} else {
+		response, execErr = w.executeTurn(runCtx, w.opts, request)
+	}
+	reason := airunner.ErrorCode(execErr)
+	if runCtx.Err() != nil {
+		reason = airunner.ErrorCode(runCtx.Err())
+	}
 	raw, marshalErr := json.Marshal(response)
 	if marshalErr != nil {
 		finishProcess()
@@ -642,6 +652,7 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	} else if execErr != nil {
 		errorCode = "runner_reported_error"
 	}
+	w.logf("event=runner_finished profile=%s request_id=%s status=%s exit_code=%d reason=%s", workerLogID(command.ProfileID), workerLogID(command.RequestID), state, exitCode, workerLogID(reason))
 	status = state
 	record := jobRecord{CommandID: command.CommandID, ProfileID: command.ProfileID, RequestID: command.RequestID, ContainerName: command.ContainerName, PayloadHash: command.PayloadHash, PIDNamespace: w.namespace, State: state, ExitCode: exitCode, Stdout: raw, UpdatedAt: time.Now().UTC()}
 	if err := w.jobs.finish(record); err != nil {
@@ -654,8 +665,13 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	// before any network result is posted. Stop can therefore observe a
 	// consistent state and never wait on the result HTTP request.
 	finishProcess()
-	if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: state, ExitCode: exitCode, Stdout: raw}); err != nil && errorCode == "" {
-		errorCode = "result_post_failed"
+	if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: state, ExitCode: exitCode, Stdout: raw}); err != nil {
+		w.logf("event=result_posted profile=%s request_id=%s status=failed reason=%s", workerLogID(command.ProfileID), workerLogID(command.RequestID), workerErrorClass(err))
+		if errorCode == "" {
+			errorCode = "result_post_failed"
+		}
+	} else {
+		w.logf("event=result_posted profile=%s request_id=%s status=accepted", workerLogID(command.ProfileID), workerLogID(command.RequestID))
 	}
 }
 func (w *worker) executeStop(parent context.Context, command airemote.Command) {
@@ -665,6 +681,18 @@ func (w *worker) executeStop(parent context.Context, command airemote.Command) {
 	w.logf("event=stop_requested kind=%s profile=%s request_id=%s", workerLogID(command.Kind), workerLogID(command.ProfileID), workerLogID(command.RequestID))
 	w.mu.Lock()
 	process := w.processes[command.ContainerName]
+	// Persist cancellation before acknowledging a stop that overtook Run.
+	// Holding mu prevents a queued Run from registering during this check.
+	if process == nil {
+		if _, exists := w.jobs.get(command.ContainerName); !exists {
+			if err := w.jobs.start(jobRecord{CommandID: command.CommandID, ProfileID: command.ProfileID, RequestID: command.RequestID, ContainerName: command.ContainerName, PayloadHash: command.PayloadHash, State: "stopped", UpdatedAt: time.Now().UTC()}); err != nil {
+				w.mu.Unlock()
+				errorCode = "journal_failed"
+				_ = w.postResult(parent, command, airemote.ResultRequest{State: "unknown", Error: errorCode, PayloadHash: command.PayloadHash})
+				return
+			}
+		}
+	}
 	w.mu.Unlock()
 	if process == nil {
 		if record, ok := w.jobs.get(command.ContainerName); ok && record.State == "running" {
@@ -711,6 +739,8 @@ func (w *worker) executeLifecycle(parent context.Context, command airemote.Comma
 		case airemote.KindInspect:
 			if record.State == "removed" {
 				result.NotFound, result.State = true, "absent"
+			} else if record.State == "stopped" {
+				result.State = "dead"
 			} else {
 				result.State = record.State
 			}

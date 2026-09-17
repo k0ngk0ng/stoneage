@@ -59,14 +59,16 @@ type Config struct {
 	GatewayURL string
 	// PublicBaseURL is the externally reachable control-plane origin used by
 	// the worker runtime to reach the profile-scoped game proxy.
-	PublicBaseURL   string
-	GameProxyURL    string
-	Guard           func(context.Context, string) error
-	Start           func(context.Context, string) error
-	GameAuthorize   func(context.Context, string, string) bool
-	Now             func() time.Time
-	PollTimeout     time.Duration
-	LeaseTimeout    time.Duration
+	PublicBaseURL string
+	GameProxyURL  string
+	Guard         func(context.Context, string) error
+	Start         func(context.Context, string) error
+	GameAuthorize func(context.Context, string, string) bool
+	Now           func() time.Time
+	PollTimeout   time.Duration
+	LeaseTimeout  time.Duration
+	// CommandTimeout bounds management commands, not model turns. Runs use
+	// their caller's deadline, or a 30-minute fallback when none is supplied.
 	CommandTimeout  time.Duration
 	MaxPayloadBytes int
 	MaxOutputBytes  int
@@ -675,9 +677,21 @@ func (h *Hub) wait(ctx context.Context, wait *commandWait) commandOutcome {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if h.cfg.CommandTimeout > 0 {
+	// Management commands must respond quickly, but a model turn can exceed
+	// that timeout while the worker remains healthy. Its caller owns the turn
+	// deadline (including time to persist the outcome). Do not cut that short.
+	timeout := h.cfg.CommandTimeout
+	if wait.cmd != nil && wait.cmd.Kind == KindRun {
+		if _, bounded := ctx.Deadline(); bounded {
+			timeout = 0
+		} else {
+			// Keep callers without a turn deadline bounded as well.
+			timeout = 30 * time.Minute
+		}
+	}
+	if timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, h.cfg.CommandTimeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 	select {

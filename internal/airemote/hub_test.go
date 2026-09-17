@@ -175,7 +175,9 @@ func TestHubBoundProfileDoesNotFallbackWhenWorkerOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = hub.Run(context.Background(), spec(), testPayload(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err = hub.Run(ctx, spec(), testPayload(t))
 	if !errors.Is(err, aibroker.ErrDocker) {
 		t.Fatalf("offline run error=%v", err)
 	}

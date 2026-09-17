@@ -64,6 +64,15 @@ async function main() {
     const profile = 'image-smoke';
     const env = process.env;
     const runner = env.STONEAGE_AI_RUNNER_BINARY || '/usr/local/bin/stoneage-ai-runner';
+    if (!env.STONEAGE_AI_RUNNER_BINARY) {
+      const expectedMachine = {x64: 62, arm64: 183}[process.arch];
+      assert(expectedMachine, `unsupported image architecture: ${process.arch}`);
+      for (const binary of ['stoneage-ai-runner', 'stoneage-ai-worker', 'stoneage-game-mcp']) {
+        const header = fs.readFileSync(`/usr/local/bin/${binary}`).subarray(0, 20);
+        assert.equal(header.subarray(0, 4).toString('hex'), '7f454c46');
+        assert.equal(header.readUInt16LE(18), expectedMachine, `${binary} architecture differs from image`);
+      }
+    }
     // An old container can leave a lock containing a PID reused by its
     // replacement. Exercise the packaged worker, not just the runner.
     const workerState = fs.mkdtempSync(path.join(root, 'worker-state-'));

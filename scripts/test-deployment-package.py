@@ -185,6 +185,14 @@ esac
     assert '--profile ai-container pull ai-runtime-image' in ai_calls
 
     dockerfile = (root / 'deploy/linux/Dockerfile').read_text()
+    assert 'FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-source' in dockerfile
+    assert 'ARG TARGETARCH=amd64' not in dockerfile
+    assert 'ARG TARGETOS' in dockerfile and 'ARG TARGETARCH' in dockerfile
+    assert 'GOOS="$TARGETOS" GOARCH="$TARGETARCH"' in dockerfile
+    assert 'FROM go-source AS build-control' in dockerfile
+    assert 'FROM go-source AS build-ai' in dockerfile
+    assert 'COPY --from=build-control' in dockerfile
+    assert 'COPY --from=build-ai' in dockerfile
     assert not any(
         line.lstrip().startswith('COPY') and 'client/web/assets/original' in line
         for line in dockerfile.splitlines()

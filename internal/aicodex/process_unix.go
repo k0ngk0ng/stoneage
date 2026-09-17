@@ -14,8 +14,15 @@ func configureProcessGroup(cmd *exec.Cmd) {
 }
 
 // terminateProcess starts a TERM-then-KILL sequence for the process group and
-// returns immediately.  The caller keeps draining stdout/stderr while the
+// returns immediately. The caller keeps draining stdout/stderr while the
 // grace timer runs, preventing a blocked JSONL writer from deadlocking Wait.
+//
+// The KILL must not be skipped when the direct child exits after TERM. Codex
+// can leave a runner (or another descendant) alive in the same process group;
+// cmd.Wait then closes finished even though that descendant can still make
+// provider requests. Reap the group as soon as the leader exits; if it does
+// not exit, reap it when the grace period expires. Killing immediately after
+// finished also keeps the original PGID reuse window as small as possible.
 func terminateProcess(cmd *exec.Cmd, finished <-chan struct{}, grace time.Duration) {
 	if cmd == nil || cmd.Process == nil {
 		return
@@ -38,11 +45,13 @@ func terminateProcess(cmd *exec.Cmd, finished <-chan struct{}, grace time.Durati
 		defer timer.Stop()
 		select {
 		case <-finished:
-			return
 		case <-timer.C:
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
-			_ = cmd.Process.Kill()
 		}
+		// A process-group kill is sufficient for the direct child and its
+		// descendants, including the case where the direct child has already
+		// exited. Do not call cmd.Process.Kill here: once the child has exited,
+		// its numeric PID could have been reused by an unrelated process.
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
 	}()
 }
 

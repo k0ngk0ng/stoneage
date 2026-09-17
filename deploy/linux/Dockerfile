@@ -1,4 +1,7 @@
-FROM golang:1.23-alpine AS build
+# Compile on the runner's native architecture and cross-compile the binaries
+# for the requested image platform. This keeps the arm64 Go compiler out of
+# QEMU while preserving the target architecture in the final image.
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-source
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -8,15 +11,30 @@ RUN go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY server/go/ ./server/go/
+
+ARG TARGETOS
+ARG TARGETARCH
+
+FROM go-source AS build-control
+
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -mod=readonly -trimpath -ldflags="-s -w" -o /out/ \
+    ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
+    ./cmd/stoneage-assets-sync
+
 COPY client/web/*.go client/web/index.html client/web/sw.js client/web/automation.js ./client/web/
 
-ARG TARGETARCH=amd64
 ARG RELEASE_VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
-    go build -mod=readonly -trimpath -ldflags="-s -w -X main.releaseVersion=$RELEASE_VERSION" -o /out/ \
-    ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
-    ./cmd/stoneage-assets-sync ./cmd/stoneage-game-mcp ./cmd/stoneage-ai-runner ./cmd/stoneage-ai-worker ./client/web && \
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -mod=readonly -trimpath -ldflags="-s -w -X main.releaseVersion=$RELEASE_VERSION" \
+    -o /out/web ./client/web && \
     mv /out/web /out/stoneage-web
+
+FROM go-source AS build-ai
+
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -mod=readonly -trimpath -ldflags="-s -w" -o /out/ \
+    ./cmd/stoneage-game-mcp ./cmd/stoneage-ai-runner ./cmd/stoneage-ai-worker
 
 # The AI runtime is a separate image target.  It deliberately does not inherit
 # the control-plane image: the Codex process must never share the admin
@@ -41,9 +59,9 @@ RUN apt-get update \
     && adduser --system --uid 10001 --ingroup stoneage-ai --home /var/lib/stoneage-ai --shell /usr/sbin/nologin stoneage-ai \
     && install -d -o stoneage-ai -g stoneage-ai -m 0700 /var/lib/stoneage-ai
 
-COPY --from=build /out/stoneage-game-mcp /usr/local/bin/stoneage-game-mcp
-COPY --from=build /out/stoneage-ai-runner /usr/local/bin/stoneage-ai-runner
-COPY --from=build /out/stoneage-ai-worker /usr/local/bin/stoneage-ai-worker
+COPY --from=build-ai /out/stoneage-game-mcp /usr/local/bin/stoneage-game-mcp
+COPY --from=build-ai /out/stoneage-ai-runner /usr/local/bin/stoneage-ai-runner
+COPY --from=build-ai /out/stoneage-ai-worker /usr/local/bin/stoneage-ai-worker
 COPY ai/skills/ /opt/stoneage/ai/skills/
 
 # Fail the image build if the fixed process contract drifts.  The broker owns
@@ -86,11 +104,11 @@ ENV TZ=Asia/Shanghai
 
 RUN apk add --no-cache tzdata bash docker-cli docker-cli-compose netcat-openbsd
 
-COPY --from=build /out/stoneage-gateway /opt/stoneage/bin/stoneage-gateway
-COPY --from=build /out/stoneage-admin /opt/stoneage/bin/stoneage-admin
-COPY --from=build /out/stoneage-operator /opt/stoneage/bin/stoneage-operator
-COPY --from=build /out/stoneage-assets-sync /opt/stoneage/bin/stoneage-assets-sync
-COPY --from=build /out/stoneage-web /opt/stoneage/bin/stoneage-web
+COPY --from=build-control /out/stoneage-gateway /opt/stoneage/bin/stoneage-gateway
+COPY --from=build-control /out/stoneage-admin /opt/stoneage/bin/stoneage-admin
+COPY --from=build-control /out/stoneage-operator /opt/stoneage/bin/stoneage-operator
+COPY --from=build-control /out/stoneage-assets-sync /opt/stoneage/bin/stoneage-assets-sync
+COPY --from=build-control /out/stoneage-web /opt/stoneage/bin/stoneage-web
 # The admin and Web processes only verify/read these reviewed native Skills;
 # Codex itself runs in the separate ai-runtime image.
 COPY ai/skills/ /opt/stoneage/ai/skills/

@@ -25,6 +25,12 @@ runs:
       with:
         go-version-file: go.mod
         cache: false
+    # Go 1.23 starts telemetry during `go env` and downloads its config
+    # module into GOMODCACHE. Do this before discovering cache paths so the
+    # restore tar cannot collide with files created by the toolchain.
+    - id: telemetry
+      shell: bash
+      run: go telemetry off
     - id: paths
       shell: bash
       run: |
