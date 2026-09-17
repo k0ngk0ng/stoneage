@@ -28,6 +28,38 @@ var (
 	ErrGameSession          = errors.New("aiprovision: game session is unavailable")
 )
 
+// OpenFailure carries only a fixed provider stage and category across the
+// factory boundary. Its cause remains available for errors.Is in server code,
+// while Error never includes account, protocol or credential diagnostics.
+type OpenFailure struct {
+	ProfileID string
+	Stage     string
+	Code      string
+	Duration  time.Duration
+
+	cause error
+}
+
+func (failure *OpenFailure) Error() string {
+	return "aiprovision: profile session open failed"
+}
+
+func (failure *OpenFailure) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.cause
+}
+
+// StartFailureDetails is intentionally structural so aisupervisor and the
+// remote worker can consume this diagnostic without importing aiprovision.
+func (failure *OpenFailure) StartFailureDetails() (profileID, stage, code string, duration time.Duration) {
+	if failure == nil {
+		return "", "", "", 0
+	}
+	return failure.ProfileID, failure.Stage, failure.Code, failure.Duration
+}
+
 // Binding is the durable identity selected by an administrator. AccountID is
 // the auth database identifier; AccountUsername is the legacy game login
 // name. CharacterID is a stable server-side reference in the form

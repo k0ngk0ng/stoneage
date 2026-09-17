@@ -120,12 +120,17 @@ func (connector *Connector) Login(ctx context.Context, config aigame.Config, cre
 		return nil, fmt.Errorf("%w: server ID is required", ErrInvalidConfig)
 	}
 	config.Address = address
+	dialDone := traceStage(ctx, "create_web_session")
 	connection, err := connector.client.Dial(ctx, address)
+	dialDone(err)
 	if err != nil {
 		return nil, err
 	}
 	protocol := aigame.NewSession(connection, config)
-	if err := protocol.Authenticate(ctx, credentials); err != nil {
+	loginDone := traceStage(ctx, "authenticate_game")
+	loginErr := protocol.Authenticate(ctx, credentials)
+	loginDone(loginErr)
+	if err := loginErr; err != nil {
 		_ = protocol.Close()
 		return nil, err
 	}
@@ -259,6 +264,7 @@ func (client *Client) publicJSON(ctx context.Context, method, endpoint string, b
 	}
 	response, err := client.web.Do(request)
 	if err != nil {
+		logHTTPFailure(endpoint, 0, err)
 		if ctx != nil && ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -266,9 +272,14 @@ func (client *Client) publicJSON(ctx context.Context, method, endpoint string, b
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		logHTTPFailure(endpoint, response.StatusCode, statusError(response.StatusCode))
 		return statusError(response.StatusCode)
 	}
-	return decodeJSON(response.Body, result)
+	err = decodeJSON(response.Body, result)
+	if err != nil {
+		logHTTPFailure(endpoint, response.StatusCode, err)
+	}
+	return err
 }
 
 func (client *Client) privateJSON(ctx context.Context, method, endpoint, token string, body any, result any) error {
@@ -278,6 +289,7 @@ func (client *Client) privateJSON(ctx context.Context, method, endpoint, token s
 	}
 	response, err := client.control.Do(request)
 	if err != nil {
+		logHTTPFailure(endpoint, 0, err)
 		if ctx != nil && ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -285,9 +297,14 @@ func (client *Client) privateJSON(ctx context.Context, method, endpoint, token s
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		logHTTPFailure(endpoint, response.StatusCode, statusError(response.StatusCode))
 		return statusError(response.StatusCode)
 	}
-	return decodeJSON(response.Body, result)
+	err = decodeJSON(response.Body, result)
+	if err != nil {
+		logHTTPFailure(endpoint, response.StatusCode, err)
+	}
+	return err
 }
 
 func (client *Client) privateNoContent(ctx context.Context, method, endpoint, token string, body any) error {
@@ -297,6 +314,7 @@ func (client *Client) privateNoContent(ctx context.Context, method, endpoint, to
 	}
 	response, err := client.control.Do(request)
 	if err != nil {
+		logHTTPFailure(endpoint, 0, err)
 		if ctx != nil && ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -304,6 +322,7 @@ func (client *Client) privateNoContent(ctx context.Context, method, endpoint, to
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		logHTTPFailure(endpoint, response.StatusCode, statusError(response.StatusCode))
 		if endpoint == ExecutePath && response.StatusCode == http.StatusConflict {
 			return decodeExecuteError(response.Body)
 		}
@@ -521,7 +540,10 @@ func (session *Session) EnterCharacter(ctx context.Context, name string) error {
 	if session == nil || session.protocol == nil {
 		return ErrClosed
 	}
-	if err := session.protocol.EnterCharacter(ctx, name); err != nil {
+	enterDone := traceStage(ctx, "enter_character")
+	enterErr := session.protocol.EnterCharacter(ctx, name)
+	enterDone(enterErr)
+	if err := enterErr; err != nil {
 		return err
 	}
 	snapshot := session.protocol.Snapshot()
@@ -529,11 +551,15 @@ func (session *Session) EnterCharacter(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	controlDone := traceStage(ctx, "read_control_generation")
 	generation, err := session.client.controlGeneration(ctx, session.connection.sessionID)
+	controlDone(err)
 	if err != nil {
 		return err
 	}
+	attachDone := traceStage(ctx, "attach_agent_lease")
 	response, err := session.client.Attach(ctx, AttachRequest{SessionID: session.connection.sessionID, Generation: generation, Identity: identity})
+	attachDone(err)
 	if err != nil {
 		return err
 	}

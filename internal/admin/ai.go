@@ -1050,6 +1050,12 @@ func (server *Server) aiProfileAPI(response http.ResponseWriter, request *http.R
 				playerJSONError(response, http.StatusConflict, "上一轮执行尚未结束，请稍后再次启动")
 				return
 			}
+			if parts[1] == "start" {
+				if message, ok := aiStartFailureMessage(err); ok {
+					playerJSONError(response, http.StatusBadGateway, message)
+					return
+				}
+			}
 			playerJSONError(response, http.StatusBadGateway, "AI runtime 操作失败")
 			return
 		}
@@ -1743,6 +1749,26 @@ func aiStoreError(response http.ResponseWriter, err error) {
 		message = "AI 配置参数无效"
 	}
 	playerJSONError(response, status, message)
+}
+
+func aiStartFailureMessage(err error) (string, bool) {
+	var failure *aisupervisor.StartFailure
+	if !errors.As(err, &failure) || failure == nil {
+		return "", false
+	}
+	stage := AIStartStageLabel(failure.Stage)
+	code := AIStartCodeLabel(failure.Code)
+	if stage == "" {
+		stage = "未知阶段"
+	}
+	if code == "" {
+		code = "未知错误"
+	}
+	message := "AI 玩家启动失败（阶段：" + stage + "，类别：" + code
+	if failure.Duration > 0 {
+		message += ", 耗时：" + strconv.FormatInt(failure.Duration.Milliseconds(), 10) + "ms"
+	}
+	return message + "）", true
 }
 
 func redactAIJSON(value json.RawMessage) json.RawMessage {

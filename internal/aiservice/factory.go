@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
@@ -30,6 +31,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
 	"github.com/k0ngk0ng/stoneage/internal/aimodels"
+	"github.com/k0ngk0ng/stoneage/internal/aiprovision"
 	"github.com/k0ngk0ng/stoneage/internal/airunner"
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 	"github.com/k0ngk0ng/stoneage/internal/aisupervisor"
@@ -607,7 +609,25 @@ func normalizeFactoryConfig(config FactoryConfig) (FactoryConfig, error) {
 
 // Open provisions one profile. The session provider is called before any
 // token or model process is started; on every error its lease is released.
-func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (aisupervisor.AgentSession, error) {
+func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (result aisupervisor.AgentSession, resultErr error) {
+	started := time.Now()
+	stage := "validate_factory"
+	log.Printf("event=ai_factory_open_started profile=%q", profile.ID)
+	defer func() {
+		if resultErr != nil {
+			var failure *aiprovision.OpenFailure
+			if !errors.As(resultErr, &failure) {
+				resultErr = &factoryOpenFailure{profile.ID, stage, factoryErrorCode(resultErr), time.Since(started), resultErr}
+			}
+		}
+		code := factoryErrorCode(resultErr)
+		outcome := "completed"
+		if resultErr != nil {
+			outcome = "failed"
+		}
+		log.Printf("event=ai_factory_open_%s profile=%q stage=%s duration_ms=%d error_code=%s error_type=%T", outcome, profile.ID, stage, time.Since(started).Milliseconds(), code, resultErr)
+	}()
+
 	if factory == nil {
 		return aisupervisor.AgentSession{}, ErrFactoryConfig
 	}
@@ -635,11 +655,16 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	factory.active[profile.ID] = reservation
 	factory.mu.Unlock()
 
+	stage = "open_game_session"
 	lease, err := factory.cfg.Sessions.Open(ctx, profile)
 	if err != nil {
 		factory.releaseReservation(profile.ID, reservation)
 		// Provider diagnostics are intentionally not returned: a provider may
 		// include account, password or upstream protocol material in its error.
+		var details *aiprovision.OpenFailure
+		if errors.As(err, &details) {
+			return aisupervisor.AgentSession{}, errors.Join(ErrFactorySession, details)
+		}
 		return aisupervisor.AgentSession{}, ErrFactorySession
 	}
 	var gate *aicontrol.Gate
@@ -676,6 +701,7 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	if lease.Close == nil && lease.Backend == nil && lease.Session == nil {
 		return aisupervisor.AgentSession{}, ErrFactorySession
 	}
+	stage = "claim_local_gate"
 	gate, leaseContext, err = factory.claimGate(ctx, profile, lease.Gate, lease.Backend != nil)
 	if err != nil {
 		return aisupervisor.AgentSession{}, err
@@ -690,12 +716,14 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	// auth-database reference. Bind the gateway to the former so GameBackend's
 	// authoritative snapshot check cannot reject or accidentally cross-bind a
 	// character.
+	stage = "bind_game_identity"
 	binding := aimcp.Binding{AccountID: profile.Account.Username, ProfileID: profile.ID, CharacterID: profile.Character.ID,
 		CharacterName: profile.Character.Name, Generation: gate.State().Generation}
 	if err := binding.Validate(); err != nil {
 		return aisupervisor.AgentSession{}, err
 	}
 
+	stage = "build_game_backend"
 	backend := lease.Backend
 	if backend == nil {
 		if lease.Session == nil {
@@ -754,6 +782,7 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 		return aisupervisor.AgentSession{}, aisupervisor.ErrClosed
 	}
 
+	stage = "load_model"
 	model, key, err := factory.loadModel(ctx, profile)
 	if err != nil {
 		return aisupervisor.AgentSession{}, err
@@ -761,6 +790,7 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	if cleanupState.isClosed() {
 		return aisupervisor.AgentSession{}, aisupervisor.ErrClosed
 	}
+	stage = "register_game_capability"
 	token, revoke, err := factory.cfg.Gateway.Register(binding, backend)
 	if err != nil {
 		return aisupervisor.AgentSession{}, fmt.Errorf("%w: register game capability failed", ErrFactoryProvision)
@@ -768,6 +798,7 @@ func (factory *Factory) Open(ctx context.Context, profile airuntime.Profile) (ai
 	if !cleanupState.setRevoke(revoke) {
 		return aisupervisor.AgentSession{}, aisupervisor.ErrClosed
 	}
+	stage = "create_model_runner"
 	var runner aisupervisor.Runner
 	if factory.cfg.ContainerBroker != nil {
 		runner, err = factory.newContainerRunner(profile, binding, model, key, token)

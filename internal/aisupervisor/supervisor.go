@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,137 @@ type startCall struct {
 	cancel      context.CancelFunc
 	done        chan struct{}
 	err         error
+}
+
+// startStageError is an internal marker used while traversing the startup
+// pipeline. It is converted to StartFailure before Start returns, so provider
+// diagnostics cannot escape through the public lifecycle API.
+type startStageError struct {
+	stage string
+	err   error
+}
+
+func (failure *startStageError) Error() string {
+	if failure == nil || failure.err == nil {
+		return "aisupervisor: profile start failed"
+	}
+	return failure.err.Error()
+}
+
+func (failure *startStageError) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.err
+}
+
+func startStageFromError(err error, fallback string) string {
+	var staged *startStageError
+	if errors.As(err, &staged) && staged != nil && staged.stage != "" {
+		return staged.stage
+	}
+	return fallback
+}
+
+func startCause(err error) error {
+	var staged *startStageError
+	if errors.As(err, &staged) && staged != nil {
+		return staged.err
+	}
+	return err
+}
+
+func startFailureCode(stage string, err error) string {
+	if errors.Is(err, context.Canceled) {
+		return StartCodeCanceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return StartCodeTimeout
+	}
+	if errors.Is(err, ErrClosed) {
+		return StartCodeClosed
+	}
+	if errors.Is(err, ErrProfileChanged) {
+		return StartCodeProfileChanged
+	}
+	if errors.Is(err, ErrProfileDeleted) {
+		return StartCodeProfileDeleted
+	}
+	if errors.Is(err, ErrFactoryUnavailable) {
+		return StartCodeFactoryUnavailable
+	}
+	if errors.Is(err, ErrInvalidSession) {
+		return StartCodeSessionInvalid
+	}
+	if errors.Is(err, ErrAttemptRecovery) {
+		return StartCodeRecoveryRequired
+	}
+	if errors.Is(err, airuntime.ErrAttemptPending) {
+		return StartCodeAttemptPending
+	}
+	if errors.Is(err, airuntime.ErrNotFound) {
+		return StartCodeProfileNotFound
+	}
+	if errors.Is(err, airuntime.ErrInvalidProfile) || errors.Is(err, airuntime.ErrInvalidSkill) || errors.Is(err, airuntime.ErrInvalidArguments) {
+		return StartCodeProfileInvalid
+	}
+	switch stage {
+	case StartStageRecovery:
+		return StartCodeRecoveryFailed
+	case StartStageFactory:
+		return StartCodeFactoryOpenFailed
+	case StartStageSession:
+		return StartCodeSessionInvalid
+	case StartStageRuntime:
+		return StartCodeRuntimeFailed
+	default:
+		return StartCodeUnknown
+	}
+}
+
+func safeStartStage(value string) bool {
+	switch value {
+	case StartStageProfile, StartStageRecovery, StartStageFactory, StartStageSession, StartStageRuntime,
+		"validate_profile", "load_binding", "check_initial_state", "load_account", "load_game_credential", "login_web_game", "list_characters", "select_bound_character", "enter_character_and_attach", "activate_session", "validate_factory", "funding_policy", "open_game_session", "claim_local_gate", "bind_game_identity", "build_game_backend", "load_model", "register_game_capability", "create_model_runner":
+		return true
+	default:
+		return false
+	}
+}
+
+func safeStartCode(value string) bool {
+	switch value {
+	case StartCodeCanceled, StartCodeTimeout, StartCodeClosed, StartCodeProfileNotFound, StartCodeProfileChanged, StartCodeProfileDeleted, StartCodeProfileInvalid, StartCodeRecoveryRequired, StartCodeRecoveryFailed, StartCodeFactoryUnavailable, StartCodeFactoryOpenFailed, StartCodeSessionInvalid, StartCodeRuntimeFailed, StartCodeAttemptPending, StartCodeUnknown,
+		"provider_invalid_config", "binding_unavailable", "already_open", "account_unavailable", "credentials_unavailable", "character_unavailable", "game_session_unavailable", "session_open_failed", "factory_invalid_config", "model_config_unavailable", "model_credentials_unavailable", "runtime_provision_failed", "codex_unavailable", "runner_config_invalid", "runner_credentials_unavailable", "funding_policy_failed", "binding_load_failed":
+		return true
+	default:
+		return false
+	}
+}
+
+func newStartFailure(profileID, stage string, started time.Time, err error) error {
+	if err == nil {
+		return nil
+	}
+	if existing, ok := err.(*StartFailure); ok {
+		return existing
+	}
+	stage = startStageFromError(err, stage)
+	cause := startCause(err)
+	code := startFailureCode(stage, cause)
+	var details interface {
+		StartFailureDetails() (profileID, stage, code string, duration time.Duration)
+	}
+	if errors.As(cause, &details) {
+		_, candidateStage, candidateCode, _ := details.StartFailureDetails()
+		if safeStartStage(candidateStage) {
+			stage = candidateStage
+		}
+		if safeStartCode(candidateCode) {
+			code = candidateCode
+		}
+	}
+	return &StartFailure{ProfileID: profileID, Stage: stage, Code: code, Duration: time.Since(started), cause: cause}
 }
 
 type managedProfile struct {
@@ -200,10 +332,12 @@ func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyA
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	started := time.Now()
+	stage := StartStageProfile
 	supervisor.mu.Lock()
 	if supervisor.closed {
 		supervisor.mu.Unlock()
-		return ErrClosed
+		return newStartFailure(profileID, StartStageRuntime, started, ErrClosed)
 	}
 	if current := supervisor.profiles[profileID]; current != nil && isLiveState(current.view().state.State) {
 		supervisor.mu.Unlock()
@@ -238,6 +372,12 @@ func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyA
 	// concurrent callers. In particular, Pause/Stop or Close can invalidate a
 	// call while startup work is still in progress.
 	defer func() {
+		resultErr = newStartFailure(profileID, stage, started, resultErr)
+		if failure, ok := resultErr.(*StartFailure); ok {
+			log.Printf("event=ai_player_start_failed profile=%q stage=%s code=%s duration_ms=%d", profileID, failure.Stage, failure.Code, failure.Duration.Milliseconds())
+		} else if resultErr == nil {
+			log.Printf("event=ai_player_start_completed profile=%q duration_ms=%d", profileID, time.Since(started).Milliseconds())
+		}
 		supervisor.mu.Lock()
 		if supervisor.starts[profileID] == call {
 			call.err = resultErr
@@ -267,10 +407,13 @@ func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyA
 		// An unknown turn is deliberately left paused after a crash. An
 		// explicit operator start is the only action that may reconcile that
 		// turn and consume its reserved budget before a fresh session opens.
+		stage = StartStageRecovery
 		if err = supervisor.recoverUnknownBeforeStart(startCtx, profileID, initial.Version, unknownReviewStartActor, false); err == nil {
+			stage = StartStageFactory
 			err = supervisor.startOne(startCtx, profileID, onlyActive, initial.Version)
 		}
 	} else if initialErr == nil {
+		stage = StartStageFactory
 		err = supervisor.startOne(startCtx, profileID, onlyActive, initial.Version)
 	}
 	supervisor.mu.Lock()
@@ -284,8 +427,15 @@ func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyA
 	return err
 }
 
-func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, onlyActive bool, expectedVersion int64) error {
+func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, onlyActive bool, expectedVersion int64) (resultErr error) {
+	stage := StartStageProfile
+	defer func() {
+		if resultErr != nil {
+			resultErr = &startStageError{stage: stage, err: resultErr}
+		}
+	}()
 	if supervisor.factory == nil {
+		stage = StartStageFactory
 		return ErrFactoryUnavailable
 	}
 	profile, err := supervisor.store.GetProfile(ctx, profileID)
@@ -302,7 +452,7 @@ func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, on
 		return nil
 	}
 	if profile.Status == airuntime.ProfileStatusDeleted {
-		return fmt.Errorf("aisupervisor: profile is deleted")
+		return ErrProfileDeleted
 	}
 	if err := validateNativeSkills(profile.Skills); err != nil {
 		return err
@@ -310,10 +460,12 @@ func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, on
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	stage = StartStageFactory
 	session, err := supervisor.factory.Open(ctx, profile)
 	if err != nil {
 		return fmt.Errorf("aisupervisor: open profile session: %w", err)
 	}
+	stage = StartStageSession
 	if err := validateSession(session); err != nil {
 		closeSession(session)
 		return err
@@ -322,6 +474,7 @@ func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, on
 		closeSession(session)
 		return err
 	}
+	stage = StartStageRuntime
 	// Publish activation under the same lock as Close. A provisioner may
 	// ignore cancellation; it must not mark a profile active after shutdown.
 	supervisor.mu.Lock()

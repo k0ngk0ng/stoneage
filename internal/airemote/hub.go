@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -89,20 +90,24 @@ type profileBinding struct {
 }
 
 type workerSession struct {
-	id             string
-	profileID      string
-	epoch          uint64
-	sessionHash    string
-	connectedAt    time.Time
-	lastSeenAt     time.Time
-	leaseUntil     time.Time
-	queue          chan *Command
-	wake           chan struct{}
-	closed         chan struct{}
-	inFlight       string
-	startRequested bool
-	startRunning   bool
-	startError     string
+	id              string
+	profileID       string
+	epoch           uint64
+	sessionHash     string
+	connectedAt     time.Time
+	lastSeenAt      time.Time
+	leaseUntil      time.Time
+	queue           chan *Command
+	wake            chan struct{}
+	closed          chan struct{}
+	inFlight        string
+	startRequested  bool
+	startRunning    bool
+	startError      string
+	startPhase      string
+	startStage      string
+	startCode       string
+	startDurationMS int64
 }
 
 type commandWait struct {
@@ -788,6 +793,7 @@ func (h *Hub) Status(ctx context.Context, profileID string) (Status, error) {
 	status.WorkerID, status.Epoch, status.ConnectedAt, status.LastSeenAt, status.LeaseUntil = worker.id, worker.epoch, worker.connectedAt, worker.lastSeenAt, worker.leaseUntil
 	status.Online = h.onlineLocked(worker)
 	status.StartRequested, status.StartError = worker.startRequested || worker.startRunning, worker.startError
+	status.StartPhase, status.StartStage, status.StartCode, status.StartDurationMS = worker.startPhase, worker.startStage, worker.startCode, worker.startDurationMS
 	for _, route := range h.routes {
 		if route.ProfileID == profileID && route.State == string(aibroker.RunRunning) {
 			status.Container, status.RequestID = route.ContainerName, route.RequestID
@@ -856,8 +862,9 @@ func (h *Hub) connect(ctx context.Context, request ConnectRequest) (ConnectRespo
 		oldWorker.leaseUntil = now.Add(h.cfg.LeaseTimeout)
 		startRequested := oldWorker.startRequested || oldWorker.startRunning
 		connectedAt := oldWorker.connectedAt
+		startError, startPhase, startStage, startCode, startDurationMS := oldWorker.startError, oldWorker.startPhase, oldWorker.startStage, oldWorker.startCode, oldWorker.startDurationMS
 		h.mu.Unlock()
-		return ConnectResponse{ProtocolVersion: ProtocolVersion, WorkerID: request.WorkerID, ProfileID: request.ProfileID, SessionToken: request.SessionToken, Epoch: newEpoch, LeaseSeconds: int(h.cfg.LeaseTimeout / time.Second), ConnectedAt: connectedAt, StartRequested: startRequested}, nil
+		return ConnectResponse{ProtocolVersion: ProtocolVersion, WorkerID: request.WorkerID, ProfileID: request.ProfileID, SessionToken: request.SessionToken, Epoch: newEpoch, LeaseSeconds: int(h.cfg.LeaseTimeout / time.Second), ConnectedAt: connectedAt, StartRequested: startRequested, StartError: startError, StartPhase: startPhase, StartStage: startStage, StartCode: startCode, StartDurationMS: startDurationMS}, nil
 	}
 	guard, start := binding.guard, binding.start
 	h.mu.Unlock()
@@ -983,14 +990,23 @@ func (h *Hub) runStart(worker *workerSession) {
 		guard = binding.guard
 	}
 	h.mu.Unlock()
+	started := time.Now()
 	var err error
+	phase := ""
 	ctx, cancel := context.WithTimeout(context.Background(), h.cfg.CommandTimeout)
 	defer cancel()
 	if guard != nil {
+		phase = "guard"
 		err = guard(ctx, worker.profileID)
 	}
 	if err == nil && start != nil {
+		phase = "start"
 		err = start(ctx, worker.profileID)
+	}
+	stage, code := safeStartFailureDetails(err, phase)
+	durationMS := time.Since(started).Milliseconds()
+	if err != nil {
+		log.Printf("event=ai_remote_start_failed profile=%q worker=%q epoch=%d phase=%s stage=%s code=%s duration_ms=%d", worker.profileID, worker.id, worker.epoch, phase, stage, code, durationMS)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -999,10 +1015,89 @@ func (h *Hub) runStart(worker *workerSession) {
 		current.startRequested = false
 		if err != nil {
 			current.startError = "start_failed"
+			current.startPhase = phase
+			current.startStage = stage
+			current.startCode = code
+			current.startDurationMS = durationMS
 		} else {
 			current.startError = ""
+			current.startPhase = ""
+			current.startStage = ""
+			current.startCode = ""
+			current.startDurationMS = 0
 		}
 	}
+}
+
+// startFailureDetails is implemented by the supervisor's safe startup error.
+// Keeping this a tiny structural interface avoids coupling the transport to
+// the supervisor package while ensuring arbitrary callback errors are reduced
+// to an allowlisted category before they reach Status or JSON.
+type startFailureDetails interface {
+	StartFailureDetails() (profileID, stage, code string, duration time.Duration)
+}
+
+var safeStartStages = map[string]struct{}{
+	"validate_factory":         {},
+	"funding_policy":           {},
+	"open_game_session":        {},
+	"claim_local_gate":         {},
+	"bind_game_identity":       {},
+	"build_game_backend":       {},
+	"load_model":               {},
+	"register_game_capability": {},
+	"create_model_runner":      {},
+
+	"guard": {}, "start": {}, "profile": {}, "recovery": {}, "factory": {}, "session": {}, "runtime": {},
+	"validate_profile": {}, "load_binding": {}, "check_initial_state": {}, "load_account": {}, "load_game_credential": {},
+	"login_web_game": {}, "list_characters": {}, "select_bound_character": {}, "enter_character_and_attach": {}, "activate_session": {},
+}
+
+var safeStartCodes = map[string]struct{}{
+	"factory_invalid_config":         {},
+	"model_config_unavailable":       {},
+	"model_credentials_unavailable":  {},
+	"runtime_provision_failed":       {},
+	"codex_unavailable":              {},
+	"runner_config_invalid":          {},
+	"runner_credentials_unavailable": {},
+	"funding_policy_failed":          {},
+	"binding_load_failed":            {},
+
+	"canceled": {}, "timeout": {}, "closed": {}, "profile_not_found": {}, "profile_changed": {},
+	"profile_deleted": {}, "profile_invalid": {}, "recovery_required": {}, "recovery_failed": {},
+	"factory_unavailable": {}, "factory_open_failed": {}, "session_invalid": {}, "runtime_failed": {},
+	"attempt_pending": {}, "unknown": {}, "guard_failed": {}, "start_failed": {}, "provider_invalid_config": {},
+	"binding_unavailable": {}, "already_open": {}, "account_unavailable": {}, "credentials_unavailable": {},
+	"character_unavailable": {}, "game_session_unavailable": {}, "session_open_failed": {},
+}
+
+func safeStartFailureDetails(err error, phase string) (stage, code string) {
+	if err == nil {
+		return "", ""
+	}
+	stage, code = phase, phase+"_failed"
+	var details startFailureDetails
+	if errors.As(err, &details) {
+		_, candidateStage, candidateCode, _ := details.StartFailureDetails()
+		if _, ok := safeStartStages[candidateStage]; ok {
+			stage = candidateStage
+		}
+		if _, ok := safeStartCodes[candidateCode]; ok {
+			code = candidateCode
+		}
+	}
+	if _, ok := safeStartStages[stage]; !ok {
+		stage = "runtime"
+	}
+	if _, ok := safeStartCodes[code]; !ok {
+		if phase == "guard" {
+			code = "guard_failed"
+		} else {
+			code = "start_failed"
+		}
+	}
+	return stage, code
 }
 
 func (h *Hub) handlePoll(w http.ResponseWriter, r *http.Request) {
@@ -1020,6 +1115,7 @@ func (h *Hub) handlePoll(w http.ResponseWriter, r *http.Request) {
 	worker.lastSeenAt = h.now()
 	worker.leaseUntil = h.now().Add(h.cfg.LeaseTimeout)
 	startNow := worker.startRequested && !worker.startRunning
+	startError, startPhase, startStage, startCode, startDurationMS := worker.startError, worker.startPhase, worker.startStage, worker.startCode, worker.startDurationMS
 	if startNow {
 		worker.startRunning = true
 	}
@@ -1042,7 +1138,7 @@ func (h *Hub) handlePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	case <-time.After(wait):
 	}
-	writeJSON(w, http.StatusOK, PollResponse{ProtocolVersion: ProtocolVersion, Command: command, LeaseUntil: h.now().Add(h.cfg.LeaseTimeout)})
+	writeJSON(w, http.StatusOK, PollResponse{ProtocolVersion: ProtocolVersion, Command: command, LeaseUntil: h.now().Add(h.cfg.LeaseTimeout), StartError: startError, StartPhase: startPhase, StartStage: startStage, StartCode: startCode, StartDurationMS: startDurationMS})
 }
 
 func validCommandState(kind, state string) bool {

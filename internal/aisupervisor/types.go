@@ -36,6 +36,7 @@ var (
 	ErrFactoryUnavailable  = errors.New("aisupervisor: agent session factory is not configured")
 	ErrAlreadyRunning      = errors.New("aisupervisor: profile is already running")
 	ErrInvalidSession      = errors.New("aisupervisor: factory returned an invalid session")
+	ErrProfileDeleted      = errors.New("aisupervisor: profile is deleted")
 	ErrProfileChanged      = errors.New("aisupervisor: profile changed while a turn was pending")
 	ErrNoProgress          = errors.New("aisupervisor: profile paused after making no progress")
 	ErrRunLimit            = errors.New("aisupervisor: profile paused after repeated turn failures")
@@ -46,6 +47,73 @@ var (
 	ErrAttemptRecovery     = errors.New("aisupervisor: unresolved model turn requires recovery")
 	ErrAttemptStillRunning = errors.New("aisupervisor: previous model turn is still running")
 )
+
+// StartFailure stages and codes are deliberately small, stable and
+// secret-free.  They are safe to expose at the remote-worker/admin boundary;
+// the underlying error is retained only for errors.Is compatibility and is
+// never included in Error or in the public details methods.
+const (
+	StartStageProfile  = "profile"
+	StartStageRecovery = "recovery"
+	StartStageFactory  = "factory"
+	StartStageSession  = "session"
+	StartStageRuntime  = "runtime"
+)
+
+const (
+	StartCodeCanceled           = "canceled"
+	StartCodeTimeout            = "timeout"
+	StartCodeClosed             = "closed"
+	StartCodeProfileNotFound    = "profile_not_found"
+	StartCodeProfileChanged     = "profile_changed"
+	StartCodeProfileDeleted     = "profile_deleted"
+	StartCodeProfileInvalid     = "profile_invalid"
+	StartCodeRecoveryRequired   = "recovery_required"
+	StartCodeRecoveryFailed     = "recovery_failed"
+	StartCodeFactoryUnavailable = "factory_unavailable"
+	StartCodeFactoryOpenFailed  = "factory_open_failed"
+	StartCodeSessionInvalid     = "session_invalid"
+	StartCodeRuntimeFailed      = "runtime_failed"
+	StartCodeAttemptPending     = "attempt_pending"
+	StartCodeUnknown            = "unknown"
+)
+
+// StartFailure is returned when a profile cannot be started before a managed
+// session is published.  Error deliberately contains no provider, account,
+// model, network or credential detail.  Callers may still use errors.Is to
+// inspect the original package sentinel.
+type StartFailure struct {
+	ProfileID string
+	Stage     string
+	Code      string
+	Duration  time.Duration
+
+	cause error
+}
+
+func (failure *StartFailure) Error() string {
+	if failure == nil {
+		return "aisupervisor: profile start failed"
+	}
+	return "aisupervisor: profile start failed"
+}
+
+func (failure *StartFailure) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.cause
+}
+
+// StartFailureDetails returns only the allowlisted fields intended for
+// transport/UI use.  It avoids exposing the wrapped error through a generic
+// formatter at boundaries that handle startup diagnostics.
+func (failure *StartFailure) StartFailureDetails() (profileID, stage, code string, duration time.Duration) {
+	if failure == nil {
+		return "", "", "", 0
+	}
+	return failure.ProfileID, failure.Stage, failure.Code, failure.Duration
+}
 
 // Runner is the small part of aicodex.Runner needed by the supervisor.  It
 // keeps the supervisor testable and prevents it from depending on process

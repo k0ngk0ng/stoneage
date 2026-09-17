@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -667,7 +668,21 @@ type fundedAIProfileProvider struct {
 	funding     *aifunding.Manager
 }
 
-func (p *fundedAIProfileProvider) Open(ctx context.Context, profile airuntime.Profile) (aiservice.SessionLease, error) {
+func (p *fundedAIProfileProvider) Open(ctx context.Context, profile airuntime.Profile) (result aiservice.SessionLease, resultErr error) {
+	started := time.Now()
+	stage := "load_binding"
+	log.Printf("event=ai_funded_session_started profile=%q", profile.ID)
+	defer func() {
+		if resultErr != nil {
+			resultErr = aiprovision.WrapOpenFailure(profile.ID, stage, started, resultErr)
+		}
+		outcome := "completed"
+		if resultErr != nil {
+			outcome = "failed"
+		}
+		log.Printf("event=ai_funded_session_%s profile=%q stage=%s duration_ms=%d error_type=%T", outcome, profile.ID, stage, time.Since(started).Milliseconds(), resultErr)
+	}()
+
 	if p == nil || p.provisioner == nil || p.provider == nil || p.funding == nil {
 		return aiservice.SessionLease{}, errors.New("AI session provider is unavailable")
 	}
@@ -675,6 +690,7 @@ func (p *fundedAIProfileProvider) Open(ctx context.Context, profile airuntime.Pr
 	if err != nil {
 		return aiservice.SessionLease{}, err
 	}
+	stage = "funding_policy"
 	if profile.UnlimitedFunds {
 		if err := p.funding.Provision(binding.AccountUsername, binding.CharacterSlot, profile.ExternalSpendLimit); err != nil {
 			return aiservice.SessionLease{}, err
@@ -683,6 +699,7 @@ func (p *fundedAIProfileProvider) Open(ctx context.Context, profile airuntime.Pr
 		return aiservice.SessionLease{}, err
 	}
 
+	stage = "open_game_session"
 	lease, err := p.provider.Open(ctx, profile)
 	if err != nil {
 		_ = p.funding.Revoke(binding.AccountUsername, binding.CharacterSlot)

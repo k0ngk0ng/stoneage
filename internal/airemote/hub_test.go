@@ -309,10 +309,14 @@ func TestHubConnectKeepsSessionWhenStartFailsAndOnlyGuardsEnrollment(t *testing.
 	go hub.Handler().ServeHTTP(rec, poll)
 	waitUntilHub(t, time.Second, func() bool {
 		status, _ := hub.Status(context.Background(), "profile-1")
-		return status.StartError == "start_failed"
+		return status.StartError == "start_failed" && status.StartPhase == "start" && status.StartStage == "start" && status.StartCode == "start_failed" && status.StartDurationMS >= 0
 	})
 	if guards != 1 || starts != 1 {
 		t.Fatalf("callbacks guards=%d starts=%d", guards, starts)
+	}
+	status, err := hub.Status(context.Background(), "profile-1")
+	if err != nil || status.StartPhase != "start" || status.StartStage != "start" || status.StartCode != "start_failed" {
+		t.Fatalf("start diagnostics=%+v err=%v", status, err)
 	}
 	reconnected, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", SessionToken: connectedResponse.SessionToken, Epoch: connectedResponse.Epoch})
 	if err != nil {

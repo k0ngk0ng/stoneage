@@ -59,3 +59,11 @@ worker_upstream = "http://admin:8080"
 ```
 
 本机 Codex 使用 `STONEAGE_AI_WEB_BASE_URL` 加 `/v1/game`；容器 Codex 使用 `STONEAGE_AI_CONTAINER_GATEWAY_URL`，Compose 已将其固定为 `http://web:8088/v1/game`。两者均由 Web frontdoor 转发到上述私有 Gateway，经过同一条 Web 会话、租约和能力校验链路。非容器运行时若 Web 与管理端分进程，必须给 `STONEAGE_AI_GATEWAY_LISTEN` 配置固定的私有端口，并将 Web 的 `game_upstream`（或 `STONEAGE_WEB_AGENT_GAME_UPSTREAM`）同步到该端口。
+
+## 启动诊断
+
+`worker_ready` / `connected` 仅表示本地执行器已经接入，尚不代表角色已登录或模型已启动。角色启动发生在管理服务，因此排查时需要同时查看管理服务和本地 worker 日志。
+
+管理服务使用 `event`、`profile`、`stage`、`duration_ms` 标识启动阶段：账号绑定和初始化核验、资金策略、Web 会话创建、游戏认证、角色列表、选角、控制代次读取及 Agent 租约申请。`ai_web_request_failed` 另外记录固定接口路径、HTTP 状态和错误类别。日志不记录游戏密码、模型 key、租约 token、会话 ID、请求正文或上游错误原文。
+
+本地执行器会报告服务端的启动失败诊断。管理页面也显示失败阶段及类别；模型运行命令尚未下发时，不应把执行器在线当作玩家运行成功。网络超时、会话失败和模型执行失败应按各自阶段处理，不能统一解释为服务器容量不足。

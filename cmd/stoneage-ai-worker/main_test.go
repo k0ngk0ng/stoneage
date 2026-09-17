@@ -58,6 +58,23 @@ func TestWorkerActivityLogsAreStructuredAndRedacted(t *testing.T) {
 	}
 }
 
+func TestWorkerLogsRemoteStartFailureDiagnosticsOnce(t *testing.T) {
+	var output bytes.Buffer
+	worker := &worker{opts: options{profile: "profile-1"}, logger: log.New(&output, "", 0)}
+	worker.logRemoteStartDiagnostic("start_failed", "start", "login_web_game", "game_session_unavailable", 1234)
+	worker.logRemoteStartDiagnostic("start_failed", "start", "login_web_game", "game_session_unavailable", 1234)
+	worker.logRemoteStartDiagnostic("", "", "", "", 0)
+	logs := output.String()
+	if strings.Count(logs, "event=remote_start_failed") != 1 {
+		t.Fatalf("remote diagnostic was not deduplicated: %s", logs)
+	}
+	for _, value := range []string{"phase=start", "stage=login_web_game", "code=game_session_unavailable", "duration_ms=1234"} {
+		if !strings.Contains(logs, value) {
+			t.Fatalf("logs missing %q: %s", value, logs)
+		}
+	}
+}
+
 func TestWorkerEndToEndRunReplayStopAndServerRestartReconnect(t *testing.T) {
 	stateRoot := t.TempDir()
 	runner := filepath.Join(stateRoot, "fake-runner.sh")

@@ -44,6 +44,11 @@ type ConnectResponse struct {
 	LeaseSeconds    int       `json:"lease_seconds"`
 	ConnectedAt     time.Time `json:"connected_at"`
 	StartRequested  bool      `json:"start_requested,omitempty"`
+	StartError      string    `json:"start_error,omitempty"`
+	StartPhase      string    `json:"start_phase,omitempty"`
+	StartStage      string    `json:"start_stage,omitempty"`
+	StartCode       string    `json:"start_code,omitempty"`
+	StartDurationMS int64     `json:"start_duration_ms,omitempty"`
 	Error           string    `json:"error,omitempty"`
 }
 
@@ -59,6 +64,11 @@ type PollResponse struct {
 	ProtocolVersion int       `json:"protocol_version"`
 	Command         *Command  `json:"command,omitempty"`
 	LeaseUntil      time.Time `json:"lease_until"`
+	StartError      string    `json:"start_error,omitempty"`
+	StartPhase      string    `json:"start_phase,omitempty"`
+	StartStage      string    `json:"start_stage,omitempty"`
+	StartCode       string    `json:"start_code,omitempty"`
+	StartDurationMS int64     `json:"start_duration_ms,omitempty"`
 }
 
 // Command contains no persisted model key. Payload lives only in Hub memory
@@ -112,17 +122,21 @@ type HeartbeatResponse struct {
 // Status is safe to expose in the admin UI. It contains no credential or
 // runtime payload.
 type Status struct {
-	ProfileID      string    `json:"profile_id"`
-	WorkerID       string    `json:"worker_id,omitempty"`
-	Online         bool      `json:"online"`
-	Epoch          uint64    `json:"epoch,omitempty"`
-	ConnectedAt    time.Time `json:"connected_at,omitempty"`
-	LastSeenAt     time.Time `json:"last_seen_at,omitempty"`
-	LeaseUntil     time.Time `json:"lease_until,omitempty"`
-	Container      string    `json:"container,omitempty"`
-	RequestID      string    `json:"request_id,omitempty"`
-	StartRequested bool      `json:"start_requested,omitempty"`
-	StartError     string    `json:"start_error,omitempty"`
+	ProfileID       string    `json:"profile_id"`
+	WorkerID        string    `json:"worker_id,omitempty"`
+	Online          bool      `json:"online"`
+	Epoch           uint64    `json:"epoch,omitempty"`
+	ConnectedAt     time.Time `json:"connected_at,omitempty"`
+	LastSeenAt      time.Time `json:"last_seen_at,omitempty"`
+	LeaseUntil      time.Time `json:"lease_until,omitempty"`
+	Container       string    `json:"container,omitempty"`
+	RequestID       string    `json:"request_id,omitempty"`
+	StartRequested  bool      `json:"start_requested,omitempty"`
+	StartError      string    `json:"start_error,omitempty"`
+	StartPhase      string    `json:"start_phase,omitempty"`
+	StartStage      string    `json:"start_stage,omitempty"`
+	StartCode       string    `json:"start_code,omitempty"`
+	StartDurationMS int64     `json:"start_duration_ms,omitempty"`
 }
 
 // RouteRecord is the only routing metadata Hub persists. It is deliberately

@@ -552,6 +552,31 @@ func TestSupervisorFactoryFailureNeverMarksProfileActive(t *testing.T) {
 	}
 }
 
+func TestSupervisorStartFailureIsStructuredAndSecretFree(t *testing.T) {
+	store := testSupervisorStore(t)
+	profile, err := store.CreateProfile(context.Background(), testSupervisorProfile("start-diagnostics"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := "provider-secret-should-not-escape"
+	supervisor, err := New(context.Background(), store, &fakeFactory{openErr: errors.New(secret), sessions: map[string]*fakeSession{}}, supervisorTestConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer supervisor.Close()
+	err = supervisor.Start(context.Background(), profile.ID)
+	var failure *StartFailure
+	if !errors.As(err, &failure) {
+		t.Fatalf("start error=%T %v, want StartFailure", err, err)
+	}
+	if failure.ProfileID != profile.ID || failure.Stage != StartStageFactory || failure.Code != StartCodeFactoryOpenFailed || failure.Duration < 0 {
+		t.Fatalf("unexpected start failure=%+v", failure)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("start failure leaked provider secret: %q", err.Error())
+	}
+}
+
 func TestSupervisorConcurrentStartOpensOneSession(t *testing.T) {
 	store := testSupervisorStore(t)
 	profile, err := store.CreateProfile(context.Background(), testSupervisorProfile("singleflight"))

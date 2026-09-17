@@ -17,10 +17,14 @@ type AILocalCommand struct {
 }
 
 type AIExecutorStatus struct {
-	Location  string     `json:"location"`
-	Connected bool       `json:"connected"`
-	LastSeen  *time.Time `json:"last_seen,omitempty"`
-	Message   string     `json:"message,omitempty"`
+	Location        string     `json:"location"`
+	Connected       bool       `json:"connected"`
+	LastSeen        *time.Time `json:"last_seen,omitempty"`
+	Message         string     `json:"message,omitempty"`
+	StartPhase      string     `json:"start_phase,omitempty"`
+	StartStage      string     `json:"start_stage,omitempty"`
+	StartCode       string     `json:"start_code,omitempty"`
+	StartDurationMS int64      `json:"start_duration_ms,omitempty"`
 }
 
 // AILocalExecutor issues profile-scoped invitations, never model credentials.

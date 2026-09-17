@@ -345,6 +345,7 @@ func (w *worker) loop(ctx context.Context) error {
 		w.logf("event=connection_failed profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(err))
 		return err
 	}
+	w.logRemoteStartDiagnostic(response.StartError, response.StartPhase, response.StartStage, response.StartCode, response.StartDurationMS)
 	w.logf("event=connected profile=%s worker_id=%s epoch=%d", workerLogID(w.opts.profile), workerLogID(w.state.WorkerID), w.state.Epoch)
 	// Enrollment is one-use. Keep it in the process only and never write it to
 	// worker state or logs. Automatic reconnects never send --start.
@@ -383,6 +384,7 @@ func (w *worker) loop(ctx context.Context) error {
 		if poll.Command != nil {
 			w.dispatch(ctx, *poll.Command)
 		}
+		w.logRemoteStartDiagnostic(poll.StartError, poll.StartPhase, poll.StartStage, poll.StartCode, poll.StartDurationMS)
 	}
 }
 
@@ -411,22 +413,39 @@ type processState struct {
 }
 
 type worker struct {
-	opts        options
-	client      *http.Client
-	logger      *log.Logger
-	statePath   string
-	state       workerState
-	jobs        *jobStore
-	mu          sync.Mutex
-	processes   map[string]*processState
-	namespace   string
-	executeTurn executeTurnFunc
+	opts                options
+	client              *http.Client
+	logger              *log.Logger
+	statePath           string
+	state               workerState
+	jobs                *jobStore
+	mu                  sync.Mutex
+	processes           map[string]*processState
+	namespace           string
+	executeTurn         executeTurnFunc
+	lastStartDiagnostic string
 }
 
 func (w *worker) logf(format string, args ...any) {
 	if w != nil && w.logger != nil {
 		w.logger.Printf(format, args...)
 	}
+}
+
+func (w *worker) logRemoteStartDiagnostic(startError, phase, stage, code string, durationMS int64) {
+	if w == nil {
+		return
+	}
+	if startError == "" {
+		w.lastStartDiagnostic = ""
+		return
+	}
+	key := strings.Join([]string{phase, stage, code, fmt.Sprintf("%d", durationMS)}, "|")
+	if key == w.lastStartDiagnostic {
+		return
+	}
+	w.lastStartDiagnostic = key
+	w.logf("event=remote_start_failed profile=%s phase=%s stage=%s code=%s duration_ms=%d", workerLogID(w.opts.profile), workerLogID(phase), workerLogID(stage), workerLogID(code), durationMS)
 }
 
 func (w *worker) logCommand(command airemote.Command) {

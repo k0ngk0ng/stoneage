@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 
 	"github.com/k0ngk0ng/stoneage/internal/admin"
@@ -72,12 +73,46 @@ func (w *aiRuntimeWiring) ExecutorStatus(ctx context.Context, profileID string) 
 		message = "本地执行器已断开，请在本机重新运行命令"
 	} else if status.StartError != "" {
 		message = "本地执行器已连接，玩家启动失败，请查看异常原因后点击启动"
+		phase := localStartPhaseLabel(status.StartPhase)
+		stage := admin.AIStartStageLabel(status.StartStage)
+		code := admin.AIStartCodeLabel(status.StartCode)
+		if phase != "" || stage != "" || code != "" {
+			parts := make([]string, 0, 3)
+			if phase != "" {
+				parts = append(parts, "阶段 "+phase)
+			}
+			if stage != "" && stage != phase {
+				parts = append(parts, "环节 "+stage)
+			}
+			if code != "" {
+				parts = append(parts, "类别 "+code)
+			}
+			if len(parts) > 0 {
+				message += "（" + strings.Join(parts, "，")
+				if status.StartDurationMS > 0 {
+					message += fmt.Sprintf("，耗时 %dms", status.StartDurationMS)
+				}
+				message += "）"
+			}
+		}
 	} else if status.StartRequested {
 		message = "本地执行器已连接，正在启动玩家"
 	}
-	view := admin.AIExecutorStatus{Location: "local", Connected: status.Online, Message: message}
+	view := admin.AIExecutorStatus{Location: "local", Connected: status.Online, Message: message,
+		StartPhase: status.StartPhase, StartStage: status.StartStage, StartCode: status.StartCode, StartDurationMS: status.StartDurationMS}
 	if !status.LastSeenAt.IsZero() {
 		view.LastSeen = &status.LastSeenAt
 	}
 	return view, nil
+}
+
+func localStartPhaseLabel(value string) string {
+	switch value {
+	case "guard":
+		return "启动前检查"
+	case "start":
+		return "启动执行"
+	default:
+		return ""
+	}
 }
