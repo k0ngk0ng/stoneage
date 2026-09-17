@@ -814,9 +814,11 @@ func (h *Hub) connect(ctx context.Context, request ConnectRequest) (ConnectRespo
 	guard, start := binding.guard, binding.start
 	h.mu.Unlock()
 
-	// Guard is a read/claim check for first enrollment. It runs outside Hub's
-	// mutex because supervisor callbacks may inspect Hub-backed state.
-	if firstEnrollment && !resumeEnrollment && guard != nil {
+	// Do not run the guard while enrolling. A worker started with --start must
+	// first establish its session and enter poll; otherwise recovery may try to
+	// inspect that same worker before it can receive the inspect command. The
+	// deferred start path performs the guard/recovery after the session is live.
+	if firstEnrollment && !resumeEnrollment && !request.Start && guard != nil {
 		if err := guard(ctx, request.ProfileID); err != nil {
 			h.clearConnecting(request.ProfileID)
 			return ConnectResponse{}, err
@@ -925,15 +927,22 @@ func (h *Hub) runStart(worker *workerSession) {
 	h.mu.Lock()
 	binding := h.profiles[worker.profileID]
 	start := (func(context.Context, string) error)(nil)
+	guard := (func(context.Context, string) error)(nil)
 	if binding != nil && binding.start != nil {
 		start = binding.start
 	}
+	if binding != nil {
+		guard = binding.guard
+	}
 	h.mu.Unlock()
 	var err error
-	if start != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), h.cfg.CommandTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), h.cfg.CommandTimeout)
+	defer cancel()
+	if guard != nil {
+		err = guard(ctx, worker.profileID)
+	}
+	if err == nil && start != nil {
 		err = start(ctx, worker.profileID)
-		cancel()
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()

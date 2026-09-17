@@ -4,6 +4,7 @@
 .ai-runtime-facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
 .ai-runtime-facts span { padding: 8px 10px; border: 1px solid rgba(94,116,128,.3); border-radius: 8px; color: #496875; background: rgba(255,255,255,.5); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .ai-runtime-facts strong { color: #287d9d; }
+.ai-list-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ai-template { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 11px 12px; border: 2px solid rgba(94,116,128,.28); border-radius: 10px 10px 5px 10px; background: rgba(255,255,255,.48); }
 .ai-template strong { display: block; color: #3d5963; }
 .ai-template small { display: block; margin-top: 4px; color: #68777c; font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; }

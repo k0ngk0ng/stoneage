@@ -222,9 +222,7 @@ func mustJSON(value any) string { raw, _ := json.Marshal(value); return string(r
 
 func TestHubConnectKeepsSessionWhenStartFailsAndOnlyGuardsEnrollment(t *testing.T) {
 	var guards, starts int
-	guardEntered := make(chan struct{})
-	releaseGuard := make(chan struct{})
-	hub, err := New(Config{Docker: &fakeDocker{}, Guard: func(context.Context, string) error { guards++; close(guardEntered); <-releaseGuard; return nil }, Start: func(context.Context, string) error { starts++; return errors.New("start rejected") }})
+	hub, err := New(Config{Docker: &fakeDocker{}, Guard: func(context.Context, string) error { guards++; return nil }, Start: func(context.Context, string) error { starts++; return errors.New("start rejected") }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,32 +230,16 @@ func TestHubConnectKeepsSessionWhenStartFailsAndOnlyGuardsEnrollment(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectResult := make(chan struct {
-		response ConnectResponse
-		err      error
-	}, 1)
-	go func() {
-		response, connectErr := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", EnrollmentToken: invite.Token, Start: true})
-		connectResult <- struct {
-			response ConnectResponse
-			err      error
-		}{response, connectErr}
-	}()
-	<-guardEntered
+	connectedResponse, connectErr := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", EnrollmentToken: invite.Token, Start: true})
 	fallback := hub.cfg.Docker.(*fakeDocker)
-	if _, runErr := hub.Run(context.Background(), spec(), testPayload(t)); !errors.Is(runErr, aibroker.ErrProfileBusy) {
-		t.Fatalf("run during guard error=%v", runErr)
-	}
 	if fallback.runs != 0 {
 		t.Fatal("run during enrollment used fallback Docker")
 	}
-	close(releaseGuard)
-	connected := <-connectResult
-	if connected.err != nil || connected.response.SessionToken == "" || !connected.response.StartRequested {
-		t.Fatalf("connect response=%+v err=%v", connected.response, connected.err)
+	if connectErr != nil || connectedResponse.SessionToken == "" || !connectedResponse.StartRequested {
+		t.Fatalf("connect response=%+v err=%v", connectedResponse, connectErr)
 	}
 	poll := httptest.NewRequest(http.MethodPost, "/api/ai/worker/poll", strings.NewReader(`{"protocol_version":1,"worker_id":"worker-1","profile_id":"profile-1","epoch":1,"wait_seconds":1}`))
-	poll.Header.Set("Authorization", "Bearer "+connected.response.SessionToken)
+	poll.Header.Set("Authorization", "Bearer "+connectedResponse.SessionToken)
 	poll.Header.Set("X-StoneAge-Worker-ID", "worker-1")
 	poll.Header.Set("X-StoneAge-Profile-ID", "profile-1")
 	poll.Header.Set("X-StoneAge-Worker-Epoch", "1")
@@ -270,11 +252,11 @@ func TestHubConnectKeepsSessionWhenStartFailsAndOnlyGuardsEnrollment(t *testing.
 	if guards != 1 || starts != 1 {
 		t.Fatalf("callbacks guards=%d starts=%d", guards, starts)
 	}
-	reconnected, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", SessionToken: connected.response.SessionToken, Epoch: connected.response.Epoch})
+	reconnected, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", SessionToken: connectedResponse.SessionToken, Epoch: connectedResponse.Epoch})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reconnected.SessionToken != connected.response.SessionToken || guards != 1 || starts != 1 {
+	if reconnected.SessionToken != connectedResponse.SessionToken || guards != 1 || starts != 1 {
 		t.Fatalf("reconnect response=%+v guards=%d starts=%d", reconnected, guards, starts)
 	}
 }
@@ -295,14 +277,14 @@ func TestHubEnrollmentRetryUsesPendingSessionAndCannotReuseTokenAlone(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.SessionToken != pendingSession || first.Epoch == 0 || guards != 1 {
+	if first.SessionToken != pendingSession || first.Epoch == 0 || guards != 0 {
 		t.Fatalf("first enrollment response=%+v guards=%d", first, guards)
 	}
 	retry, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", EnrollmentToken: invite.Token, SessionToken: pendingSession, Start: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retry.SessionToken != first.SessionToken || retry.Epoch != first.Epoch || guards != 1 {
+	if retry.SessionToken != first.SessionToken || retry.Epoch != first.Epoch || guards != 0 {
 		t.Fatalf("idempotent enrollment response=%+v first=%+v guards=%d", retry, first, guards)
 	}
 	if _, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-2", ProfileID: "profile-1", EnrollmentToken: invite.Token}); !errors.Is(err, ErrUnauthorized) {
