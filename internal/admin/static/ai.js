@@ -1016,6 +1016,11 @@
     }
 
     const newButton = document.getElementById("ai-profile-new");
+    const listRefreshButton = document.getElementById("ai-profile-refresh");
+    if (listRefreshButton) listRefreshButton.addEventListener("click", function () {
+      listRefreshButton.disabled = true;
+      window.location.reload();
+    });
     if (newButton && canWrite) newButton.addEventListener("click", function () { reset(); edit({}); });
     const cancel = document.getElementById("ai-profile-cancel");
     if (cancel) cancel.addEventListener("click", reset);

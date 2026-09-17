@@ -12,7 +12,7 @@
   </section>
 
   <section class="card ai-profiles-card">
-    <div class="card-heading"><div><h2>AI 玩家列表</h2><p class="muted">无限资金默认开启；这项权限只影响游戏内支付，不会暴露模型密钥。</p></div>{{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-profile-new"{{if not .AIProvisioningConfigured}} disabled title="创建服务尚未配置"{{end}}>创建游戏 AI 角色</button>{{end}}</div>
+    <div class="card-heading"><div><h2>AI 玩家列表</h2><p class="muted">无限资金默认开启；这项权限只影响游戏内支付，不会暴露模型密钥。</p></div><div class="ai-list-actions"><button class="button" type="button" id="ai-profile-refresh">刷新状态</button>{{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-profile-new"{{if not .AIProvisioningConfigured}} disabled title="创建服务尚未配置"{{end}}>创建游戏 AI 角色</button>{{end}}</div></div>
     <div id="ai-profile-message" class="alert" hidden role="status"></div>
     <div class="table-scroll"><table class="ai-table ai-profile-table"><thead><tr><th>角色</th><th>模型</th><th>人格 / 目标</th><th>资金</th><th>状态</th><th>运行时</th><th>操作</th></tr></thead><tbody id="ai-profile-list">
       {{range .AIProfiles}}

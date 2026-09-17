@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -46,6 +47,33 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,62}$`)
 
 var ErrRunningJob = errors.New("worker: unresolved previous runner process")
 var ErrJobConflict = errors.New("worker: job already exists")
+
+func workerLogID(value string) string {
+	if value == "" || len(value) > 128 || !idPattern.MatchString(value) {
+		return "redacted"
+	}
+	return value
+}
+
+// workerErrorClass deliberately returns a bounded classification rather than
+// the original error text. Runner and HTTP errors can contain prompts,
+// credentials or provider responses and must never reach stdout logs.
+func workerErrorClass(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline_exceeded"
+	case errors.Is(err, airemote.ErrUnauthorized):
+		return "unauthorized"
+	case errors.Is(err, airemote.ErrProtocol):
+		return "protocol_error"
+	default:
+		return "operation_failed"
+	}
+}
 
 type options struct {
 	server      string
@@ -156,7 +184,15 @@ func run(ctx context.Context, args []string) error {
 	}
 	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	worker := &worker{opts: opts, client: client, statePath: statePath, state: state, jobs: store, processes: make(map[string]*processState), namespace: namespace, executeTurn: executeTurn}
-	return worker.loop(ctx)
+	worker.logger = log.New(os.Stdout, "stoneage-ai-worker ", log.LstdFlags|log.LUTC)
+	worker.logf("event=worker_start profile=%s worker_id=%s poll_seconds=%d", workerLogID(opts.profile), workerLogID(state.WorkerID), opts.pollSeconds)
+	err = worker.loop(ctx)
+	if err != nil {
+		worker.logf("event=worker_exit profile=%s status=error error=%s", workerLogID(opts.profile), workerErrorClass(err))
+	} else {
+		worker.logf("event=worker_exit profile=%s status=stopped", workerLogID(opts.profile))
+	}
+	return err
 }
 
 func parseOptions(args []string, lookup func(string) string) (options, error) {
@@ -253,11 +289,14 @@ func (w *worker) loop(ctx context.Context) error {
 	}
 	response, err := w.connectWithRetry(ctx, request)
 	if err != nil {
+		w.logf("event=connection_failed profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(err))
 		return err
 	}
 	if err := w.acceptSession(response); err != nil {
+		w.logf("event=connection_failed profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(err))
 		return err
 	}
+	w.logf("event=connected profile=%s worker_id=%s epoch=%d", workerLogID(w.opts.profile), workerLogID(w.state.WorkerID), w.state.Epoch)
 	// Enrollment is one-use. Keep it in the process only and never write it to
 	// worker state or logs. Automatic reconnects never send --start.
 	w.opts.enrollment, w.opts.start = "", false
@@ -268,17 +307,23 @@ func (w *worker) loop(ctx context.Context) error {
 		poll, err := w.poll(ctx)
 		if err != nil {
 			if errors.Is(err, airemote.ErrUnauthorized) {
+				w.logf("event=connection_lost profile=%s reason=unauthorized", workerLogID(w.opts.profile))
 				// The server may have restarted and rebuilt its in-memory worker
 				// session from the durable profile binding. Re-handshake using the
 				// stable session credential; never reuse enrollment here.
 				reconnect := airemote.ConnectRequest{ProtocolVersion: airemote.ProtocolVersion, WorkerID: w.state.WorkerID, ProfileID: w.opts.profile, SessionToken: w.state.SessionToken, Epoch: w.state.Epoch}
-				if response, reconnectErr := w.connect(ctx, reconnect); reconnectErr == nil {
-					if acceptErr := w.acceptSession(response); acceptErr == nil {
-						continue
-					}
+				response, reconnectErr := w.connect(ctx, reconnect)
+				if reconnectErr != nil {
+					w.logf("event=reconnect_failed profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(reconnectErr))
+				} else if acceptErr := w.acceptSession(response); acceptErr != nil {
+					w.logf("event=reconnect_failed profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(acceptErr))
+				} else {
+					w.logf("event=reconnected profile=%s worker_id=%s epoch=%d", workerLogID(w.opts.profile), workerLogID(w.state.WorkerID), w.state.Epoch)
+					continue
 				}
 				return err
 			}
+			w.logf("event=connection_error profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(err))
 			select {
 			case <-ctx.Done():
 				return nil
@@ -300,6 +345,7 @@ type processState struct {
 type worker struct {
 	opts        options
 	client      *http.Client
+	logger      *log.Logger
 	statePath   string
 	state       workerState
 	jobs        *jobStore
@@ -307,6 +353,33 @@ type worker struct {
 	processes   map[string]*processState
 	namespace   string
 	executeTurn executeTurnFunc
+}
+
+func (w *worker) logf(format string, args ...any) {
+	if w != nil && w.logger != nil {
+		w.logger.Printf(format, args...)
+	}
+}
+
+func (w *worker) logCommand(command airemote.Command) {
+	w.logf("event=command_received kind=%s profile=%s request_id=%s", workerLogID(command.Kind), workerLogID(command.ProfileID), workerLogID(command.RequestID))
+}
+
+func (w *worker) logTaskStarted(kind string, command airemote.Command) time.Time {
+	started := time.Now()
+	w.logf("event=task_started kind=%s profile=%s request_id=%s", workerLogID(kind), workerLogID(command.ProfileID), workerLogID(command.RequestID))
+	return started
+}
+
+func (w *worker) logTaskCompleted(kind string, command airemote.Command, started time.Time, status, errorCode string) {
+	if status == "" {
+		status = "unknown"
+	}
+	if errorCode == "" {
+		w.logf("event=task_completed kind=%s profile=%s request_id=%s duration_ms=%d status=%s", workerLogID(kind), workerLogID(command.ProfileID), workerLogID(command.RequestID), time.Since(started).Milliseconds(), workerLogID(status))
+		return
+	}
+	w.logf("event=task_completed kind=%s profile=%s request_id=%s duration_ms=%d status=%s error=%s", workerLogID(kind), workerLogID(command.ProfileID), workerLogID(command.RequestID), time.Since(started).Milliseconds(), workerLogID(status), workerLogID(errorCode))
 }
 
 func (w *worker) acceptSession(response airemote.ConnectResponse) error {
@@ -372,6 +445,7 @@ func (w *worker) dispatch(parent context.Context, command airemote.Command) {
 	if command.ProtocolVersion != airemote.ProtocolVersion || command.WorkerID != w.state.WorkerID || command.WorkerEpoch != w.state.Epoch || command.ProfileID != w.opts.profile || !namePattern.MatchString(command.ContainerName) {
 		return
 	}
+	w.logCommand(command)
 	switch command.Kind {
 	case airemote.KindRun:
 		go w.executeRun(parent, command)
@@ -380,7 +454,9 @@ func (w *worker) dispatch(parent context.Context, command airemote.Command) {
 	case airemote.KindInspect, airemote.KindReadResult, airemote.KindRemove:
 		go w.executeLifecycle(parent, command)
 	case airemote.KindRemoveVol:
-		go w.postResult(parent, command, airemote.ResultRequest{State: "removed"})
+		go w.executeRemoveVolume(parent, command)
+	default:
+		w.logf("event=command_completed kind=%s profile=%s request_id=%s status=ignored error=unsupported_kind", workerLogID(command.Kind), workerLogID(command.ProfileID), workerLogID(command.RequestID))
 	}
 }
 
@@ -395,7 +471,11 @@ func executeTurn(ctx context.Context, opts options, request airunner.ExecuteRequ
 }
 
 func (w *worker) executeRun(parent context.Context, command airemote.Command) {
+	started := w.logTaskStarted("run", command)
+	status, errorCode := "unknown", ""
+	defer func() { w.logTaskCompleted("run", command, started, status, errorCode) }()
 	if len(command.Payload) == 0 || len(command.Payload) > 1<<20 || command.PayloadHash == "" {
+		errorCode = "invalid_run"
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "invalid_run"})
 		return
 	}
@@ -403,16 +483,19 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	// Authenticate the exact server payload before rewriting only the game
 	// endpoint for the local MCP process.
 	if hashBytes(payload) != command.PayloadHash {
+		errorCode = "payload_conflict"
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "payload_conflict", PayloadHash: command.PayloadHash})
 		return
 	}
 	var request airunner.ExecuteRequest
 	if json.Unmarshal(payload, &request) != nil || request.ProfileID != command.ProfileID || request.RequestID != command.RequestID {
+		errorCode = "invalid_payload"
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "invalid_payload", PayloadHash: command.PayloadHash})
 		return
 	}
 	if command.GameEndpoint != "" {
 		if !validEndpoint(command.GameEndpoint) {
+			errorCode = "invalid_game_endpoint"
 			_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "invalid_game_endpoint", PayloadHash: command.PayloadHash})
 			return
 		}
@@ -420,16 +503,22 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	}
 	if existing, ok := w.jobs.get(command.ContainerName); ok {
 		if existing.PayloadHash != command.PayloadHash {
+			errorCode = "payload_conflict"
 			_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "payload_conflict", PayloadHash: command.PayloadHash})
 			return
 		}
 		switch existing.State {
 		case "running":
+			status, errorCode = "running", "already_running"
 			return
 		case "exited", "dead":
-			_ = w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: existing.State, ExitCode: existing.ExitCode, Stdout: existing.Stdout, Stderr: existing.Stderr})
+			status = existing.State
+			if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: existing.State, ExitCode: existing.ExitCode, Stdout: existing.Stdout, Stderr: existing.Stderr}); err != nil {
+				errorCode = "result_post_failed"
+			}
 			return
 		default:
+			errorCode = "request_tombstoned"
 			_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "request_tombstoned", PayloadHash: command.PayloadHash})
 			return
 		}
@@ -438,6 +527,7 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	for _, process := range w.processes {
 		if process != nil {
 			w.mu.Unlock()
+			errorCode = "profile_busy"
 			_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "profile_busy", PayloadHash: command.PayloadHash})
 			return
 		}
@@ -459,6 +549,7 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	defer finishProcess()
 	if err := w.jobs.start(jobRecord{CommandID: command.CommandID, ProfileID: command.ProfileID, RequestID: command.RequestID, ContainerName: command.ContainerName, PayloadHash: command.PayloadHash, PIDNamespace: w.namespace, State: "running", UpdatedAt: time.Now().UTC()}); err != nil {
 		finishProcess()
+		errorCode = "journal_failed"
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "journal_failed", PayloadHash: command.PayloadHash})
 		return
 	}
@@ -466,6 +557,7 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	raw, marshalErr := json.Marshal(response)
 	if marshalErr != nil {
 		finishProcess()
+		errorCode = "response_encode_failed"
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "response_encode_failed", PayloadHash: command.PayloadHash})
 		return
 	}
@@ -478,10 +570,15 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	}
 	if execErr != nil && response.Result == nil {
 		state, exitCode = "dead", -1
+		errorCode = "runner_failed"
+	} else if execErr != nil {
+		errorCode = "runner_reported_error"
 	}
+	status = state
 	record := jobRecord{CommandID: command.CommandID, ProfileID: command.ProfileID, RequestID: command.RequestID, ContainerName: command.ContainerName, PayloadHash: command.PayloadHash, PIDNamespace: w.namespace, State: state, ExitCode: exitCode, Stdout: raw, UpdatedAt: time.Now().UTC()}
 	if err := w.jobs.finish(record); err != nil {
 		finishProcess()
+		errorCode = "journal_failed"
 		_ = w.postResult(context.Background(), command, airemote.ResultRequest{State: "unknown", Error: "journal_failed", PayloadHash: command.PayloadHash})
 		return
 	}
@@ -545,6 +642,13 @@ func (w *worker) executeLifecycle(parent context.Context, command airemote.Comma
 		}
 	}
 	_ = w.postResult(parent, command, result)
+}
+
+func (w *worker) executeRemoveVolume(parent context.Context, command airemote.Command) {
+	// The named volume belongs to the local operator and is intentionally
+	// retained across reconnects; acknowledge the server-side cleanup command
+	// without attempting to access Docker from inside this worker container.
+	_ = w.postResult(parent, command, airemote.ResultRequest{State: "removed"})
 }
 
 func (w *worker) postResult(ctx context.Context, command airemote.Command, result airemote.ResultRequest) error {
