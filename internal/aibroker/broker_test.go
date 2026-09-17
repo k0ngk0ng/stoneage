@@ -185,6 +185,42 @@ func TestBrokerBuildsIsolatedSpecAndReplaysCompletedRun(t *testing.T) {
 	}
 }
 
+func TestBrokerRejectsExpiredFreshDeadlineButReplaysExpiredCompletion(t *testing.T) {
+	docker := &fakeDocker{}
+	clockNow := time.Now().UTC()
+	journal := NewMemoryJournal()
+	broker, err := New(Config{
+		Docker: docker, Journal: journal, Image: "registry.example/stoneage-ai@sha256:abc", Network: "stoneage-backend",
+		StopTimeout: 100 * time.Millisecond, Clock: func() time.Time { return clockNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired := testRequest("profile-expired", "request-expired")
+	expired.TurnDeadlineUnixMS = clockNow.Add(-time.Second).UnixMilli()
+	if _, err := broker.Run(context.Background(), expired); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expired fresh request error=%v", err)
+	}
+	if len(docker.Calls()) != 0 {
+		t.Fatalf("expired request started Docker: %d calls", len(docker.Calls()))
+	}
+
+	replay := testRequest("profile-expired-replay", "request-replay")
+	replay.TurnDeadlineUnixMS = clockNow.Add(time.Second).UnixMilli()
+	first, err := broker.Run(context.Background(), replay)
+	if err != nil || first.State != RunCompleted {
+		t.Fatalf("initial bounded request=%+v err=%v", first, err)
+	}
+	clockNow = clockNow.Add(2 * time.Second)
+	second, err := broker.Run(context.Background(), replay)
+	if err != nil || second.State != RunCompleted || !second.Response.OK {
+		t.Fatalf("expired completion replay=%+v err=%v", second, err)
+	}
+	if len(docker.Calls()) != 1 {
+		t.Fatalf("expired replay started Docker again: %d calls", len(docker.Calls()))
+	}
+}
+
 func TestBrokerAcceptsCapabilityFreeModelProbe(t *testing.T) {
 	docker := &fakeDocker{run: func(_ context.Context, _ RunSpec, payload []byte) (DockerResult, error) {
 		var request airunner.ExecuteRequest

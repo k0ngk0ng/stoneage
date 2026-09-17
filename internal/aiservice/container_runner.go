@@ -80,6 +80,11 @@ type ContainerRunnerConfig struct {
 	RequestTemplate airunner.ExecuteRequest
 	Broker          ContainerBroker
 	TurnTimeout     time.Duration
+	// TurnTimeoutGrace is an outer transport grace after the absolute
+	// deadline sent to airunner. It lets the runtime write its timeout
+	// response and the broker publish the durable outcome before Docker is
+	// stopped. Zero preserves the historical caller deadline behavior.
+	TurnTimeoutGrace time.Duration
 }
 
 // ContainerRunner implements aisupervisor.Runner over one private container
@@ -95,6 +100,7 @@ type ContainerRunner struct {
 	broker      ContainerBroker
 	guard       runtimepath.Guard
 	turnTimeout time.Duration
+	turnGrace   time.Duration
 }
 
 type containerRunState string
@@ -120,11 +126,15 @@ type containerRunCheckpoint struct {
 	// CallerRequestID is the durable turn identity supplied by the caller.
 	// RequestID remains the broker identity; they differ for requests created
 	// by older callers that did not supply a turn ID.
-	CallerRequestID string             `json:"caller_request_id,omitempty"`
-	Intent          string             `json:"intent_sha256"`
-	State           containerRunState  `json:"state"`
-	Response        *airunner.Response `json:"response,omitempty"`
-	UpdatedAt       time.Time          `json:"updated_at"`
+	CallerRequestID string `json:"caller_request_id,omitempty"`
+	// TurnDeadlineUnixMS is the exact server-owned deadline sent in the
+	// broker payload. It must survive recovery so retrying the same request
+	// cannot change its payload hash or extend a timed-out model turn.
+	TurnDeadlineUnixMS int64              `json:"turn_deadline_unix_ms,omitempty"`
+	Intent             string             `json:"intent_sha256"`
+	State              containerRunState  `json:"state"`
+	Response           *airunner.Response `json:"response,omitempty"`
+	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
 // NewContainerRunner validates the fixed profile boundary and creates its
@@ -132,6 +142,9 @@ type containerRunCheckpoint struct {
 // model turn.
 func NewContainerRunner(config ContainerRunnerConfig) (*ContainerRunner, error) {
 	if config.TurnTimeout < 0 || config.TurnTimeout > 24*time.Hour {
+		return nil, ErrContainerRunnerConfig
+	}
+	if config.TurnTimeoutGrace < 0 || config.TurnTimeoutGrace > 30*time.Second {
 		return nil, ErrContainerRunnerConfig
 	}
 	profileID := strings.TrimSpace(config.ProfileID)
@@ -191,7 +204,7 @@ func NewContainerRunner(config ContainerRunnerConfig) (*ContainerRunner, error) 
 	template.ProfileID = profileID
 	template.RequestID = ""
 	template.Run = airunner.RunRequest{}
-	return &ContainerRunner{profileID: profileID, stateRoot: abs, checkpoint: checkpoint, lockPath: lockPath, template: template, broker: config.Broker, guard: guard, turnTimeout: config.TurnTimeout}, nil
+	return &ContainerRunner{profileID: profileID, stateRoot: abs, checkpoint: checkpoint, lockPath: lockPath, template: template, broker: config.Broker, guard: guard, turnTimeout: config.TurnTimeout, turnGrace: config.TurnTimeoutGrace}, nil
 }
 
 // CheckpointPath exposes the credential-free local journal location for
@@ -229,9 +242,21 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	turnDeadlineUnixMS := int64(0)
 	if runner.turnTimeout > 0 {
+		// The runtime receives the model deadline, while the outer context
+		// remains alive for a short transport grace so timeout output can be
+		// written and broker/checkpoint state can become durable.
+		turnDeadline := time.Now().UTC().Add(runner.turnTimeout)
+		if parentDeadline, ok := ctx.Deadline(); ok && parentDeadline.Before(turnDeadline) {
+			// A caller-owned deadline is an even tighter server boundary. Do
+			// not let the container runtime continue past it if the outer
+			// broker context is delayed or fails to stop Docker promptly.
+			turnDeadline = parentDeadline
+		}
+		turnDeadlineUnixMS = turnDeadline.UnixMilli()
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, runner.turnTimeout)
+		ctx, cancel = context.WithTimeout(ctx, runner.turnTimeout+runner.turnGrace)
 		defer cancel()
 	}
 	if err := validateContainerIntent(runner.profileID, request); err != nil {
@@ -294,6 +319,13 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 				reviewedRequestID = checkpoint.RequestID
 				break
 			}
+			if checkpoint.TurnDeadlineUnixMS != 0 {
+				// Recovery uses the original absolute deadline in the payload,
+				// but Lookup must use this invocation's bounded transport context.
+				// Do not wrap it in an already-expired old deadline: read-only
+				// reconciliation must remain possible after a timeout.
+				turnDeadlineUnixMS = checkpoint.TurnDeadlineUnixMS
+			}
 			if checkpoint.Intent != intentHash {
 				return aicodex.Result{ProfileID: runner.profileID}, ErrContainerRunnerRecovery
 			}
@@ -313,7 +345,7 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 			return aicodex.Result{ProfileID: runner.profileID}, ErrContainerRunnerConfig
 		}
 	}
-	checkpoint = containerRunCheckpoint{Version: containerRunnerVersion, ProfileID: runner.profileID, RequestID: requestID, CallerRequestID: request.RequestID, ReviewedRequestID: reviewedRequestID, Intent: intentHash, State: containerRunPending, UpdatedAt: time.Now().UTC()}
+	checkpoint = containerRunCheckpoint{Version: containerRunnerVersion, ProfileID: runner.profileID, RequestID: requestID, CallerRequestID: request.RequestID, ReviewedRequestID: reviewedRequestID, TurnDeadlineUnixMS: turnDeadlineUnixMS, Intent: intentHash, State: containerRunPending, UpdatedAt: time.Now().UTC()}
 	if err := runner.saveCheckpoint(checkpoint); err != nil {
 		return aicodex.Result{ProfileID: runner.profileID}, err
 	}
@@ -382,6 +414,7 @@ func (runner *ContainerRunner) callBroker(ctx context.Context, checkpoint contai
 	payload.ProfileID = runner.profileID
 	payload.RequestID = checkpoint.RequestID
 	payload.ReviewedRequestID = checkpoint.ReviewedRequestID
+	payload.TurnDeadlineUnixMS = checkpoint.TurnDeadlineUnixMS
 	payload.Run = airunner.RunRequest{Prompt: request.Prompt, Resume: request.Resume, ThreadID: request.ThreadID}
 	outcome, brokerErr := runner.broker.Run(ctx, payload)
 	response := sanitizeContainerResponse(outcome.Response, runner.template.Model.APIKey, runner.template.MCP.Token)
@@ -459,7 +492,7 @@ func (runner *ContainerRunner) loadCheckpoint() (containerRunCheckpoint, bool, e
 		return containerRunCheckpoint{}, false, ErrContainerRunnerCorrupt
 	}
 	var checkpoint containerRunCheckpoint
-	if err := decodeContainerJSON(data, &checkpoint); err != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || (checkpoint.ReviewedRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.ReviewedRequestID)) || checkpoint.ReviewedRequestID == checkpoint.RequestID || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
+	if err := decodeContainerJSON(data, &checkpoint); err != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || (checkpoint.ReviewedRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.ReviewedRequestID)) || checkpoint.ReviewedRequestID == checkpoint.RequestID || checkpoint.TurnDeadlineUnixMS < 0 || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
 		return containerRunCheckpoint{}, false, ErrContainerRunnerCorrupt
 	}
 	if checkpoint.State != containerRunPending && checkpoint.State != containerRunUnknown && checkpoint.State != containerRunCompleted {
@@ -481,7 +514,7 @@ func (runner *ContainerRunner) loadCheckpoint() (containerRunCheckpoint, bool, e
 }
 
 func (runner *ContainerRunner) saveCheckpoint(checkpoint containerRunCheckpoint) error {
-	if runner.guard.Check(runner.checkpoint) != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || (checkpoint.ReviewedRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.ReviewedRequestID)) || checkpoint.ReviewedRequestID == checkpoint.RequestID || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
+	if runner.guard.Check(runner.checkpoint) != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || (checkpoint.ReviewedRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.ReviewedRequestID)) || checkpoint.ReviewedRequestID == checkpoint.RequestID || checkpoint.TurnDeadlineUnixMS < 0 || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
 		return ErrContainerRunnerConfig
 	}
 	if checkpoint.Response != nil {

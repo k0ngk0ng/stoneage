@@ -44,6 +44,10 @@ const (
 	maxSkillVerBytes  = 128
 	maxDigestBytes    = 128
 	maxOwnerBytes     = 4096
+	// MaxTurnDeadlineAhead bounds the server-owned absolute deadline carried
+	// over the container boundary. A zero deadline keeps the legacy request
+	// behavior (the caller's context remains authoritative).
+	MaxTurnDeadlineAhead = 24 * time.Hour
 
 	ownerFileName = ".stoneage-ai-owner.json"
 	tokenFileName = "game-capability.token"
@@ -63,6 +67,32 @@ var (
 	ErrModelConfig     = errors.New("airunner: invalid model configuration")
 	ErrProfileBusy     = aicodex.ErrProfileBusy
 )
+
+// ValidateTurnDeadline validates the optional server-owned absolute turn
+// deadline. Unix milliseconds are used deliberately: encoding a Go
+// time.Duration as JSON would expose nanoseconds without making the wire unit
+// clear. A past deadline is a real deadline outcome, while an excessively
+// distant deadline is a malformed request.
+func ValidateTurnDeadline(deadlineUnixMS int64, now time.Time) error {
+	if deadlineUnixMS == 0 {
+		return nil
+	}
+	if deadlineUnixMS < 0 {
+		return fmt.Errorf("%w: turn_deadline_unix_ms is negative", ErrInvalidRequest)
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	now = now.UTC()
+	deadline := time.UnixMilli(deadlineUnixMS).UTC()
+	if !deadline.After(now) {
+		return context.DeadlineExceeded
+	}
+	if deadline.After(now.Add(MaxTurnDeadlineAhead)) {
+		return fmt.Errorf("%w: turn_deadline_unix_ms is too far ahead", ErrInvalidRequest)
+	}
+	return nil
+}
 
 var (
 	profileIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -135,6 +165,11 @@ type MCP struct {
 type ExecuteRequest struct {
 	ProfileID string `json:"profile_id"`
 	RequestID string `json:"request_id"`
+	// TurnDeadlineUnixMS is an optional server-owned absolute deadline for
+	// this model turn, expressed as Unix milliseconds. ContainerRunner fills
+	// it before sending a request across the broker boundary and persists the
+	// same value in its checkpoint. Zero preserves older requests and probes.
+	TurnDeadlineUnixMS int64 `json:"turn_deadline_unix_ms,omitempty"`
 	// ReviewedRequestID proves that an operator explicitly reviewed the
 	// earlier unknown broker request. The first request using it starts a
 	// fresh game conversation; later exact-thread resumes carry the same ID.
@@ -386,7 +421,9 @@ func (executor *Executor) Execute(ctx context.Context, request ExecuteRequest) (
 	if err != nil {
 		return responseForRequest(request, fmt.Errorf("%w: create Codex runner", ErrExecution)), fmt.Errorf("%w: create Codex runner", ErrExecution)
 	}
-	result, runErr := runner.Run(ctx, aicodex.RunRequest{
+	turnCtx, cancelTurn := executor.turnContext(ctx, request.TurnDeadlineUnixMS)
+	defer cancelTurn()
+	result, runErr := runner.Run(turnCtx, aicodex.RunRequest{
 		ProfileID: request.ProfileID, Prompt: request.Run.Prompt, Resume: request.Run.Resume, ThreadID: request.Run.ThreadID,
 	})
 	response := Response{OK: runErr == nil, ProfileID: request.ProfileID, RequestID: request.RequestID,
@@ -430,7 +467,9 @@ func (executor *Executor) executeProbeLocked(ctx context.Context, request Execut
 		wrapped := fmt.Errorf("%w: create Codex runner", ErrExecution)
 		return responseForRequest(request, wrapped), wrapped
 	}
-	result, runErr := runner.Run(ctx, aicodex.RunRequest{ProfileID: request.ProfileID, Prompt: request.Run.Prompt})
+	turnCtx, cancelTurn := executor.turnContext(ctx, request.TurnDeadlineUnixMS)
+	defer cancelTurn()
+	result, runErr := runner.Run(turnCtx, aicodex.RunRequest{ProfileID: request.ProfileID, Prompt: request.Run.Prompt})
 	response := Response{OK: runErr == nil, ProfileID: request.ProfileID, RequestID: request.RequestID,
 		Result: redactResult(result, request.Model.APIKey)}
 	if runErr != nil {
@@ -606,6 +645,9 @@ func (executor *Executor) validateRequest(request ExecuteRequest) error {
 	if request.Model.ContextWindow < 0 || request.Model.ContextWindow > 16*1024*1024 {
 		return ErrModelConfig
 	}
+	if err := ValidateTurnDeadline(request.TurnDeadlineUnixMS, executor.cfg.Clock()); err != nil {
+		return err
+	}
 	if hasControl(request.Model.ReasoningEffort) || len([]byte(request.Model.ReasoningEffort)) > 64 {
 		return ErrModelConfig
 	}
@@ -649,6 +691,13 @@ func (executor *Executor) validateRequest(request ExecuteRequest) error {
 		return fmt.Errorf("%w: prompt is too large", ErrInvalidRequest)
 	}
 	return nil
+}
+
+func (executor *Executor) turnContext(ctx context.Context, deadlineUnixMS int64) (context.Context, context.CancelFunc) {
+	if deadlineUnixMS == 0 {
+		return ctx, func() {}
+	}
+	return context.WithDeadline(ctx, time.UnixMilli(deadlineUnixMS))
 }
 
 func validateMCP(mcp MCP) error {

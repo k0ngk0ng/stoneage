@@ -440,7 +440,10 @@ func (broker *Broker) CleanupProbe(ctx context.Context, request airunner.Execute
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := validateRequest(request); err != nil {
+	// A probe may be cleaned up after its deadline has elapsed. Its exact
+	// payload still has to validate structurally so the journal hash can be
+	// checked, but an expired deadline must not block cleanup.
+	if err := broker.validateRequest(request, false); err != nil {
 		return err
 	}
 	payload, err := json.Marshal(request)
@@ -550,7 +553,10 @@ func (broker *Broker) Run(ctx context.Context, request airunner.ExecuteRequest) 
 	if closed {
 		return RunResult{Response: requestErrorResponse(request, ErrClosed)}, ErrClosed
 	}
-	if err := validateRequest(request); err != nil {
+	// Validate the shape before computing the exact payload hash. Deadline
+	// expiry is checked only for a fresh claim below; an already completed or
+	// unknown request remains idempotently replayable even after its deadline.
+	if err := broker.validateRequest(request, false); err != nil {
 		return RunResult{Response: requestErrorResponse(request, err)}, err
 	}
 	payload, err := json.Marshal(request)
@@ -585,6 +591,9 @@ func (broker *Broker) Run(ctx context.Context, request airunner.ExecuteRequest) 
 	}
 	if !errors.Is(getErr, ErrJournalNotFound) {
 		return RunResult{Response: requestErrorResponse(request, getErr)}, getErr
+	}
+	if err := broker.validateRequest(request, true); err != nil {
+		return RunResult{Response: requestErrorResponse(request, err)}, err
 	}
 	// A fresh claim after an operator-reviewed unknown run must carry the
 	// exact reviewed request ID. This check happens only after replay lookup so
@@ -1184,7 +1193,7 @@ func redactString(value string, secrets []string) string {
 	return value
 }
 
-func validateRequest(request airunner.ExecuteRequest) error {
+func (broker *Broker) validateRequest(request airunner.ExecuteRequest, enforceDeadline bool) error {
 	if !profileIDPattern.MatchString(request.ProfileID) {
 		return fmt.Errorf("%w: profile ID is invalid", ErrInvalidRequest)
 	}
@@ -1220,6 +1229,13 @@ func validateRequest(request airunner.ExecuteRequest) error {
 	}
 	if request.Model.ContextWindow < 0 || request.Model.ContextWindow > 16*1024*1024 || len([]byte(request.Model.ReasoningEffort)) > 64 || strings.ContainsAny(request.Model.ReasoningEffort, "\x00\r\n") {
 		return fmt.Errorf("%w: model limits are invalid", ErrInvalidRequest)
+	}
+	if enforceDeadline {
+		if err := airunner.ValidateTurnDeadline(request.TurnDeadlineUnixMS, broker.config.Clock()); err != nil {
+			return err
+		}
+	} else if request.TurnDeadlineUnixMS < 0 {
+		return fmt.Errorf("%w: turn deadline is invalid", ErrInvalidRequest)
 	}
 	if request.Probe {
 		// Probe requests are model-only. The runtime performs the same strict

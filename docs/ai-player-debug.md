@@ -194,3 +194,15 @@ STONEAGE_ADMIN_INITIAL_LIVE_TEST=1 GOCACHE="$PWD/build/ai/go-cache" \
 “异常核查”改名为“恢复确认”；“查看”以只读方式展示自动暂停原因、恢复准备状态、遗留容器状态和旧回合时间，原始错误可折叠查看。游戏状态仅来自已记录的 `game.observation`，标明观测时间及非实时性质，没有证据的字段显示无记录；查看不会自动确认或启动玩家。
 
 管理端和管理入口完整竞态回归通过（`build/ai/rc6-admin-final.log`），6 组管理端 JS 测试通过（`build/ai/rc6-js-final.log`）；相关包 `go vet` 通过。移动端查看面板已检查，保留列表无横向滚动布局。
+
+## rc.6 生产验证与容器超时补充修复
+
+rc.6 已发布并部署，六个服务健康且对应发布 digest。管理端直接 Responses 测试成功，耗时 1.425 秒，测试期间未创建 AI 容器。生产旧 unknown 检查点恢复后，容器进入新的 reviewed 检查点目录并建立新的 Codex thread，已产生真实模型调用；旧检查点重复拦截的缺陷修复得到验证。
+
+随后暴露另一项缺陷：模型超时仅作用于外层等待，容器没有携带同样的绝对截止时间。主机内存/IO 压力使 Docker 停止和 journal 写入超过期限后，外层进入 paused，但 Codex 容器仍继续执行并访问已经撤销的游戏能力。该遗留容器已停止，未重复启动第二个玩家回合。此状态不是用户手动暂停。
+
+现场证据：主机约 1.63 GiB RAM、无 swap。运行 Codex 时内存 PSI some 约 50%、IO some 约 95%；停止遗留容器后均降至不足 1%。AI 容器限制已实际生效（0.5 CPU、512 MiB、128 PID），采样内存约 95 MiB，未 OOM；不能把压力误说成该容器突破内存限制。当前主机总工作集和其他服务使 Codex 启动出现明显回收抖动，稳定运行仍需资源容量调整。
+
+rc.7 补充修复：服务端把绝对 `turn_deadline_unix_ms` 随请求传入容器并持久保存，取模型期限和更早的调用方期限；过期请求不得启动 Codex，运行中的回合由容器内 context 驱动进程组终止。外层为结果写入保留 10 秒清理时间。既有请求过期后仍可读取原结果，恢复不会修改原 deadline 或重复执行旧请求。
+
+独立验证：6 个相关包完整竞态测试通过（`build/ai/rc7-final-regression.log`），相关包 vet 通过；真实 Codex smoke 验证过期请求未调用模型，并继续覆盖 reviewed 恢复、精确 thread resume 和独立配置（`build/ai/rc7-image-smoke.log`）。程序超时边界的修复不等于当前生产内存容量问题已解决。

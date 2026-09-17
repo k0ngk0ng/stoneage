@@ -300,6 +300,70 @@ while :; do sleep 1; done
 	}
 }
 
+func TestExecutorTurnDeadlineKillsCodexAndPersistsUnknownCheckpoint(t *testing.T) {
+	root := t.TempDir()
+	codex := writeRunnerTestExecutable(t, root, `#!/bin/sh
+set -eu
+printf '%s\n' '{"type":"thread.started","thread_id":"thread-deadline"}'
+trap '' TERM
+while :; do sleep 1; done
+`)
+	mcp := writeRunnerTestExecutable(t, root, "#!/bin/sh\nexit 0\n")
+	executor, err := New(Config{
+		ProfileID: "profile-deadline", StateRoot: filepath.Join(root, "state"), CodexBinary: codex,
+		MCPBinary: mcp, SkillRoot: repositorySkillRoot(t), TerminationGrace: 25 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ExecuteRequest{
+		ProfileID: "profile-deadline", RequestID: "request-deadline", TurnDeadlineUnixMS: time.Now().Add(3 * time.Second).UnixMilli(),
+		Run: RunRequest{Prompt: "sleep"}, Model: Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: "key"},
+		MCP: MCP{Endpoint: "http://127.0.0.1:1/v1/game", Token: strings.Repeat("d", 43), CharacterID: "character-deadline", Generation: 1},
+	}
+	started := time.Now()
+	response, err := executor.Execute(context.Background(), request)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > 6*time.Second {
+		t.Fatalf("turn deadline was not enforced: err=%v response=%+v", err, response)
+	}
+	if response.OK || response.Error != "deadline_exceeded" || response.Result == nil || response.Result.Checkpoint.State != string(aicodex.CheckpointUnknown) {
+		t.Fatalf("deadline response=%+v", response)
+	}
+	checkpointData, err := os.ReadFile(filepath.Join(executor.profiles.stateDir, "thread.json"))
+	if err != nil {
+		t.Fatalf("read deadline checkpoint: %v; result=%+v", err, response.Result)
+	}
+	var checkpoint aicodex.ThreadCheckpoint
+	if err := json.Unmarshal(checkpointData, &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if checkpoint.State != aicodex.CheckpointUnknown || checkpoint.ThreadID != "thread-deadline" {
+		t.Fatalf("checkpoint=%+v", checkpoint)
+	}
+}
+
+func TestExecutorExpiredTurnDeadlineDoesNotStartCodex(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "codex-started")
+	codex := writeRunnerTestExecutable(t, root, fmt.Sprintf("#!/bin/sh\n: > %q\nexit 0\n", marker))
+	mcp := writeRunnerTestExecutable(t, root, "#!/bin/sh\nexit 0\n")
+	executor, err := New(Config{ProfileID: "profile-expired", StateRoot: filepath.Join(root, "state"), CodexBinary: codex, MCPBinary: mcp, SkillRoot: repositorySkillRoot(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := executor.Execute(context.Background(), ExecuteRequest{
+		ProfileID: "profile-expired", RequestID: "request-expired", TurnDeadlineUnixMS: time.Now().Add(-time.Second).UnixMilli(),
+		Run: RunRequest{Prompt: "must not run"}, Model: Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: "key"},
+		MCP: MCP{Endpoint: "http://127.0.0.1:1/v1/game", Token: strings.Repeat("e", 43), CharacterID: "character-expired", Generation: 1},
+	})
+	if !errors.Is(err, context.DeadlineExceeded) || response.Error != "deadline_exceeded" {
+		t.Fatalf("expired request response=%+v err=%v", response, err)
+	}
+	if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expired request started Codex: stat=%v", statErr)
+	}
+}
+
 func TestValidateMCPRejectsControlCharacterIdentity(t *testing.T) {
 	mcp := MCP{Endpoint: "http://127.0.0.1:1/v1/game", Token: strings.Repeat("x", 43), CharacterID: "character\n-injected", Generation: 1}
 	if err := validateMCP(mcp); !errors.Is(err, ErrMCPConfig) {

@@ -82,6 +82,7 @@ async function main() {
     async function turn(id, thread, options = {}) {
       const request = {profile_id: profile, request_id: id,
         ...(options.reviewedRequest ? {reviewed_request_id: options.reviewedRequest} : {}),
+        ...(options.turnDeadline ? {turn_deadline_unix_ms: options.turnDeadline} : {}),
         run_request: {prompt: `Image smoke ${id}: reply with the supplied response.`, ...(thread ? {resume: true, thread_id: thread} : {})},
         model: {provider: 'custom', base_url: endpoint, model: 'stoneage-image-smoke', api_key: key},
         skills: [{name: 'stoneage-play'}],
@@ -144,6 +145,8 @@ async function main() {
     await turn('unreviewed-fresh', null, {expectedError: 'checkpoint_recovery_required'});
     assert.equal(requests.length, 2, 'unreviewed checkpoint fence called the model');
     const reviewedOptions = {reviewedRequest: 'resume'};
+    await turn('expired-reviewed', null, {...reviewedOptions, turnDeadline: Date.now() - 1000, expectedError: 'deadline_exceeded'});
+    assert.equal(requests.length, 2, 'expired container request called the model');
     const replacementThread = await turn('reviewed-fresh', null, reviewedOptions);
     assert.notEqual(replacementThread, thread, 'review reused the interrupted thread');
     assert.equal(await turn('reviewed-resume', replacementThread, reviewedOptions), replacementThread);
@@ -184,7 +187,7 @@ async function main() {
     assert(!fs.existsSync(path.join(probeState, 'state', profile, 'game-capability.token')), 'pure probe created game token');
     assert(!fs.existsSync(path.join(probeState, 'workspaces', profile, '.agents', 'skills')), 'pure probe installed a Skill');
     assert.equal(requests.length, 5);
-    console.log('AI image smoke passed: real runner/Codex, Responses, exact-thread resume, installed Skill, unattended config reviewed-checkpoint recovery and pure model Probe without MCP/game state; synthetic provider, no game execution.');
+    console.log('AI image smoke passed: real runner/Codex, Responses, exact-thread resume, installed Skill, unattended config, expired-request rejection, reviewed-checkpoint recovery and pure model Probe without MCP/game state; synthetic provider, no game execution.');
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(root, {recursive: true, force: true});

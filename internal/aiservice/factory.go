@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/aibroker"
 	"github.com/k0ngk0ng/stoneage/internal/aicodex"
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
@@ -843,7 +844,7 @@ func (factory *Factory) newContainerRunner(profile airuntime.Profile, binding ai
 	}
 	return NewContainerRunner(ContainerRunnerConfig{
 		ProfileID: profile.ID, StateRoot: stateDir, Broker: factory.cfg.ContainerBroker,
-		TurnTimeout: model.Timeout,
+		TurnTimeout: model.Timeout, TurnTimeoutGrace: aibroker.DefaultStopTimeout,
 		RequestTemplate: airunner.ExecuteRequest{
 			ProfileID: profile.ID,
 			Model: airunner.Model{Provider: model.Provider, BaseURL: model.BaseURL, Model: model.Model,
