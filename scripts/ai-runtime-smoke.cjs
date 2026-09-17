@@ -79,8 +79,9 @@ async function main() {
     // Exercise the runner's actual environment defaults, just as the broker
     // does. Override only state so build-time threads never seed player data.
     const args = ['-profile', profile, '-state', root];
-    async function turn(id, thread) {
+    async function turn(id, thread, options = {}) {
       const request = {profile_id: profile, request_id: id,
+        ...(options.reviewedRequest ? {reviewed_request_id: options.reviewedRequest} : {}),
         run_request: {prompt: `Image smoke ${id}: reply with the supplied response.`, ...(thread ? {resume: true, thread_id: thread} : {})},
         model: {provider: 'custom', base_url: endpoint, model: 'stoneage-image-smoke', api_key: key},
         skills: [{name: 'stoneage-play'}],
@@ -97,13 +98,19 @@ async function main() {
         child.once('error', err => { clearTimeout(timeout); reject(err); });
         child.once('close', code => {
           clearTimeout(timeout);
-          if (code !== 0) return reject(new Error(`runner failed: exit=${code}; ${stderr.slice(0, 512)}`));
-          resolve({stdout, stderr});
+          if (code !== 0 && !options.expectedError) return reject(new Error(`runner failed: exit=${code}; ${stderr.slice(0, 512)}`));
+          resolve({stdout, stderr, code});
         });
         child.stdin.end(JSON.stringify(request));
       });
       for (const secret of [key, token]) assert(!JSON.stringify(output).includes(secret), 'credential leaked to process output');
       const response = JSON.parse(output.stdout);
+      if (options.expectedError) {
+        assert.notEqual(output.code, 0);
+        assert.equal(response.ok, false);
+        assert.equal(response.error, options.expectedError);
+        return;
+      }
       assert.equal(response.ok, true);
       assert.equal(response.profile_id, profile);
       assert.equal(response.request_id, id);
@@ -123,6 +130,25 @@ async function main() {
       assert(new RegExp(`${name}\\s*=\\s*['"]${value}['"]`).test(config), `missing fixed ${name}`);
     }
     assert(fs.readFileSync(path.join(root, 'workspaces', profile, '.agents', 'skills', 'stoneage-play', 'SKILL.md'), 'utf8').includes('game_observe'));
+
+    // Reproduce an interrupted legacy checkpoint in the persistent profile
+    // volume. A plain fresh turn must remain fenced. After the broker has
+    // verified an operator review (covered by broker tests), its reviewed
+    // request namespace must permit a fresh conversation and exact resume
+    // without deleting or falsely completing the old unknown checkpoint.
+    const legacyCheckpointPath = path.join(root, 'state', profile, 'thread.json');
+    const interrupted = JSON.parse(fs.readFileSync(legacyCheckpointPath, 'utf8'));
+    Object.assign(interrupted, {state: 'unknown', turn_status: 'unknown', turn_completed: false});
+    fs.writeFileSync(legacyCheckpointPath, JSON.stringify(interrupted), {mode: 0o600});
+    const preservedCheckpoint = fs.readFileSync(legacyCheckpointPath, 'utf8');
+    await turn('unreviewed-fresh', null, {expectedError: 'checkpoint_recovery_required'});
+    assert.equal(requests.length, 2, 'unreviewed checkpoint fence called the model');
+    const reviewedOptions = {reviewedRequest: 'resume'};
+    const replacementThread = await turn('reviewed-fresh', null, reviewedOptions);
+    assert.notEqual(replacementThread, thread, 'review reused the interrupted thread');
+    assert.equal(await turn('reviewed-resume', replacementThread, reviewedOptions), replacementThread);
+    assert.equal(fs.readFileSync(legacyCheckpointPath, 'utf8'), preservedCheckpoint, 'review altered the old checkpoint');
+    assert.equal(requests.length, 4);
 
     // Exercise the model-only connection path through the real packaged
     // runner. The request must not materialize a game token, owner marker,
@@ -157,8 +183,8 @@ async function main() {
     assert(!fs.existsSync(path.join(probeState, '.stoneage-ai-owner.json')), 'pure probe created game owner marker');
     assert(!fs.existsSync(path.join(probeState, 'state', profile, 'game-capability.token')), 'pure probe created game token');
     assert(!fs.existsSync(path.join(probeState, 'workspaces', profile, '.agents', 'skills')), 'pure probe installed a Skill');
-    assert.equal(requests.length, 3);
-    console.log('AI image smoke passed: real runner/Codex, Responses, exact-thread resume, installed Skill, unattended config and pure model Probe without MCP/game state; synthetic provider, no game execution.');
+    assert.equal(requests.length, 5);
+    console.log('AI image smoke passed: real runner/Codex, Responses, exact-thread resume, installed Skill, unattended config reviewed-checkpoint recovery and pure model Probe without MCP/game state; synthetic provider, no game execution.');
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(root, {recursive: true, force: true});

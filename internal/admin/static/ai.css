@@ -73,6 +73,8 @@
 .ai-audit-event-compact { padding: 7px 10px; border-left-width: 3px; }
 .ai-audit-event-compact .ai-audit-event-name { font-size: 12px; }
 .ai-audit-compact-line { margin: 2px 0 0; color: #68777c; font-size: 12px; }
+.ai-audit-recovery, .ai-audit-observation { margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid rgba(94,116,128,.22); }
+.ai-audit-recovery .ai-audit-fields, .ai-audit-observation .ai-audit-fields { padding: 8px 10px; border: 1px solid rgba(94,116,128,.24); border-radius: 7px; background: rgba(255,255,255,.36); }
 .ai-audit-fields { margin: 0; }
 .ai-audit-field { display: grid; grid-template-columns: 86px minmax(0,1fr); gap: 8px; margin: 4px 0; }
 .ai-audit-label { color: #68777c; font-size: 11px; font-weight: 700; }

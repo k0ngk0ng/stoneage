@@ -30,17 +30,21 @@ const (
 )
 
 var (
-	ErrInvalidConfig     = errors.New("aibroker: invalid configuration")
-	ErrClosed            = errors.New("aibroker: broker is closed")
-	ErrInvalidRequest    = errors.New("aibroker: invalid request")
-	ErrRequestTooLarge   = errors.New("aibroker: request is too large")
-	ErrJournalNotFound   = errors.New("aibroker: journal entry not found")
-	ErrJournalExists     = errors.New("aibroker: journal entry already exists")
-	ErrJournalConflict   = errors.New("aibroker: request id conflicts with an existing run")
-	ErrProfileBusy       = errors.New("aibroker: profile already has an unresolved run")
-	ErrDocker            = errors.New("aibroker: Docker execution failed")
-	ErrOutputLimit       = errors.New("aibroker: Docker output exceeded limit")
-	ErrResponse          = errors.New("aibroker: runtime response is invalid")
+	ErrInvalidConfig   = errors.New("aibroker: invalid configuration")
+	ErrClosed          = errors.New("aibroker: broker is closed")
+	ErrInvalidRequest  = errors.New("aibroker: invalid request")
+	ErrRequestTooLarge = errors.New("aibroker: request is too large")
+	ErrJournalNotFound = errors.New("aibroker: journal entry not found")
+	ErrJournalExists   = errors.New("aibroker: journal entry already exists")
+	ErrJournalConflict = errors.New("aibroker: request id conflicts with an existing run")
+	ErrProfileBusy     = errors.New("aibroker: profile already has an unresolved run")
+	ErrDocker          = errors.New("aibroker: Docker execution failed")
+	ErrOutputLimit     = errors.New("aibroker: Docker output exceeded limit")
+	ErrResponse        = errors.New("aibroker: runtime response is invalid")
+	// ErrReviewedRequest is returned when a fresh turn attempts to use the
+	// reviewed recovery path without a matching, explicitly reviewed unknown
+	// request in the same profile.
+	ErrReviewedRequest   = errors.New("aibroker: reviewed request proof is invalid")
 	ErrRunRunning        = errors.New("aibroker: run is already running")
 	ErrRunUnknown        = errors.New("aibroker: run outcome is unknown")
 	ErrRunCompleted      = errors.New("aibroker: run has already completed")
@@ -268,6 +272,14 @@ type JournalCAS interface {
 // profile claim without changing the request outcome.
 type JournalReviewer interface {
 	ReviewUnknown(context.Context, string, string, time.Time, string, string) (JournalEntry, error)
+}
+
+// JournalReviewedLookup lets the broker reject a fresh request that omits
+// the proof required after an unknown run has been explicitly reviewed. It is
+// optional for compatibility with narrow test journals; the production
+// SQLite and built-in memory journals implement it.
+type JournalReviewedLookup interface {
+	HasReviewedUnknown(context.Context, string) (bool, error)
 }
 
 // RunResult gives callers the durable state alongside the runtime response.

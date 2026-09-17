@@ -408,7 +408,204 @@
     parent.appendChild(section);
   }
 
-  window.StoneAgeAIAudit = {describe: describeAIEvent, render: renderAIAuditEvents, formatTime: aiAuditTime};
+  const aiRuntimeStateNames = Object.freeze({
+    starting: "启动中",
+    running: "运行中",
+    waiting: "等待下一次心跳",
+    diagnosing: "检查游戏进展",
+    paused: "已暂停",
+    stopped: "已停止",
+    completed: "已完成",
+    error: "发生错误",
+    unknown: "状态未知"
+  });
+
+  function aiRuntimeStateText(value) {
+    const state = aiAuditText(value).trim().toLowerCase();
+    return aiRuntimeStateNames[state] || (state ? state : aiRuntimeStateNames.unknown);
+  }
+
+  function aiRuntimeMessageText(value) {
+    const message = aiAuditText(value).trim();
+    if (!message) return "没有附加说明";
+    const lower = message.toLowerCase();
+    if (lower.indexOf("unresolved model turn") >= 0 || lower.indexOf("checkpoint_recovery_required") >= 0 || lower.indexOf("recovery") >= 0 || lower.indexOf("unknown") >= 0) {
+      return "系统因上一轮模型回合结果未知而自动暂停，需要人工恢复确认";
+    }
+    if (lower.indexOf("no progress") >= 0 || lower.indexOf("没有进展") >= 0) {
+      return "连续一段时间没有观察到游戏进展，运行时已暂停";
+    }
+    if (lower.indexOf("budget") >= 0 || lower.indexOf("token") >= 0) {
+      return "模型额度已达到限制，运行时暂时暂停";
+    }
+    if (lower.indexOf("observation") >= 0 || lower.indexOf("observe") >= 0) {
+      return "游戏状态观察失败，运行时正在重试或已暂停";
+    }
+    if (lower.indexOf("model") >= 0 || lower.indexOf("codex") >= 0) {
+      return "模型回合发生错误，等待后续处理";
+    }
+    return message;
+  }
+
+  function aiRecoveryDetailText(response) {
+    if (!response) return "";
+    if (response.error) return aiAuditText(response.error.message || response.error);
+    return "";
+  }
+
+  function aiRecoveryNextStep(status) {
+    if (!status) return "没有待确认的异常回合；按需启动玩家即可。";
+    const execution = status.execution || {};
+    if (execution.container_stopped === false) {
+      return "保持玩家停止，等待遗留模型容器退出后重新打开恢复确认。";
+    }
+    if (status.ready !== true) {
+      return "保持玩家停止，先满足运行时停止和容器退出等前置条件，再重新打开恢复确认。";
+    }
+    return "先核对最近观测并勾选确认；提交后玩家仍保持停止，需要手动启动新轮次。";
+  }
+
+  function aiRecoveryActionSummary(status) {
+    if (!status) return "没有待确认的异常回合。无需提交恢复确认；按需启动玩家即可。";
+    const execution = status.execution || {};
+    const lines = [];
+    if (execution.container_stopped === false) {
+      lines.push("恢复状态：待确认；遗留模型容器尚未退出。");
+    } else if (execution.container_stopped === true) {
+      lines.push("恢复状态：待确认；遗留模型容器已退出。");
+    } else {
+      lines.push("恢复状态：待确认；遗留模型容器状态无法确认。");
+    }
+    lines.push(status.ready === true ? "核查前置条件已满足。" : "核查前置条件尚未满足。");
+    lines.push("下一步：" + aiRecoveryNextStep(status));
+    return lines.join(" ");
+  }
+
+  function appendAIAuditRaw(parent, label, value) {
+    const text = aiAuditText(value).trim();
+    if (!text) return;
+    const details = aiAuditElement("details", "ai-audit-raw");
+    details.appendChild(aiAuditElement("summary", "", label));
+    details.appendChild(aiAuditElement("pre", "ai-audit-raw-content", text));
+    parent.appendChild(details);
+  }
+
+  function renderAIRecoverySummary(parent, profile, response) {
+    const section = aiAuditElement("section", "ai-audit-recovery");
+    section.appendChild(aiAuditElement("h3", "ai-audit-heading", "运行状态与恢复确认"));
+    section.appendChild(aiAuditElement("p", "muted ai-audit-hint", "查看面板只读，不会提交恢复操作；状态来自最近一次服务端检查。"));
+    const fields = aiAuditElement("dl", "ai-audit-fields");
+    const runtime = profile && profile.runtime ? profile.runtime : {};
+    aiAuditField(fields, "当前运行", aiRuntimeStateText(runtime.state));
+    if (runtime.message || runtime.last_error) {
+      aiAuditField(fields, "状态说明", aiRuntimeMessageText(runtime.message || runtime.last_error));
+    }
+    const recovery = response && response.recovery;
+    if (recovery) {
+      const execution = recovery.execution || {};
+      aiAuditField(fields, "恢复状态", "待人工确认（旧回合结果未知）", "ai-audit-reason");
+      aiAuditField(fields, "确认前置", recovery.ready === true ? "已满足，可以在核对后确认" : "未满足，暂不能提交确认", recovery.ready === true ? "ai-audit-next" : "ai-audit-reason");
+      aiAuditField(fields, "遗留容器", execution.container_stopped === true ? "已退出" : execution.container_stopped === false ? "尚未退出" : "无法确认");
+      aiAuditField(fields, "旧回合", recovery.attempt_id ? "回合 " + recovery.attempt_id + " · 最近检查 " + aiAuditTime(recovery.attempt_updated_at) : "身份未记录");
+      aiAuditField(fields, "预留额度", recovery.reserved_tokens !== undefined ? aiAuditTokens(recovery.reserved_tokens) : "没有记录");
+      aiAuditField(fields, "下一步", aiRecoveryNextStep(recovery), "ai-audit-next");
+    } else if (response && response.error) {
+      aiAuditField(fields, "恢复状态", "暂时无法读取待确认回合", "ai-audit-reason");
+      aiAuditField(fields, "下一步", "保持玩家停止，稍后重新打开查看；不要重复提交未知请求。", "ai-audit-next");
+    } else {
+      aiAuditField(fields, "恢复状态", "没有待确认的异常回合");
+      aiAuditField(fields, "下一步", "无需恢复确认；按需启动玩家即可。", "ai-audit-next");
+    }
+    section.appendChild(fields);
+    const rawRuntime = aiAuditText(runtime.message || runtime.last_error).trim();
+    if (rawRuntime) appendAIAuditRaw(section, "查看原始运行说明", rawRuntime);
+    const rawRecovery = aiRecoveryDetailText(response);
+    if (rawRecovery) appendAIAuditRaw(section, "查看恢复查询错误", rawRecovery);
+    parent.appendChild(section);
+  }
+
+  function aiObservationContent(event) {
+    const detail = aiAuditDetailObject(event && event.detail);
+    return {kind: aiAuditText(detail.kind).trim(), subject: aiAuditText(detail.subject).trim(), content: aiAuditDetailObject(detail.content)};
+  }
+
+  function aiObservationAt(event) {
+    return "最近观测 " + aiAuditTime(event && event.created_at) + "（不是实时状态）";
+  }
+
+  function aiObservationNumber(value) {
+    if (value === null || value === undefined || typeof value === "boolean" || (typeof value === "string" && !value.trim())) return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function aiObservationIsNewer(candidate, current) {
+    if (!current) return true;
+    const candidateTime = new Date(candidate && candidate.created_at).getTime();
+    const currentTime = new Date(current && current.created_at).getTime();
+    if (Number.isNaN(currentTime)) return !Number.isNaN(candidateTime);
+    return !Number.isNaN(candidateTime) && candidateTime > currentTime;
+  }
+
+  function renderAIObservationEvidence(parent, events) {
+    const section = aiAuditElement("section", "ai-audit-observation");
+    section.appendChild(aiAuditElement("h3", "ai-audit-heading", "最近游戏状态（非实时）"));
+    section.appendChild(aiAuditElement("p", "muted ai-audit-hint", "以下内容只来自已记录的服务端游戏观察；没有记录的字段明确标为无记录，不代表当前状态。"));
+    const character = [], pets = new Map();
+    let party = null;
+    (Array.isArray(events) ? events : []).forEach(function (event) {
+      if (!event || event.kind !== "game.observation") return;
+      const observation = aiObservationContent(event);
+      if (observation.kind === "character.level" && aiObservationNumber(observation.content.level) !== null) {
+        character.push({event, observation});
+      } else if (observation.kind === "pet.level" && observation.subject && aiObservationNumber(observation.content.level) !== null) {
+        const previous = pets.get(observation.subject);
+        if (!previous || aiObservationIsNewer(event, previous.event)) pets.set(observation.subject, {event, observation});
+      } else if (observation.kind === "party.snapshot" && aiObservationIsNewer(event, party && party.event)) {
+        party = {event, observation};
+      }
+    });
+    character.sort((a, b) => new Date(b.event.created_at).getTime() - new Date(a.event.created_at).getTime());
+    const fields = aiAuditElement("dl", "ai-audit-fields");
+    if (character.length) {
+      const current = character[0];
+      aiAuditField(fields, "角色等级", aiObservationNumber(current.observation.content.level) + " 级 · " + aiObservationAt(current.event));
+    } else {
+      aiAuditField(fields, "角色等级", "无记录");
+    }
+    const petRows = Array.from(pets.values()).sort((a, b) => a.observation.subject.localeCompare(b.observation.subject));
+    if (petRows.length) {
+      aiAuditField(fields, "宠物等级", petRows.map(function (item) {
+        return item.observation.subject + "：" + aiObservationNumber(item.observation.content.level) + " 级（" + aiObservationAt(item.event) + "）";
+      }).join("；"));
+    } else {
+      aiAuditField(fields, "宠物", "无记录");
+    }
+    if (party && Array.isArray(party.observation.content.members)) {
+      const members = party.observation.content.members;
+      const memberText = members.length ? members.map(function (member) {
+        const name = aiAuditText(member.name).trim() || aiAuditText(member.id).trim() || "未命名角色";
+        const level = aiObservationNumber(member.level);
+        const hp = aiObservationNumber(member.hp), maxHP = aiObservationNumber(member.max_hp);
+        const parts = [name];
+        if (level !== null && level > 0) parts.push(level + " 级");
+        if (hp !== null && maxHP !== null && maxHP > 0) parts.push("HP " + hp + "/" + maxHP);
+        return parts.join(" · ");
+      }).join("；") : "已记录队伍为空";
+      aiAuditField(fields, "已观测队伍", memberText + "（" + aiObservationAt(party.event) + "）");
+      if (members.some(function (member) { return aiObservationNumber(member.hp) !== null; })) {
+        aiAuditField(fields, "队伍 HP", "仅显示队伍观察中的 HP；角色自身 HP 没有单独记录（" + aiObservationAt(party.event) + "）");
+      }
+    } else {
+      aiAuditField(fields, "队伍 / HP", "无记录");
+    }
+    aiAuditField(fields, "角色位置", "无记录");
+    aiAuditField(fields, "战斗状态", "无记录");
+    section.appendChild(fields);
+    parent.appendChild(section);
+  }
+
+  window.StoneAgeAIAudit = {describe: describeAIEvent, render: renderAIAuditEvents, formatTime: aiAuditTime, renderRecovery: renderAIRecoverySummary, renderObservation: renderAIObservationEvidence};
 
   function initModels() {
     if (!modelRoot) return;
@@ -573,7 +770,7 @@
     function prepareConnectionTestButton(button) {
       button.disabled = !connectionTestAvailable || !canWrite || connectionTestRunning;
       button.setAttribute("aria-disabled", String(button.disabled));
-      button.title = !canWrite ? "需要模型管理权限" : !connectionTestAvailable ? connectionTestUnavailableMessage : "使用已保存的模型配置发送一次测试请求";
+      button.title = !canWrite ? "需要模型管理权限" : !connectionTestAvailable ? connectionTestUnavailableMessage : "直接向已保存 Base URL 的 Responses API 发送 hi";
     }
 
     document.querySelectorAll(".ai-test-model").forEach(function (button) {
@@ -585,12 +782,12 @@
         const originalText = button.textContent;
         button.textContent = "测试中…";
         const name = button.dataset.modelName || "模型";
-        message(modelRoot, "正在测试「" + name + "」的已保存配置，请稍候…", false);
+        message(modelRoot, "正在向「" + name + "」的 Responses API 发送 hi，请稍候…", false);
         try {
           const result = await api(modelRoot, "/api/ai/models/" + encodeURIComponent(button.dataset.id) + "/test", "POST", {});
           if (result.ok !== true) throw new Error("未收到有效测试结果，请刷新页面确认登录状态后重试。");
           const duration = Number.isFinite(result.duration_ms) ? "，耗时 " + (result.duration_ms / 1000).toFixed(1) + " 秒" : "";
-          message(modelRoot, "「" + name + "」测试成功：已收到预期模型响应" + duration + "。", false);
+          message(modelRoot, "「" + name + "」测试成功：已收到 Responses API 响应" + duration + "。", false);
         } catch (error) { message(modelRoot, "「" + name + "」" + error.message, true); }
         finally {
           connectionTestRunning = false;
@@ -971,16 +1168,21 @@
         const base = "/api/ai/profiles/" + encodeURIComponent(id);
         const results = await Promise.allSettled([
           api(profileRoot, base + "/events", "GET"),
-          api(profileRoot, base + "/life-state", "GET")
+          api(profileRoot, base + "/life-state", "GET"),
+          api(profileRoot, base + "/recovery", "GET")
         ]);
         if (requestID !== auditRequest) return;
         if (results[0].status !== "fulfilled") throw results[0].reason;
         const state = results[1].status === "fulfilled" ? results[1].value : null;
+        const recovery = results[2].status === "fulfilled" ? results[2].value : {error: results[2].reason};
+        const events = results[0].value.events || [];
         heading.textContent = (profile.character && profile.character.name ? profile.character.name : id) + " · 只读生活记录与审计";
         content.replaceChildren();
         content.appendChild(aiAuditElement("p", "ai-audit-initial", initialText(profile)));
+        renderAIRecoverySummary(content, profile, recovery);
+        renderAIObservationEvidence(content, events);
         renderAIAuditState(content, state);
-        renderAIAuditEvents(content, results[0].value.events || []);
+        renderAIAuditEvents(content, events);
         show(audit);
         audit.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) { message(profileRoot, error.message, true); }
@@ -1017,9 +1219,16 @@
           const result = await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(button.dataset.id) + "/recovery", "GET");
           if (load !== recoveryLoad) return;
           recovery = result.recovery;
-          if (!recovery) { hide(recoveryPanel); message(profileRoot, "没有待核查的未知轮次。", false); return; }
+          if (!recovery) {
+            recoveryAck.checked = false;
+            recoverySubmit.disabled = true;
+            hide(recoveryPanel);
+            message(profileRoot, "没有待确认的异常回合。", false);
+            return;
+          }
           recoveryAck.checked = false; recoverySubmit.disabled = true; recoveryMessage.textContent = "";
-          document.getElementById("ai-recovery-summary").textContent = "轮次 " + recovery.attempt_id + " · 保留预算 " + recovery.reserved_tokens + " tokens。" + (recovery.ready ? "可以核查。" : recovery.execution && recovery.execution.container_stopped === false ? "遗留模型容器尚未退出，请稍后重新打开核查。" : "请先停止 AI 玩家，然后重新打开核查。");
+          const actionSummary = typeof aiRecoveryActionSummary === "function" ? aiRecoveryActionSummary(recovery) : (recovery.execution && recovery.execution.container_stopped === false ? "恢复状态：待确认；遗留模型容器尚未退出。" : recovery.ready ? "核查前置条件已满足。" : "核查前置条件尚未满足。");
+          document.getElementById("ai-recovery-summary").textContent = "轮次 " + recovery.attempt_id + " · 保留预算 " + recovery.reserved_tokens + " tokens。" + actionSummary;
           show(recoveryPanel); recoveryPanel.scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (error) { message(profileRoot, error.message, true); }
         finally { button.disabled = false; }

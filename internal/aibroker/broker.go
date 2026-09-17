@@ -586,6 +586,12 @@ func (broker *Broker) Run(ctx context.Context, request airunner.ExecuteRequest) 
 	if !errors.Is(getErr, ErrJournalNotFound) {
 		return RunResult{Response: requestErrorResponse(request, getErr)}, getErr
 	}
+	// A fresh claim after an operator-reviewed unknown run must carry the
+	// exact reviewed request ID. This check happens only after replay lookup so
+	// an old request can still be read idempotently without a proof field.
+	if err := broker.validateReviewedRequest(ctx, request); err != nil {
+		return RunResult{Response: requestErrorResponse(request, err)}, err
+	}
 	entry := JournalEntry{ProfileID: request.ProfileID, RequestID: request.RequestID, PayloadHash: payloadHash,
 		State: RunRunning, ContainerName: containerName, VolumeName: volumeName, UpdatedAt: broker.config.Clock()}
 	created, createErr := broker.journal.Create(ctx, entry)
@@ -1185,6 +1191,14 @@ func validateRequest(request airunner.ExecuteRequest) error {
 	if !requestIDPattern.MatchString(request.RequestID) {
 		return fmt.Errorf("%w: request ID is invalid", ErrInvalidRequest)
 	}
+	if request.ReviewedRequestID != "" {
+		if !requestIDPattern.MatchString(request.ReviewedRequestID) {
+			return fmt.Errorf("%w: reviewed request ID is invalid", ErrInvalidRequest)
+		}
+		if request.ReviewedRequestID == request.RequestID {
+			return fmt.Errorf("%w: reviewed request ID must identify an earlier request", ErrInvalidRequest)
+		}
+	}
 	if request.Run.Resume != (request.Run.ThreadID != "") {
 		return fmt.Errorf("%w: resume and exact thread ID must be supplied together", ErrInvalidRequest)
 	}
@@ -1211,7 +1225,7 @@ func validateRequest(request airunner.ExecuteRequest) error {
 		// Probe requests are model-only. The runtime performs the same strict
 		// check, but keep it at the broker boundary so a malformed request is
 		// rejected before it can claim a container/profile volume.
-		if len(request.Skills) != 0 || request.MCP != (airunner.MCP{}) || request.Run.Resume || request.Run.ThreadID != "" {
+		if len(request.Skills) != 0 || request.MCP != (airunner.MCP{}) || request.Run.Resume || request.Run.ThreadID != "" || request.ReviewedRequestID != "" {
 			return fmt.Errorf("%w: model probe cannot carry game capability", ErrInvalidRequest)
 		}
 	} else if request.MCP.Endpoint == "" || !validHTTPURL(request.MCP.Endpoint) || !validGameToken(request.MCP.Token) || request.MCP.CharacterID == "" || len([]byte(request.MCP.CharacterID)) > 128 || strings.ContainsAny(request.MCP.CharacterID, "\x00\r\n") || len([]byte(request.MCP.CharacterName)) > 4096 || strings.ContainsAny(request.MCP.CharacterName, "\x00\r\n") {
@@ -1229,6 +1243,39 @@ func validateRequest(request airunner.ExecuteRequest) error {
 			return fmt.Errorf("%w: duplicate skill", ErrInvalidRequest)
 		}
 		seenSkills[skill.Name] = struct{}{}
+	}
+	return nil
+}
+
+// validateReviewedRequest proves that a request selecting the fresh
+// checkpoint namespace is backed by the same profile's explicitly reviewed
+// unknown journal row. The proof is intentionally checked against the
+// durable row instead of trusting the request payload alone.
+func (broker *Broker) validateReviewedRequest(ctx context.Context, request airunner.ExecuteRequest) error {
+	if request.ReviewedRequestID != "" {
+		entry, err := broker.journal.Get(ctx, request.ProfileID, request.ReviewedRequestID)
+		if err != nil {
+			if errors.Is(err, ErrJournalNotFound) {
+				return fmt.Errorf("%w: reviewed request was not found", ErrReviewedRequest)
+			}
+			return err
+		}
+		if entry.ProfileID != request.ProfileID || entry.RequestID == request.RequestID || entry.State != RunUnknown || entry.Review == nil {
+			return fmt.Errorf("%w: reviewed request is not an acknowledged unknown run", ErrReviewedRequest)
+		}
+		if entry.VolumeName != broker.VolumeName(request.ProfileID) || entry.ContainerName != broker.ContainerName(request.ProfileID, entry.RequestID) {
+			return fmt.Errorf("%w: reviewed request belongs to another profile volume", ErrReviewedRequest)
+		}
+		return nil
+	}
+	if lookup, ok := broker.journal.(JournalReviewedLookup); ok {
+		hasReviewed, err := lookup.HasReviewedUnknown(ctx, request.ProfileID)
+		if err != nil {
+			return err
+		}
+		if hasReviewed {
+			return fmt.Errorf("%w: reviewed request ID is required", ErrReviewedRequest)
+		}
 	}
 	return nil
 }
@@ -1269,6 +1316,8 @@ func errorCode(err error) string {
 		return "closed"
 	case errors.Is(err, ErrJournalConflict):
 		return "request_conflict"
+	case errors.Is(err, ErrReviewedRequest):
+		return "reviewed_request_required"
 	case errors.Is(err, ErrProfileBusy):
 		return "profile_busy"
 	case errors.Is(err, ErrJournalBusy):

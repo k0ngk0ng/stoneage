@@ -165,6 +165,79 @@ printf '%s\n' '{"type":"turn.completed","turn_id":"turn-airunner-1","usage":{"in
 	}
 }
 
+func TestExecutorReviewedRequestUsesFreshStateNamespaceAcrossInstances(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "interrupted")
+	codex := writeRunnerTestExecutable(t, root, fmt.Sprintf(`#!/bin/sh
+set -eu
+if [ ! -e %q ]; then
+  : > %q
+  printf '%%s\n' '{"type":"thread.started","thread_id":"thread-old"}'
+  exit 17
+fi
+printf '%%s\n' '{"type":"thread.started","thread_id":"thread-reviewed"}'
+printf '%%s\n' '{"type":"turn.completed","turn_id":"turn-reviewed"}'
+`, marker, marker))
+	mcp := writeRunnerTestExecutable(t, root, "#!/bin/sh\nexit 0\n")
+	volumeRoot := filepath.Join(root, "volume")
+	config := Config{ProfileID: "profile-review", StateRoot: volumeRoot, CodexBinary: codex, MCPBinary: mcp, SkillRoot: repositorySkillRoot(t)}
+	request := ExecuteRequest{
+		ProfileID: "profile-review", RequestID: "req-old", Run: RunRequest{Prompt: "interrupted"},
+		Model: Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: "key"},
+		MCP:   MCP{Endpoint: "http://127.0.0.1:1/v1/game", Token: strings.Repeat("r", 43), CharacterID: "character-review", Generation: 1},
+	}
+	firstExecutor, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := firstExecutor.Execute(context.Background(), request)
+	if err == nil || first.OK || first.Result == nil || first.Result.ThreadID != "thread-old" || first.Result.Checkpoint.State != "unknown" {
+		t.Fatalf("interrupted turn response=%+v err=%v", first, err)
+	}
+	legacyPath := filepath.Join(volumeRoot, "state", request.ProfileID, "thread.json")
+	legacyBefore, err := os.ReadFile(legacyPath)
+	if err != nil {
+		t.Fatalf("read legacy checkpoint: %v", err)
+	}
+
+	secondExecutor, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewed := request
+	reviewed.RequestID = "req-reviewed"
+	reviewed.ReviewedRequestID = request.RequestID
+	reviewed.Run = RunRequest{Prompt: "start fresh"}
+	second, err := secondExecutor.Execute(context.Background(), reviewed)
+	if err != nil || !second.OK || second.Result == nil || second.Result.ThreadID != "thread-reviewed" {
+		t.Fatalf("reviewed fresh response=%+v err=%v", second, err)
+	}
+	reviewedPath := filepath.Join(volumeRoot, "state", "reviewed", request.RequestID, request.ProfileID, "thread.json")
+	if _, err := os.Stat(reviewedPath); err != nil {
+		t.Fatalf("reviewed checkpoint missing at %s: %v", reviewedPath, err)
+	}
+	legacyAfterFresh, err := os.ReadFile(legacyPath)
+	if err != nil || string(legacyAfterFresh) != string(legacyBefore) {
+		t.Fatalf("legacy checkpoint changed after reviewed fresh turn: before=%s after=%s err=%v", legacyBefore, legacyAfterFresh, err)
+	}
+
+	thirdExecutor, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resume := reviewed
+	resume.RequestID = "req-resume"
+	resume.Run = RunRequest{Prompt: "continue fresh thread", Resume: true, ThreadID: second.Result.ThreadID}
+	third, err := thirdExecutor.Execute(context.Background(), resume)
+	if err != nil || !third.OK || third.Result == nil || third.Result.ThreadID != second.Result.ThreadID {
+		t.Fatalf("reviewed resume response=%+v err=%v", third, err)
+	}
+	legacyAfterResume, err := os.ReadFile(legacyPath)
+	if err != nil || string(legacyAfterResume) != string(legacyBefore) {
+		t.Fatalf("legacy checkpoint changed after reviewed resume: err=%v", err)
+	}
+}
+
 func TestExecutorRejectsOwnerAndProfileMismatch(t *testing.T) {
 	root := t.TempDir()
 	codex := writeRunnerTestExecutable(t, root, `#!/bin/sh

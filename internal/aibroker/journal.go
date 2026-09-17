@@ -249,6 +249,31 @@ func (journal *SQLiteJournal) Get(ctx context.Context, profileID, requestID stri
 	return entry, nil
 }
 
+// HasReviewedUnknown reports whether a profile has an explicitly reviewed
+// unknown request. Such a profile must present that request ID when creating
+// a fresh broker claim so it cannot silently fall back to the old checkpoint
+// namespace.
+func (journal *SQLiteJournal) HasReviewedUnknown(ctx context.Context, profileID string) (bool, error) {
+	if journal == nil || journal.db == nil {
+		return false, fmt.Errorf("%w: journal is nil", ErrInvalidConfig)
+	}
+	if err := checkContext(ctx); err != nil {
+		return false, err
+	}
+	if !profileIDPattern.MatchString(profileID) {
+		return false, fmt.Errorf("%w: profile ID is invalid", ErrInvalidRequest)
+	}
+	var marker int
+	err := journal.db.QueryRowContext(ctx, `SELECT 1 FROM ai_broker_runs WHERE profile_id=? AND state=? AND reviewed_at<>'' LIMIT 1`, profileID, string(RunUnknown)).Scan(&marker)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("%w: inspect reviewed journal entry", ErrDocker)
+	}
+	return marker == 1, nil
+}
+
 // ListRunning returns durable claims that may have been left by a broker
 // process which exited before publishing an outcome. The caller owns the
 // returned slice and may reconcile it while holding the broker process lock.
@@ -571,6 +596,26 @@ func (journal *MemoryJournal) Get(ctx context.Context, profileID, requestID stri
 	entry.Response = append([]byte(nil), entry.Response...)
 	entry.Review = cloneReview(entry.Review)
 	return entry, nil
+}
+
+func (journal *MemoryJournal) HasReviewedUnknown(ctx context.Context, profileID string) (bool, error) {
+	if err := checkContext(ctx); err != nil {
+		return false, err
+	}
+	if !profileIDPattern.MatchString(profileID) {
+		return false, fmt.Errorf("%w: profile ID is invalid", ErrInvalidRequest)
+	}
+	if journal == nil {
+		return false, fmt.Errorf("%w: journal is nil", ErrInvalidConfig)
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	for _, entry := range journal.entries {
+		if entry.ProfileID == profileID && entry.State == RunUnknown && entry.Review != nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (journal *MemoryJournal) ListRunning(ctx context.Context) ([]JournalEntry, error) {

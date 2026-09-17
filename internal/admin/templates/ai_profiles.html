@@ -24,7 +24,7 @@
         <td data-label="资金">{{if .UnlimitedFunds}}<span class="badge ok">无限资金</span>{{else}}普通资金{{end}}</td>
         <td data-label="状态"><span class="badge">{{.ProfileStatus}}</span></td>
         <td data-label="运行时"><span class="status-pill stopped">{{.Runtime.State}}</span><small>{{.Runtime.Message}}</small>{{if .Runtime.Activity}}<small>当前活动：{{.Runtime.Activity}} · 至 {{.Runtime.ActivityUntil.UTC.Format "15:04:05"}} UTC</small>{{end}}{{if and (eq .Runtime.State "waiting") (not .Runtime.NextDecisionAt.IsZero)}}<small>下次心跳：{{.Runtime.NextDecisionAt.UTC.Format "2006-01-02 15:04:05"}} UTC</small>{{end}}{{if .Runtime.CLIVersion}}<small>CLI {{.Runtime.CLIVersion}}</small>{{end}}</td>
-        <td data-label="操作" class="ai-actions"><button type="button" class="button ai-view-profile" data-id="{{.ID}}">查看</button>{{if $.AIRoleCanWrite}}<button type="button" class="button ai-edit-profile" data-id="{{.ID}}">编辑</button>{{if $.AIRuntimeConfigured}}<button type="button" class="button ai-profile-recovery" data-id="{{.ID}}">异常核查</button><button type="button" class="button ai-profile-control" data-action="start" data-id="{{.ID}}">启动</button><button type="button" class="button ai-profile-control" data-action="pause" data-id="{{.ID}}">暂停</button><button type="button" class="button ai-profile-control danger" data-action="stop" data-id="{{.ID}}">停止</button>{{else}}<button type="button" class="button" disabled title="AI runtime 尚未接入">runtime stopped</button>{{end}}<button type="button" class="button danger ai-delete-profile" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
+        <td data-label="操作" class="ai-actions"><button type="button" class="button ai-view-profile" data-id="{{.ID}}">查看</button>{{if $.AIRoleCanWrite}}<button type="button" class="button ai-edit-profile" data-id="{{.ID}}">编辑</button>{{if $.AIRuntimeConfigured}}<button type="button" class="button ai-profile-recovery" data-id="{{.ID}}">恢复确认</button><button type="button" class="button ai-profile-control" data-action="start" data-id="{{.ID}}">启动</button><button type="button" class="button ai-profile-control" data-action="pause" data-id="{{.ID}}">暂停</button><button type="button" class="button ai-profile-control danger" data-action="stop" data-id="{{.ID}}">停止</button>{{else}}<button type="button" class="button" disabled title="AI runtime 尚未接入">runtime stopped</button>{{end}}<button type="button" class="button danger ai-delete-profile" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
       </tr>
       {{else}}<tr><td colspan="7" class="empty">还没有 AI 玩家配置。</td></tr>{{end}}
     </tbody></table></div>
@@ -121,11 +121,11 @@
 
   {{if .AIRoleCanWrite}}
   <section class="card" id="ai-recovery-panel" hidden>
-    <div class="card-heading"><h2>异常轮次核查</h2><button type="button" class="button" id="ai-recovery-close">关闭</button></div>
+    <div class="card-heading"><h2>恢复确认</h2><button type="button" class="button" id="ai-recovery-close">关闭</button></div>
     <p id="ai-recovery-summary"></p>
-    <p>先核对角色位置、任务、背包及战斗状态。确认后保留旧轮次的未知结果和预算占用，下次启动会重新观察游戏并开启新轮次。</p>
-    <label class="checkbox"><input type="checkbox" id="ai-recovery-ack">我已核对游戏状态，接受旧轮次结果未知。</label>
-    <button type="button" class="button danger" id="ai-recovery-submit" disabled>完成核查，保持暂停</button>
+    <p>系统无法确认上一轮执行结果时，会自动暂停玩家并要求恢复确认。先核对最近观测到的角色状态；确认后只保留旧记录和预算占用，玩家保持停止，需要手动启动新轮次。</p>
+    <label class="checkbox"><input type="checkbox" id="ai-recovery-ack">我已核对最近观测，接受旧回合结果未知并继续。</label>
+    <button type="button" class="button danger" id="ai-recovery-submit" disabled>确认旧回合未知，保持停止</button>
     <p id="ai-recovery-message" role="status"></p>
   </section>
   {{end}}

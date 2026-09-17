@@ -386,6 +386,59 @@ func TestContainerRunnerUnknownRequiresLookupAndBlocksDifferentIntent(t *testing
 	}
 }
 
+func TestContainerRunnerReviewedRecoveryCarriesProofAcrossInstances(t *testing.T) {
+	broker := &containerRunnerFakeBroker{}
+	runner, _ := newContainerRunnerForTest(t, broker)
+	fresh := containerCallerIntentRequest("reviewed-fresh", "start a new conversation", false, "")
+	checkpoint := containerRunCheckpoint{
+		Version: containerRunnerVersion, ProfileID: runner.profileID,
+		RequestID: "reviewed-old", CallerRequestID: "old-caller",
+		Intent: hashContainerIntent(fresh), State: containerRunUnknown,
+		Reviewed: true, UpdatedAt: time.Now().UTC(),
+	}
+	if err := runner.saveCheckpoint(checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	first, err := runner.Run(context.Background(), fresh)
+	if err != nil || first.ThreadID == "" {
+		t.Fatalf("reviewed fresh result=%+v err=%v", first, err)
+	}
+	runs := broker.runRequests()
+	if len(runs) != 1 || runs[0].ReviewedRequestID != checkpoint.RequestID || runs[0].Run.Resume {
+		t.Fatalf("review proof/fresh request not forwarded: %+v", runs)
+	}
+	var saved containerRunCheckpoint
+	data, err := os.ReadFile(runner.CheckpointPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.ReviewedRequestID != checkpoint.RequestID || saved.Reviewed || saved.State != containerRunCompleted {
+		t.Fatalf("reviewed namespace was not persisted: %+v", saved)
+	}
+
+	// Reopen the runner against the same profile state and resume the new
+	// thread. The proof must survive the executor boundary and remain attached
+	// to the new checkpoint.
+	reopened, err := NewContainerRunner(ContainerRunnerConfig{
+		ProfileID: runner.profileID, StateRoot: runner.stateRoot, Broker: broker,
+		RequestTemplate: runner.template,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := reopened.Run(context.Background(), containerCallerIntentRequest("reviewed-resume", "continue", true, first.ThreadID))
+	if err != nil || resumed.ThreadID != first.ThreadID {
+		t.Fatalf("reviewed resume result=%+v err=%v", resumed, err)
+	}
+	runs = broker.runRequests()
+	if len(runs) != 2 || runs[1].ReviewedRequestID != checkpoint.RequestID || !runs[1].Run.Resume || runs[1].Run.ThreadID != first.ThreadID {
+		t.Fatalf("review proof was not retained on resume: %+v", runs)
+	}
+}
+
 func TestContainerRunnerPendingReusesPersistedRequestIDAfterBrokerNotFound(t *testing.T) {
 	broker := &containerRunnerFakeBroker{}
 	runner, _ := newContainerRunnerForTest(t, broker)

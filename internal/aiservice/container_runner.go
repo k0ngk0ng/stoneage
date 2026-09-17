@@ -112,10 +112,11 @@ type containerRunIntent struct {
 }
 
 type containerRunCheckpoint struct {
-	Reviewed  bool   `json:"reviewed,omitempty"`
-	Version   int    `json:"version"`
-	ProfileID string `json:"profile_id"`
-	RequestID string `json:"request_id"`
+	Reviewed          bool   `json:"reviewed,omitempty"`
+	ReviewedRequestID string `json:"reviewed_request_id,omitempty"`
+	Version           int    `json:"version"`
+	ProfileID         string `json:"profile_id"`
+	RequestID         string `json:"request_id"`
 	// CallerRequestID is the durable turn identity supplied by the caller.
 	// RequestID remains the broker identity; they differ for requests created
 	// by older callers that did not supply a turn ID.
@@ -256,7 +257,9 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 	if err != nil {
 		return aicodex.Result{ProfileID: runner.profileID}, err
 	}
+	reviewedRequestID := ""
 	if exists {
+		reviewedRequestID = checkpoint.ReviewedRequestID
 		switch checkpoint.State {
 		case containerRunCompleted:
 			if checkpoint.Intent == intentHash && checkpoint.CallerRequestID == request.RequestID {
@@ -285,6 +288,10 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 				if request.RequestID == "" || request.RequestID == checkpoint.CallerRequestID || request.RequestID == checkpoint.RequestID || request.Resume || request.ThreadID != "" {
 					return aicodex.Result{ProfileID: runner.profileID}, ErrContainerRunnerRecovery
 				}
+				// The operator review releases the old broker claim but does not
+				// make its Codex checkpoint safe to reuse. Carry the reviewed
+				// broker ID into a fresh namespace for the new request.
+				reviewedRequestID = checkpoint.RequestID
 				break
 			}
 			if checkpoint.Intent != intentHash {
@@ -306,7 +313,7 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 			return aicodex.Result{ProfileID: runner.profileID}, ErrContainerRunnerConfig
 		}
 	}
-	checkpoint = containerRunCheckpoint{Version: containerRunnerVersion, ProfileID: runner.profileID, RequestID: requestID, CallerRequestID: request.RequestID, Intent: intentHash, State: containerRunPending, UpdatedAt: time.Now().UTC()}
+	checkpoint = containerRunCheckpoint{Version: containerRunnerVersion, ProfileID: runner.profileID, RequestID: requestID, CallerRequestID: request.RequestID, ReviewedRequestID: reviewedRequestID, Intent: intentHash, State: containerRunPending, UpdatedAt: time.Now().UTC()}
 	if err := runner.saveCheckpoint(checkpoint); err != nil {
 		return aicodex.Result{ProfileID: runner.profileID}, err
 	}
@@ -374,6 +381,7 @@ func (runner *ContainerRunner) callBroker(ctx context.Context, checkpoint contai
 	payload := cloneContainerTemplate(runner.template)
 	payload.ProfileID = runner.profileID
 	payload.RequestID = checkpoint.RequestID
+	payload.ReviewedRequestID = checkpoint.ReviewedRequestID
 	payload.Run = airunner.RunRequest{Prompt: request.Prompt, Resume: request.Resume, ThreadID: request.ThreadID}
 	outcome, brokerErr := runner.broker.Run(ctx, payload)
 	response := sanitizeContainerResponse(outcome.Response, runner.template.Model.APIKey, runner.template.MCP.Token)
@@ -451,7 +459,7 @@ func (runner *ContainerRunner) loadCheckpoint() (containerRunCheckpoint, bool, e
 		return containerRunCheckpoint{}, false, ErrContainerRunnerCorrupt
 	}
 	var checkpoint containerRunCheckpoint
-	if err := decodeContainerJSON(data, &checkpoint); err != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
+	if err := decodeContainerJSON(data, &checkpoint); err != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || (checkpoint.ReviewedRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.ReviewedRequestID)) || checkpoint.ReviewedRequestID == checkpoint.RequestID || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
 		return containerRunCheckpoint{}, false, ErrContainerRunnerCorrupt
 	}
 	if checkpoint.State != containerRunPending && checkpoint.State != containerRunUnknown && checkpoint.State != containerRunCompleted {
@@ -473,7 +481,7 @@ func (runner *ContainerRunner) loadCheckpoint() (containerRunCheckpoint, bool, e
 }
 
 func (runner *ContainerRunner) saveCheckpoint(checkpoint containerRunCheckpoint) error {
-	if runner.guard.Check(runner.checkpoint) != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
+	if runner.guard.Check(runner.checkpoint) != nil || checkpoint.Version != containerRunnerVersion || checkpoint.ProfileID != runner.profileID || !containerRunnerRequestIDPattern.MatchString(checkpoint.RequestID) || (checkpoint.CallerRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.CallerRequestID)) || (checkpoint.ReviewedRequestID != "" && !containerRunnerRequestIDPattern.MatchString(checkpoint.ReviewedRequestID)) || checkpoint.ReviewedRequestID == checkpoint.RequestID || len(checkpoint.Intent) != 64 || !isLowerHexContainer(checkpoint.Intent) {
 		return ErrContainerRunnerConfig
 	}
 	if checkpoint.Response != nil {

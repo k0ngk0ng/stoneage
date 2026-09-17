@@ -31,9 +31,9 @@ func aiModelConnectionFailure(err error) (int, string, string) {
 	case "network":
 		return http.StatusBadGateway, code, "无法连接模型服务，请检查 API 地址和服务器网络。"
 	case "invalid_response":
-		return http.StatusBadGateway, code, "模型未返回预期的测试响应，请检查 Responses API 兼容性或更换模型。"
+		return http.StatusBadGateway, code, "模型未返回有效的 Responses API 响应，请检查接口兼容性或更换模型。"
 	case "runtime_unavailable":
-		return http.StatusServiceUnavailable, code, "模型测试运行环境不可用，请检查 AI 镜像和容器服务。"
+		return http.StatusServiceUnavailable, code, "模型测试服务不可用，请检查管理端模型存储和服务配置。"
 	case "busy":
 		return http.StatusConflict, code, "已有模型测试正在进行，请等待完成后再试。"
 	default:

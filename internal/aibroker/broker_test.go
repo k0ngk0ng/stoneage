@@ -308,6 +308,59 @@ func TestBrokerMarksUncertainOutputUnknownAndStopsContainer(t *testing.T) {
 	}
 }
 
+func TestBrokerReviewedRequestProofFencesFreshClaims(t *testing.T) {
+	docker := &inspectDocker{fakeDocker: fakeDocker{run: func(context.Context, RunSpec, []byte) (DockerResult, error) {
+		return DockerResult{Stdout: []byte(`{"ok":true}`)}, nil
+	}}}
+	journal := NewMemoryJournal()
+	broker := newFakeBroker(t, docker, journal)
+	old := testRequest("reviewed-profile", "old-request")
+	if _, err := broker.Run(context.Background(), old); !errors.Is(err, ErrRunUnknown) {
+		t.Fatalf("old request error=%v, want unknown", err)
+	}
+	oldEntry, err := journal.Get(context.Background(), old.ProfileID, old.RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docker.states = []DockerContainerState{DockerContainerExited}
+	if reviewed, err := broker.ReviewUnknown(context.Background(), old.ProfileID, old.RequestID, oldEntry.UpdatedAt, "operator", ReviewReasonAcceptUncertainOutcome); err != nil || reviewed.Review == nil {
+		t.Fatalf("review=%+v err=%v", reviewed, err)
+	}
+
+	fresh := testRequest(old.ProfileID, "fresh-request")
+	if _, err := broker.Run(context.Background(), fresh); !errors.Is(err, ErrReviewedRequest) {
+		t.Fatalf("fresh request without proof error=%v", err)
+	}
+	if got := len(docker.Calls()); got != 1 {
+		t.Fatalf("proof rejection started Docker: %d calls", got)
+	}
+
+	fresh.ReviewedRequestID = old.RequestID
+	docker.fakeDocker.run = func(context.Context, RunSpec, []byte) (DockerResult, error) {
+		return DockerResult{Stdout: []byte(`{"ok":true,"result":{"thread_id":"fresh-thread","turn":{"status":"completed"},"process":{"status":"exited","exit_code":0}}}`)}, nil
+	}
+	result, err := broker.Run(context.Background(), fresh)
+	if err != nil || result.State != RunCompleted || result.Response.Result == nil || result.Response.Result.ThreadID != "fresh-thread" {
+		t.Fatalf("proof-backed fresh result=%+v err=%v", result, err)
+	}
+	if oldAfter, lookupErr := broker.Lookup(context.Background(), old.ProfileID, old.RequestID); !errors.Is(lookupErr, ErrRunUnknown) || oldAfter.Entry.Review == nil {
+		t.Fatalf("old reviewed outcome changed: %+v err=%v", oldAfter, lookupErr)
+	}
+
+	crossProfile := testRequest("other-profile", "cross-profile")
+	crossProfile.ReviewedRequestID = old.RequestID
+	if _, err := broker.Run(context.Background(), crossProfile); !errors.Is(err, ErrReviewedRequest) {
+		t.Fatalf("cross-profile proof accepted: %v", err)
+	}
+	probe := airunner.ExecuteRequest{
+		ProfileID: "probe-reviewed", RequestID: "probe-request", Probe: true, ReviewedRequestID: old.RequestID,
+		Run: airunner.RunRequest{Prompt: "probe"}, Model: old.Model,
+	}
+	if _, err := broker.Run(context.Background(), probe); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("probe proof spoof accepted: %v", err)
+	}
+}
+
 func TestSQLiteJournalPersistsOutcomeAndCrossBrokerProfileClaim(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join("build", "ai"), 0o700); err != nil {
 		t.Fatal(err)

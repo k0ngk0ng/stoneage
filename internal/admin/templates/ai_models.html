@@ -36,7 +36,7 @@
       <div><h2>已配置模型</h2><p class="muted">默认模型由 runtime 持久化；同一时间只保留一个默认选择。</p></div>
       {{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-model-new">新增模型</button>{{end}}
     </div>
-    {{if .AIConnectionTestAvailable}}<p class="hint">测试会使用已保存的配置发送一次真实模型请求，验证连接和响应并显示耗时；会消耗少量模型额度。</p>{{else}}<p class="hint" role="status">模型测试服务尚未就绪，请检查运行环境配置。</p>{{end}}
+    {{if .AIConnectionTestAvailable}}<p class="hint">测试会直接向已保存 Base URL 的 Responses API 发送 hi，不启动 Codex、容器或游戏 runtime；支持 JSON/SSE，并会消耗少量模型额度。</p>{{else}}<p class="hint" role="status">模型测试服务尚未就绪，请检查运行环境配置。</p>{{end}}
     <div id="ai-model-message" class="alert" hidden role="status"></div>
     <div class="table-scroll">
       <table class="ai-table ai-model-table"><thead><tr><th>名称</th><th>provider / model</th><th>协议</th><th>地址</th><th>限制</th><th>密钥</th><th>默认</th><th>操作</th></tr></thead>

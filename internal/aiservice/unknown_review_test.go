@@ -50,7 +50,10 @@ func TestUnknownReviewBrokerFactoryAndRunner(t *testing.T) {
 	}
 	defer journal.Close()
 	request := containerCallerIntentRequest("old-review-attempt", "old prompt", true, "old-thread")
-	entry := aibroker.JournalEntry{ProfileID: request.ProfileID, RequestID: request.RequestID, PayloadHash: strings.Repeat("a", 64), State: aibroker.RunUnknown, ContainerName: "sa-unknown-review", VolumeName: "sa-unknown-state", UpdatedAt: time.Now().UTC()}
+	// Keep the fixture's durable Docker identities consistent with the broker
+	// contract. Reviewed recovery proves the old request belongs to this exact
+	// profile volume before it selects a fresh Codex checkpoint namespace.
+	entry := aibroker.JournalEntry{ProfileID: request.ProfileID, RequestID: request.RequestID, PayloadHash: strings.Repeat("a", 64), State: aibroker.RunUnknown, ContainerName: aibroker.ContainerName(request.ProfileID, request.RequestID), VolumeName: aibroker.ProfileVolumeName(request.ProfileID), UpdatedAt: time.Now().UTC()}
 	if _, err = journal.Create(ctx, entry); err != nil {
 		t.Fatal(err)
 	}

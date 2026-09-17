@@ -159,21 +159,17 @@ func serve(arguments []string) error {
 	if err := bootstrapAIModel(context.Background(), aiStore, aiSecrets, *aiModelKeyFile); err != nil {
 		return err
 	}
-	var connectionTester admin.AIModelConnectionTester
-	// A container request owns the agent execution boundary. Do not expose a
-	// host Codex connection-test path in that mode, including when a partial
-	// container configuration leaves the gameplay runtime unavailable.
-	if aiConnectionTesterRequested(aiOptions) {
-		tester, err := admin.NewAICodexModelConnectionTester(admin.AIModelConnectionTesterOptions{
-			Models: aiStore, Secrets: aiSecrets, CodexBinary: *aiCodexBinary,
-			WorkRoot: *aiCodexWorkRoot, StateRoot: *aiCodexStateRoot,
-			ConnectionTimeout: *aiConnectionTimeout,
-		})
-		if err != nil {
-			return fmt.Errorf("configure AI connection tester: %w", err)
-		}
-		connectionTester = tester
+	// Model connection tests are deliberately independent from Codex,
+	// containers, the Gateway, and the gameplay runtime. The tester reads the
+	// saved model and secret, then sends one bounded Responses API request when
+	// an administrator explicitly clicks Test in the console.
+	tester, err := admin.NewAIHTTPModelConnectionTester(admin.AIHTTPModelConnectionTesterOptions{
+		Models: aiStore, Secrets: aiSecrets, ConnectionTimeout: *aiConnectionTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("configure AI HTTP connection tester: %w", err)
 	}
+	var connectionTester admin.AIModelConnectionTester = tester
 	store, err := openStore(*databasePath)
 	if err != nil {
 		return err
@@ -201,37 +197,7 @@ func serve(arguments []string) error {
 	}
 	if aiRuntime != nil {
 		defer aiRuntime.Close()
-		if aiContainerRequested(aiOptions) && aiRuntime.broker != nil {
-			tester, testerErr := admin.NewAIContainerModelConnectionTester(admin.AIContainerModelConnectionTesterOptions{
-				Models: aiStore, Secrets: aiSecrets, Broker: aiRuntime.broker,
-				ConnectionTimeout: *aiConnectionTimeout,
-			})
-			if testerErr != nil {
-				return fmt.Errorf("configure AI container connection tester: %w", testerErr)
-			}
-			connectionTester = tester
-		}
 	} else {
-		// Model-only container probes do not require the optional gameplay
-		// runtime. If game data or Gateway wiring is incomplete, keep the
-		// administrator's model test available through a standalone broker.
-		if aiContainerProbeRequested(aiOptions) {
-			probeBroker, probeErr := configureAIContainerModelProbeBroker(aiOptions, aiDataRoot)
-			if probeErr != nil {
-				log.Printf("AI container model tester unavailable: %v", probeErr)
-			} else if probeBroker != nil {
-				defer probeBroker.Close()
-				tester, testerErr := admin.NewAIContainerModelConnectionTester(admin.AIContainerModelConnectionTesterOptions{
-					Models: aiStore, Secrets: aiSecrets, Broker: probeBroker,
-					ConnectionTimeout: *aiConnectionTimeout,
-				})
-				if testerErr != nil {
-					log.Printf("AI container model tester unavailable: %v", testerErr)
-				} else {
-					connectionTester = tester
-				}
-			}
-		}
 		missing := missingAIRuntimeOptions(aiOptions)
 		if len(missing) > 0 {
 			log.Printf("AI runtime unavailable; missing server-owned settings: %s", strings.Join(missing, ", "))

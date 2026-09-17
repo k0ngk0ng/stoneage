@@ -135,6 +135,12 @@ type MCP struct {
 type ExecuteRequest struct {
 	ProfileID string `json:"profile_id"`
 	RequestID string `json:"request_id"`
+	// ReviewedRequestID proves that an operator explicitly reviewed the
+	// earlier unknown broker request. The first request using it starts a
+	// fresh game conversation; later exact-thread resumes carry the same ID.
+	// The executor uses it to select an isolated Codex checkpoint root while
+	// keeping the profile's workspace, Codex home and game capability unchanged.
+	ReviewedRequestID string `json:"reviewed_request_id,omitempty"`
 	// Probe selects the model-only connection-test path. Probe requests are
 	// accepted only by the server-side broker and must not carry a game
 	// capability or skills. Keeping this on the existing finite DTO lets the
@@ -339,13 +345,16 @@ func (executor *Executor) Execute(ctx context.Context, request ExecuteRequest) (
 	if request.Probe {
 		return executor.executeProbeLocked(ctx, request)
 	}
-	if err := executor.ensureProfile(request); err != nil {
+	paths, err := executor.executionPaths(request)
+	if err != nil {
+		return responseForRequest(request, err), err
+	}
+	if err := executor.ensureProfile(request, paths); err != nil {
 		return responseForRequest(request, err), err
 	}
 	if err := executor.installSkills(request); err != nil {
 		return responseForRequest(request, err), err
 	}
-	paths := executor.profiles
 	if err := writePrivateToken(paths.token, request.MCP.Token); err != nil {
 		return responseForRequest(request, err), err
 	}
@@ -565,6 +574,14 @@ func (executor *Executor) validateRequest(request ExecuteRequest) error {
 	if !requestIDPattern.MatchString(request.RequestID) || len([]byte(request.RequestID)) > maxRequestIDBytes {
 		return fmt.Errorf("%w: request_id is invalid", ErrInvalidRequest)
 	}
+	if request.ReviewedRequestID != "" {
+		if !requestIDPattern.MatchString(request.ReviewedRequestID) || len([]byte(request.ReviewedRequestID)) > maxRequestIDBytes {
+			return fmt.Errorf("%w: reviewed_request_id is invalid", ErrInvalidRequest)
+		}
+		if request.ReviewedRequestID == request.RequestID {
+			return fmt.Errorf("%w: reviewed_request_id must identify an earlier request", ErrInvalidRequest)
+		}
+	}
 	if request.Run.Resume && strings.TrimSpace(request.Run.ThreadID) == "" {
 		return fmt.Errorf("%w: resume requires exact thread_id", ErrInvalidRequest)
 	}
@@ -599,7 +616,7 @@ func (executor *Executor) validateRequest(request ExecuteRequest) error {
 		// A model probe has no game identity or tool surface. Reject rather
 		// than silently ignore either field so a caller cannot accidentally
 		// turn a connection check into a capability-bearing request.
-		if request.Run.Resume || request.Run.ThreadID != "" || len(request.Skills) != 0 || request.MCP != (MCP{}) {
+		if request.Run.Resume || request.Run.ThreadID != "" || len(request.Skills) != 0 || request.MCP != (MCP{}) || request.ReviewedRequestID != "" {
 			return fmt.Errorf("%w: model probe cannot carry game state", ErrInvalidRequest)
 		}
 	} else {
@@ -672,6 +689,7 @@ func validToken(token string) bool {
 }
 
 func normalizeRequest(request ExecuteRequest) ExecuteRequest {
+	request.ReviewedRequestID = strings.TrimSpace(request.ReviewedRequestID)
 	request.Model.Provider = strings.TrimSpace(request.Model.Provider)
 	request.Model.BaseURL = strings.TrimSpace(request.Model.BaseURL)
 	request.Model.Model = strings.TrimSpace(request.Model.Model)
@@ -689,9 +707,24 @@ func normalizeRequest(request ExecuteRequest) ExecuteRequest {
 	return request
 }
 
-func (executor *Executor) ensureProfile(request ExecuteRequest) error {
+// executionPaths selects the Codex process/checkpoint root for one request.
+// A reviewed recovery gets a fresh namespace below state/reviewed while the
+// profile's workspace, Codex home and game token stay on their normal paths.
+func (executor *Executor) executionPaths(request ExecuteRequest) (profilePaths, error) {
 	paths := executor.profiles
-	if err := executor.guard.CheckAll(paths.root, paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome, paths.owner, paths.token); err != nil {
+	if request.ReviewedRequestID != "" {
+		paths.stateRoot = filepath.Join(paths.stateRoot, "reviewed", request.ReviewedRequestID)
+		paths.stateDir = filepath.Join(paths.stateRoot, request.ProfileID)
+	}
+	if err := executor.guard.CheckAll(paths.stateRoot, paths.stateDir); err != nil {
+		return profilePaths{}, fmt.Errorf("%w: reviewed state path is not isolated", ErrInvalidConfig)
+	}
+	return paths, nil
+}
+
+func (executor *Executor) ensureProfile(request ExecuteRequest, paths profilePaths) error {
+	base := executor.profiles
+	if err := executor.guard.CheckAll(paths.root, base.stateRoot, base.stateDir, paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome, paths.owner, paths.token); err != nil {
 		return fmt.Errorf("%w: profile path is not isolated", ErrInvalidConfig)
 	}
 	if err := ensurePrivateDir(paths.root); err != nil {
@@ -700,7 +733,7 @@ func (executor *Executor) ensureProfile(request ExecuteRequest) error {
 	if err := ensureOwner(paths.owner, request.ProfileID, request.MCP.CharacterID, executor.cfg.Clock); err != nil {
 		return err
 	}
-	for _, path := range []string{paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome} {
+	for _, path := range []string{base.stateRoot, base.stateDir, paths.stateRoot, paths.stateDir, paths.workRoot, paths.workspace, paths.codexHome} {
 		if err := ensurePrivateDir(path); err != nil {
 			return fmt.Errorf("%w: profile directory: %v", ErrInvalidConfig, err)
 		}

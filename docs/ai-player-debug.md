@@ -42,7 +42,7 @@ macOS OrbStack 的 Docker CLI 是按程序名分发的多命令二进制；本�
 
 ## 管理端操作
 
-1. 进入 `/ai/models`，配置 DeepSeek `deepseek-flash`、OpenAI 或自定义 Base URL / 模型。统一使用 Responses API。保存密钥后点击测试。新版容器模式通过实际 AI 运行镜像执行独立的 Responses 请求，不需要创建或启动游戏玩家；会产生少量模型用量。测试最长默认 60 秒，模型配置的更短超时优先生效，同一管理进程同时只运行一个连接测试。旧版 rc.4 尚不支持此按钮。
+1. 进入 `/ai/models`，配置 DeepSeek `deepseek-flash`、OpenAI 或自定义 Base URL / 模型。统一使用 Responses API。保存密钥后点击测试。当前实现直接向配置的 Responses API 发送 `hi`，不会启动 Codex、Docker 容器或游戏玩家；会产生少量模型用量。测试最长默认 60 秒，模型配置的更短超时优先生效，同一管理进程同时只运行一个连接测试。测试成功说明接口可用，不代表游戏 Agent 全链路已经通过。rc.4 没有容器模式测试按钮；rc.5 曾通过 Codex 测试，新版已改为直接 HTTP 请求。
 2. 进入 `/ai/profiles` 创建 AI 玩家，绑定模型，填写人格和生活目标。默认目标为“自主生活”，调试时可把心跳间隔设为 60 秒，正常默认 300 秒。
 3. 选择出生、随机或自定义初始状态。人物等级、配点、出生村、宠物种类和宠物等级均属于创建时配置，重启不会重新生成。默认开启骑宠和无限游戏资金。
 4. 初始化成功后点击启动。观察“运行时”的当前活动、活动期限、下次心跳和会话状态；点击“查看”读取私人笔记、定时提醒及审计事件。笔记显示最近 50 条，提醒优先显示待处理项，超出时明确提示；这只是读取，不会启动或完成活动。仅把配置设成 `active` 不代表运行时已启动。
@@ -180,3 +180,17 @@ STONEAGE_ADMIN_INITIAL_LIVE_TEST=1 GOCACHE="$PWD/build/ai/go-cache" \
 上述变更在工作树中实现，启动峰值和 CPU 改善仍须用发布镜像实测；旧版生产容器不会自动获得新资源限制。
 
 本次独立验证：8 个相关 Go 包的完整竞态测试通过（`build/ai/incident-regression.log`）；新增 probe 测试后 admin、airunner、管理入口通过，broker 测试的模拟失败配置纠正后完整竞态回归通过（`build/ai/incident-probe-final.log`、`build/ai/incident-broker-final.log`）。管理端 6 组 JS 测试及 SAAC native harness 通过。真实本机 Codex 与本地合成 Responses 服务完成纯模型 probe、两轮恢复与技能安装检查（`build/ai/incident-image-smoke.log`）；部署包检查通过（`build/ai/incident-package.log`）。这些结果不等于 Linux 发布镜像或生产启动峰值验收。
+
+## 再次自动暂停与直接接口测试修复（rc.6）
+
+生产 rc.5 上一次已确认的缺陷：管理员确认旧未知回合后，外层 broker 和 supervisor 已允许新回合，profile 卷里的 Codex `thread.json` 却仍处于未完成状态。新容器因此返回 `checkpoint_recovery_required`，程序再次自动把玩家设为 paused；不是用户手动暂停，也不是这次模型请求超时。
+
+修复让明确核查过的旧请求成为新检查点目录的依据。broker 必须核实同一玩家、旧请求确为 unknown 且已有人工确认记录；新回合及后续恢复沿用该独立目录。旧检查点、工作区、Codex 历史和长期记忆均保留，未确认的旧回合仍不能被绕过。
+
+模型测试改为直接发送 Responses 请求 `{model: <已保存模型>, input: "hi", stream: false}`，验证返回的完成状态和文本；同时兼容合法 SSE 响应。测试无 Codex 或容器依赖，保留鉴权、并发限制、超时、响应大小限制和不会泄漏密钥的错误分类。已使用生产保存的地址直接验证 HTTP 200/completed，耗时 1.28 秒；这项前置验证没有启动 Codex，也没有修改生产配置。
+
+独立回归已通过：broker、airunner、aiservice 完整竞态测试（`build/ai/rc6-recovery-final.log`）。真实本机 Codex + 合成 Responses 服务复现旧 unknown 检查点：未确认的新回合拒绝且不调用模型，确认后新建不同 thread，随后精确恢复同一新 thread；旧检查点逐字保留（`build/ai/recovery-image-smoke.log`）。同一流程也加入发布镜像 smoke，以在 Linux 两种架构上验证。
+
+“异常核查”改名为“恢复确认”；“查看”以只读方式展示自动暂停原因、恢复准备状态、遗留容器状态和旧回合时间，原始错误可折叠查看。游戏状态仅来自已记录的 `game.observation`，标明观测时间及非实时性质，没有证据的字段显示无记录；查看不会自动确认或启动玩家。
+
+管理端和管理入口完整竞态回归通过（`build/ai/rc6-admin-final.log`），6 组管理端 JS 测试通过（`build/ai/rc6-js-final.log`）；相关包 `go vet` 通过。移动端查看面板已检查，保留列表无横向滚动布局。

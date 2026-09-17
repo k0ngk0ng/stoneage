@@ -92,4 +92,98 @@ assert(all.some(node => node.tagName === "pre" && node.textContent.includes("dec
 assert(all.some(node => node.textContent.includes("模型请求超时")));
 assert(all.some(node => node.className.includes("ai-audit-event-compact")));
 
+function renderedText(root) {
+  const nodes = [];
+  const visit = node => { nodes.push(node); node.children.forEach(visit); };
+  visit(root);
+  return nodes.map(node => node.textContent).join("\n");
+}
+
+let recoveryRoot = new Element("div");
+audit.renderRecovery(recoveryRoot, {
+  runtime: {state: "paused", message: "checkpoint_recovery_required"}
+}, {
+  recovery: {
+    attempt_id: "attempt-unknown",
+    attempt_updated_at: "2026-09-17T12:00:00Z",
+    reserved_tokens: 17,
+    ready: false,
+    execution: {container_stopped: false}
+  }
+});
+let recoveryText = renderedText(recoveryRoot);
+assert.match(recoveryText, /系统因上一轮模型回合结果未知而自动暂停/);
+assert.match(recoveryText, /遗留容器[\s\S]*尚未退出/);
+assert.match(recoveryText, /保持玩家停止，等待遗留模型容器退出后重新打开恢复确认/);
+
+recoveryRoot = new Element("div");
+audit.renderRecovery(recoveryRoot, {
+  runtime: {state: "paused", message: "unresolved model turn requires recovery"}
+}, {
+  recovery: {
+    attempt_id: "attempt-ready",
+    attempt_updated_at: "2026-09-17T12:01:00Z",
+    reserved_tokens: 19,
+    ready: true,
+    execution: {container_stopped: true}
+  }
+});
+recoveryText = renderedText(recoveryRoot);
+assert.match(recoveryText, /遗留容器[\s\S]*已退出/);
+assert.match(recoveryText, /可以在核对后确认/);
+assert.match(recoveryText, /玩家仍保持停止，需要手动启动新轮次/);
+
+recoveryRoot = new Element("div");
+audit.renderRecovery(recoveryRoot, {runtime: {state: "running"}}, {recovery: null});
+assert.match(renderedText(recoveryRoot), /没有待确认的异常回合/);
+
+const observationRoot = new Element("div");
+audit.renderObservation(observationRoot, [
+  {
+    kind: "game.observation",
+    created_at: "2026-09-17T12:04:00Z",
+    detail: {kind: "character.level", subject: "character-1", content: {level: true}}
+  },
+  {
+    kind: "memory.confirmed",
+    created_at: "2026-09-17T12:03:30Z",
+    detail: {kind: "character.level", subject: "character-1", content: {level: 99}}
+  },
+  {
+    kind: "game.observation",
+    created_at: "2026-09-17T12:03:00Z",
+    detail: {kind: "party.snapshot", subject: "party", content: {members: [
+      {id: "party-1", name: "队友", level: 10, hp: 20, max_hp: 30},
+      {id: "party-2", name: "未知 HP", level: true, hp: null, max_hp: false}
+    ]}}
+  },
+  {
+    kind: "game.observation",
+    created_at: "2026-09-17T12:02:00Z",
+    detail: {kind: "pet.level", subject: "pet-1", content: {level: 8}}
+  },
+  {
+    kind: "game.observation",
+    created_at: "2026-09-17T12:01:00Z",
+    detail: {kind: "pet.level", subject: "pet-1", content: {level: 7}}
+  },
+  {
+    kind: "game.observation",
+    created_at: "2026-09-17T12:00:00Z",
+    detail: {kind: "character.level", subject: "character-1", content: {level: 11}}
+  }
+]);
+const observationText = renderedText(observationRoot);
+assert.match(observationText, /角色等级\s+11 级 · 最近观测/);
+assert.match(observationText, /宠物等级[\s\S]*8 级/);
+assert.doesNotMatch(observationText, /7 级/);
+assert.match(observationText, /队伍 HP[\s\S]*角色自身 HP 没有单独记录/);
+assert.match(observationText, /角色位置[\s\S]*无记录/);
+assert.match(observationText, /战斗状态[\s\S]*无记录/);
+assert.match(observationText, /不是实时状态/);
+assert.match(observationText, /2026/);
+assert.doesNotMatch(observationText, /99 级/);
+assert.doesNotMatch(observationText, /(?:^|[^\d])0 级/);
+assert.doesNotMatch(observationText, /HP 0\/0/);
+
 console.log("admin AI audit timeline tests passed");
