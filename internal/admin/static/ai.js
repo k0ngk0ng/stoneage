@@ -703,9 +703,10 @@
       initializationsMessage.classList.toggle("success", !error);
     }
 
-    function initializationCell(text, className) {
+    function initializationCell(label, text, className) {
       const cell = document.createElement("td");
       if (className) cell.className = className;
+      if (label) cell.dataset.label = label;
       cell.textContent = text == null ? "" : String(text);
       return cell;
     }
@@ -733,7 +734,7 @@
       if (!initializationsList) return;
       initializationsList.replaceChildren();
       const empty = document.createElement("tr");
-      const cell = initializationCell(text, "empty");
+      const cell = initializationCell("", text, "empty");
       cell.colSpan = 5;
       empty.appendChild(cell);
       initializationsList.appendChild(empty);
@@ -748,12 +749,13 @@
       }
       initializations.forEach(function (item) {
         const row = document.createElement("tr");
-        row.appendChild(initializationCell(item.profile_id || "—", "breakable"));
-        row.appendChild(initializationCell(item.character_name || "角色身份待核验"));
-        row.appendChild(initializationCell(initializationStatusLabel(item.status)));
-        row.appendChild(initializationCell(initializationUpdatedAt(item.updated_at)));
+        row.appendChild(initializationCell("玩家编号", item.profile_id || "—", "breakable"));
+        row.appendChild(initializationCell("角色", item.character_name || "角色身份待核验"));
+        row.appendChild(initializationCell("创建状态", initializationStatusLabel(item.status)));
+        row.appendChild(initializationCell("更新时间", initializationUpdatedAt(item.updated_at)));
         const actions = document.createElement("td");
         actions.className = "ai-actions";
+        actions.dataset.label = "操作";
         if (canWrite && item.recoverable === true && item.profile_id) {
           const recover = document.createElement("button");
           recover.type = "button";

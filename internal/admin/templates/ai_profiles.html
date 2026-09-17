@@ -15,16 +15,16 @@
   <section class="card ai-profiles-card">
     <div class="card-heading"><div><h2>AI 玩家列表</h2><p class="muted">无限资金默认开启；这项权限只影响游戏内支付，不会暴露模型密钥。</p></div>{{if .AIRoleCanWrite}}<button class="primary" type="button" id="ai-profile-new"{{if not .AIProvisioningConfigured}} disabled title="创建服务尚未配置"{{end}}>创建游戏 AI 角色</button>{{end}}</div>
     <div id="ai-profile-message" class="alert" hidden role="status"></div>
-    <div class="table-scroll"><table class="ai-table"><thead><tr><th>角色</th><th>模型</th><th>人格 / 目标</th><th>资金</th><th>状态</th><th>运行时</th><th>操作</th></tr></thead><tbody id="ai-profile-list">
+    <div class="table-scroll"><table class="ai-table ai-profile-table"><thead><tr><th>角色</th><th>模型</th><th>人格 / 目标</th><th>资金</th><th>状态</th><th>运行时</th><th>操作</th></tr></thead><tbody id="ai-profile-list">
       {{range .AIProfiles}}
       <tr data-profile-id="{{.ID}}" data-profile-version="{{.Version}}">
-        <td><strong>{{.Character.Name}}</strong><small>账号 {{.Account.Username}} · {{.Character.ID}}</small></td>
-        <td class="breakable">{{if .ModelConfigID}}{{.ModelConfigID}}{{else}}未绑定{{end}}</td>
-        <td><strong>{{.Personality.Name}}</strong><small>{{if .Goal.Description}}{{.Goal.Description}}{{else}}{{.Goal.Kind}}{{end}}</small></td>
-        <td>{{if .UnlimitedFunds}}<span class="badge ok">无限资金</span>{{else}}普通资金{{end}}</td>
-        <td><span class="badge">{{.ProfileStatus}}</span></td>
-        <td><span class="status-pill stopped">{{.Runtime.State}}</span><small>{{.Runtime.Message}}</small>{{if .Runtime.Activity}}<small>当前活动：{{.Runtime.Activity}} · 至 {{.Runtime.ActivityUntil.UTC.Format "15:04:05"}} UTC</small>{{end}}{{if and (eq .Runtime.State "waiting") (not .Runtime.NextDecisionAt.IsZero)}}<small>下次心跳：{{.Runtime.NextDecisionAt.UTC.Format "2006-01-02 15:04:05"}} UTC</small>{{end}}{{if .Runtime.CLIVersion}}<small>CLI {{.Runtime.CLIVersion}}</small>{{end}}</td>
-        <td class="ai-actions"><button type="button" class="button ai-view-profile" data-id="{{.ID}}">查看</button>{{if $.AIRoleCanWrite}}<button type="button" class="button ai-edit-profile" data-id="{{.ID}}">编辑</button>{{if $.AIRuntimeConfigured}}<button type="button" class="button ai-profile-recovery" data-id="{{.ID}}">异常核查</button><button type="button" class="button ai-profile-control" data-action="start" data-id="{{.ID}}">启动</button><button type="button" class="button ai-profile-control" data-action="pause" data-id="{{.ID}}">暂停</button><button type="button" class="button ai-profile-control danger" data-action="stop" data-id="{{.ID}}">停止</button>{{else}}<button type="button" class="button" disabled title="AI runtime 尚未接入">runtime stopped</button>{{end}}<button type="button" class="button danger ai-delete-profile" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
+        <td data-label="角色"><strong>{{.Character.Name}}</strong><small>账号 {{.Account.Username}} · {{.Character.ID}}</small></td>
+        <td data-label="模型" class="breakable">{{if .ModelConfigID}}{{.ModelConfigID}}{{else}}未绑定{{end}}</td>
+        <td data-label="人格 / 目标"><strong>{{.Personality.Name}}</strong><small>{{if .Goal.Description}}{{.Goal.Description}}{{else}}{{.Goal.Kind}}{{end}}</small></td>
+        <td data-label="资金">{{if .UnlimitedFunds}}<span class="badge ok">无限资金</span>{{else}}普通资金{{end}}</td>
+        <td data-label="状态"><span class="badge">{{.ProfileStatus}}</span></td>
+        <td data-label="运行时"><span class="status-pill stopped">{{.Runtime.State}}</span><small>{{.Runtime.Message}}</small>{{if .Runtime.Activity}}<small>当前活动：{{.Runtime.Activity}} · 至 {{.Runtime.ActivityUntil.UTC.Format "15:04:05"}} UTC</small>{{end}}{{if and (eq .Runtime.State "waiting") (not .Runtime.NextDecisionAt.IsZero)}}<small>下次心跳：{{.Runtime.NextDecisionAt.UTC.Format "2006-01-02 15:04:05"}} UTC</small>{{end}}{{if .Runtime.CLIVersion}}<small>CLI {{.Runtime.CLIVersion}}</small>{{end}}</td>
+        <td data-label="操作" class="ai-actions"><button type="button" class="button ai-view-profile" data-id="{{.ID}}">查看</button>{{if $.AIRoleCanWrite}}<button type="button" class="button ai-edit-profile" data-id="{{.ID}}">编辑</button>{{if $.AIRuntimeConfigured}}<button type="button" class="button ai-profile-recovery" data-id="{{.ID}}">异常核查</button><button type="button" class="button ai-profile-control" data-action="start" data-id="{{.ID}}">启动</button><button type="button" class="button ai-profile-control" data-action="pause" data-id="{{.ID}}">暂停</button><button type="button" class="button ai-profile-control danger" data-action="stop" data-id="{{.ID}}">停止</button>{{else}}<button type="button" class="button" disabled title="AI runtime 尚未接入">runtime stopped</button>{{end}}<button type="button" class="button danger ai-delete-profile" data-id="{{.ID}}" data-version="{{.Version}}">删除</button>{{end}}</td>
       </tr>
       {{else}}<tr><td colspan="7" class="empty">还没有 AI 玩家配置。</td></tr>{{end}}
     </tbody></table></div>
@@ -33,7 +33,7 @@
   <section class="card ai-profiles-card" id="ai-initializations-card">
     <div class="card-heading"><div><h2>未完成的创建</h2><p class="muted">这里显示尚未完成创建的 AI 角色。未确认的创建不会自动重试；恢复发布后不会自动启动，请在玩家列表查看当前状态。</p></div><button class="button" type="button" id="ai-initializations-refresh">刷新</button></div>
     <div id="ai-initializations-message" class="alert" hidden role="status"></div>
-    <div class="table-scroll"><table class="ai-table"><thead><tr><th>玩家编号</th><th>角色</th><th>创建状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="ai-initializations-list"><tr><td colspan="5" class="empty">正在读取…</td></tr></tbody></table></div>
+    <div class="table-scroll"><table class="ai-table ai-initialization-table"><thead><tr><th>玩家编号</th><th>角色</th><th>创建状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="ai-initializations-list"><tr><td colspan="5" class="empty">正在读取…</td></tr></tbody></table></div>
   </section>
 
   {{if .AIRoleCanWrite}}
