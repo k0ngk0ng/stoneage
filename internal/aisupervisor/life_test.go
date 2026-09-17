@@ -67,8 +67,11 @@ func TestSupervisorPersistsLifeNextDecisionAt(t *testing.T) {
 	}
 	waitFor(t, func() bool { return len(session.runner.Requests()) == 1 })
 	waitFor(t, func() bool {
-		status := profileStatus(t, supervisor, profile.ID)
-		return !status.NextDecisionAt.IsZero()
+		// The in-memory status is published before the checkpoint write. Wait
+		// for the durable copy as well so this assertion does not race the
+		// terminal turn persistence.
+		_, state := loadPersistedCheckpoint(t, store, profile.ID)
+		return !state.NextDecisionAt.IsZero()
 	})
 	checkpoint, state := loadPersistedCheckpoint(t, store, profile.ID)
 	if state.NextDecisionAt.IsZero() {
