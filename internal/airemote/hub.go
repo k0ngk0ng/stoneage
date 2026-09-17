@@ -325,12 +325,43 @@ func (h *Hub) Invite(ctx context.Context, profileID, publicBaseURL string) (Invi
 	}
 	h.mu.Lock()
 	if existing := h.profiles[profileID]; existing != nil && existing.consumed {
-		status := Invitation{ProfileID: profileID, Endpoint: endpoint, Reconnect: true}
-		if endpoint == "" {
-			status.Endpoint = strings.TrimRight(existing.publicBaseURL, "/") + "/api/ai/worker"
+		// A connected worker owns the consumed enrollment and must keep using
+		// its persisted session token. If it is offline, the old token cannot
+		// be recovered (only its hash is stored), so rotate the enrollment and
+		// issue a fresh token for a new local volume.
+		if worker := h.workers[existing.workerID]; worker != nil && h.onlineLocked(worker) {
+			status := Invitation{ProfileID: profileID, Endpoint: endpoint, Reconnect: true}
+			if endpoint == "" {
+				status.Endpoint = strings.TrimRight(existing.publicBaseURL, "/") + "/api/ai/worker"
+			}
+			h.mu.Unlock()
+			return status, nil
+		}
+		secret, err := randomToken(32)
+		if err != nil {
+			h.mu.Unlock()
+			return Invitation{}, err
+		}
+		expires := h.now().Add(30 * time.Minute)
+		binding := *existing
+		binding.tokenHash = tokenHash(secret)
+		binding.expiresAt = expires
+		binding.consumed = false
+		binding.workerID = ""
+		binding.sessionHash = ""
+		binding.epoch++
+		binding.connecting = false
+		if endpoint != "" {
+			binding.publicBaseURL = strings.TrimSuffix(endpoint, "/api/ai/worker")
+		}
+		h.profiles[profileID] = &binding
+		if err := h.store.Save(ctx, h.snapshotLocked()); err != nil {
+			h.profiles[profileID] = existing
+			h.mu.Unlock()
+			return Invitation{}, fmt.Errorf("%w: persist enrollment rotation", aibroker.ErrDocker)
 		}
 		h.mu.Unlock()
-		return status, nil
+		return Invitation{ProfileID: profileID, Token: secret, ExpiresAt: expires, Endpoint: endpoint}, nil
 	}
 	h.mu.Unlock()
 	secret, err := randomToken(32)

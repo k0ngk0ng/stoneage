@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +18,45 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/airemote"
 	"github.com/k0ngk0ng/stoneage/internal/airunner"
 )
+
+func TestWorkerActivityLogsAreStructuredAndRedacted(t *testing.T) {
+	var output bytes.Buffer
+	worker := &worker{logger: log.New(&output, "", 0)}
+	command := airemote.Command{
+		Kind:      airemote.KindRun,
+		ProfileID: "profile-1",
+		RequestID: "request-1",
+		Payload:   json.RawMessage(`{"prompt":"private prompt","session_token":"session-secret","api_key":"api-secret"}`),
+	}
+	worker.logCommand(command)
+	started := worker.logTaskStarted(command.Kind, command)
+	worker.logTaskCompleted(command.Kind, command, started.Add(-time.Second), "dead", "runner_failed")
+
+	logs := output.String()
+	for _, value := range []string{
+		"event=command_received",
+		"event=task_started",
+		"event=task_completed",
+		"kind=run",
+		"profile=profile-1",
+		"request_id=request-1",
+		"duration_ms=",
+		"status=dead",
+		"error=runner_failed",
+	} {
+		if !strings.Contains(logs, value) {
+			t.Fatalf("logs missing %q: %s", value, logs)
+		}
+	}
+	for _, secret := range []string{"private prompt", "session-secret", "api-secret"} {
+		if strings.Contains(logs, secret) {
+			t.Fatalf("logs leaked %q: %s", secret, logs)
+		}
+	}
+	if got := workerLogID("token with spaces"); got != "redacted" {
+		t.Fatalf("unsafe log id=%q, want redacted", got)
+	}
+}
 
 func TestWorkerEndToEndRunReplayStopAndServerRestartReconnect(t *testing.T) {
 	stateRoot := t.TempDir()

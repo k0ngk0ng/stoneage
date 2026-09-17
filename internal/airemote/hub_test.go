@@ -47,6 +47,31 @@ func newHarness(t *testing.T) remoteHarness {
 	return remoteHarness{hub: hub, worker: response}
 }
 
+func TestInviteRotatesConsumedOfflineEnrollment(t *testing.T) {
+	hub, err := New(Config{Docker: &fakeDocker{}, LeaseTimeout: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := hub.Invite(context.Background(), "profile-1", "https://public.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", EnrollmentToken: first.Token}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(40 * time.Millisecond)
+	second, err := hub.Invite(context.Background(), "profile-1", "https://public.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Token == "" || second.Token == first.Token {
+		t.Fatalf("rotated invitation token=%q first=%q", second.Token, first.Token)
+	}
+	if second.Reconnect {
+		t.Fatal("offline enrollment was returned as reconnect")
+	}
+}
+
 func testPayload(t *testing.T) []byte {
 	t.Helper()
 	request := airunner.ExecuteRequest{ProfileID: "profile-1", RequestID: "request-1", Run: airunner.RunRequest{Prompt: "observe"}, Model: airunner.Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: "secret-key"}, MCP: airunner.MCP{Endpoint: "http://gateway/v1/game", Token: strings.Repeat("g", 43), CharacterID: "character-1"}}

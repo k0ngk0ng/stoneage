@@ -18,6 +18,7 @@ assert.match(template, /v\{\{\.Version\}\}/);
 assert.match(template, /name="initial_mount"[^>]*checked/);
 assert.match(template, /name="initial_pet_max"[^>]*value="10"/);
 assert.doesNotMatch(template, /skills_json|function schema|parameters/);
+assert.match(template, /id="ai-profile-refresh"/);
 assert.match(template, /audit-detail-modal ai-profile-view-modal/);
 assert.match(template, /id="ai-profile-view-refresh"/);
 assert.match(template, /id="ai-profile-view-refresh-interval"/);
@@ -67,6 +68,7 @@ const editor = new Element();
 const title = new Element();
 const saveButton = new Element();
 const newButton = new Element();
+const listRefreshButton = new Element();
 const editButton = new Element();
 editButton.dataset.id = "existing-ai";
 editButton.classList.contains = () => false;
@@ -106,7 +108,8 @@ const labels = {
 };
 const nodes = {
   "ai-profile-admin": profileRoot, "ai-profile-editor": editor, "ai-profile-form": form,
-  "ai-profile-editor-title": title, "ai-profile-save": saveButton, "ai-profile-new": newButton
+  "ai-profile-editor-title": title, "ai-profile-save": saveButton, "ai-profile-new": newButton,
+  "ai-profile-refresh": listRefreshButton
 };
 const requests = [];
 const context = {
@@ -206,6 +209,12 @@ assert.deepEqual(JSON.parse(requests.at(-1).options.body).goal.life, existingPro
 newButton.dispatch("click");
 assert.equal(controls.life_decision_interval.value, "300");
 assert.equal(controls.life_decision_interval.disabled, false);
+
+await listRefreshButton.dispatch("click");
+const refreshRequest = requests.at(-1);
+assert.equal(refreshRequest.url, "/api/ai/profiles");
+assert.equal(refreshRequest.options.method, "GET");
+assert.equal(requests.some(request => request.url.endsWith("/start") && request.options.method === "POST"), false);
 
 console.log("admin AI native skill form tests passed");
 })();
