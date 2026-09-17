@@ -273,7 +273,11 @@ func TestSupervisorRecoversRecordedAttemptWithoutRunningAgain(t *testing.T) {
 	}
 	waitFor(t, func() bool {
 		attempt, getErr := store.GetTokenAttempt(context.Background(), reservation.ID)
-		return getErr == nil && attempt.State == airuntime.TokenAttemptSettled
+		if getErr != nil || attempt.State != airuntime.TokenAttemptSettled {
+			return false
+		}
+		checkpoint, checkpointErr := store.GetCheckpoint(context.Background(), profile.ID)
+		return checkpointErr == nil && !contains(string(checkpoint.State), "pending_attempt_id")
 	})
 	if requests := runner.Requests(); len(requests) != 0 {
 		t.Fatalf("recorded recovery ran %d new turns: %#v", len(requests), requests)
