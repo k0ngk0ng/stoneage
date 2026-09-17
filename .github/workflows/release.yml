@@ -62,9 +62,10 @@ jobs:
           node internal/admin/ai_test.js
           node internal/admin/ai_model_connection_test.js
           node internal/admin/ai_audit_test.js
-          node internal/admin/ai_initial_test.js
-          node internal/admin/ai_initial_recovery_test.js
           node internal/admin/ai_recovery_test.js
+          node internal/admin/ai_initial_test.js
+          node internal/admin/ai_profile_view_race_test.js
+          node internal/admin/ai_initial_recovery_test.js
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
           python3 server/legacy/modern/tests/test-gmsv-admin-save-identity.py

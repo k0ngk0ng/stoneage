@@ -47,6 +47,7 @@ type Broker struct {
 	mu          sync.Mutex
 	closed      bool
 	active      map[string]context.CancelFunc
+	transport   map[string]bool
 	recovery    map[string]struct{}
 	wg          sync.WaitGroup
 	ownJournal  bool
@@ -228,6 +229,13 @@ func (broker *Broker) forgetRecovered(key string) {
 // An exited container is completed only after its bounded output contains a
 // strict response for this exact journal pair.
 func (broker *Broker) reconcileRecovered(ctx context.Context, entry JournalEntry) (JournalEntry, error) {
+	broker.mu.Lock()
+	_, active := broker.active[entry.ContainerName]
+	transport := broker.transport[entry.ContainerName]
+	broker.mu.Unlock()
+	if active || transport {
+		return entry, nil
+	}
 	if entry.State != RunRunning {
 		key, _ := entryKey(entry.ProfileID, entry.RequestID)
 		broker.forgetRecovered(key)
@@ -478,7 +486,7 @@ func (broker *Broker) CleanupProbe(ctx context.Context, request airunner.Execute
 		broker.mu.Unlock()
 		return ErrClosed
 	}
-	if _, active := broker.active[entry.ContainerName]; active {
+	if _, active := broker.active[entry.ContainerName]; active || broker.transport[entry.ContainerName] {
 		broker.mu.Unlock()
 		return ErrProfileBusy
 	}
@@ -669,7 +677,7 @@ func (broker *Broker) UnknownReviewReady(ctx context.Context, profileID, request
 	if broker.closed {
 		return false, ErrClosed
 	}
-	if _, active := broker.active[entry.ContainerName]; active {
+	if _, active := broker.active[entry.ContainerName]; active || broker.transport[entry.ContainerName] {
 		return false, nil
 	}
 	inspector, ok := broker.docker.(DockerInspector)
@@ -732,7 +740,7 @@ func (broker *Broker) ReviewUnknown(ctx context.Context, profileID, requestID st
 	if broker.closed {
 		return JournalEntry{}, ErrClosed
 	}
-	if _, active := broker.active[entry.ContainerName]; active {
+	if _, active := broker.active[entry.ContainerName]; active || broker.transport[entry.ContainerName] {
 		return JournalEntry{}, ErrProfileBusy
 	}
 	inspector, ok := broker.docker.(DockerInspector)
@@ -836,10 +844,30 @@ func (broker *Broker) executeNew(ctx context.Context, request airunner.ExecuteRe
 		cancel()
 		return broker.finishUnknown(request, entry, unknownResponse(request), ErrClosed)
 	}
-	defer broker.unregisterActive(entry.ContainerName)
+	defer func() {
+		broker.unregisterActive(entry.ContainerName)
+		if current, err := broker.journal.Get(context.Background(), entry.ProfileID, entry.RequestID); err == nil && current.State != RunRunning {
+			key, _ := entryKey(entry.ProfileID, entry.RequestID)
+			broker.forgetRecovered(key)
+		}
+	}()
 	call := make(chan dockerCall, 1)
+	broker.mu.Lock()
+	if broker.transport == nil {
+		broker.transport = make(map[string]bool)
+	}
+	broker.transport[entry.ContainerName] = true
+	broker.mu.Unlock()
 	go func() {
 		result, err := broker.docker.Run(runCtx, spec, append([]byte(nil), payload...))
+		current, getErr := broker.journal.Get(context.Background(), entry.ProfileID, entry.RequestID)
+		broker.mu.Lock()
+		delete(broker.transport, entry.ContainerName)
+		key, _ := entryKey(entry.ProfileID, entry.RequestID)
+		if getErr != nil || current.State == RunRunning {
+			broker.recovery[key] = struct{}{}
+		}
+		broker.mu.Unlock()
 		call <- dockerCall{result: result, err: err}
 	}()
 	var dockerResult DockerResult

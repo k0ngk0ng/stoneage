@@ -48,6 +48,8 @@ type Options struct {
 	AIRuntime          AIProfileRuntime
 	AIProvisioner      AIPlayerProvisioner
 	AIConnectionTester AIModelConnectionTester
+	AILocalExecutor    AILocalExecutor
+	AIWorkerHandler    http.Handler
 }
 
 type Server struct {
@@ -70,6 +72,8 @@ type Server struct {
 	aiRuntime           AIProfileRuntime
 	aiProvisioner       AIPlayerProvisioner
 	aiConnectionTester  AIModelConnectionTester
+	aiLocalExecutor     AILocalExecutor
+	aiWorkerHandler     http.Handler
 	aiDefaultID         string
 	giftMu              sync.Mutex
 	giftPreviews        map[string]*giftPreview
@@ -95,7 +99,7 @@ type pageData struct {
 	FormUsername              string
 	Accounts                  []auth.Account
 	Account                   auth.Account
-	Events                    []auth.AuditEvent
+	Events                    []auditEventView
 	SetupTokenRequired        bool
 	Status                    ServiceStatus
 	Config                    map[string]string
@@ -192,6 +196,8 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		aiRuntime:           options.AIRuntime,
 		aiProvisioner:       options.AIProvisioner,
 		aiConnectionTester:  options.AIConnectionTester,
+		aiLocalExecutor:     options.AILocalExecutor,
+		aiWorkerHandler:     options.AIWorkerHandler,
 		giftPreviews:        make(map[string]*giftPreview),
 		giftNowFunc:         time.Now,
 	}
@@ -210,6 +216,10 @@ func (server *Server) Handler() http.Handler {
 		response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'")
 		if strings.HasPrefix(request.URL.Path, "/static/") {
 			staticHandler.ServeHTTP(response, request)
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/api/ai/worker/") && server.aiWorkerHandler != nil {
+			server.aiWorkerHandler.ServeHTTP(response, request)
 			return
 		}
 		if request.Body != nil {
@@ -504,7 +514,7 @@ func (server *Server) audit(response http.ResponseWriter, request *http.Request,
 		server.renderError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
-	data.Title, data.Events = "审计日志", events
+	data.Title, data.Events = "审计日志", auditEventViews(events)
 	server.render(response, "audit", data)
 }
 

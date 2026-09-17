@@ -112,9 +112,10 @@ audit.renderRecovery(recoveryRoot, {
   }
 });
 let recoveryText = renderedText(recoveryRoot);
-assert.match(recoveryText, /系统因上一轮模型回合结果未知而自动暂停/);
+assert.match(recoveryText, /上一轮执行异常，已暂停；点击启动可重新运行/);
 assert.match(recoveryText, /遗留容器[\s\S]*尚未退出/);
-assert.match(recoveryText, /保持玩家停止，等待遗留模型容器退出后重新打开恢复确认/);
+assert.match(recoveryText, /旧执行尚未结束，请稍后再次启动/);
+assert.doesNotMatch(recoveryText, /人工恢复确认|勾选|恢复确认/);
 
 recoveryRoot = new Element("div");
 audit.renderRecovery(recoveryRoot, {
@@ -130,12 +131,12 @@ audit.renderRecovery(recoveryRoot, {
 });
 recoveryText = renderedText(recoveryRoot);
 assert.match(recoveryText, /遗留容器[\s\S]*已退出/);
-assert.match(recoveryText, /可以在核对后确认/);
-assert.match(recoveryText, /玩家仍保持停止，需要手动启动新轮次/);
+assert.match(recoveryText, /旧执行已结束，可以启动/);
+assert.doesNotMatch(recoveryText, /人工恢复确认|勾选|恢复确认/);
 
 recoveryRoot = new Element("div");
 audit.renderRecovery(recoveryRoot, {runtime: {state: "running"}}, {recovery: null});
-assert.match(renderedText(recoveryRoot), /没有待确认的异常回合/);
+assert.match(renderedText(recoveryRoot), /没有待处理的旧执行/);
 
 const observationRoot = new Element("div");
 audit.renderObservation(observationRoot, [

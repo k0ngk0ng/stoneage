@@ -28,6 +28,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aimodels"
 	"github.com/k0ngk0ng/stoneage/internal/aiprovision"
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
+	"github.com/k0ngk0ng/stoneage/internal/aisupervisor"
 )
 
 const (
@@ -48,6 +49,12 @@ const (
 )
 
 var aiIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+var (
+	errAIProfileDeleteActive   = errors.New("AI profile is still active")
+	errAIProfileDeleteRecovery = errors.New("AI profile has an unresolved execution")
+	errAIProfileDeleteStatus   = errors.New("AI profile runtime status is unavailable")
+)
 
 // AIStore is deliberately made from the small set of operations needed by
 // the console.  *airuntime.Store implements it.  Keeping this as an
@@ -511,6 +518,7 @@ func (server *Server) aiProfileView(ctx context.Context, profile airuntime.Profi
 				runtime.ProfileID = profile.ID
 			}
 		} else {
+			runtime.State = aisupervisor.StateError
 			runtime.Message = "无法读取 AI runtime 状态"
 		}
 	}
@@ -968,6 +976,10 @@ func (server *Server) aiProfileProvisionAPI(response http.ResponseWriter, reques
 
 func (server *Server) aiProfileAPI(response http.ResponseWriter, request *http.Request, data *pageData, suffix string) {
 	parts := strings.Split(suffix, "/")
+	if len(parts) == 2 && (parts[1] == "local-command" || parts[1] == "executor") {
+		server.aiLocalExecutorAPI(response, request, data, parts[0], parts[1])
+		return
+	}
 	if len(parts) == 2 && parts[1] == "life-state" {
 		server.aiLifeStateAPI(response, request, parts[0])
 		return
@@ -1034,6 +1046,10 @@ func (server *Server) aiProfileAPI(response http.ResponseWriter, request *http.R
 		}
 		if err != nil {
 			_ = server.recordAIAudit(request.Context(), data, "ai_profile_"+parts[1]+"_failed", parts[0], map[string]any{"result": "failed"})
+			if errors.Is(err, aisupervisor.ErrAttemptRecovery) || errors.Is(err, airuntime.ErrAttemptPending) {
+				playerJSONError(response, http.StatusConflict, "上一轮执行尚未结束，请稍后再次启动")
+				return
+			}
 			playerJSONError(response, http.StatusBadGateway, "AI runtime 操作失败")
 			return
 		}
@@ -1097,7 +1113,12 @@ func (server *Server) aiProfileAPI(response http.ResponseWriter, request *http.R
 			playerJSONError(response, http.StatusBadRequest, "缺少有效的 expected_version")
 			return
 		}
-		if err := server.aiStore.DeleteProfileCAS(request.Context(), id, version, data.Session.Username); err != nil {
+		deleteVersion, err := server.aiProfileDeleteCheck(request.Context(), id, version)
+		if err != nil {
+			aiStoreError(response, err)
+			return
+		}
+		if err := server.aiStore.DeleteProfileCAS(request.Context(), id, deleteVersion, data.Session.Username); err != nil {
 			aiStoreError(response, err)
 			return
 		}
@@ -1106,6 +1127,70 @@ func (server *Server) aiProfileAPI(response http.ResponseWriter, request *http.R
 	default:
 		playerJSONError(response, http.StatusMethodNotAllowed, "请求方式不支持")
 	}
+}
+
+// aiProfileDeleteCheck is deliberately kept at the admin boundary. Deleting
+// a profile is a destructive operation, so the handler must observe both the
+// durable profile state and the live runtime before it delegates the actual
+// compare-and-swap delete to the store.
+func (server *Server) aiProfileDeleteCheck(ctx context.Context, id string, expectedVersion int64) (int64, error) {
+	profile, err := server.aiStore.GetProfile(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	if profile.Version != expectedVersion {
+		return 0, airuntime.ErrConflict
+	}
+	if profile.Status != airuntime.ProfileStatusStopped {
+		return 0, errAIProfileDeleteActive
+	}
+	if server.aiRuntime == nil {
+		return 0, errAIProfileDeleteStatus
+	}
+	executor, ok := server.aiRuntime.(AIProfileRuntime)
+	if !ok {
+		return 0, errAIProfileDeleteStatus
+	}
+	runtimeStatus, err := executor.ProfileStatus(ctx, id)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", errAIProfileDeleteStatus, err)
+	}
+	if runtimeStatus.State != aisupervisor.StateStopped {
+		return 0, errAIProfileDeleteActive
+	}
+	if recovery, ok := server.aiRuntime.(AIUnknownRecovery); ok {
+		status, err := recovery.UnknownRecovery(ctx, id)
+		if errors.Is(err, airuntime.ErrNotFound) {
+			return profile.Version, nil
+		}
+		if err != nil {
+			return 0, fmt.Errorf("%w: %v", errAIProfileDeleteStatus, err)
+		}
+		if status.ProfileID != "" || status.AttemptID != "" {
+			if !status.Ready || !status.Execution.ContainerStopped {
+				return 0, errAIProfileDeleteRecovery
+			}
+			preparer, ok := server.aiRuntime.(AIProfileDeletionPreparer)
+			if !ok {
+				return 0, errAIProfileDeleteStatus
+			}
+			preparedVersion, err := preparer.PrepareProfileDeletion(ctx, id, profile.Version)
+			if err != nil {
+				if errors.Is(err, airuntime.ErrConflict) || errors.Is(err, aisupervisor.ErrProfileChanged) {
+					return 0, airuntime.ErrConflict
+				}
+				if errors.Is(err, aisupervisor.ErrAttemptRecovery) || errors.Is(err, aisupervisor.ErrAttemptStillRunning) || errors.Is(err, airuntime.ErrAttemptPending) {
+					return 0, fmt.Errorf("%w: %v", errAIProfileDeleteRecovery, err)
+				}
+				return 0, fmt.Errorf("%w: %v", errAIProfileDeleteStatus, err)
+			}
+			if preparedVersion <= profile.Version {
+				return 0, fmt.Errorf("%w: deletion fence did not advance profile", errAIProfileDeleteStatus)
+			}
+			return preparedVersion, nil
+		}
+	}
+	return profile.Version, nil
 }
 
 func (server *Server) aiWriteRequest(response http.ResponseWriter, request *http.Request, data *pageData) bool {
@@ -1633,6 +1718,8 @@ func aiStoreError(response http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, airuntime.ErrConflict):
 		status = http.StatusConflict
+	case errors.Is(err, errAIProfileDeleteActive), errors.Is(err, errAIProfileDeleteRecovery), errors.Is(err, errAIProfileDeleteStatus):
+		status = http.StatusConflict
 	case errors.Is(err, airuntime.ErrInvalidProfile), errors.Is(err, airuntime.ErrInvalidProvider), errors.Is(err, airuntime.ErrInvalidSkill), errors.Is(err, airuntime.ErrInvalidArguments):
 		status = http.StatusBadRequest
 	}
@@ -1640,7 +1727,15 @@ func aiStoreError(response http.ResponseWriter, err error) {
 	if status == http.StatusNotFound {
 		message = "目标不存在"
 	} else if status == http.StatusConflict {
-		message = "数据已被其他操作修改，请刷新后重试"
+		if errors.Is(err, errAIProfileDeleteActive) {
+			message = "AI 玩家仍在运行或尚未停止，不能删除"
+		} else if errors.Is(err, errAIProfileDeleteRecovery) {
+			message = "异常执行仍在处理中，不能删除"
+		} else if errors.Is(err, errAIProfileDeleteStatus) {
+			message = "无法确认 AI 玩家已停止，请稍后重试"
+		} else {
+			message = "数据已被其他操作修改，请刷新后重试"
+		}
 	} else if status == http.StatusBadRequest {
 		message = "AI 配置参数无效"
 	}

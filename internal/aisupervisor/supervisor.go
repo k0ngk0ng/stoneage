@@ -38,10 +38,12 @@ type Supervisor struct {
 }
 
 type startCall struct {
-	review  bool
-	restore bool
-	done    chan struct{}
-	err     error
+	review      bool
+	restore     bool
+	invalidated bool
+	cancel      context.CancelFunc
+	done        chan struct{}
+	err         error
 }
 
 type managedProfile struct {
@@ -194,7 +196,7 @@ func (supervisor *Supervisor) Restore(ctx context.Context, profileID string) err
 	return supervisor.start(ctx, profileID, true)
 }
 
-func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyActive bool) error {
+func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyActive bool) (resultErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -223,31 +225,78 @@ func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyA
 		}
 	}
 	call := &startCall{done: make(chan struct{}), restore: onlyActive}
+	// Install cancellation before publishing the call in starts. Pause/Stop
+	// may invalidate a newly registered start immediately; holding mu through
+	// this setup removes the otherwise un-cancellable window.
+	startCtx, cancel := context.WithCancel(ctx)
+	stopRootCancel := context.AfterFunc(supervisor.root, cancel)
+	call.cancel = cancel
 	supervisor.starts[profileID] = call
 	supervisor.wg.Add(1)
 	supervisor.mu.Unlock()
-	defer supervisor.wg.Done()
-	startCtx, cancel := context.WithCancel(ctx)
-	stopRootCancel := context.AfterFunc(supervisor.root, cancel)
+	// Every path after registering the call must publish its result and wake
+	// concurrent callers. In particular, Pause/Stop or Close can invalidate a
+	// call while startup work is still in progress.
+	defer func() {
+		supervisor.mu.Lock()
+		if supervisor.starts[profileID] == call {
+			call.err = resultErr
+			delete(supervisor.starts, profileID)
+			close(call.done)
+		}
+		supervisor.mu.Unlock()
+		supervisor.wg.Done()
+	}()
 	defer stopRootCancel()
 	defer cancel()
-
-	err := supervisor.startOne(startCtx, profileID, onlyActive)
 	supervisor.mu.Lock()
-	call.err = err
-	delete(supervisor.starts, profileID)
-	close(call.done)
+	invalidated, closed := call.invalidated, supervisor.closed
 	supervisor.mu.Unlock()
+	if invalidated || closed {
+		if invalidated {
+			return ErrProfileChanged
+		}
+		return ErrClosed
+	}
+
+	var err error
+	initial, initialErr := supervisor.store.GetProfile(startCtx, profileID)
+	if initialErr != nil {
+		err = initialErr
+	} else if !onlyActive {
+		// An unknown turn is deliberately left paused after a crash. An
+		// explicit operator start is the only action that may reconcile that
+		// turn and consume its reserved budget before a fresh session opens.
+		if err = supervisor.recoverUnknownBeforeStart(startCtx, profileID, initial.Version, unknownReviewStartActor, false); err == nil {
+			err = supervisor.startOne(startCtx, profileID, onlyActive, initial.Version)
+		}
+	} else if initialErr == nil {
+		err = supervisor.startOne(startCtx, profileID, onlyActive, initial.Version)
+	}
+	supervisor.mu.Lock()
+	invalidated = call.invalidated
+	supervisor.mu.Unlock()
+	if onlyActive && invalidated && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		// Restore is best-effort: an operator Pause/Stop winning during game
+		// login is a successful suppression of startup, not a failed restore.
+		err = nil
+	}
 	return err
 }
 
-func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, onlyActive bool) error {
+func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, onlyActive bool, expectedVersion int64) error {
 	if supervisor.factory == nil {
 		return ErrFactoryUnavailable
 	}
 	profile, err := supervisor.store.GetProfile(ctx, profileID)
 	if err != nil {
 		return err
+	}
+	if expectedVersion > 0 && profile.Version != expectedVersion {
+		if onlyActive {
+			return nil
+		}
+		return ErrProfileChanged
 	}
 	if onlyActive && profile.Status != airuntime.ProfileStatusActive {
 		return nil
@@ -281,17 +330,26 @@ func (supervisor *Supervisor) startOne(ctx context.Context, profileID string, on
 		closeSession(session)
 		return ErrClosed
 	}
-	if onlyActive {
-		current, readErr := supervisor.store.GetProfile(ctx, profile.ID)
-		if readErr != nil || current.Status != airuntime.ProfileStatusActive || current.Version != profile.Version {
-			supervisor.mu.Unlock()
-			closeSession(session)
-			if readErr != nil {
-				return readErr
-			}
+	// Re-read the profile while publication is fenced by supervisor.mu. This
+	// prevents a concurrent Pause/Stop/Edit from being overwritten after a
+	// potentially slow session provision, including the review-before-start
+	// path for an unknown model turn.
+	current, readErr := supervisor.store.GetProfile(ctx, profile.ID)
+	if readErr != nil || (onlyActive && (current.Status != airuntime.ProfileStatusActive || current.Version != profile.Version)) || (!onlyActive && current.Version != profile.Version) {
+		supervisor.mu.Unlock()
+		closeSession(session)
+		if readErr != nil {
+			return readErr
+		}
+		if onlyActive {
 			return nil
 		}
+		if current.Version != profile.Version {
+			return ErrProfileChanged
+		}
+		return nil
 	}
+	profile = current
 	// Mark active only after a real, valid session exists. This avoids a fake
 	// active status when the configured factory is absent or cannot connect.
 	if profile.Status != airuntime.ProfileStatusActive {
@@ -341,6 +399,16 @@ func (supervisor *Supervisor) transition(ctx context.Context, profileID, profile
 	if supervisor.closed {
 		supervisor.mu.Unlock()
 		return ErrClosed
+	}
+	if call := supervisor.starts[profileID]; call != nil {
+		// Pause/Stop also fence a start that has not published a managed
+		// session yet. This closes the window between unknown review and
+		// Factory.Open, including the case where the profile was already
+		// paused and a status CAS would otherwise be a no-op.
+		call.invalidated = true
+		if !call.restore && call.cancel != nil {
+			call.cancel()
+		}
 	}
 	managed := supervisor.profiles[profileID]
 	var cancel context.CancelFunc

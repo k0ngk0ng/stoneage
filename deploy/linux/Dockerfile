@@ -15,7 +15,7 @@ ARG RELEASE_VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
     go build -mod=readonly -trimpath -ldflags="-s -w -X main.releaseVersion=$RELEASE_VERSION" -o /out/ \
     ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
-    ./cmd/stoneage-assets-sync ./cmd/stoneage-game-mcp ./cmd/stoneage-ai-runner ./client/web && \
+    ./cmd/stoneage-assets-sync ./cmd/stoneage-game-mcp ./cmd/stoneage-ai-runner ./cmd/stoneage-ai-worker ./client/web && \
     mv /out/web /out/stoneage-web
 
 # The AI runtime is a separate image target.  It deliberately does not inherit
@@ -43,6 +43,7 @@ RUN apt-get update \
 
 COPY --from=build /out/stoneage-game-mcp /usr/local/bin/stoneage-game-mcp
 COPY --from=build /out/stoneage-ai-runner /usr/local/bin/stoneage-ai-runner
+COPY --from=build /out/stoneage-ai-worker /usr/local/bin/stoneage-ai-worker
 COPY ai/skills/ /opt/stoneage/ai/skills/
 
 # Fail the image build if the fixed process contract drifts.  The broker owns
@@ -52,6 +53,7 @@ RUN test -x /usr/local/bin/codex \
     && test -x /usr/bin/git \
     && test -x /usr/local/bin/stoneage-game-mcp \
     && test -x /usr/local/bin/stoneage-ai-runner \
+    && test -x /usr/local/bin/stoneage-ai-worker \
     && test -d /opt/stoneage/ai/skills
 
 ENV HOME=/var/lib/stoneage-ai \

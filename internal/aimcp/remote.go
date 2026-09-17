@@ -44,7 +44,7 @@ func NewRemoteBackend(config RemoteBackendConfig) (*RemoteBackend, error) {
 		return nil, fmt.Errorf("%w: invalid game endpoint", ErrBackend)
 	}
 	parsed, err := url.Parse(endpoint)
-	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" || parsed.RawQuery != "" || parsed.Path != "/v1/game" {
+	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" || parsed.RawQuery != "" || (parsed.Path != "/v1/game" && parsed.Path != "/api/ai/worker/v1/game") {
 		return nil, fmt.Errorf("%w: invalid game endpoint", ErrBackend)
 	}
 	if !validCapabilityToken(config.Token) {

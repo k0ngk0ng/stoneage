@@ -18,10 +18,18 @@ assert.match(template, /v\{\{\.Version\}\}/);
 assert.match(template, /name="initial_mount"[^>]*checked/);
 assert.match(template, /name="initial_pet_max"[^>]*value="10"/);
 assert.doesNotMatch(template, /skills_json|function schema|parameters/);
+assert.match(template, /audit-detail-modal ai-profile-view-modal/);
+assert.match(template, /id="ai-profile-view-refresh"/);
+assert.match(template, /id="ai-profile-view-refresh-interval"/);
+assert.match(template, /id="ai-profile-copy-command"[^>]*disabled/);
+assert.doesNotMatch(template, /ai-profile-recovery|ai-recovery-panel|ai-recovery-ack|ai-recovery-submit/);
 assert.match(source, /selectedSkillNames\(\)/);
 assert.match(source, /skill_names: selectedSkillNames\(\)/);
 assert.match(source, /accountUsername\.readOnly = true/);
 assert.doesNotMatch(source, /skills_json|parseSkills\(|parameters/);
+assert.match(source, /profileViewBusy/);
+assert.match(source, /new AbortController\(\)/);
+assert.doesNotMatch(source, /"POST", Object\.assign\(\{\}, reviewing/);
 
 void (async function () {
 class Element {

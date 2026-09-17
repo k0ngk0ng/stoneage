@@ -39,6 +39,14 @@ type AISupervisorControl interface {
 	Stop(context.Context, string) error
 }
 
+// AIProfileDeletionPreparer is an optional destructive-operation fence. It
+// clears a stopped profile's fully reconciled unknown execution without
+// starting a model session and returns the profile version written by that
+// fence.
+type AIProfileDeletionPreparer interface {
+	PrepareProfileDeletion(context.Context, string, int64) (int64, error)
+}
+
 // AISupervisorRuntimeAdapter maps the supervisor's status and lifecycle
 // methods to the admin package's deliberately smaller runtime interface.
 // It reports the supervisor state only; profile configuration alone is never
@@ -102,6 +110,19 @@ func (adapter *AISupervisorRuntimeAdapter) StopProfile(ctx context.Context, prof
 		return ErrAIRuntimeUnavailable
 	}
 	return adapter.supervisor.Stop(ctx, profileID)
+}
+
+func (adapter *AISupervisorRuntimeAdapter) PrepareProfileDeletion(ctx context.Context, profileID string, expectedVersion int64) (int64, error) {
+	if adapter == nil || adapter.supervisor == nil {
+		return 0, ErrAIRuntimeUnavailable
+	}
+	preparer, ok := adapter.supervisor.(interface {
+		PrepareExecutorChangeAtVersion(context.Context, string, int64) (int64, error)
+	})
+	if !ok {
+		return 0, ErrAIRuntimeUnavailable
+	}
+	return preparer.PrepareExecutorChangeAtVersion(ctx, profileID, expectedVersion)
 }
 
 // AIModelConfigReader is the public model lookup needed by the connection

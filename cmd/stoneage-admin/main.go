@@ -245,6 +245,18 @@ func serve(arguments []string) error {
 			return aiRuntime.AdminRuntime()
 		}(),
 		AIConnectionTester: connectionTester,
+		AILocalExecutor: func() admin.AILocalExecutor {
+			if aiRuntime == nil || aiRuntime.remote == nil {
+				return nil
+			}
+			return aiRuntime
+		}(),
+		AIWorkerHandler: func() http.Handler {
+			if aiRuntime == nil || aiRuntime.remote == nil {
+				return nil
+			}
+			return aiRuntime.remote.Handler()
+		}(),
 	})
 	if err != nil {
 		return err

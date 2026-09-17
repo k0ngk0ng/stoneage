@@ -8,13 +8,14 @@
     return root ? root.dataset.csrf || "" : "";
   }
 
-  async function api(root, path, method, body) {
+  async function api(root, path, method, body, signal) {
     const headers = { "X-CSRF-Token": csrf(root), "Accept": "application/json" };
     const options = { method: method || "GET", headers: headers, credentials: "same-origin" };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(body);
     }
+    if (signal) options.signal = signal;
     const response = await fetch(path, options);
     let value = {};
     try { value = await response.json(); } catch (_) { value = {}; }
@@ -430,7 +431,7 @@
     if (!message) return "没有附加说明";
     const lower = message.toLowerCase();
     if (lower.indexOf("unresolved model turn") >= 0 || lower.indexOf("checkpoint_recovery_required") >= 0 || lower.indexOf("recovery") >= 0 || lower.indexOf("unknown") >= 0) {
-      return "系统因上一轮模型回合结果未知而自动暂停，需要人工恢复确认";
+      return "上一轮执行异常，已暂停；点击启动可重新运行";
     }
     if (lower.indexOf("no progress") >= 0 || lower.indexOf("没有进展") >= 0) {
       return "连续一段时间没有观察到游戏进展，运行时已暂停";
@@ -454,30 +455,29 @@
   }
 
   function aiRecoveryNextStep(status) {
-    if (!status) return "没有待确认的异常回合；按需启动玩家即可。";
+    if (!status) return "没有待处理的旧执行。";
     const execution = status.execution || {};
-    if (execution.container_stopped === false) {
-      return "保持玩家停止，等待遗留模型容器退出后重新打开恢复确认。";
+    if (execution.container_stopped !== true) {
+      return "旧执行尚未结束，请稍后再次启动。";
     }
     if (status.ready !== true) {
-      return "保持玩家停止，先满足运行时停止和容器退出等前置条件，再重新打开恢复确认。";
+      return "旧执行尚未结束，请稍后再次启动。";
     }
-    return "先核对最近观测并勾选确认；提交后玩家仍保持停止，需要手动启动新轮次。";
+    return "旧执行已结束，可以启动。";
   }
 
   function aiRecoveryActionSummary(status) {
-    if (!status) return "没有待确认的异常回合。无需提交恢复确认；按需启动玩家即可。";
+    if (!status) return "没有待处理的旧执行。";
     const execution = status.execution || {};
     const lines = [];
     if (execution.container_stopped === false) {
-      lines.push("恢复状态：待确认；遗留模型容器尚未退出。");
+      lines.push("旧执行尚未结束，请稍后再次启动。");
     } else if (execution.container_stopped === true) {
-      lines.push("恢复状态：待确认；遗留模型容器已退出。");
+      lines.push(status.ready === true ? "旧执行已结束，可以启动。" : "旧执行尚未结束，请稍后再次启动。");
     } else {
-      lines.push("恢复状态：待确认；遗留模型容器状态无法确认。");
+      lines.push("旧执行状态无法读取，请稍后重试。");
     }
-    lines.push(status.ready === true ? "核查前置条件已满足。" : "核查前置条件尚未满足。");
-    lines.push("下一步：" + aiRecoveryNextStep(status));
+    if (lines[0] !== aiRecoveryNextStep(status)) lines.push("下一步：" + aiRecoveryNextStep(status));
     return lines.join(" ");
   }
 
@@ -492,8 +492,8 @@
 
   function renderAIRecoverySummary(parent, profile, response) {
     const section = aiAuditElement("section", "ai-audit-recovery");
-    section.appendChild(aiAuditElement("h3", "ai-audit-heading", "运行状态与恢复确认"));
-    section.appendChild(aiAuditElement("p", "muted ai-audit-hint", "查看面板只读，不会提交恢复操作；状态来自最近一次服务端检查。"));
+    section.appendChild(aiAuditElement("h3", "ai-audit-heading", "当前运行状态与旧执行状态"));
+    section.appendChild(aiAuditElement("p", "muted ai-audit-hint", "状态来自最近一次服务端检查；上一轮异常会保持暂停，查看面板不会提交操作。"));
     const fields = aiAuditElement("dl", "ai-audit-fields");
     const runtime = profile && profile.runtime ? profile.runtime : {};
     aiAuditField(fields, "当前运行", aiRuntimeStateText(runtime.state));
@@ -503,24 +503,23 @@
     const recovery = response && response.recovery;
     if (recovery) {
       const execution = recovery.execution || {};
-      aiAuditField(fields, "恢复状态", "待人工确认（旧回合结果未知）", "ai-audit-reason");
-      aiAuditField(fields, "确认前置", recovery.ready === true ? "已满足，可以在核对后确认" : "未满足，暂不能提交确认", recovery.ready === true ? "ai-audit-next" : "ai-audit-reason");
-      aiAuditField(fields, "遗留容器", execution.container_stopped === true ? "已退出" : execution.container_stopped === false ? "尚未退出" : "无法确认");
+      aiAuditField(fields, "旧执行状态", aiRecoveryActionSummary(recovery), "ai-audit-reason");
+      aiAuditField(fields, "遗留容器", execution.container_stopped === true ? "已退出" : execution.container_stopped === false ? "尚未退出" : "状态无法读取");
       aiAuditField(fields, "旧回合", recovery.attempt_id ? "回合 " + recovery.attempt_id + " · 最近检查 " + aiAuditTime(recovery.attempt_updated_at) : "身份未记录");
       aiAuditField(fields, "预留额度", recovery.reserved_tokens !== undefined ? aiAuditTokens(recovery.reserved_tokens) : "没有记录");
       aiAuditField(fields, "下一步", aiRecoveryNextStep(recovery), "ai-audit-next");
     } else if (response && response.error) {
-      aiAuditField(fields, "恢复状态", "暂时无法读取待确认回合", "ai-audit-reason");
-      aiAuditField(fields, "下一步", "保持玩家停止，稍后重新打开查看；不要重复提交未知请求。", "ai-audit-next");
+      aiAuditField(fields, "旧执行状态", "暂时无法读取旧执行状态", "ai-audit-reason");
+      aiAuditField(fields, "下一步", "稍后刷新后再继续处理。", "ai-audit-next");
     } else {
-      aiAuditField(fields, "恢复状态", "没有待确认的异常回合");
-      aiAuditField(fields, "下一步", "无需恢复确认；按需启动玩家即可。", "ai-audit-next");
+      aiAuditField(fields, "旧执行状态", "没有待处理的旧执行");
+      aiAuditField(fields, "下一步", "按需启动玩家即可。", "ai-audit-next");
     }
     section.appendChild(fields);
     const rawRuntime = aiAuditText(runtime.message || runtime.last_error).trim();
     if (rawRuntime) appendAIAuditRaw(section, "查看原始运行说明", rawRuntime);
     const rawRecovery = aiRecoveryDetailText(response);
-    if (rawRecovery) appendAIAuditRaw(section, "查看恢复查询错误", rawRecovery);
+    if (rawRecovery) appendAIAuditRaw(section, "查看旧执行状态查询错误", rawRecovery);
     parent.appendChild(section);
   }
 
@@ -885,130 +884,6 @@
       return "初始状态：" + modeText + " · 人物 " + p.character_level + " 级 · " + (names[p.hometown] || "出生村未知") + " · 体腕耐速权重 " + allocation + " · 宠物 " + (pets.join("、") || "无") + mountText + bounds + "。创建后保持，重启不重新生成。";
     }
 
-    const initializationsList = document.getElementById("ai-initializations-list");
-    const initializationsRefresh = document.getElementById("ai-initializations-refresh");
-    const initializationsMessage = document.getElementById("ai-initializations-message");
-    let initializationsRequest = 0;
-    let initializationsBusy = false;
-    let initializationsLoaded = false;
-
-    function initializationsStatus(text, error) {
-      if (!initializationsMessage) return;
-      initializationsMessage.hidden = !text;
-      initializationsMessage.textContent = text || "";
-      initializationsMessage.classList.toggle("error", !!error);
-      initializationsMessage.classList.toggle("success", !error);
-    }
-
-    function initializationCell(label, text, className) {
-      const cell = document.createElement("td");
-      if (className) cell.className = className;
-      if (label) cell.dataset.label = label;
-      cell.textContent = text == null ? "" : String(text);
-      return cell;
-    }
-
-    function initializationUpdatedAt(value) {
-      if (!value) return "—";
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN");
-    }
-
-    function initializationStatusLabel(status) {
-      return ({
-        reserved: "已预留",
-        creating: "创建中",
-        applying: "初始化中",
-        applied: "待发布",
-        publication_pending: "待发布",
-        published: "已完成",
-        failed_or_unconfirmed: "待核验",
-        draft: "待核验"
-      })[status] || "待核验";
-    }
-
-    function renderInitializationsPlaceholder(text) {
-      if (!initializationsList) return;
-      initializationsList.replaceChildren();
-      const empty = document.createElement("tr");
-      const cell = initializationCell("", text, "empty");
-      cell.colSpan = 5;
-      empty.appendChild(cell);
-      initializationsList.appendChild(empty);
-    }
-
-    function renderInitializations(initializations) {
-      if (!initializationsList) return;
-      initializationsList.replaceChildren();
-      if (!initializations.length) {
-        renderInitializationsPlaceholder("暂无未完成的创建。");
-        return;
-      }
-      initializations.forEach(function (item) {
-        const row = document.createElement("tr");
-        row.appendChild(initializationCell("玩家编号", item.profile_id || "—", "breakable"));
-        row.appendChild(initializationCell("角色", item.character_name || "角色身份待核验"));
-        row.appendChild(initializationCell("创建状态", initializationStatusLabel(item.status)));
-        row.appendChild(initializationCell("更新时间", initializationUpdatedAt(item.updated_at)));
-        const actions = document.createElement("td");
-        actions.className = "ai-actions";
-        actions.dataset.label = "操作";
-        if (canWrite && item.recoverable === true && item.profile_id) {
-          const recover = document.createElement("button");
-          recover.type = "button";
-          recover.className = "button primary ai-initialization-recover";
-          recover.textContent = "恢复发布";
-          recover.addEventListener("click", async function () {
-            if (initializationsBusy) return;
-            initializationsBusy = true;
-            recover.disabled = true;
-            try {
-              await api(profileRoot, "/api/ai/initializations/" + encodeURIComponent(item.profile_id) + "/recover", "POST", {});
-              await loadInitializations();
-              initializationsStatus("恢复发布完成；AI 玩家不会自动启动，请在玩家列表查看当前状态。", false);
-              if (window.location && typeof window.location.reload === "function") window.location.reload();
-            } catch (error) {
-              recover.disabled = false;
-              initializationsStatus(error.message, true);
-            } finally {
-              initializationsBusy = false;
-            }
-          });
-          actions.appendChild(recover);
-        } else {
-          const note = document.createElement("small");
-          note.textContent = item.recoverable === true ? "仅管理员可恢复" : "待核验，不自动重试";
-          actions.appendChild(note);
-        }
-        row.appendChild(actions);
-        initializationsList.appendChild(row);
-      });
-    }
-
-    async function loadInitializations() {
-      if (!initializationsList) return;
-      const requestID = ++initializationsRequest;
-      if (initializationsRefresh) initializationsRefresh.disabled = true;
-      try {
-        const result = await api(profileRoot, "/api/ai/initializations", "GET");
-        if (requestID !== initializationsRequest) return;
-        const entries = Array.isArray(result.initializations) ? result.initializations : [];
-        renderInitializations(entries);
-        initializationsLoaded = true;
-        initializationsStatus("", false);
-      } catch (error) {
-        if (requestID !== initializationsRequest) return;
-        if (!initializationsLoaded) renderInitializationsPlaceholder("读取失败，请点击刷新重试。");
-        initializationsStatus((error.message || "AI 创建记录读取失败") + (initializationsLoaded ? " 页面保留上次结果。" : ""), true);
-      } finally {
-        if (requestID === initializationsRequest && initializationsRefresh) initializationsRefresh.disabled = false;
-      }
-    }
-
-    if (initializationsRefresh) initializationsRefresh.addEventListener("click", loadInitializations);
-    loadInitializations();
-
-
     function selectedSkillNames() {
       if (!form) return [];
       return Array.from(form.querySelectorAll('input[name="skill_names"]:checked')).map(function (input) {
@@ -1147,48 +1022,322 @@
 
     document.querySelectorAll(".ai-edit-profile, .ai-view-profile").forEach(function (button) {
       button.addEventListener("click", async function () {
+        if (button.classList.contains("ai-view-profile")) {
+          openProfileView(button.dataset.id, button);
+          return;
+        }
         try {
           const value = await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(button.dataset.id), "GET");
-          if (button.classList.contains("ai-view-profile")) {
-            showAudit(button.dataset.id, value.profile || {});
-          } else {
-            edit(value.profile || {});
-          }
+          edit(value.profile || {});
         } catch (error) { message(profileRoot, error.message, true); }
       });
     });
 
-    let auditRequest = 0;
-    async function showAudit(id, profile) {
-      const requestID = ++auditRequest;
-      const audit = document.getElementById("ai-profile-audit");
-      const content = document.getElementById("ai-profile-audit-content");
-      const heading = document.getElementById("ai-profile-audit-title");
-      try {
-        const base = "/api/ai/profiles/" + encodeURIComponent(id);
-        const results = await Promise.allSettled([
-          api(profileRoot, base + "/events", "GET"),
-          api(profileRoot, base + "/life-state", "GET"),
-          api(profileRoot, base + "/recovery", "GET")
-        ]);
-        if (requestID !== auditRequest) return;
-        if (results[0].status !== "fulfilled") throw results[0].reason;
-        const state = results[1].status === "fulfilled" ? results[1].value : null;
-        const recovery = results[2].status === "fulfilled" ? results[2].value : {error: results[2].reason};
-        const events = results[0].value.events || [];
-        heading.textContent = (profile.character && profile.character.name ? profile.character.name : id) + " · 只读生活记录与审计";
-        content.replaceChildren();
-        content.appendChild(aiAuditElement("p", "ai-audit-initial", initialText(profile)));
-        renderAIRecoverySummary(content, profile, recovery);
-        renderAIObservationEvidence(content, events);
-        renderAIAuditState(content, state);
-        renderAIAuditEvents(content, events);
-        show(audit);
-        audit.scrollIntoView({ behavior: "smooth", block: "start" });
-      } catch (error) { message(profileRoot, error.message, true); }
+    let profileViewID = "";
+    let profileViewRequest = 0;
+    let profileViewBusy = false;
+    let profileViewTimer = null;
+    let profileViewController = null;
+    let profileViewPreviousFocus = null;
+    let profileViewCopyBusy = false;
+    let profileViewCopyRequest = 0;
+    let profileViewManualCommand = null;
+    const profileViewModal = document.getElementById("ai-profile-view-modal");
+    const profileViewDialog = profileViewModal && profileViewModal.querySelector(".ai-profile-view-dialog");
+    const profileViewContent = document.getElementById("ai-profile-view-content");
+    const profileViewTitle = document.getElementById("ai-profile-view-title");
+    const profileViewSubtitle = document.getElementById("ai-profile-view-subtitle");
+    const profileViewRefresh = document.getElementById("ai-profile-view-refresh");
+    const profileViewInterval = document.getElementById("ai-profile-view-refresh-interval");
+    const profileViewRefreshStatus = document.getElementById("ai-profile-view-refresh-status");
+    const profileViewCopyCommand = document.getElementById("ai-profile-copy-command");
+    const profileViewLocalLocation = document.getElementById("ai-profile-local-location");
+    const profileViewLocalConnection = document.getElementById("ai-profile-local-connection");
+    const profileViewLocalCommandStatus = document.getElementById("ai-profile-local-command-status");
+
+    function profileViewSetStatus(text, error) {
+      if (!profileViewRefreshStatus) return;
+      profileViewRefreshStatus.textContent = text || "";
+      profileViewRefreshStatus.classList.toggle("error", !!error);
+      profileViewRefreshStatus.classList.toggle("success", !error);
     }
-    const closeAudit = document.getElementById("ai-profile-audit-close");
-    if (closeAudit) closeAudit.addEventListener("click", function () { auditRequest++; hide(document.getElementById("ai-profile-audit")); });
+
+    function profileViewClearManualCommand() {
+      const command = profileViewManualCommand;
+      profileViewManualCommand = null;
+      if (command && command.parentNode) command.parentNode.removeChild(command);
+    }
+
+    function profileViewShowManualCommand(command) {
+      profileViewClearManualCommand();
+      const host = profileViewLocalCommandStatus && profileViewLocalCommandStatus.parentNode;
+      if (!host) return false;
+      const input = document.createElement("textarea");
+      input.className = "ai-profile-local-command-fallback";
+      input.rows = 3;
+      input.value = command;
+      input.setAttribute("readonly", "");
+      input.setAttribute("aria-label", "本地运行命令（请手动复制）");
+      host.appendChild(input);
+      profileViewManualCommand = input;
+      if (typeof input.focus === "function") input.focus();
+      if (typeof input.select === "function") input.select();
+      return true;
+    }
+
+    function profileViewClearTimer() {
+      if (profileViewTimer !== null) {
+        window.clearTimeout(profileViewTimer);
+        profileViewTimer = null;
+      }
+    }
+
+    function profileViewSchedule() {
+      profileViewClearTimer();
+      if (!profileViewID || !profileViewInterval) return;
+      const seconds = Number(profileViewInterval.value);
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      profileViewTimer = window.setTimeout(function () {
+        profileViewTimer = null;
+        if (profileViewID && !profileViewBusy) refreshProfileView();
+      }, seconds * 1000);
+    }
+
+    function profileViewRememberState() {
+      if (!profileViewContent) return null;
+      return {
+        dialogScrollTop: profileViewDialog ? profileViewDialog.scrollTop : 0,
+        contentScrollTop: profileViewContent.scrollTop,
+        details: Array.from(profileViewContent.querySelectorAll("details")).map(function (details) {
+          const summary = details.querySelector("summary");
+          return {open: details.open, summary: summary ? summary.textContent : ""};
+        })
+      };
+    }
+
+    function profileViewRestoreState(state) {
+      if (!state || !profileViewContent) return;
+      Array.from(profileViewContent.querySelectorAll("details")).forEach(function (details, index) {
+        const summary = details.querySelector("summary");
+        const wanted = state.details[index];
+        if (wanted && (!wanted.summary || !summary || wanted.summary === summary.textContent)) details.open = wanted.open;
+      });
+      profileViewContent.scrollTop = state.contentScrollTop;
+      if (profileViewDialog) profileViewDialog.scrollTop = state.dialogScrollTop;
+    }
+
+    function profileViewRenderError(error) {
+      if (!profileViewContent) return;
+      profileViewContent.replaceChildren(aiAuditElement("p", "alert error", error && error.message ? error.message : "详情读取失败，请稍后重试。"));
+    }
+
+    function profileViewRenderExecutor(response) {
+      if (!profileViewLocalLocation || !profileViewLocalConnection) return;
+      if (!response || response.error) {
+        profileViewLocalLocation.textContent = "暂不可用";
+        profileViewLocalConnection.textContent = "暂不可用";
+        if (profileViewCopyCommand) {
+          profileViewCopyCommand.disabled = true;
+          profileViewCopyCommand.title = "本地执行器状态暂不可用";
+        }
+        return;
+      }
+      const location = response.location === "local" ? "本地执行器" : response.location === "server" ? "服务端" : "未提供";
+      profileViewLocalLocation.textContent = location;
+      const connection = response.connected === true ? "已连接" : response.connected === false ? "未连接" : "状态未知";
+      const lastSeen = response.last_seen ? " · 最近连接 " + aiAuditTime(response.last_seen) : "";
+      const detail = response.message ? " · " + String(response.message) : "";
+      profileViewLocalConnection.textContent = connection + lastSeen + detail;
+      if (profileViewCopyCommand) {
+        profileViewCopyCommand.disabled = profileViewCopyBusy || !canWrite;
+        profileViewCopyCommand.title = profileViewCopyBusy ? "正在生成本地运行命令" : canWrite ? "生成并复制本地运行命令" : "仅管理员可以生成本地运行命令";
+      }
+    }
+
+    async function copyProfileLocalCommand() {
+      if (!profileViewID || !profileViewCopyCommand || !canWrite || profileViewCopyBusy) return;
+      const id = profileViewID;
+      const viewRequest = profileViewRequest;
+      const copyRequest = ++profileViewCopyRequest;
+      const isCurrent = function () {
+        return copyRequest === profileViewCopyRequest && viewRequest === profileViewRequest && id === profileViewID && profileViewModal && !profileViewModal.hidden;
+      };
+      profileViewCopyBusy = true;
+      profileViewClearManualCommand();
+      profileViewCopyCommand.disabled = true;
+      if (profileViewLocalCommandStatus) profileViewLocalCommandStatus.textContent = "正在生成命令…";
+      try {
+        const result = await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(id) + "/local-command", "POST", {});
+        if (!isCurrent()) return;
+        const command = result && typeof result.command === "string" ? result.command : "";
+        if (!command) throw new Error("本地运行命令暂不可用");
+        if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          try {
+            await navigator.clipboard.writeText(command);
+          } catch (_) {
+            if (!isCurrent()) return;
+            if (profileViewShowManualCommand(command)) {
+              if (profileViewLocalCommandStatus) profileViewLocalCommandStatus.textContent = "命令已生成，请从文本框手动复制";
+              return;
+            }
+            throw new Error("浏览器不支持复制，请手动复制命令");
+          }
+        } else {
+          const input = document.createElement("textarea");
+          let copied = false;
+          try {
+            input.value = command;
+            input.setAttribute("readonly", "");
+            input.style.position = "fixed";
+            input.style.opacity = "0";
+            document.body.appendChild(input);
+            input.select();
+            copied = typeof document.execCommand === "function" && document.execCommand("copy");
+          } finally {
+            if (input.parentNode) input.parentNode.removeChild(input);
+          }
+          if (!copied) {
+            if (profileViewShowManualCommand(command)) {
+              if (profileViewLocalCommandStatus) profileViewLocalCommandStatus.textContent = "命令已生成，请从文本框手动复制";
+              return;
+            }
+            throw new Error("浏览器不支持复制，请手动复制命令");
+          }
+        }
+        if (!isCurrent()) return;
+        const expires = result.expires_at ? " · 有效期至 " + aiAuditTime(result.expires_at) : "";
+        if (profileViewLocalCommandStatus) profileViewLocalCommandStatus.textContent = "命令已复制" + expires;
+      } catch (error) {
+        if (isCurrent() && profileViewLocalCommandStatus) profileViewLocalCommandStatus.textContent = error && error.message ? error.message : "本地运行命令暂不可用";
+      } finally {
+        if (copyRequest !== profileViewCopyRequest) return;
+        profileViewCopyBusy = false;
+        if (isCurrent() && profileViewCopyCommand) {
+          profileViewCopyCommand.disabled = !canWrite;
+          profileViewCopyCommand.title = canWrite ? "生成并复制本地运行命令" : "仅管理员可以生成本地运行命令";
+        }
+      }
+    }
+
+    async function refreshProfileView() {
+      if (!profileViewID || profileViewBusy || !profileViewContent) return;
+      const id = profileViewID;
+      const requestID = ++profileViewRequest;
+      const controller = new AbortController();
+      profileViewController = controller;
+      profileViewBusy = true;
+      profileViewClearTimer();
+      if (profileViewRefresh) profileViewRefresh.disabled = true;
+      profileViewSetStatus("正在刷新…", false);
+      const base = "/api/ai/profiles/" + encodeURIComponent(id);
+      try {
+        const results = await Promise.allSettled([
+          api(profileRoot, base, "GET", undefined, controller.signal),
+          api(profileRoot, base + "/events", "GET", undefined, controller.signal),
+          api(profileRoot, base + "/life-state", "GET", undefined, controller.signal),
+          api(profileRoot, base + "/recovery", "GET", undefined, controller.signal),
+          api(profileRoot, base + "/executor", "GET", undefined, controller.signal)
+        ]);
+        if (requestID !== profileViewRequest || id !== profileViewID) return;
+        if (results[0].status !== "fulfilled") throw results[0].reason;
+        if (results[1].status !== "fulfilled") throw results[1].reason;
+        const profile = results[0].value.profile || {};
+        const eventsValue = results[1].value || {};
+        const stateValue = results[2].status === "fulfilled" ? results[2].value : null;
+        const recoveryValue = results[3].status === "fulfilled" ? results[3].value : {error: results[3].reason};
+        const executorValue = results[4].status === "fulfilled" ? results[4].value : {error: results[4].reason};
+        const events = Array.isArray(eventsValue.events) ? eventsValue.events : [];
+        const name = profile.character && profile.character.name ? profile.character.name : id;
+        const state = profileViewRememberState();
+        if (profileViewTitle) profileViewTitle.textContent = name + " · AI 玩家详情";
+        if (profileViewSubtitle) profileViewSubtitle.textContent = "只读查看";
+        profileViewRenderExecutor(executorValue);
+        profileViewContent.replaceChildren();
+        profileViewContent.appendChild(aiAuditElement("p", "ai-audit-initial", initialText(profile)));
+        renderAIRecoverySummary(profileViewContent, profile, recoveryValue);
+        renderAIObservationEvidence(profileViewContent, events);
+        renderAIAuditState(profileViewContent, stateValue);
+        renderAIAuditEvents(profileViewContent, events);
+        profileViewRestoreState(state);
+        profileViewSetStatus("已更新 " + aiAuditTime(new Date().toISOString()), false);
+      } catch (error) {
+        if (requestID !== profileViewRequest || id !== profileViewID || (error && error.name === "AbortError")) return;
+        profileViewRenderError(error);
+        profileViewSetStatus(error && error.message ? error.message : "详情读取失败", true);
+      } finally {
+        if (requestID !== profileViewRequest || id !== profileViewID) return;
+        profileViewBusy = false;
+        if (profileViewController === controller) profileViewController = null;
+        if (profileViewRefresh) profileViewRefresh.disabled = false;
+        profileViewSchedule();
+      }
+    }
+
+    function openProfileView(id, trigger) {
+      profileViewClearTimer();
+      if (profileViewController) profileViewController.abort();
+      profileViewRequest++;
+      profileViewCopyRequest++;
+      profileViewCopyBusy = false;
+      profileViewClearManualCommand();
+      profileViewBusy = false;
+      profileViewController = null;
+      profileViewID = id || "";
+      profileViewPreviousFocus = trigger || document.activeElement;
+      if (profileViewModal) show(profileViewModal);
+      document.body.classList.add("modal-open");
+      if (profileViewTitle) profileViewTitle.textContent = "AI 玩家详情";
+      if (profileViewSubtitle) profileViewSubtitle.textContent = "正在读取…";
+      if (profileViewLocalLocation) profileViewLocalLocation.textContent = "正在读取…";
+      if (profileViewLocalConnection) profileViewLocalConnection.textContent = "正在读取…";
+      if (profileViewLocalCommandStatus) profileViewLocalCommandStatus.textContent = "";
+      if (profileViewCopyCommand) {
+        profileViewCopyCommand.disabled = true;
+        profileViewCopyCommand.title = "正在读取本地执行器状态";
+      }
+      if (profileViewContent) profileViewContent.replaceChildren(aiAuditElement("p", "ai-audit-initial", "正在读取当前运行状态、游戏观测、生活状态和审计记录…"));
+      if (profileViewDialog && typeof profileViewDialog.focus === "function") profileViewDialog.focus();
+      refreshProfileView();
+    }
+
+    function closeProfileView() {
+      profileViewRequest++;
+      profileViewCopyRequest++;
+      profileViewCopyBusy = false;
+      profileViewClearManualCommand();
+      profileViewClearTimer();
+      if (profileViewController) profileViewController.abort();
+      profileViewController = null;
+      profileViewBusy = false;
+      profileViewID = "";
+      if (profileViewModal) hide(profileViewModal);
+      document.body.classList.remove("modal-open");
+      const previous = profileViewPreviousFocus;
+      profileViewPreviousFocus = null;
+      if (previous && typeof previous.focus === "function" && document.contains(previous)) previous.focus();
+    }
+
+    if (profileViewRefresh) profileViewRefresh.addEventListener("click", refreshProfileView);
+    if (profileViewInterval) profileViewInterval.addEventListener("change", profileViewSchedule);
+    if (profileViewCopyCommand) {
+      profileViewCopyCommand.disabled = !canWrite;
+      profileViewCopyCommand.addEventListener("click", copyProfileLocalCommand);
+    }
+    document.querySelectorAll("[data-ai-profile-view-cancel]").forEach(function (button) { button.addEventListener("click", closeProfileView); });
+    if (document.addEventListener) document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && profileViewID) { event.preventDefault(); closeProfileView(); }
+    });
+    if (window.addEventListener) window.addEventListener("pagehide", function () {
+      profileViewRequest++;
+      profileViewCopyRequest++;
+      profileViewCopyBusy = false;
+      profileViewClearManualCommand();
+      profileViewClearTimer();
+      if (profileViewController) profileViewController.abort();
+      profileViewController = null;
+      profileViewBusy = false;
+      profileViewID = "";
+    });
 
     document.querySelectorAll(".ai-profile-control").forEach(function (button) {
       button.addEventListener("click", async function () {
@@ -1201,57 +1350,6 @@
           message(profileRoot, error.message, true);
         }
       });
-    });
-
-    let recovery = null;
-    let recoveryBusy = false;
-    let recoveryLoad = 0;
-    const recoveryPanel = document.getElementById("ai-recovery-panel");
-    const recoveryAck = document.getElementById("ai-recovery-ack");
-    const recoverySubmit = document.getElementById("ai-recovery-submit");
-    const recoveryMessage = document.getElementById("ai-recovery-message");
-    document.querySelectorAll(".ai-profile-recovery").forEach(function (button) {
-      button.addEventListener("click", async function () {
-        if (recoveryBusy) return;
-        const load = ++recoveryLoad;
-        button.disabled = true;
-        try {
-          const result = await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(button.dataset.id) + "/recovery", "GET");
-          if (load !== recoveryLoad) return;
-          recovery = result.recovery;
-          if (!recovery) {
-            recoveryAck.checked = false;
-            recoverySubmit.disabled = true;
-            hide(recoveryPanel);
-            message(profileRoot, "没有待确认的异常回合。", false);
-            return;
-          }
-          recoveryAck.checked = false; recoverySubmit.disabled = true; recoveryMessage.textContent = "";
-          const actionSummary = typeof aiRecoveryActionSummary === "function" ? aiRecoveryActionSummary(recovery) : (recovery.execution && recovery.execution.container_stopped === false ? "恢复状态：待确认；遗留模型容器尚未退出。" : recovery.ready ? "核查前置条件已满足。" : "核查前置条件尚未满足。");
-          document.getElementById("ai-recovery-summary").textContent = "轮次 " + recovery.attempt_id + " · 保留预算 " + recovery.reserved_tokens + " tokens。" + actionSummary;
-          show(recoveryPanel); recoveryPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-        } catch (error) { message(profileRoot, error.message, true); }
-        finally { button.disabled = false; }
-      });
-    });
-    if (recoveryAck) recoveryAck.addEventListener("change", function () { recoverySubmit.disabled = recoveryBusy || !recovery || !recovery.ready || !recoveryAck.checked; });
-    const recoveryClose = document.getElementById("ai-recovery-close");
-    if (recoveryClose) recoveryClose.addEventListener("click", function () { recoveryLoad++; recovery = null; hide(recoveryPanel); });
-    if (recoverySubmit && canWrite) recoverySubmit.addEventListener("click", async function () {
-      if (recoveryBusy || !recovery || !recovery.ready || !recoveryAck.checked) return;
-      const reviewing = recovery;
-      recoveryBusy = true; recoveryAck.disabled = true; recoverySubmit.disabled = true;
-      try {
-        await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(reviewing.profile_id) + "/recovery", "POST", Object.assign({}, reviewing, { reason: "accept_uncertain_outcome" }));
-        if (recovery !== reviewing) return;
-        recovery = null; recoveryAck.checked = false;
-        recoveryMessage.textContent = "核查完成，未知结果和预算已保留。可手动启动新轮次。";
-      } catch (error) {
-        if (recovery === reviewing) {
-          recoveryMessage.textContent = error.message;
-          recoverySubmit.disabled = false;
-        }
-      } finally { recoveryBusy = false; recoveryAck.disabled = false; }
     });
 
     if (form && canWrite) form.addEventListener("submit", async function (event) {
@@ -1302,14 +1400,54 @@
     });
 
     document.querySelectorAll(".ai-delete-profile").forEach(function (button) {
+      const row = button.closest("tr");
+      const profileStatus = row && row.dataset ? row.dataset.profileStatus : "";
+      const runtimeState = row && row.dataset ? row.dataset.runtimeState : "";
+      const runtimeAvailable = row && row.dataset ? row.dataset.runtimeAvailable === "true" : false;
+      function disableDelete(title) {
+        button.disabled = true;
+        button.title = title;
+      }
+      async function checkDeleteReady() {
+        if (profileStatus !== "stopped") {
+          disableDelete("AI 玩家必须先停止");
+          return;
+        }
+        if (!runtimeAvailable) {
+          disableDelete("无法确认后台运行状态，暂不能删除");
+          return;
+        }
+        if (runtimeState !== "stopped") {
+          disableDelete("后台运行仍在进行，暂不能删除");
+          return;
+        }
+        disableDelete("正在读取旧执行状态，暂不能删除");
+        try {
+          const result = await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(button.dataset.id) + "/recovery", "GET");
+          if (result && result.recovery) {
+            const recovery = result.recovery;
+            const execution = recovery.execution || {};
+            if (recovery.ready !== true || execution.container_stopped !== true) {
+              disableDelete("旧执行仍在处理中，暂不能删除");
+              return;
+            }
+          }
+          button.disabled = false;
+          button.title = "删除 AI 玩家";
+        } catch (_) {
+          disableDelete("无法确认旧执行状态，暂不能删除");
+        }
+      }
       button.addEventListener("click", async function () {
+        if (button.disabled) return;
         if (!window.confirm("删除 AI 玩家配置及其运行检查点，确认继续？")) return;
         button.disabled = true;
         try {
           await api(profileRoot, "/api/ai/profiles/" + encodeURIComponent(button.dataset.id) + "?expected_version=" + encodeURIComponent(button.dataset.version), "DELETE");
           window.location.reload();
-        } catch (error) { button.disabled = false; message(profileRoot, error.message, true); }
+        } catch (error) { button.disabled = false; message(profileRoot, error.message, true); await checkDeleteReady(); }
       });
+      checkDeleteReady();
     });
   }
 

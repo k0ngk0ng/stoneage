@@ -20,6 +20,26 @@ type containerUnknownReadiness interface {
 	UnknownReviewReady(context.Context, string, string, time.Time) (bool, error)
 }
 
+type containerUnknownReconciler interface {
+	ReconcileUnknown(context.Context, string, string) error
+}
+
+// ReconcileUnknown drains the old broker/container execution for an explicit
+// supervisor Start. It is intentionally separate from InspectUnknown so the
+// admin recovery/status query remains read-only.
+func (factory *Factory) ReconcileUnknown(ctx context.Context, profileID, attemptID string) error {
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	if factory.active[profileID] != nil {
+		return aisupervisor.ErrAttemptStillRunning
+	}
+	runner, err := factory.reviewRunnerLocked(profileID)
+	if err != nil {
+		return err
+	}
+	return runner.reconcileUnknown(ctx, attemptID)
+}
+
 func (factory *Factory) InspectUnknown(ctx context.Context, profileID, attemptID string) (aisupervisor.UnknownExecution, error) {
 	factory.mu.Lock()
 	defer factory.mu.Unlock()
@@ -87,6 +107,32 @@ func (runner *ContainerRunner) inspectUnknown(ctx context.Context, attemptID str
 		return aisupervisor.UnknownExecution{}, err
 	}
 	return aisupervisor.UnknownExecution{RequestID: checkpoint.RequestID, State: string(result.State), UpdatedAt: result.Entry.UpdatedAt, Reviewed: result.Entry.Review != nil, ContainerStopped: stopped}, nil
+}
+
+func (runner *ContainerRunner) reconcileUnknown(ctx context.Context, attemptID string) error {
+	reconciler, ok := runner.broker.(containerUnknownReconciler)
+	if !ok {
+		return ErrContainerRunnerConfig
+	}
+	release, err := acquireContainerRunnerLock(ctx, runner.lockPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+	checkpoint, exists, err := runner.loadCheckpoint()
+	if err != nil {
+		return err
+	}
+	if !exists || checkpoint.CallerRequestID != attemptID || (checkpoint.State != containerRunPending && checkpoint.State != containerRunUnknown) {
+		return ErrContainerRunnerRecovery
+	}
+	if err := reconciler.ReconcileUnknown(ctx, runner.profileID, checkpoint.RequestID); err != nil {
+		if errors.Is(err, aibroker.ErrRunRunning) {
+			return aisupervisor.ErrAttemptStillRunning
+		}
+		return err
+	}
+	return nil
 }
 
 func (runner *ContainerRunner) reviewUnknown(ctx context.Context, attemptID string, expected aisupervisor.UnknownExecution, actor, reason string) error {

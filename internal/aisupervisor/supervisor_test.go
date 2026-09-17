@@ -587,6 +587,56 @@ func TestSupervisorConcurrentStartOpensOneSession(t *testing.T) {
 	}
 }
 
+func TestStopDuringStartReleasesRegisteredCall(t *testing.T) {
+	ctx := context.Background()
+	store := testSupervisorStore(t)
+	profile, err := store.CreateProfile(ctx, testSupervisorProfile("stop-start-call"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	openGate := make(chan struct{})
+	factory := &fakeFactory{
+		sessions: map[string]*fakeSession{profile.ID: {runner: &fakeRunner{}, snapshot: Snapshot{GameReady: true}}},
+		openGate: openGate,
+	}
+	supervisor, err := New(ctx, store, factory, supervisorTestConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer supervisor.Close()
+
+	started := make(chan error, 1)
+	go func() { started <- supervisor.Start(ctx, profile.ID) }()
+	var call *startCall
+	waitFor(t, func() bool {
+		supervisor.mu.Lock()
+		call = supervisor.starts[profile.ID]
+		supervisor.mu.Unlock()
+		return call != nil
+	})
+	if call.cancel == nil {
+		t.Fatal("start call was published before its cancellation function")
+	}
+	if err := supervisor.Stop(ctx, profile.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-started; err == nil {
+		t.Fatal("cancelled start unexpectedly succeeded")
+	}
+	select {
+	case <-call.done:
+	case <-time.After(time.Second):
+		t.Fatal("start call completion was not published")
+	}
+	supervisor.mu.Lock()
+	remaining := supervisor.starts[profile.ID]
+	supervisor.mu.Unlock()
+	if remaining != nil {
+		t.Fatal("completed start call remained registered")
+	}
+}
+
 func TestSupervisorRunFailuresBackoffThenPauseAndChargeFailures(t *testing.T) {
 	store := testSupervisorStore(t)
 	profileInput := testSupervisorProfile("failures")

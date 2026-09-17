@@ -25,11 +25,6 @@
 .ai-profile-table th:nth-child(5), .ai-profile-table td:nth-child(5) { width: 10%; }
 .ai-profile-table th:nth-child(6), .ai-profile-table td:nth-child(6) { width: 17%; }
 .ai-profile-table th:nth-child(7), .ai-profile-table td:nth-child(7) { width: 13%; }
-.ai-initialization-table th:nth-child(1), .ai-initialization-table td:nth-child(1) { width: 17%; }
-.ai-initialization-table th:nth-child(2), .ai-initialization-table td:nth-child(2) { width: 20%; }
-.ai-initialization-table th:nth-child(3), .ai-initialization-table td:nth-child(3) { width: 18%; }
-.ai-initialization-table th:nth-child(4), .ai-initialization-table td:nth-child(4) { width: 18%; }
-.ai-initialization-table th:nth-child(5), .ai-initialization-table td:nth-child(5) { width: 27%; }
 .ai-table td small { display: block; margin-top: 4px; color: #68777c; font-size: 11px; line-height: 1.35; }
 .ai-table .breakable { min-width: 0; max-width: none; white-space: normal; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .ai-table .badge, .ai-table .status-pill { white-space: nowrap; }
@@ -55,6 +50,32 @@
 .ai-key-clear { margin: 2px 0 13px; }
 .ai-subheading { margin: 18px 0 11px; padding-bottom: 6px; border-bottom: 2px solid rgba(94,116,128,.25); color: #287d9d; font-weight: 800; }
 .ai-editor-card[hidden], .ai-audit-card[hidden] { display: none; }
+.ai-profile-view-modal { position: fixed; z-index: 900; inset: 0; display: grid; place-items: center; min-width: 0; padding: 20px; }
+.ai-profile-view-modal[hidden] { display: none; }
+.ai-profile-view-backdrop { position: absolute; inset: 0; background: rgba(31,55,64,.58); backdrop-filter: blur(2px); animation: confirm-fade-in .15s ease-out; }
+.ai-profile-view-dialog { position: relative; display: flex; flex-direction: column; width: min(960px,100%); max-height: calc(100vh - 40px); min-width: 0; overflow: auto; padding: 24px; border: 3px solid #536a75; border-radius: 18px 18px 8px 18px; background: linear-gradient(145deg, rgba(255,255,250,.99), rgba(247,232,194,.98)); box-shadow: 0 14px 0 rgba(39,59,67,.28), 0 20px 45px rgba(31,55,64,.35), inset 0 0 0 2px rgba(255,255,255,.72); animation: confirm-pop-in .16s ease-out; }
+.ai-profile-view-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; min-width: 0; }
+.ai-profile-view-heading > div { min-width: 0; }
+.ai-profile-view-heading h2 { margin: 9px 0 0; color: #3d5963; overflow-wrap: anywhere; }
+.ai-profile-view-heading > button { flex-shrink: 0; white-space: nowrap; }
+.ai-profile-view-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 12px; margin-top: 16px; padding: 10px 12px; border: 1px solid rgba(94,116,128,.25); border-radius: 8px; background: rgba(255,255,255,.4); }
+.ai-profile-view-toolbar label { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: #536a75; font-size: 12px; }
+.ai-profile-view-toolbar select { max-width: 100%; border: 1px solid #718791; border-radius: 6px; padding: 5px 7px; color: #3d464c; background: #f7f7ef; font: inherit; }
+.ai-profile-view-toolbar .muted { min-width: 0; overflow-wrap: anywhere; }
+.ai-profile-local-run { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; align-items: end; gap: 10px 14px; min-width: 0; margin-top: 14px; padding: 11px 12px; border: 1px solid rgba(94,116,128,.25); border-radius: 8px; background: rgba(255,255,255,.4); }
+.ai-profile-local-run h3 { margin: 0; color: #287d9d; font-size: 14px; }
+.ai-profile-local-run p { margin: 3px 0 0; font-size: 11px; }
+.ai-profile-local-facts { display: contents; margin: 0; }
+.ai-profile-local-facts > div { min-width: 0; }
+.ai-profile-local-facts dt { color: #68777c; font-size: 11px; font-weight: 700; }
+.ai-profile-local-facts dd { min-width: 0; margin: 3px 0 0; color: #3d464c; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.ai-profile-local-run button { min-width: 0; max-width: 100%; }
+.ai-profile-local-run small { display: block; max-width: 100%; margin-top: 4px; overflow-wrap: anywhere; }
+.ai-profile-local-command-fallback { display: block; width: 100%; min-height: 58px; margin-top: 6px; padding: 7px 8px; border: 1px solid #718791; border-radius: 6px; color: #3d464c; background: #f7f7ef; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; resize: vertical; }
+.ai-profile-view-content { min-width: 0; max-width: 100%; overflow: auto; margin-top: 16px; padding: 14px; border: 2px solid rgba(94,116,128,.28); border-radius: 8px; color: #3d464c; background: rgba(255,255,255,.58); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.ai-profile-view-content > * { min-width: 0; max-width: 100%; }
+.ai-profile-view-content pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-profile-view-content .alert { margin: 0; }
 .ai-audit-content { max-height: 620px; overflow: auto; margin: 0; padding: 14px; border: 2px solid rgba(94,116,128,.25); border-radius: 8px; background: rgba(255,255,255,.56); color: #3d464c; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .ai-audit-initial { margin: 0 0 18px; padding: 11px 12px; border: 1px solid rgba(94,116,128,.25); border-radius: 8px; background: rgba(255,255,255,.5); }
 .ai-audit-state { margin-bottom: 20px; }
@@ -106,6 +127,15 @@
   .ai-table td.ai-actions > button { display: inline-flex; margin: 0 6px 6px 0; }
   .ai-table td.ai-actions button { max-width: 100%; }
   .ai-skill-options { grid-template-columns: 1fr; }
+  .ai-profile-view-modal { padding: 12px; }
+  .ai-profile-view-dialog { max-height: calc(100vh - 24px); padding: 18px; }
+  .ai-profile-view-heading { gap: 8px; }
+  .ai-profile-view-toolbar { align-items: stretch; flex-direction: column; }
+  .ai-profile-view-toolbar > * { max-width: 100%; }
+  .ai-profile-view-toolbar label { justify-content: space-between; }
+  .ai-profile-view-toolbar select { flex: 1; }
+  .ai-profile-local-run { display: grid; grid-template-columns: 1fr; align-items: stretch; }
+  .ai-profile-local-run button { width: 100%; }
   .ai-audit-event-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
   .ai-audit-field { grid-template-columns: 74px minmax(0,1fr); }
 }

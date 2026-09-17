@@ -25,6 +25,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/ainavigation"
 	"github.com/k0ngk0ng/stoneage/internal/aiprovision"
+	"github.com/k0ngk0ng/stoneage/internal/airemote"
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 	"github.com/k0ngk0ng/stoneage/internal/aiservice"
 	"github.com/k0ngk0ng/stoneage/internal/aisupervisor"
@@ -62,20 +63,22 @@ type aiRuntimeOptions struct {
 // admin command. Close is safe to call more than once and keeps the Gateway
 // alive until all supervisor sessions have revoked their capabilities.
 type aiRuntimeWiring struct {
-	provisioner *aiprovision.Provisioner
-	funding     *aifunding.Manager
-	provider    *aiprovision.ProfileSessionProvider
-	broker      *aibroker.Broker
-	gateway     *aiservice.Gateway
-	listener    net.Listener
-	gatewayHTTP *http.Server
-	plans       *automation.SQLiteStore
-	receipts    *aiservice.ReceiptStore
-	factory     *aiservice.Factory
-	supervisor  *aisupervisor.Supervisor
-	profiles    aiProfileLister
-	restorer    aiProfileRestorer
-	admin       admin.AIProfileRuntime
+	provisioner  *aiprovision.Provisioner
+	funding      *aifunding.Manager
+	provider     *aiprovision.ProfileSessionProvider
+	broker       *aibroker.Broker
+	remote       *airemote.Hub
+	runtimeImage string
+	gateway      *aiservice.Gateway
+	listener     net.Listener
+	gatewayHTTP  *http.Server
+	plans        *automation.SQLiteStore
+	receipts     *aiservice.ReceiptStore
+	factory      *aiservice.Factory
+	supervisor   *aisupervisor.Supervisor
+	profiles     aiProfileLister
+	restorer     aiProfileRestorer
+	admin        admin.AIProfileRuntime
 
 	closeOnce sync.Once
 	closeErr  error
@@ -234,6 +237,11 @@ func (w *aiRuntimeWiring) Close() error {
 		// prevents a late capability request while Docker transitions stop.
 		if w.broker != nil {
 			if err := w.broker.Close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if w.remote != nil {
+			if err := w.remote.Close(); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -468,7 +476,33 @@ func configureAIRuntime(ctx context.Context, authStore *auth.Store, modelStore *
 		}
 	}()
 	if containerMode {
+		docker, err := aibroker.NewDocker(options.DockerBinary)
+		if err != nil {
+			return nil, fmt.Errorf("configure AI Docker transport: %w", err)
+		}
+		remote, err := airemote.New(airemote.Config{
+			Docker:     docker,
+			StatePath:  filepath.Join(options.RuntimeRoot, "remote-workers.json"),
+			GatewayURL: containerGatewayEndpoint,
+			Guard: func(ctx context.Context, id string) error {
+				if wiring.supervisor == nil {
+					return admin.ErrAIRuntimeUnavailable
+				}
+				return wiring.supervisor.PrepareExecutorChange(ctx, id)
+			},
+			Start: func(ctx context.Context, id string) error {
+				if wiring.supervisor == nil {
+					return admin.ErrAIRuntimeUnavailable
+				}
+				return wiring.supervisor.Start(ctx, id)
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configure AI remote transport: %w", err)
+		}
+		wiring.remote, wiring.runtimeImage = remote, options.RuntimeImage
 		broker, err := aibroker.New(aibroker.Config{
+			Docker:       remote,
 			DockerBinary: options.DockerBinary,
 			Image:        options.RuntimeImage,
 			Network:      options.ContainerNetwork,

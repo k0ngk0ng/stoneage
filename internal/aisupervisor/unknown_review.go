@@ -23,6 +23,14 @@ type UnknownReviewFactory interface {
 	ReviewUnknown(context.Context, string, string, UnknownExecution, string, string) error
 }
 
+// UnknownReviewReconciler is an optional transport hook used only by an
+// explicit Start. It may stop an orphaned execution after proving that the
+// supervisor session which owned it has already exited. Read-only recovery
+// inspection must never call this hook.
+type UnknownReviewReconciler interface {
+	ReconcileUnknown(context.Context, string, string) error
+}
+
 type UnknownRecoveryStatus struct {
 	ProfileID         string           `json:"profile_id"`
 	ProfileVersion    int64            `json:"profile_version"`
@@ -127,6 +135,14 @@ func (supervisor *Supervisor) ReviewUnknown(ctx context.Context, request Unknown
 		supervisor.mu.Unlock()
 		supervisor.wg.Done()
 	}()
+	return supervisor.reviewUnknown(ctx, request)
+}
+
+// reviewUnknown contains the durable review transaction shared by the
+// operator endpoint and the explicit Start path. The caller has already
+// serialized the profile's lifecycle through supervisor.starts when this is
+// invoked from Start.
+func (supervisor *Supervisor) reviewUnknown(ctx context.Context, request UnknownRecoveryRequest) error {
 	// After a lost HTTP response, the committed audit record proves this exact
 	// acknowledgement already finished. Never inspect/alter a later request.
 	if review, err := supervisor.store.GetUnknownAttemptReview(ctx, request.ProfileID, request.AttemptID); err == nil {
@@ -164,6 +180,9 @@ func (supervisor *Supervisor) ReviewUnknown(ctx context.Context, request Unknown
 	}
 	factory, ok := supervisor.factory.(UnknownReviewFactory)
 	if !ok {
+		// Local/non-idempotent runners retain the historical recovery behavior
+		// in runProfile. The explicit pre-start review is available only when
+		// the transport can inspect and acknowledge the unknown execution.
 		return ErrFactoryUnavailable
 	}
 	if err = factory.ReviewUnknown(ctx, profile.ID, attempt.ID, request.Execution, request.Actor, request.Reason); err != nil {
@@ -185,4 +204,86 @@ func (supervisor *Supervisor) ReviewUnknown(ctx context.Context, request Unknown
 	}
 	supervisor.mu.Unlock()
 	return err
+}
+
+const unknownReviewStartActor = "operator_start"
+
+// recoverUnknownBeforeStart resolves an unsettled unknown turn immediately
+// before opening a new agent session. It is deliberately reachable from the
+// explicit Start path only; Restore and the read-only UnknownRecovery API do
+// not stop containers or change accounting.
+func (supervisor *Supervisor) recoverUnknownBeforeStart(ctx context.Context, profileID string, expectedVersion int64, actor string, requireFactory bool) error {
+	profile, err := supervisor.store.GetProfile(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	if expectedVersion > 0 && profile.Version != expectedVersion {
+		return ErrProfileChanged
+	}
+	attempt, err := supervisor.store.PendingTokenAttempt(ctx, profileID)
+	if errors.Is(err, airuntime.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if attempt.State != airuntime.TokenAttemptUnknown {
+		// Prepared/dispatched attempts retain the existing idempotent recovery
+		// path in runProfile. Only an already quarantined unknown attempt needs
+		// the explicit review gate before opening a new session.
+		return nil
+	}
+	if profile.Status != airuntime.ProfileStatusPaused && profile.Status != airuntime.ProfileStatusStopped {
+		// An active profile may be a supervisor/process restart boundary. Let
+		// runProfile use its existing transport recovery path; the explicit
+		// paused/stopped start gate applies after an operator-visible pause.
+		return nil
+	}
+	checkpoint, err := supervisor.store.GetCheckpoint(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	var state persistedState
+	if json.Unmarshal(checkpoint.State, &state) != nil || state.PendingAttemptID != attempt.ID {
+		return ErrAttemptRecovery
+	}
+	factory, ok := supervisor.factory.(UnknownReviewFactory)
+	if !ok {
+		// A transport without an inspect/review seam falls back to the
+		// existing RecoveryRunner path in runProfile.
+		if requireFactory {
+			return ErrFactoryUnavailable
+		}
+		return nil
+	}
+	// The reconciler is intentionally optional so local/fake transports can
+	// still use the same review protocol. A production container factory
+	// implements it to drain the old broker/container claim first.
+	if reconciler, ok := supervisor.factory.(UnknownReviewReconciler); ok {
+		if err := reconciler.ReconcileUnknown(ctx, profileID, attempt.ID); err != nil {
+			return err
+		}
+	}
+	execution, err := factory.InspectUnknown(ctx, profileID, attempt.ID)
+	if err != nil {
+		return err
+	}
+	if !execution.ContainerStopped {
+		return ErrAttemptStillRunning
+	}
+	request := UnknownRecoveryRequest{
+		UnknownRecoveryStatus: UnknownRecoveryStatus{
+			ProfileID:         profile.ID,
+			ProfileVersion:    profile.Version,
+			AttemptID:         attempt.ID,
+			AttemptUpdatedAt:  attempt.UpdatedAt,
+			CheckpointVersion: checkpoint.Version,
+			ReservedTokens:    attempt.Charge,
+			Ready:             true,
+			Execution:         execution,
+		},
+		Actor:  actor,
+		Reason: airuntime.UnknownReviewReason,
+	}
+	return supervisor.reviewUnknown(ctx, request)
 }

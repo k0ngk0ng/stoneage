@@ -1,8 +1,16 @@
 {{define "content"}}
-<div class="page-heading"><div><h1>审计日志</h1><p class="muted">最近 100 条管理和登录事件</p></div></div>
-<div class="table-wrap"><table>
-<thead><tr><th>时间</th><th>操作者</th><th>事件</th><th>账号</th><th>来源</th><th>详情</th></tr></thead>
-<tbody>{{range .Events}}<tr><td><time data-local-time="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</time></td><td>{{if .ActorID}}管理员 #{{.ActorID}}{{else}}系统{{end}}</td><td>{{.Event}}</td><td>{{.Username}}</td><td>{{.SourceIP}}</td><td><button class="button audit-detail-button" type="button" data-audit-detail="{{.Detail}}" aria-label="查看 {{.Event}} 详情">查看</button></td></tr>{{else}}<tr><td colspan="6" class="empty">暂无事件</td></tr>{{end}}</tbody>
+<div class="page-heading"><div><h1>审计日志</h1><p class="muted">最近 100 条管理、登录、礼包和 AI 操作记录；表格先显示人类可读摘要，原始数据可按需展开。</p></div></div>
+<div class="table-wrap"><table class="audit-table">
+<thead><tr><th>时间</th><th>事件</th><th>对象</th><th>结果 / 说明</th><th>操作者</th><th>来源</th><th>原始记录</th></tr></thead>
+<tbody>{{range .Events}}<tr>
+  <td><time data-local-time="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</time></td>
+  <td class="audit-cell-wrap"><div class="audit-event-name"><span class="audit-severity audit-severity-{{.Severity}}" aria-hidden="true"></span>{{.EventName}}</div><code class="audit-event-code">{{.Event}}</code></td>
+  <td class="audit-cell-wrap">{{if .Target}}{{.Target}}{{else}}<span class="audit-empty">—</span>{{end}}</td>
+  <td class="audit-cell-wrap"><span class="audit-summary">{{.Summary}}</span></td>
+  <td>{{.Actor}}</td>
+  <td>{{if .SourceIP}}{{.SourceIP}}{{else}}<span class="audit-empty">—</span>{{end}}</td>
+  <td>{{if .HasDetail}}<button class="button audit-detail-button" type="button" data-audit-detail="{{.Detail}}" aria-label="查看 {{.EventName}} 的原始记录">查看原始记录</button>{{else}}<span class="audit-empty">无</span>{{end}}</td>
+</tr>{{else}}<tr><td colspan="7" class="empty">暂无事件</td></tr>{{end}}</tbody>
 </table></div>
 
 <div class="audit-detail-modal" id="audit-detail-modal" hidden>
