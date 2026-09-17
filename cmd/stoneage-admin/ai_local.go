@@ -36,6 +36,20 @@ func (w *aiRuntimeWiring) CreateCommand(ctx context.Context, profileID, baseURL 
 }
 
 func quoteLocalCommandArg(arg string) string {
+	if arg != "" {
+		safe := true
+		for i := 0; i < len(arg); i++ {
+			c := arg[i]
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') || strings.ContainsRune("-._/:@+%=,", rune(c))) {
+				safe = false
+				break
+			}
+		}
+		if safe {
+			return arg
+		}
+	}
 	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
 }
 

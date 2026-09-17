@@ -7,8 +7,7 @@
   </div>
   {{if .AIError}}<div class="alert error">{{.AIError}}</div>{{end}}
   <section class="card ai-runtime-note">
-    <div class="card-heading"><div><h2>在线状态</h2><p class="muted">配置状态和运行状态分开显示，避免把一个已保存的 profile 当成在线角色。</p></div><span class="status-pill stopped">{{if .AIRuntimeConfigured}}由 runtime 报告{{else}}stopped{{end}}</span></div>
-    <p class="hint">当前管理端固定显示 approval_policy=never、sandbox_mode=danger-full-access；游戏操作仍由 server-side skills 和游戏会话权限校验。</p>
+    <div class="card-heading"><div><h2>在线状态</h2><p class="muted">配置状态和运行状态分开显示，避免把一个已保存的 profile 当成在线角色。</p></div><span class="status-pill stopped">{{if .AIRuntimeConfigured}}状态可用{{else}}未连接{{end}}</span></div>
     {{if not .AIProvisioningConfigured}}<p class="hint">创建游戏 AI 角色需要完整的服务端 runtime 和游戏连接配置；当前创建服务不可用。</p>{{end}}
   </section>
 

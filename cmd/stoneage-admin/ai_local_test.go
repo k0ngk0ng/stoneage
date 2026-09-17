@@ -19,7 +19,7 @@ func TestLocalCommandUsesPublishedIsolatedWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, part := range []string{"'docker' 'run'", "'--read-only'", "'--cap-drop' 'ALL'", "'--entrypoint' '/usr/local/bin/stoneage-ai-worker'", "'--profile' 'player-1'", "'--endpoint' 'https://game.example/api/ai/worker'", "'--start'", w.runtimeImage} {
+	for _, part := range []string{"docker run", "--read-only", "--cap-drop ALL", "--entrypoint /usr/local/bin/stoneage-ai-worker", "--profile player-1", "--endpoint https://game.example/api/ai/worker", "--start", w.runtimeImage} {
 		if !strings.Contains(result.Command, part) {
 			t.Fatalf("command missing %q", part)
 		}
@@ -36,7 +36,20 @@ func TestLocalCommandUsesPublishedIsolatedWorker(t *testing.T) {
 }
 
 func TestLocalCommandQuotesShellMetacharacters(t *testing.T) {
-	if got := quoteLocalCommandArg("a'$(echo no)"); got != "'a'\"'\"'$(echo no)'" {
-		t.Fatalf("unexpected quoting %q", got)
+	tests := map[string]string{
+		"docker":                    "docker",
+		"--profile":                 "--profile",
+		"https://game.example/path": "https://game.example/path",
+		"":                          "''",
+		"a'$(echo no)":              "'a'\"'\"'$(echo no)'",
+		"--name; echo PWNED":        "'--name; echo PWNED'",
+		"line1\nline2":              "'line1\nline2'",
+		`$(touch /tmp/pwned)`:       "'$(touch /tmp/pwned)'",
+		`a\\b\"c`:                   `'a\\b\"c'`,
+	}
+	for input, want := range tests {
+		if got := quoteLocalCommandArg(input); got != want {
+			t.Errorf("quoteLocalCommandArg(%q) = %q, want %q", input, got, want)
+		}
 	}
 }
