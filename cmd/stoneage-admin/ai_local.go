@@ -20,7 +20,7 @@ func (w *aiRuntimeWiring) CreateCommand(ctx context.Context, profileID, baseURL 
 	identity := sha256.Sum256([]byte(baseURL + "\x00" + profileID))
 	name := "stoneage-ai-local-" + hex.EncodeToString(identity[:12])
 	args := []string{
-		"docker", "run", "--rm", "--init", "--name", name,
+		"docker", "run", "--rm", "-d", "--init", "--name", name,
 		"--cpus", "1", "--memory", "1g", "--memory-swap", "1g", "--pids-limit", "128",
 		"--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",

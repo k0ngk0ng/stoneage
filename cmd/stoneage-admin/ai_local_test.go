@@ -19,7 +19,7 @@ func TestLocalCommandUsesPublishedIsolatedWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, part := range []string{"docker run", "--read-only", "--cap-drop ALL", "--entrypoint /usr/local/bin/stoneage-ai-worker", "--profile player-1", "--endpoint https://game.example/api/ai/worker", "--start", w.runtimeImage} {
+	for _, part := range []string{"docker run --rm -d", "--read-only", "--cap-drop ALL", "--entrypoint /usr/local/bin/stoneage-ai-worker", "--profile player-1", "--endpoint https://game.example/api/ai/worker", "--start", w.runtimeImage} {
 		if !strings.Contains(result.Command, part) {
 			t.Fatalf("command missing %q", part)
 		}
