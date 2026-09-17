@@ -48,7 +48,8 @@ func newHarness(t *testing.T) remoteHarness {
 }
 
 func TestInviteRotatesConsumedOfflineEnrollment(t *testing.T) {
-	hub, err := New(Config{Docker: &fakeDocker{}, LeaseTimeout: 20 * time.Millisecond})
+	store := NewMemoryStore()
+	hub, err := New(Config{Docker: &fakeDocker{}, Store: store, LeaseTimeout: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +57,8 @@ func TestInviteRotatesConsumedOfflineEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", EnrollmentToken: first.Token}); err != nil {
+	connected, err := hub.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", EnrollmentToken: first.Token})
+	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(40 * time.Millisecond)
@@ -69,6 +71,39 @@ func TestInviteRotatesConsumedOfflineEnrollment(t *testing.T) {
 	}
 	if second.Reconnect {
 		t.Fatal("offline enrollment was returned as reconnect")
+	}
+	reloaded, err := New(Config{Docker: &fakeDocker{}, Store: store, LeaseTimeout: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("reload rotated enrollment: %v", err)
+	}
+	status, err := reloaded.Status(context.Background(), "profile-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.WorkerID != "" || status.Epoch != connected.Epoch+1 {
+		t.Fatalf("rotated status=%+v, want empty worker and epoch %d", status, connected.Epoch+1)
+	}
+	if _, err := reloaded.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-1", ProfileID: "profile-1", SessionToken: connected.SessionToken, Epoch: connected.Epoch}); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("old session reconnect error=%v, want unauthorized", err)
+	}
+	newWorker, err := reloaded.connect(context.Background(), ConnectRequest{ProtocolVersion: ProtocolVersion, WorkerID: "worker-2", ProfileID: "profile-1", EnrollmentToken: second.Token})
+	if err != nil {
+		t.Fatalf("new enrollment connect: %v", err)
+	}
+	if newWorker.Epoch != connected.Epoch+2 {
+		t.Fatalf("new worker epoch=%d, want %d", newWorker.Epoch, connected.Epoch+2)
+	}
+	for _, mixed := range []ProfileRecord{
+		{ProfileID: "profile-1", TokenHash: strings.Repeat("0", 64), WorkerID: "worker-1", Epoch: connected.Epoch + 1},
+		{ProfileID: "profile-1", TokenHash: strings.Repeat("0", 64), SessionHash: strings.Repeat("0", 64), Epoch: connected.Epoch + 1},
+	} {
+		corrupt := NewMemoryStore()
+		if err := corrupt.Save(context.Background(), Snapshot{Profiles: []ProfileRecord{mixed}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(Config{Store: corrupt}); !errors.Is(err, aibroker.ErrInvalidConfig) {
+			t.Fatalf("mixed profile record=%+v error=%v, want invalid config", mixed, err)
+		}
 	}
 }
 

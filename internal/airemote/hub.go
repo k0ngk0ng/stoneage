@@ -218,7 +218,10 @@ func validProfileRecord(record ProfileRecord) bool {
 		return false
 	}
 	if !record.Consumed {
-		return record.WorkerID == "" && record.SessionHash == "" && record.Epoch == 0
+		// Offline enrollment rotation fences the previous worker by advancing
+		// Epoch while clearing its worker/session binding. Keep that fence when
+		// reloading an unconsumed enrollment; only a mixed binding is corrupt.
+		return record.WorkerID == "" && record.SessionHash == ""
 	}
 	return validRemoteID(record.WorkerID) && validHash(record.SessionHash) && record.Epoch > 0
 }
