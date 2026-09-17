@@ -1164,7 +1164,10 @@ func (server *Server) aiProfileDeleteCheck(ctx context.Context, id string, expec
 			return profile.Version, nil
 		}
 		if err != nil {
-			return 0, fmt.Errorf("%w: %v", errAIProfileDeleteStatus, err)
+			// A stopped profile may be deleted even when its remote worker is
+			// offline. The profile fence prevents future dispatch; the unresolved
+			// attempt remains in audit history instead of blocking administration.
+			return profile.Version, nil
 		}
 		if status.ProfileID != "" || status.AttemptID != "" {
 			if !status.Ready || !status.Execution.ContainerStopped {

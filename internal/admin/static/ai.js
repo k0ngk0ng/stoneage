@@ -1017,10 +1017,18 @@
 
     const newButton = document.getElementById("ai-profile-new");
     const listRefreshButton = document.getElementById("ai-profile-refresh");
-    if (listRefreshButton) listRefreshButton.addEventListener("click", function () {
+    async function refreshProfileList() {
+      if (!listRefreshButton || listRefreshButton.disabled) return;
       listRefreshButton.disabled = true;
-      window.location.reload();
-    });
+      try {
+        await api(profileRoot, "/api/ai/profiles", "GET");
+        window.location.reload();
+      } catch (error) {
+        listRefreshButton.disabled = false;
+        message(profileRoot, error.message, true);
+      }
+    }
+    if (listRefreshButton) listRefreshButton.addEventListener("click", refreshProfileList);
     if (newButton && canWrite) newButton.addEventListener("click", function () { reset(); edit({}); });
     const cancel = document.getElementById("ai-profile-cancel");
     if (cancel) cancel.addEventListener("click", reset);
@@ -1440,7 +1448,11 @@
           button.disabled = false;
           button.title = "删除 AI 玩家";
         } catch (_) {
-          disableDelete("无法确认旧执行状态，暂不能删除");
+          // A stopped player can be removed even if its disconnected worker
+          // leaves an unresolved attempt; the server fences that profile and
+          // keeps the attempt in audit history.
+          button.disabled = false;
+          button.title = "删除 AI 玩家（保留未知执行审计记录）";
         }
       }
       button.addEventListener("click", async function () {

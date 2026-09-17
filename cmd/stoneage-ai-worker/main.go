@@ -586,18 +586,30 @@ func (w *worker) executeRun(parent context.Context, command airemote.Command) {
 	// before any network result is posted. Stop can therefore observe a
 	// consistent state and never wait on the result HTTP request.
 	finishProcess()
-	_ = w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: state, ExitCode: exitCode, Stdout: raw})
+	if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: state, ExitCode: exitCode, Stdout: raw}); err != nil && errorCode == "" {
+		errorCode = "result_post_failed"
+	}
 }
 func (w *worker) executeStop(parent context.Context, command airemote.Command) {
+	started := w.logTaskStarted(airemote.KindStop, command)
+	status, errorCode := "unknown", ""
+	defer func() { w.logTaskCompleted(airemote.KindStop, command, started, status, errorCode) }()
+	w.logf("event=stop_requested kind=%s profile=%s request_id=%s", workerLogID(command.Kind), workerLogID(command.ProfileID), workerLogID(command.RequestID))
 	w.mu.Lock()
 	process := w.processes[command.ContainerName]
 	w.mu.Unlock()
 	if process == nil {
 		if record, ok := w.jobs.get(command.ContainerName); ok && record.State == "running" {
-			_ = w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: "unknown", Error: "process_unavailable"})
+			status, errorCode = "unknown", "process_unavailable"
+			if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: status, Error: errorCode}); err != nil && errorCode == "" {
+				errorCode = "result_post_failed"
+			}
 			return
 		}
-		_ = w.postResult(parent, command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: "stopped"})
+		status = "stopped"
+		if err := w.postResult(parent, command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: status}); err != nil && errorCode == "" {
+			errorCode = "result_post_failed"
+		}
 		return
 	}
 	process.cancel()
@@ -605,12 +617,21 @@ func (w *worker) executeStop(parent context.Context, command airemote.Command) {
 	defer cancel()
 	select {
 	case <-process.done:
-		_ = w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: "stopped"})
+		status = "stopped"
+		if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: status}); err != nil && errorCode == "" {
+			errorCode = "result_post_failed"
+		}
 	case <-waitCtx.Done():
-		_ = w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: "unknown", Error: "stop_timeout"})
+		status, errorCode = "unknown", "stop_timeout"
+		if err := w.postResult(context.Background(), command, airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash, State: status, Error: errorCode}); err != nil && errorCode == "" {
+			errorCode = "result_post_failed"
+		}
 	}
 }
 func (w *worker) executeLifecycle(parent context.Context, command airemote.Command) {
+	started := w.logTaskStarted(command.Kind, command)
+	status, errorCode := "unknown", ""
+	defer func() { w.logTaskCompleted(command.Kind, command, started, status, errorCode) }()
 	record, ok := w.jobs.get(command.ContainerName)
 	result := airemote.ResultRequest{RequestID: command.RequestID, PayloadHash: command.PayloadHash}
 	if !ok {
@@ -641,14 +662,22 @@ func (w *worker) executeLifecycle(parent context.Context, command airemote.Comma
 			}
 		}
 	}
-	_ = w.postResult(parent, command, result)
+	status, errorCode = result.State, result.Error
+	if err := w.postResult(parent, command, result); err != nil && errorCode == "" {
+		errorCode = "result_post_failed"
+	}
 }
 
 func (w *worker) executeRemoveVolume(parent context.Context, command airemote.Command) {
+	started := w.logTaskStarted(airemote.KindRemoveVol, command)
+	status, errorCode := "removed", ""
+	defer func() { w.logTaskCompleted(airemote.KindRemoveVol, command, started, status, errorCode) }()
 	// The named volume belongs to the local operator and is intentionally
 	// retained across reconnects; acknowledge the server-side cleanup command
 	// without attempting to access Docker from inside this worker container.
-	_ = w.postResult(parent, command, airemote.ResultRequest{State: "removed"})
+	if err := w.postResult(parent, command, airemote.ResultRequest{State: status}); err != nil {
+		errorCode = "result_post_failed"
+	}
 }
 
 func (w *worker) postResult(ctx context.Context, command airemote.Command, result airemote.ResultRequest) error {
