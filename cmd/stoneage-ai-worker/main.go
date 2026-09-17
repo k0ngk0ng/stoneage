@@ -47,6 +47,8 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,62}$`)
 
 var ErrRunningJob = errors.New("worker: unresolved previous runner process")
 var ErrJobConflict = errors.New("worker: job already exists")
+var ErrWorkerLocked = errors.New("worker already running")
+var ErrWorkerLockUnavailable = errors.New("worker lock unavailable on this platform")
 
 func workerLogID(value string) string {
 	if value == "" || len(value) > 128 || !idPattern.MatchString(value) {
@@ -70,9 +72,43 @@ func workerErrorClass(err error) string {
 		return "unauthorized"
 	case errors.Is(err, airemote.ErrProtocol):
 		return "protocol_error"
+	case errors.Is(err, ErrWorkerLocked):
+		return "worker_locked"
+	case errors.Is(err, ErrWorkerLockUnavailable):
+		return "worker_lock_unavailable"
 	default:
 		return "operation_failed"
 	}
+}
+
+func workerInitErrorClass(stage string, err error) string {
+	switch stage {
+	case "options":
+		return "invalid_options"
+	case "state_root":
+		return "state_root_failed"
+	case "lock":
+		switch {
+		case errors.Is(err, ErrWorkerLocked):
+			return "worker_locked"
+		case errors.Is(err, ErrWorkerLockUnavailable):
+			return "worker_lock_unavailable"
+		}
+		return "lock_failed"
+	case "journal":
+		return "journal_failed"
+	case "worker_state", "worker_id", "session_token":
+		return "state_init_failed"
+	default:
+		return workerErrorClass(err)
+	}
+}
+
+func logWorkerInitFailure(logger *log.Logger, profile, stage string, err error) error {
+	if logger != nil {
+		logger.Printf("event=worker_exit profile=%s status=error stage=%s error=%s", workerLogID(profile), workerLogID(stage), workerInitErrorClass(stage, err))
+	}
+	return err
 }
 
 type options struct {
@@ -127,27 +163,30 @@ func main() {
 }
 
 func run(ctx context.Context, args []string) error {
+	logger := log.New(os.Stdout, "stoneage-ai-worker ", log.LstdFlags|log.LUTC)
 	opts, err := parseOptions(args, os.Getenv)
 	if err != nil {
-		return err
+		logger.Printf("event=worker_start profile=redacted status=error stage=options error=invalid_options")
+		return logWorkerInitFailure(logger, "", "options", err)
 	}
+	logger.Printf("event=worker_start profile=%s poll_seconds=%d", workerLogID(opts.profile), opts.pollSeconds)
 	if err := ensurePrivateStateRoot(opts.stateRoot); err != nil {
-		return err
+		return logWorkerInitFailure(logger, opts.profile, "state_root", err)
 	}
 	lock, err := acquireWorkerLock(opts.stateRoot)
 	if err != nil {
-		return err
+		return logWorkerInitFailure(logger, opts.profile, "lock", err)
 	}
 	defer lock()
 	namespace := processNamespaceID()
 	store, err := openJobStore(opts.stateRoot, opts.runner, namespace)
 	if err != nil {
-		return err
+		return logWorkerInitFailure(logger, opts.profile, "journal", err)
 	}
 	statePath := filepath.Join(opts.stateRoot, "worker", "worker.json")
 	state, err := readWorkerState(statePath)
 	if err != nil {
-		return err
+		return logWorkerInitFailure(logger, opts.profile, "worker_state", err)
 	}
 	stateChanged := false
 	if state.WorkerID == "" {
@@ -155,13 +194,13 @@ func run(ctx context.Context, args []string) error {
 		if state.WorkerID == "" {
 			state.WorkerID, err = randomWorkerID()
 			if err != nil {
-				return err
+				return logWorkerInitFailure(logger, opts.profile, "worker_id", err)
 			}
 		}
 		stateChanged = true
 	}
 	if state.ProfileID != "" && state.ProfileID != opts.profile {
-		return errors.New("worker profile does not match its persisted state")
+		return logWorkerInitFailure(logger, opts.profile, "worker_state", errors.New("worker profile does not match its persisted state"))
 	}
 	if state.ProfileID == "" {
 		state.ProfileID = opts.profile
@@ -173,19 +212,18 @@ func run(ctx context.Context, args []string) error {
 	if state.Epoch == 0 && state.SessionToken == "" && opts.enrollment != "" {
 		state.SessionToken, err = randomSessionToken()
 		if err != nil {
-			return err
+			return logWorkerInitFailure(logger, opts.profile, "session_token", err)
 		}
 		stateChanged = true
 	}
 	if stateChanged {
 		if err := writeWorkerState(statePath, state); err != nil {
-			return err
+			return logWorkerInitFailure(logger, opts.profile, "worker_state", err)
 		}
 	}
 	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	worker := &worker{opts: opts, client: client, statePath: statePath, state: state, jobs: store, processes: make(map[string]*processState), namespace: namespace, executeTurn: executeTurn}
-	worker.logger = log.New(os.Stdout, "stoneage-ai-worker ", log.LstdFlags|log.LUTC)
-	worker.logf("event=worker_start profile=%s worker_id=%s poll_seconds=%d", workerLogID(opts.profile), workerLogID(state.WorkerID), opts.pollSeconds)
+	worker := &worker{opts: opts, client: client, logger: logger, statePath: statePath, state: state, jobs: store, processes: make(map[string]*processState), namespace: namespace, executeTurn: executeTurn}
+	worker.logf("event=worker_ready profile=%s worker_id=%s epoch=%d", workerLogID(opts.profile), workerLogID(state.WorkerID), state.Epoch)
 	err = worker.loop(ctx)
 	if err != nil {
 		worker.logf("event=worker_exit profile=%s status=error error=%s", workerLogID(opts.profile), workerErrorClass(err))
@@ -288,6 +326,17 @@ func (w *worker) loop(ctx context.Context) error {
 		request.SessionToken, request.Epoch = w.state.SessionToken, w.state.Epoch
 	}
 	response, err := w.connectWithRetry(ctx, request)
+	if errors.Is(err, airemote.ErrUnauthorized) && request.EnrollmentToken == "" && w.opts.enrollment != "" {
+		// A command generated after an offline Hub rotation carries a fresh
+		// enrollment token, while this volume still has the old session. Keep
+		// normal session reconnect as the first choice so rerunning the same
+		// command remains safe; only an unauthorized session may fall back to
+		// a newly persisted pending enrollment session.
+		request, err = w.prepareEnrollmentRequest()
+		if err == nil {
+			response, err = w.connectWithRetry(ctx, request)
+		}
+	}
 	if err != nil {
 		w.logf("event=connection_failed profile=%s error=%s", workerLogID(w.opts.profile), workerErrorClass(err))
 		return err
@@ -335,6 +384,25 @@ func (w *worker) loop(ctx context.Context) error {
 			w.dispatch(ctx, *poll.Command)
 		}
 	}
+}
+
+func (w *worker) prepareEnrollmentRequest() (airemote.ConnectRequest, error) {
+	sessionToken, err := randomSessionToken()
+	if err != nil {
+		return airemote.ConnectRequest{}, err
+	}
+	w.state.SessionToken, w.state.Epoch = sessionToken, 0
+	if err := writeWorkerState(w.statePath, w.state); err != nil {
+		return airemote.ConnectRequest{}, err
+	}
+	return airemote.ConnectRequest{
+		ProtocolVersion: airemote.ProtocolVersion,
+		WorkerID:        w.state.WorkerID,
+		ProfileID:       w.opts.profile,
+		EnrollmentToken: w.opts.enrollment,
+		SessionToken:    sessionToken,
+		Start:           w.opts.start,
+	}, nil
 }
 
 type processState struct {
@@ -811,36 +879,6 @@ func processNamespaceID() string {
 	return link + ":" + string(stat)
 }
 
-func acquireWorkerLock(root string) (func(), error) {
-	path := filepath.Join(root, "worker", "worker.lock")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	for attempt := 0; attempt < 2; attempt++ {
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		if err == nil {
-			_, _ = fmt.Fprintf(file, "%d\n", os.Getpid())
-			_ = file.Close()
-			return func() { _ = os.Remove(path) }, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		raw, readErr := os.ReadFile(path)
-		if readErr == nil {
-			var pid int
-			_, _ = fmt.Sscanf(strings.TrimSpace(string(raw)), "%d", &pid)
-			if pid > 0 && processAlive(pid) {
-				return nil, errors.New("worker already running")
-			}
-		}
-		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			return nil, removeErr
-		}
-	}
-	return nil, errors.New("worker lock contention")
-}
-
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -1027,6 +1065,12 @@ func stableError(err error) string {
 	}
 	if errors.Is(err, airemote.ErrProtocol) {
 		return "invalid_protocol"
+	}
+	if errors.Is(err, ErrWorkerLocked) {
+		return "worker_locked"
+	}
+	if errors.Is(err, ErrWorkerLockUnavailable) {
+		return "worker_lock_unavailable"
 	}
 	return "worker_failed"
 }

@@ -64,6 +64,37 @@ async function main() {
     const profile = 'image-smoke';
     const env = process.env;
     const runner = env.STONEAGE_AI_RUNNER_BINARY || '/usr/local/bin/stoneage-ai-runner';
+    // An old container can leave a lock containing a PID reused by its
+    // replacement. Exercise the packaged worker, not just the runner.
+    const workerState = fs.mkdtempSync(path.join(root, 'worker-state-'));
+    fs.mkdirSync(path.join(workerState, 'worker'));
+    fs.writeFileSync(path.join(workerState, 'worker', 'worker.lock'), `${process.pid}\n`, {mode: 0o600});
+    let workerConnected = false;
+    const workerServer = http.createServer((req, res) => {
+      workerConnected = req.url === '/api/ai/worker/connect';
+      req.resume();
+      res.writeHead(401, {'Content-Type': 'application/json'}).end('{}');
+    });
+    await new Promise(resolve => workerServer.listen(0, '127.0.0.1', resolve));
+    try {
+      const output = await new Promise((resolve, reject) => {
+        const child = spawn(env.STONEAGE_AI_WORKER_BINARY || '/usr/local/bin/stoneage-ai-worker', [
+          '--state-root', workerState, '--profile', 'image-worker-smoke',
+          '--endpoint', `http://127.0.0.1:${workerServer.address().port}/api/ai/worker`,
+        ], {stdio: ['ignore', 'pipe', 'pipe']});
+        let logs = '';
+        const timeout = setTimeout(() => child.kill('SIGKILL'), 15000);
+        child.stdout.on('data', chunk => { logs += chunk; });
+        child.stderr.on('data', chunk => { logs += chunk; });
+        child.once('error', err => { clearTimeout(timeout); reject(err); });
+        child.once('close', code => { clearTimeout(timeout); resolve({code, logs}); });
+      });
+      assert(workerConnected, `worker did not reach connect with stale PID lock: ${output.logs}`);
+      assert.equal(output.code, 1);
+      assert.match(output.logs, /unauthorized/);
+    } finally {
+      await new Promise(resolve => workerServer.close(resolve));
+    }
     if (!env.STONEAGE_AI_RUNNER_BINARY) {
       // Local harnesses explicitly select their runner. The image build uses
       // the fixed production paths and must detect ENV contract drift.

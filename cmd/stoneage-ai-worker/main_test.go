@@ -231,6 +231,169 @@ func TestWorkerEnrollmentRetriesLostResponseWithPersistedSession(t *testing.T) {
 	}
 }
 
+func TestWorkerReusesPersistedSessionBeforeEnrollment(t *testing.T) {
+	stateRoot := t.TempDir()
+	var hub *airemote.Hub
+	var connectCount atomic.Int32
+	var pollCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hub == nil {
+			http.Error(w, "hub is not ready", http.StatusServiceUnavailable)
+			return
+		}
+		if r.URL.Path == "/api/ai/worker/poll" {
+			pollCount.Add(1)
+		}
+		hub.Handler().ServeHTTP(w, r)
+		if r.URL.Path == "/api/ai/worker/connect" {
+			connectCount.Add(1)
+		}
+	}))
+	defer server.Close()
+	hub, err := airemote.New(airemote.Config{Store: airemote.NewMemoryStore(), PublicBaseURL: server.URL, LeaseTimeout: 3 * time.Second, CommandTimeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invite, err := hub.Invite(context.Background(), "profile-1", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	startWorker := func() (<-chan error, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(context.Background())
+		workerErr := make(chan error, 1)
+		go func() {
+			workerErr <- run(ctx, []string{"--endpoint", invite.Endpoint, "--profile", "profile-1", "--enrollment-token", invite.Token, "--state-root", stateRoot, "--poll-seconds", "1"})
+		}()
+		return workerErr, cancel
+	}
+	workerErr, cancelWorker := startWorker()
+	waitUntil(t, 3*time.Second, func() bool {
+		status, _ := hub.Status(context.Background(), "profile-1")
+		return status.Online && pollCount.Load() >= 1
+	})
+	cancelWorker()
+	select {
+	case err := <-workerErr:
+		if err != nil {
+			t.Fatalf("first worker stop error=%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("first worker did not stop")
+	}
+
+	// Reusing the same command is expected to send only the persisted session.
+	// The consumed enrollment token must not be attempted again, because Hub
+	// treats it as unauthorized after the first successful enrollment.
+	workerErr, cancelWorker = startWorker()
+	waitUntil(t, 3*time.Second, func() bool {
+		status, _ := hub.Status(context.Background(), "profile-1")
+		return status.Online && connectCount.Load() >= 2 && pollCount.Load() >= 2
+	})
+	cancelWorker()
+	select {
+	case err := <-workerErr:
+		if err != nil {
+			t.Fatalf("second worker stop error=%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("second worker did not stop")
+	}
+}
+
+func TestWorkerFallsBackToRotatedEnrollmentAfterOldSessionUnauthorized(t *testing.T) {
+	stateRoot := t.TempDir()
+	var hub *airemote.Hub
+	var pollCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hub == nil {
+			http.Error(w, "hub is not ready", http.StatusServiceUnavailable)
+			return
+		}
+		if r.URL.Path == "/api/ai/worker/poll" {
+			pollCount.Add(1)
+		}
+		hub.Handler().ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	hub, err := airemote.New(airemote.Config{Store: airemote.NewMemoryStore(), PublicBaseURL: server.URL, LeaseTimeout: 50 * time.Millisecond, CommandTimeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstInvite, err := hub.Invite(context.Background(), "profile-1", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startWorker := func(invite airemote.Invitation) (<-chan error, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(context.Background())
+		workerErr := make(chan error, 1)
+		go func() {
+			workerErr <- run(ctx, []string{"--endpoint", invite.Endpoint, "--profile", "profile-1", "--enrollment-token", invite.Token, "--state-root", stateRoot, "--poll-seconds", "1"})
+		}()
+		return workerErr, cancel
+	}
+	workerErr, cancelWorker := startWorker(firstInvite)
+	waitUntil(t, 3*time.Second, func() bool {
+		status, _ := hub.Status(context.Background(), "profile-1")
+		return status.Online && pollCount.Load() >= 1
+	})
+	statePath := filepath.Join(stateRoot, "worker", "worker.json")
+	readState := func() workerState {
+		raw, readErr := os.ReadFile(statePath)
+		if readErr != nil {
+			t.Fatalf("read worker state: %v", readErr)
+		}
+		var state workerState
+		if err := json.Unmarshal(raw, &state); err != nil {
+			t.Fatalf("decode worker state: %v", err)
+		}
+		return state
+	}
+	oldState := readState()
+	cancelWorker()
+	select {
+	case err := <-workerErr:
+		if err != nil {
+			t.Fatalf("first worker stop error=%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("first worker did not stop")
+	}
+	waitUntil(t, 3*time.Second, func() bool {
+		status, _ := hub.Status(context.Background(), "profile-1")
+		return !status.Online
+	})
+
+	rotatedInvite, err := hub.Invite(context.Background(), "profile-1", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotatedInvite.Token == "" || rotatedInvite.Token == firstInvite.Token {
+		t.Fatal("Hub did not rotate the offline enrollment token")
+	}
+	workerErr, cancelWorker = startWorker(rotatedInvite)
+	waitUntil(t, 3*time.Second, func() bool {
+		status, _ := hub.Status(context.Background(), "profile-1")
+		return status.Online && pollCount.Load() >= 2
+	})
+	newState := readState()
+	if newState.SessionToken == oldState.SessionToken {
+		t.Fatal("worker reused unauthorized session token after enrollment rotation")
+	}
+	if newState.Epoch == 0 {
+		t.Fatal("worker did not persist the re-enrolled session epoch")
+	}
+	cancelWorker()
+	select {
+	case err := <-workerErr:
+		if err != nil {
+			t.Fatalf("second worker stop error=%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("second worker did not stop")
+	}
+}
+
 func TestExecuteRunReleasesProcessBeforeResultPost(t *testing.T) {
 	stateRoot := t.TempDir()
 	jobs, err := openJobStore(stateRoot, filepath.Join(stateRoot, "runner"), "test-namespace")
