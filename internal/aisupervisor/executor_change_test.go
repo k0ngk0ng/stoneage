@@ -5,11 +5,33 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 )
+
+type executorChangePreparerFactory struct {
+	*fakeFactory
+	mu    sync.Mutex
+	calls int
+	err   error
+}
+
+func (factory *executorChangePreparerFactory) PrepareExecutorChange(context.Context, string) error {
+	factory.mu.Lock()
+	factory.calls++
+	err := factory.err
+	factory.mu.Unlock()
+	return err
+}
+
+func (factory *executorChangePreparerFactory) prepareCalls() int {
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	return factory.calls
+}
 
 func TestPrepareExecutorChangeResetsExecutorStateAndPreservesDurableIntent(t *testing.T) {
 	ctx := context.Background()
@@ -74,7 +96,7 @@ func TestPrepareExecutorChangeResetsExecutorStateAndPreservesDurableIntent(t *te
 	}
 
 	session := &fakeSession{runner: &fakeRunner{}, snapshot: Snapshot{GameReady: true}}
-	factory := &fakeFactory{sessions: map[string]*fakeSession{profile.ID: session}}
+	factory := &executorChangePreparerFactory{fakeFactory: &fakeFactory{sessions: map[string]*fakeSession{profile.ID: session}}}
 	supervisor, err := New(ctx, store, factory, supervisorTestConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +112,9 @@ func TestPrepareExecutorChangeResetsExecutorStateAndPreservesDurableIntent(t *te
 	}
 	if factory.openCount() != 0 {
 		t.Fatalf("executor migration opened %d game sessions", factory.openCount())
+	}
+	if factory.prepareCalls() != 1 {
+		t.Fatalf("executor migration factory prepare calls=%d, want 1", factory.prepareCalls())
 	}
 
 	updated, err := store.GetProfile(ctx, profile.ID)

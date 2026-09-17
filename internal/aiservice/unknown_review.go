@@ -91,6 +91,9 @@ func (runner *ContainerRunner) inspectUnknown(ctx context.Context, attemptID str
 	if err != nil {
 		return aisupervisor.UnknownExecution{}, err
 	}
+	if execution, ok, err := runner.inspectUndispatched(ctx, attemptID, checkpoint, exists); ok || err != nil {
+		return execution, err
+	}
 	if !exists || checkpoint.CallerRequestID != attemptID || (checkpoint.State != containerRunUnknown && checkpoint.State != containerRunPending) {
 		return aisupervisor.UnknownExecution{}, ErrContainerRunnerRecovery
 	}
@@ -110,10 +113,6 @@ func (runner *ContainerRunner) inspectUnknown(ctx context.Context, attemptID str
 }
 
 func (runner *ContainerRunner) reconcileUnknown(ctx context.Context, attemptID string) error {
-	reconciler, ok := runner.broker.(containerUnknownReconciler)
-	if !ok {
-		return ErrContainerRunnerConfig
-	}
 	release, err := acquireContainerRunnerLock(ctx, runner.lockPath)
 	if err != nil {
 		return err
@@ -123,8 +122,15 @@ func (runner *ContainerRunner) reconcileUnknown(ctx context.Context, attemptID s
 	if err != nil {
 		return err
 	}
+	if _, ok, err := runner.inspectUndispatched(ctx, attemptID, checkpoint, exists); ok || err != nil {
+		return err
+	}
 	if !exists || checkpoint.CallerRequestID != attemptID || (checkpoint.State != containerRunPending && checkpoint.State != containerRunUnknown) {
 		return ErrContainerRunnerRecovery
+	}
+	reconciler, ok := runner.broker.(containerUnknownReconciler)
+	if !ok {
+		return ErrContainerRunnerConfig
 	}
 	if err := reconciler.ReconcileUnknown(ctx, runner.profileID, checkpoint.RequestID); err != nil {
 		if errors.Is(err, aibroker.ErrRunRunning) {
@@ -136,10 +142,6 @@ func (runner *ContainerRunner) reconcileUnknown(ctx context.Context, attemptID s
 }
 
 func (runner *ContainerRunner) reviewUnknown(ctx context.Context, attemptID string, expected aisupervisor.UnknownExecution, actor, reason string) error {
-	reviewer, ok := runner.broker.(containerUnknownReviewer)
-	if !ok {
-		return ErrContainerRunnerConfig
-	}
 	release, err := acquireContainerRunnerLock(ctx, runner.lockPath)
 	if err != nil {
 		return err
@@ -148,6 +150,26 @@ func (runner *ContainerRunner) reviewUnknown(ctx context.Context, attemptID stri
 	checkpoint, exists, err := runner.loadCheckpoint()
 	if err != nil {
 		return err
+	}
+	if expected.State == "not_dispatched" && expected.RequestID == attemptID {
+		if _, safe, err := runner.inspectUndispatched(ctx, attemptID, checkpoint, exists); err != nil {
+			return err
+		} else if !safe {
+			return ErrContainerRunnerRecovery
+		}
+		// The broker durably records every dispatch first. Its confirmed
+		// absence plus an absent/older completed checkpoint proves this turn
+		// never reached a runtime. Preserve the reviewed runtime namespace
+		// and mark only the conversation boundary fresh. A retry is safe.
+		if exists {
+			checkpoint.ExecutorReset = true
+			return runner.saveCheckpoint(checkpoint)
+		}
+		return nil
+	}
+	reviewer, ok := runner.broker.(containerUnknownReviewer)
+	if !ok {
+		return ErrContainerRunnerConfig
 	}
 	if !exists || checkpoint.CallerRequestID != attemptID || checkpoint.RequestID != expected.RequestID || expected.State != string(aibroker.RunUnknown) || (checkpoint.State != containerRunPending && checkpoint.State != containerRunUnknown) {
 		return ErrContainerRunnerRecovery
@@ -162,4 +184,24 @@ func (runner *ContainerRunner) reviewUnknown(ctx context.Context, attemptID stri
 	checkpoint.State = containerRunUnknown
 	checkpoint.Reviewed = true
 	return runner.saveCheckpoint(checkpoint)
+}
+
+// inspectUndispatched runs with the profile checkpoint lock held. A lookup
+// failure is never interpreted as absence, and pending/unknown checkpoints
+// always retain the normal reconciliation path.
+func (runner *ContainerRunner) inspectUndispatched(ctx context.Context, attemptID string, checkpoint containerRunCheckpoint, exists bool) (aisupervisor.UnknownExecution, bool, error) {
+	if !containerRunnerRequestIDPattern.MatchString(attemptID) {
+		return aisupervisor.UnknownExecution{}, false, ErrContainerRunnerRecovery
+	}
+	if exists && (checkpoint.State != containerRunCompleted || checkpoint.CallerRequestID == attemptID || checkpoint.RequestID == attemptID) {
+		return aisupervisor.UnknownExecution{}, false, nil
+	}
+	_, err := runner.broker.Lookup(ctx, runner.profileID, attemptID)
+	if errors.Is(err, aibroker.ErrJournalNotFound) {
+		return aisupervisor.UnknownExecution{RequestID: attemptID, State: "not_dispatched", UpdatedAt: checkpoint.UpdatedAt, ContainerStopped: true}, true, nil
+	}
+	if err != nil {
+		return aisupervisor.UnknownExecution{}, false, err
+	}
+	return aisupervisor.UnknownExecution{}, false, ErrContainerRunnerRecovery
 }

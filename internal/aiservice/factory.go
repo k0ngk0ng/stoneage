@@ -453,6 +453,34 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 // one kind of runtime factory in the process.
 func NewCodexFactory(config FactoryConfig) (*Factory, error) { return NewFactory(config) }
 
+// PrepareExecutorChange fences the container transport journal during an
+// executor migration. The supervisor already owns the lifecycle fence; the
+// factory keeps its own active-session guard so this method cannot mark a
+// checkpoint while a profile session is being provisioned or used. Local
+// Codex factories have no container journal and therefore treat the hook as a
+// no-op.
+func (factory *Factory) PrepareExecutorChange(ctx context.Context, profileID string) error {
+	if factory == nil {
+		return ErrFactoryConfig
+	}
+	profileID = strings.TrimSpace(profileID)
+	if !factoryProfileIDPattern.MatchString(profileID) {
+		return ErrFactoryConfig
+	}
+	if factory.cfg.ContainerBroker == nil {
+		return nil
+	}
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	if factory.closed {
+		return aisupervisor.ErrClosed
+	}
+	if factory.active[profileID] != nil {
+		return ErrFactoryBusy
+	}
+	return resetContainerRunnerForExecutorChange(ctx, profileID, filepath.Join(factory.cfg.StateRoot, profileID))
+}
+
 func normalizeFactoryConfig(config FactoryConfig) (FactoryConfig, error) {
 	config.GatewayEndpoint = strings.TrimSpace(config.GatewayEndpoint)
 	config.RuntimeRoot = strings.TrimSpace(config.RuntimeRoot)

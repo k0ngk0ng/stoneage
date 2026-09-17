@@ -12,6 +12,16 @@ const executorChangeActor = "executor_change"
 
 var ErrExecutorChangeActive = errors.New("aisupervisor: executor change requires a paused or stopped profile")
 
+// ExecutorChangePreparer is an optional factory hook for executor-specific
+// state that is not owned by the supervisor checkpoint. The supervisor calls
+// it while the executor-change fence is held and before committing the fresh
+// supervisor checkpoint, so a failed preparation leaves the old supervisor
+// identity intact. Implementations must be idempotent and must preserve any
+// pending or unknown provider execution.
+type ExecutorChangePreparer interface {
+	PrepareExecutorChange(context.Context, string) error
+}
+
 // PrepareExecutorChange fences a profile before its model executor is moved
 // to another runtime. It is an explicit migration operation: it never opens a
 // session, never starts a model turn, and never runs during Restore. Unknown
@@ -126,6 +136,11 @@ func (supervisor *Supervisor) prepareExecutorChange(ctx context.Context, profile
 	}
 	if err := supervisor.ensureExecutorChangeLive(profileID, call); err != nil {
 		return 0, err
+	}
+	if preparer, ok := supervisor.factory.(ExecutorChangePreparer); ok {
+		if err := preparer.PrepareExecutorChange(changeCtx, profile.ID); err != nil {
+			return 0, err
+		}
 	}
 	next := persistedState{
 		Activity:       previous.Activity,

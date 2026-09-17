@@ -161,6 +161,168 @@ func TestContainerRunnerPersistsIDBeforeRunAndReusesCompletedOutcome(t *testing.
 	}
 }
 
+func TestFactoryPrepareExecutorChangeMarksCompletedAndAllowsFreshRun(t *testing.T) {
+	broker := &containerRunnerFakeBroker{}
+	root := t.TempDir()
+	stateRoot := filepath.Join(root, "container-profile")
+	runner, err := NewContainerRunner(ContainerRunnerConfig{
+		ProfileID: "container-profile", StateRoot: stateRoot, Broker: broker,
+		RequestTemplate: airunner.ExecuteRequest{
+			Model: airunner.Model{Provider: "deepseek", BaseURL: "https://api.deepseek.com/", Model: "deepseek-flash", APIKey: "container-model-secret"},
+			MCP:   airunner.MCP{Endpoint: "http://gateway:9080/v1/game", Token: strings.Repeat("z", 43)},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Run(context.Background(), containerCallerIntentRequest("old-attempt", "old", false, "")); err != nil {
+		t.Fatal(err)
+	}
+	completedData, err := os.ReadFile(runner.CheckpointPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var completed containerRunCheckpoint
+	if err := json.Unmarshal(completedData, &completed); err != nil {
+		t.Fatal(err)
+	}
+	completed.ReviewedRequestID = "reviewed-old"
+	if err := runner.saveCheckpoint(completed); err != nil {
+		t.Fatal(err)
+	}
+	factory := &Factory{cfg: FactoryConfig{StateRoot: root, ContainerBroker: broker}, active: make(map[string]*factoryLease)}
+	if err := factory.PrepareExecutorChange(context.Background(), runner.profileID); err != nil {
+		t.Fatalf("prepare executor change: %v", err)
+	}
+	data, err := os.ReadFile(runner.CheckpointPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reset containerRunCheckpoint
+	if err := json.Unmarshal(data, &reset); err != nil {
+		t.Fatal(err)
+	}
+	if !reset.ExecutorReset || reset.State != containerRunCompleted || reset.ReviewedRequestID != "reviewed-old" {
+		t.Fatalf("completed checkpoint reset marker=%+v", reset)
+	}
+
+	fresh, err := NewContainerRunner(ContainerRunnerConfig{
+		ProfileID: runner.profileID, StateRoot: stateRoot, Broker: broker,
+		RequestTemplate: runner.template,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fresh.Run(context.Background(), containerCallerIntentRequest("fresh-attempt", "fresh", false, "")); err != nil {
+		t.Fatalf("fresh run after executor change: %v", err)
+	}
+	if broker.runCount() != 2 {
+		t.Fatalf("broker run count=%d, want old plus fresh run", broker.runCount())
+	}
+	runs := broker.runRequests()
+	if runs[0].RequestID != "old-attempt" || runs[1].RequestID != "fresh-attempt" || runs[1].Run.Resume || runs[1].ReviewedRequestID != "reviewed-old" {
+		t.Fatalf("executor migration reused old request/thread: %+v", runs)
+	}
+	data, err = os.ReadFile(fresh.CheckpointPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var next containerRunCheckpoint
+	if err := json.Unmarshal(data, &next); err != nil {
+		t.Fatal(err)
+	}
+	if next.ExecutorReset || next.ReviewedRequestID != "reviewed-old" {
+		t.Fatalf("fresh checkpoint lost migration proof/reset boundary: %+v", next)
+	}
+}
+
+func TestFactoryPrepareExecutorChangePreservesPendingAndUnknown(t *testing.T) {
+	for _, state := range []containerRunState{containerRunPending, containerRunUnknown} {
+		t.Run(string(state), func(t *testing.T) {
+			broker := &containerRunnerFakeBroker{}
+			root := t.TempDir()
+			stateRoot := filepath.Join(root, "container-profile")
+			runner, err := NewContainerRunner(ContainerRunnerConfig{
+				ProfileID: "container-profile", StateRoot: stateRoot, Broker: broker,
+				RequestTemplate: airunner.ExecuteRequest{
+					Model: airunner.Model{APIKey: "container-model-secret"},
+					MCP:   airunner.MCP{Token: strings.Repeat("z", 43)},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkpoint := containerRunCheckpoint{Version: containerRunnerVersion, ProfileID: runner.profileID,
+				RequestID: "old-attempt", CallerRequestID: "old-attempt", Intent: strings.Repeat("a", 64),
+				State: state, UpdatedAt: time.Now().UTC()}
+			if err := runner.saveCheckpoint(checkpoint); err != nil {
+				t.Fatal(err)
+			}
+			factory := &Factory{cfg: FactoryConfig{StateRoot: root, ContainerBroker: broker}, active: make(map[string]*factoryLease)}
+			if err := factory.PrepareExecutorChange(context.Background(), runner.profileID); !errors.Is(err, ErrContainerRunnerRecovery) {
+				t.Fatalf("prepare state=%s error=%v, want recovery", state, err)
+			}
+			if _, err := os.Stat(runner.CheckpointPath()); err != nil {
+				t.Fatalf("state=%s checkpoint was removed: %v", state, err)
+			}
+			if broker.runCount() != 0 {
+				t.Fatalf("state=%s unexpectedly ran broker: %d", state, broker.runCount())
+			}
+		})
+	}
+}
+
+func TestFactoryPrepareExecutorChangeKeepsReviewedUnknown(t *testing.T) {
+	broker := &containerRunnerFakeBroker{}
+	root := t.TempDir()
+	stateRoot := filepath.Join(root, "container-profile")
+	runner, err := NewContainerRunner(ContainerRunnerConfig{
+		ProfileID: "container-profile", StateRoot: stateRoot, Broker: broker,
+		RequestTemplate: airunner.ExecuteRequest{Model: airunner.Model{APIKey: "container-model-secret"}, MCP: airunner.MCP{Token: strings.Repeat("z", 43)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := containerRunCheckpoint{Version: containerRunnerVersion, ProfileID: runner.profileID,
+		RequestID: "reviewed-attempt", CallerRequestID: "reviewed-attempt", Intent: strings.Repeat("a", 64),
+		State: containerRunUnknown, Reviewed: true, UpdatedAt: time.Now().UTC()}
+	if err := runner.saveCheckpoint(checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	factory := &Factory{cfg: FactoryConfig{StateRoot: root, ContainerBroker: broker}, active: make(map[string]*factoryLease)}
+	if err := factory.PrepareExecutorChange(context.Background(), runner.profileID); err != nil {
+		t.Fatalf("reviewed unknown migration error=%v", err)
+	}
+	data, err := os.ReadFile(runner.CheckpointPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preserved containerRunCheckpoint
+	if err := json.Unmarshal(data, &preserved); err != nil {
+		t.Fatal(err)
+	}
+	if preserved.State != containerRunUnknown || !preserved.Reviewed {
+		t.Fatalf("reviewed unknown checkpoint changed: %+v", preserved)
+	}
+}
+
+func TestFactoryPrepareExecutorChangeRequiresNoActiveSession(t *testing.T) {
+	broker := &containerRunnerFakeBroker{}
+	root := t.TempDir()
+	stateRoot := filepath.Join(root, "container-profile")
+	runner, err := NewContainerRunner(ContainerRunnerConfig{
+		ProfileID: "container-profile", StateRoot: stateRoot, Broker: broker,
+		RequestTemplate: airunner.ExecuteRequest{Model: airunner.Model{APIKey: "container-model-secret"}, MCP: airunner.MCP{Token: strings.Repeat("z", 43)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory := &Factory{cfg: FactoryConfig{StateRoot: root, ContainerBroker: broker}, active: map[string]*factoryLease{runner.profileID: {profileID: runner.profileID}}}
+	if err := factory.PrepareExecutorChange(context.Background(), runner.profileID); !errors.Is(err, ErrFactoryBusy) {
+		t.Fatalf("active factory error=%v, want busy", err)
+	}
+}
+
 func TestContainerRunnerSameCallerRequestIDReplaysOnlyOneBrokerRun(t *testing.T) {
 	broker := &containerRunnerFakeBroker{}
 	runner, _ := newContainerRunnerForTest(t, broker)

@@ -120,9 +120,13 @@ type containerRunIntent struct {
 type containerRunCheckpoint struct {
 	Reviewed          bool   `json:"reviewed,omitempty"`
 	ReviewedRequestID string `json:"reviewed_request_id,omitempty"`
-	Version           int    `json:"version"`
-	ProfileID         string `json:"profile_id"`
-	RequestID         string `json:"request_id"`
+	// ExecutorReset marks a completed response as a safe boundary for a fresh
+	// executor namespace. The completed response and any reviewed request
+	// proof remain available until the next fresh run writes a new checkpoint.
+	ExecutorReset bool   `json:"executor_reset,omitempty"`
+	Version       int    `json:"version"`
+	ProfileID     string `json:"profile_id"`
+	RequestID     string `json:"request_id"`
 	// CallerRequestID is the durable turn identity supplied by the caller.
 	// RequestID remains the broker identity; they differ for requests created
 	// by older callers that did not supply a turn ID.
@@ -221,6 +225,86 @@ func (runner *ContainerRunner) CheckpointPath() string {
 // context supplied to Run and stopped by the broker itself.
 func (runner *ContainerRunner) Close() error { return nil }
 
+// resetContainerRunnerForExecutorChange marks a completed transport checkpoint
+// as a safe boundary so the next executor session can submit a fresh
+// conversation without losing its reviewed request proof.
+// A pending or unknown checkpoint is deliberately left in place: it may still
+// represent a provider turn whose outcome must be reconciled by its request
+// identity. The caller owns the executor-change fence; this function also
+// takes the runner lock so it cannot race a transport cleanup.
+func resetContainerRunnerForExecutorChange(ctx context.Context, profileID, stateRoot string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	profileID = strings.TrimSpace(profileID)
+	stateRoot = strings.TrimSpace(stateRoot)
+	if !containerRunnerProfileIDPattern.MatchString(profileID) || stateRoot == "" {
+		return ErrContainerRunnerConfig
+	}
+	abs, err := filepath.Abs(filepath.Clean(stateRoot))
+	if err != nil || abs == "" || abs == string(filepath.Separator) {
+		return ErrContainerRunnerConfig
+	}
+	guard, err := runtimepath.NewGuard()
+	if err != nil || guard.Check(abs) != nil {
+		return ErrContainerRunnerConfig
+	}
+	info, err := os.Lstat(abs)
+	if errors.Is(err, os.ErrNotExist) {
+		// A container session has not created a transport journal yet.
+		return nil
+	}
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return ErrContainerRunnerConfig
+	}
+	checkpointPath := filepath.Join(abs, containerRunnerCheckpointName)
+	lockPath := filepath.Join(abs, containerRunnerLockName)
+	if guard.CheckAll(checkpointPath, lockPath) != nil {
+		return ErrContainerRunnerConfig
+	}
+	if _, err := os.Lstat(checkpointPath); errors.Is(err, os.ErrNotExist) {
+		// A missing journal is also a safe fresh namespace.
+		return nil
+	} else if err != nil {
+		return ErrContainerRunnerConfig
+	}
+	if lockInfo, lockErr := os.Lstat(lockPath); lockErr != nil || !privateContainerRunnerLockInfo(lockInfo) {
+		return ErrContainerRunnerConfig
+	}
+
+	runner := &ContainerRunner{
+		profileID: profileID, stateRoot: abs, checkpoint: checkpointPath,
+		lockPath: lockPath, guard: guard,
+	}
+	release, err := acquireContainerRunnerLock(ctx, lockPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+	checkpoint, exists, err := runner.loadCheckpoint()
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if checkpoint.State == containerRunUnknown && checkpoint.Reviewed {
+		// An explicit operator review already released this request. Keep the
+		// reviewed checkpoint so the next fresh run carries its proof through
+		// ReviewedRequestID; it is safe to reuse this namespace.
+		return nil
+	}
+	if checkpoint.State != containerRunCompleted {
+		return ErrContainerRunnerRecovery
+	}
+	if checkpoint.ExecutorReset {
+		return nil
+	}
+	checkpoint.ExecutorReset = true
+	checkpoint.UpdatedAt = time.Now().UTC()
+	return runner.saveCheckpoint(checkpoint)
+}
+
 // Recover exposes the broker's durable request identity to the supervisor.
 // Unlike direct Run callers, recovery must supply the original reservation
 // ID. Run reconciles existing checkpoints through Lookup and submits only
@@ -299,6 +383,12 @@ func (runner *ContainerRunner) Run(ctx context.Context, request aicodex.RunReque
 				if checkpoint.CallerRequestID == request.RequestID {
 					return aicodex.Result{ProfileID: runner.profileID}, ErrContainerRunnerRecovery
 				}
+			}
+			if checkpoint.ExecutorReset && !request.Resume && request.ThreadID == "" {
+				// Executor migration explicitly fenced this completed boundary.
+				// Start a fresh caller namespace while retaining ReviewedRequestID
+				// so a prior reviewed broker outcome remains auditable.
+				break
 			}
 			oldThreadID := completedContainerThreadID(checkpoint)
 			if !request.Resume || request.ThreadID == "" || oldThreadID == "" || request.ThreadID != oldThreadID {
