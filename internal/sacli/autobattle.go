@@ -111,11 +111,18 @@ func (s *Server) startAutoBattle(walk bool) (bool, error) {
 				s.autoLastLine = fmt.Sprintf(format, args...)
 				s.autoMu.Unlock()
 			},
+			State: func(state battleauto.State) {
+				s.autoMu.Lock()
+				s.autoState = state
+				s.autoStateKept = true
+				s.autoMu.Unlock()
+			},
 		}
 		_ = runner.Run(ctx)
 		s.autoMu.Lock()
 		s.autoRunning = false
 		s.autoCancel = nil
+		s.autoStateKept = false
 		s.autoMu.Unlock()
 	}()
 	return true, nil
@@ -142,10 +149,26 @@ func (s *Server) autoBattleStatus() string {
 		return "auto battle: off"
 	}
 	status := "auto battle: on"
+	if s.autoStateKept {
+		status += "\n" + describeAutoState(s.autoState)
+	}
 	if s.autoLastLine != "" {
 		status += "\nlast action: " + s.autoLastLine
 	}
 	return status
+}
+
+// describeAutoState is the line `auto-battle status` shows for a running loop:
+// what it is doing now, and how the fights have gone.
+func describeAutoState(state battleauto.State) string {
+	doing := "idle"
+	switch {
+	case state.InBattle:
+		doing = fmt.Sprintf("in battle (turn %d, %d enemies left)", state.Turn, state.Enemies)
+	case state.Seeking:
+		doing = "looking for a fight (walking in place)"
+	}
+	return fmt.Sprintf("%s\nfights %d (won %d, lost %d)", doing, state.Battles, state.Wins, state.Losses)
 }
 
 // recoveryTables loads the game's own recovery tables once. They are static

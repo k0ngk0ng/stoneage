@@ -16,6 +16,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/ainavigation"
 	"github.com/k0ngk0ng/stoneage/internal/aiplanner"
+	"github.com/k0ngk0ng/stoneage/internal/battleauto"
 )
 
 // BuildVersion is the release tag this binary was built from; main sets
@@ -57,10 +58,12 @@ type Server struct {
 
 	// The auto battle loop runs alongside the command socket, so its state is
 	// kept separate from mu: commands must keep answering while it runs.
-	autoMu       sync.Mutex
-	autoRunning  bool
-	autoCancel   context.CancelFunc
-	autoLastLine string
+	autoMu        sync.Mutex
+	autoRunning   bool
+	autoCancel    context.CancelFunc
+	autoLastLine  string
+	autoState     battleauto.State
+	autoStateKept bool
 
 	recoveryOnce sync.Once
 	recoveryData *aiknowledge.RecoveryTables
