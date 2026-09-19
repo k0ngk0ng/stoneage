@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Render the Scoop manifest for a released sactl build and push it to the
-# bucket, the Windows counterpart of the Homebrew tap.
+# bucket, the Windows counterpart of the Homebrew tap. Credentials are
+# the same as for the tap: PACKAGES_DEPLOY_KEY (preferred) or TAP_GITHUB_TOKEN.
 #
 # Usage:
 #   scripts/publish-scoop-manifest.sh <tag>            # publish
@@ -53,7 +54,17 @@ if [[ "$mode" == "--dry-run" ]]; then
   exit 0
 fi
 
-if [[ -n "${TAP_GITHUB_TOKEN:-}" ]]; then
+# CI authenticates with a deploy key limited to the package repositories;
+# TAP_GITHUB_TOKEN still works for an HTTPS token. A local run falls back to
+# the operator's git credential helper.
+if [[ -n "${SCOOP_DEPLOY_KEY:-${PACKAGES_DEPLOY_KEY:-}}" ]]; then
+  key_file="$(mktemp)"
+  trap 'rm -f "$key_file"' EXIT
+  printf '%s\n' "${SCOOP_DEPLOY_KEY:-${PACKAGES_DEPLOY_KEY:-}}" > "$key_file"
+  chmod 600 "$key_file"
+  export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  clone_url="git@github.com:${bucket}.git"
+elif [[ -n "${TAP_GITHUB_TOKEN:-}" ]]; then
   clone_url="https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${bucket}.git"
 else
   clone_url="https://github.com/${bucket}.git"
