@@ -37,17 +37,33 @@ sactl <命令> [参数]              一次性客户端：连 socket → 发一�
 `sactl.toml.example`、`sactl.md` 和安装脚本：
 
 ```bash
-tar -xzf stoneage-sactl-v0.1.47-rc.1-darwin-arm64.tar.gz
-cd stoneage-sactl-v0.1.47-rc.1-darwin-arm64
+tar -xzf stoneage-sactl-v0.1.48-darwin-arm64.tar.gz
+cd stoneage-sactl-v0.1.48-darwin-arm64
 install -m 755 sactl ~/.local/bin/sactl
+xattr -d com.apple.quarantine ~/.local/bin/sactl 2>/dev/null   # 见下方 macOS 说明
 mkdir -p ~/.config/sactl && cp sactl.toml.example ~/.config/sactl/sactl.toml
 chmod 600 ~/.config/sactl/sactl.toml    # 填账号、密码、map_directory
 ```
 
-**2. 用安装脚本（从源码，一次到位）**
+> **macOS：从浏览器下载的副本会被系统杀掉。** 浏览器会给文件打上
+> `com.apple.quarantine`，而 macOS 只允许**带苹果开发者签名**或被信任的隔离文件运行；
+> 本项目没有开发者签名（临时签名不够），于是运行时报的就是 `zsh: killed ./sactl`
+> （退出码 137），没有任何提示。三种解决办法，任选其一：
+>
+> ```bash
+> xattr -d com.apple.quarantine ./sactl     # 手动装完后清掉属性
+> scripts/install-sactl.sh                  # 包内脚本会自动清掉
+> scripts/install-sactl.sh --download        # 用 curl 下载，根本不会带该属性
+> ```
+>
+> 用 `curl`/`gh` 下载不受影响，因为只有浏览器一类应用会写这个属性。
+
+**2. 用安装脚本（一次到位）**
 
 ```bash
-scripts/install-sactl.sh                 # 装到 ~/.local/bin，配置写到 ~/.config/sactl
+scripts/install-sactl.sh                        # 从源码构建并安装
+scripts/install-sactl.sh --download             # 下载最新正式版（curl，不带隔离属性）
+scripts/install-sactl.sh --download v0.1.48     # 指定版本
 scripts/install-sactl.sh --prefix /usr/local/bin --force
 ```
 

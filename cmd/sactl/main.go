@@ -24,6 +24,11 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/sacli"
 )
 
+// version is set at build time with
+// -ldflags "-X main.version=<release tag>"; release archives carry the tag,
+// local builds report "dev".
+var version = "dev"
+
 // Exit codes. A terminal agent distinguishes "the game refused this action"
 // from "the client is not set up", so they must not collapse into one value.
 const (
@@ -39,7 +44,11 @@ func main() {
 		usage()
 		os.Exit(exitUsage)
 	}
+	sacli.BuildVersion = version
 	switch os.Args[1] {
+	case "version", "--version", "-v":
+		fmt.Printf("sactl %s\n", version)
+		return
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -101,6 +110,9 @@ func run(args []string) error {
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch {
+		case arg == "--version" || arg == "-v":
+			fmt.Printf("sactl %s\n", version)
+			return nil
 		case arg == "--help" || arg == "-h" || (arg == "help" && command == ""):
 			// Help must work wherever the flags sit: a wrapper script may put
 			// its own flags before the command name.
@@ -230,6 +242,7 @@ usage:
 %s
 
 global flags:
+  --version         print the client version
   --socket <path>   daemon socket (default %s)
   --config <file>   read socket_path from a sactl config file
   --timeout <dur>   per-command timeout (default %s)

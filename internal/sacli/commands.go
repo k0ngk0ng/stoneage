@@ -71,7 +71,8 @@ const CommandHelp = `commands:
   wait [duration]                     block until the next server event
   ping                                check the daemon
   stop                                shut the daemon down
-  help                                print this list`
+  help                                print this list
+  version                             print the client version (local, no daemon needed)`
 
 // Dispatch routes one request to its handler.
 func (s *Server) Dispatch(ctx context.Context, request Request) Response {

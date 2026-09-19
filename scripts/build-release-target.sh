@@ -78,7 +78,7 @@ build_target "$goos" "$goarch" "$suffix"
 sactl_root="$stage/stoneage-sactl-${RELEASE_TAG}-${goos}-${goarch}"
 mkdir -p "$sactl_root"
 CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-  go build -trimpath -ldflags='-s -w' -o "$sactl_root/sactl$suffix" ./cmd/sactl
+  go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_TAG}" -o "$sactl_root/sactl$suffix" ./cmd/sactl
 cp config/sactl/sactl.toml.example "$sactl_root/sactl.toml.example"
 cp docs/sactl.md "$sactl_root/sactl.md"
 cp scripts/install-sactl.sh "$sactl_root/install-sactl.sh"

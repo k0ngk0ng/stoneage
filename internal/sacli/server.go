@@ -18,6 +18,10 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aiplanner"
 )
 
+// BuildVersion is the release tag this binary was built from; main sets
+// it so the daemon can report it. Archived clients carry their tag.
+var BuildVersion = "dev"
+
 // DefaultRequestTimeout bounds one CLI command so a terminal agent never
 // hangs on a wedged session. `wait` sets its own deadline.
 const DefaultRequestTimeout = 60 * time.Second
@@ -317,8 +321,8 @@ func (s *Server) statusReport() string {
 	if s.game == nil {
 		state = "not connected"
 	}
-	report := fmt.Sprintf("session: %s\naccount: %s\ncharacter: %s\nsocket: %s\naddress: %s",
-		state, s.config.Account, s.config.Character, s.config.SocketPath, s.config.Address)
+	report := fmt.Sprintf("version: %s\nsession: %s\naccount: %s\ncharacter: %s\nsocket: %s\naddress: %s",
+		BuildVersion, state, s.config.Account, s.config.Character, s.config.SocketPath, s.config.Address)
 	if s.lastError != "" {
 		report += "\nlast error: " + s.lastError
 	}
