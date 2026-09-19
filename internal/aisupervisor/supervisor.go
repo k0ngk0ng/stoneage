@@ -328,6 +328,27 @@ func (supervisor *Supervisor) Restore(ctx context.Context, profileID string) err
 	return supervisor.start(ctx, profileID, true)
 }
 
+// recoverUnknownWithFreshVersion reconciles a pending unknown turn for an
+// explicit start. The recovery compares the stored profile version against the
+// one the caller read, so a version that moves in between — which is what an
+// operator clicking start while a pause is still settling produces — would
+// fail a legitimate start with ErrProfileChanged. Each retry re-reads the
+// profile, so the compare-and-swap still runs against current state; only a
+// profile that keeps changing fails, and then honestly.
+func (supervisor *Supervisor) recoverUnknownWithFreshVersion(ctx context.Context, profileID string, expectedVersion int64, initial *airuntime.Profile) error {
+	const maxVersionRetries = 3
+	err := supervisor.recoverUnknownBeforeStart(ctx, profileID, expectedVersion, unknownReviewStartActor, false)
+	for attempt := 0; attempt < maxVersionRetries && errors.Is(err, ErrProfileChanged); attempt++ {
+		refreshed, readErr := supervisor.store.GetProfile(ctx, profileID)
+		if readErr != nil {
+			return readErr
+		}
+		*initial = refreshed
+		err = supervisor.recoverUnknownBeforeStart(ctx, profileID, refreshed.Version, unknownReviewStartActor, false)
+	}
+	return err
+}
+
 func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyActive bool) (resultErr error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -408,7 +429,8 @@ func (supervisor *Supervisor) start(ctx context.Context, profileID string, onlyA
 		// explicit operator start is the only action that may reconcile that
 		// turn and consume its reserved budget before a fresh session opens.
 		stage = StartStageRecovery
-		if err = supervisor.recoverUnknownBeforeStart(startCtx, profileID, initial.Version, unknownReviewStartActor, false); err == nil {
+		err = supervisor.recoverUnknownWithFreshVersion(startCtx, profileID, initial.Version, &initial)
+		if err == nil {
 			stage = StartStageFactory
 			err = supervisor.startOne(startCtx, profileID, onlyActive, initial.Version)
 		}
