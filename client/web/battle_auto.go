@@ -78,6 +78,7 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 		Log: func(format string, args ...any) {
 			session.setAutomationNote(fmt.Sprintf(format, args...))
 		},
+		State: session.setAutomationState,
 	}
 	if !session.setAutomation(runner, aicontrol.Battle, started.Generation) {
 		_, _ = session.gate.Takeover("auto battle failed to start")
@@ -123,4 +124,19 @@ func (s *tcpSession) automationNoteText() string {
 	s.automationMu.Lock()
 	defer s.automationMu.Unlock()
 	return s.automationNote
+}
+
+// setAutomationState keeps the loop's counters for the control panel: whether
+// it is in a fight right now, how many it has answered and how those went.
+func (s *tcpSession) setAutomationState(state battleauto.State) {
+	s.automationMu.Lock()
+	s.automationState = state
+	s.automationStateKnown = true
+	s.automationMu.Unlock()
+}
+
+func (s *tcpSession) automationStateSnapshot() (battleauto.State, bool) {
+	s.automationMu.Lock()
+	defer s.automationMu.Unlock()
+	return s.automationState, s.automationStateKnown
 }

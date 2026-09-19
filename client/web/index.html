@@ -1466,6 +1466,11 @@
         if(Object.prototype.hasOwnProperty.call(item,"automation_mode"))next.automation_mode=String(item.automation_mode||"");
         if(Object.prototype.hasOwnProperty.call(item,"automation_recovery"))next.automation_recovery=item.automation_recovery;
         if(Object.prototype.hasOwnProperty.call(item,"automation_recovery_unavailable"))next.automation_recovery_unavailable=item.automation_recovery_unavailable===true;
+        /* The auto battle panel paints its own line from these two: without
+           them the fencing token still updates but the panel can only say
+           "automation is on" and never whether the loop is in a fight. */
+        if(Object.prototype.hasOwnProperty.call(item,"automation_note"))next.automation_note=String(item.automation_note||"");
+        if(Object.prototype.hasOwnProperty.call(item,"automation_state"))next.automation_state=item.automation_state;
       }
       this.control=next;
       this.automationAvailable=next.automation_available!==false;

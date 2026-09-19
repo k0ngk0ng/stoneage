@@ -130,12 +130,17 @@ func TestSeekerLeavesTheCharacterAloneWhenBusy(t *testing.T) {
 		}(),
 		"window": func() aigame.Snapshot {
 			s := worldSnapshot()
-			s.ActiveWindow = &aigame.WindowSnapshot{}
+			s.ActiveWindow = &aigame.WindowSnapshot{Open: true}
+			return s
+		}(),
+		"queued window": func() aigame.Snapshot {
+			s := worldSnapshot()
+			s.Windows = []aigame.WindowSnapshot{{Open: true}}
 			return s
 		}(),
 		"queued windows": func() aigame.Snapshot {
 			s := worldSnapshot()
-			s.Windows = []aigame.WindowSnapshot{{}}
+			s.Windows = []aigame.WindowSnapshot{{Open: true}}
 			return s
 		}(),
 		"not in the world": func() aigame.Snapshot {
@@ -151,5 +156,59 @@ func TestSeekerLeavesTheCharacterAloneWhenBusy(t *testing.T) {
 				t.Fatalf("walked while busy: %+v", action)
 			}
 		})
+	}
+}
+
+// A notice window is what the login announcement is: one button, no decision.
+// Answering it is the difference between a loop that walks and one that sits
+// behind a message until the player comes back.
+func TestNoticeWindowIsAnsweredAndChoicesAreNot(t *testing.T) {
+	notice := worldSnapshot()
+	notice.ActiveWindow = &aigame.WindowSnapshot{Type: 28, ButtonType: noticeBit, Sequence: 4, ObjectID: 7, Open: true}
+	action, ok := noticeAction(notice)
+	if !ok {
+		t.Fatal("a one-button notice must be answerable")
+	}
+	if action.Kind != aigame.ActionWindow || action.WindowSequence != 4 || action.WindowObjectID != 7 || action.WindowSelect != noticeBit {
+		t.Fatalf("notice answer = %+v", action)
+	}
+	if action.X != notice.Position.X || action.Y != notice.Position.Y {
+		t.Fatalf("the answer must carry the player's own coordinates: %+v", action)
+	}
+
+	// 确定 with 取消, or a plain choice window, belongs to the player.
+	for name, window := range map[string]aigame.WindowSnapshot{
+		"confirm and cancel": {Type: 1, ButtonType: noticeBit | 2, Sequence: 5, ObjectID: 8, Open: true},
+		"yes and no":         {Type: 2, ButtonType: 4 | 8, Sequence: 6, ObjectID: 9, Open: true},
+		"already answered":   {Type: 28, ButtonType: noticeBit, Sequence: 7, ObjectID: 10, Open: true, Submitted: true},
+		"closed":             {Type: 28, ButtonType: noticeBit, Sequence: 8, ObjectID: 11},
+	} {
+		snapshot := worldSnapshot()
+		copy := window
+		snapshot.ActiveWindow = &copy
+		if action, ok := noticeAction(snapshot); ok {
+			t.Fatalf("%s must be left to the player: %+v", name, action)
+		}
+	}
+
+	// And the walk still refuses to step while any window is open.
+	blocked := worldSnapshot()
+	blocked.ActiveWindow = &aigame.WindowSnapshot{Type: 28, ButtonType: noticeBit, Open: true}
+	if got := (&seeker{}).blocked(blocked); got != "window" {
+		t.Fatalf("blocked = %q, want window", got)
+	}
+}
+
+func TestAnsweredWindowDoesNotBlockTheWalk(t *testing.T) {
+	answered := worldSnapshot()
+	answered.ActiveWindow = &aigame.WindowSnapshot{Type: 28, ButtonType: noticeBit, Sequence: 4, ObjectID: 7, Open: true, Submitted: true}
+	if got := (&seeker{}).blocked(answered); got != "" {
+		t.Fatalf("blocked = %q, want the walk to be free", got)
+	}
+	if _, ok := noticeAction(answered); ok {
+		t.Fatal("an answered notice must not be answered twice")
+	}
+	if _, ok := (&seeker{interval: DefaultSeekInterval}).next(answered, time.Unix(1, 0)); !ok {
+		t.Fatal("the walk must resume once the window is answered")
 	}
 }

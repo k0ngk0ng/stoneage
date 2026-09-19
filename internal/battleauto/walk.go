@@ -39,13 +39,44 @@ type seeker struct {
 	step     int
 }
 
+// Blocked reports what is stopping the walk, or "" when nothing is. A loop
+// that silently refuses to walk looks exactly like a broken one, and the
+// player watching the panel has no way to tell the difference.
+func (s *seeker) blocked(snapshot aigame.Snapshot) string {
+	switch {
+	case snapshot.Phase != aigame.PhaseWorld:
+		return "phase"
+	case snapshot.Battle.Active:
+		return "battle"
+	case unansweredWindow(snapshot):
+		return "window"
+	default:
+		return ""
+	}
+}
+
+// unansweredWindow reports a window nobody has answered yet. An answered window
+// stays in the projection until the server replaces or closes it, and treating
+// that as "still blocked" would park the walk behind a message that is already
+// on its way out.
+func unansweredWindow(snapshot aigame.Snapshot) bool {
+	if window := snapshot.ActiveWindow; window != nil && window.Open && !window.Submitted {
+		return true
+	}
+	for _, window := range snapshot.Windows {
+		if window.Open && !window.Submitted {
+			return true
+		}
+	}
+	return false
+}
+
 // next returns the action that keeps encounters coming, or false when walking
 // is not this loop's to do: a battle, a menu or a dialogue all mean the
 // character is busy, and a second writer is exactly what the control lease
 // exists to prevent.
 func (s *seeker) next(snapshot aigame.Snapshot, now time.Time) (aigame.Action, bool) {
-	if snapshot.Phase != aigame.PhaseWorld || snapshot.Battle.Active ||
-		snapshot.ActiveWindow != nil || len(snapshot.Windows) > 0 {
+	if s.blocked(snapshot) != "" {
 		return aigame.Action{}, false
 	}
 	if s.interval <= 0 {
@@ -72,4 +103,21 @@ func (s *seeker) next(snapshot aigame.Snapshot, now time.Time) (aigame.Action, b
 // executor ask where it actually is.
 func positionQuery() aigame.Action {
 	return aigame.Action{Kind: aigame.ActionStatus, Command: "c"}
+}
+
+// noticeBit is 确定, the only button a notice offers: the wire's other bits are
+// 取消, 是, 否 and the page turns, every one of which is a choice.
+const noticeBit int32 = 1
+
+// noticeAction answers a window whose only button is 确定 -- the login
+// announcement and the like. A character left alone otherwise sits behind that
+// message forever and the walk never starts. Anything offering a real choice is
+// left for the player: picking for them is not this loop's job.
+func noticeAction(snapshot aigame.Snapshot) (aigame.Action, bool) {
+	window := snapshot.ActiveWindow
+	if window == nil || !window.Open || window.Submitted || window.ButtonType != noticeBit {
+		return aigame.Action{}, false
+	}
+	return aigame.Window(snapshot.Position.X, snapshot.Position.Y,
+		window.Sequence, window.ObjectID, noticeBit, ""), true
 }

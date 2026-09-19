@@ -58,6 +58,16 @@ func (session *Session) ApplyClientPacket(packet []byte) error {
 		}
 		session.stateMu.Unlock()
 		return nil
+	case "WN":
+		// The native client destroys a server window the moment its answer is
+		// queued, and the server is under no obligation to send a replacement.
+		// Without this the projection keeps the window open long after the
+		// player dealt with it, and anything waiting for a free character --
+		// the auto battle walk is one -- waits forever.
+		session.stateMu.Lock()
+		answerWindowPacketLocked(&session.state, message)
+		session.stateMu.Unlock()
+		return nil
 	}
 	if message.Function != "ClientLogin" && message.Function != "CharLogin" {
 		return nil
@@ -87,4 +97,33 @@ func (session *Session) ApplyClientPacket(packet []byte) error {
 	}
 	session.stateMu.Unlock()
 	return nil
+}
+
+// answerWindowPacketLocked records a client WN response in the projection. The
+// wire form is WN|x|y|seqno|objindex|select|data, so the third field names the
+// window the player answered; the rest belongs to the server's bookkeeping.
+func answerWindowPacketLocked(state *gameState, message namedproto.Message) {
+	if len(message.Fields) < 3 {
+		return
+	}
+	sequence, err := namedproto.DecodeInt(message.Fields[2])
+	if err != nil {
+		return
+	}
+	// A sequence that matches nothing is an answer to a window this projection
+	// never saw; that is not a state change worth inventing.
+	if window := state.activeWindow; window != nil && window.Open && window.Sequence == sequence {
+		markWindowSubmittedLocked(state, window)
+		for index := range state.windows {
+			if state.windows[index].Sequence == sequence {
+				state.windows[index].Submitted = true
+			}
+		}
+		return
+	}
+	for index := range state.windows {
+		if state.windows[index].Open && state.windows[index].Sequence == sequence {
+			state.windows[index].Submitted = true
+		}
+	}
 }

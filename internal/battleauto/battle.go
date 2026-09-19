@@ -77,6 +77,24 @@ func MyPetID(snapshot aigame.Snapshot) int32 {
 	return snapshot.Battle.MyNo + 5
 }
 
+// LiveEnemies counts the opponents still standing. It is what tells a player
+// watching the panel how much of the fight is left.
+func LiveEnemies(snapshot aigame.Snapshot) int {
+	mine := Side(snapshot.Battle.MyNo)
+	if mine < 0 {
+		return 0
+	}
+	count := 0
+	for _, participant := range snapshot.Battle.Participants {
+		if participant.BattleID < 0 || participant.BattleID >= 20 ||
+			Side(participant.BattleID) == mine || participant.Dead || participant.HP <= 0 {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
 // PetCommand picks the pet's command for this turn. 2.5 petskill.txt defines
 // ID 1 as the normal attack on a single character target; its observed slot is
 // used rather than assuming slot zero. Anything unproven falls back to the

@@ -36,9 +36,14 @@ type Runner struct {
 	// Log receives a line for every turn submitted and every error that did
 	// not end the loop. Nil silences it.
 	Log func(format string, args ...any)
+	// State receives the loop's counters whenever they change. A host that is
+	// asked "is it fighting?" needs this and nothing else. Nil silences it.
+	State func(State)
 
 	// seeker carries the walking pattern across passes. Run owns it.
 	seeker *seeker
+	// live carries the running totals across passes. Run owns it.
+	live *live
 }
 
 // Run blocks until ctx is cancelled. A transient failure never ends the loop:
@@ -59,6 +64,9 @@ func (r Runner) Run(ctx context.Context) error {
 	}
 	if policy.SeekEncounters && r.seeker == nil {
 		r.seeker = &seeker{interval: r.SeekInterval}
+	}
+	if r.live == nil {
+		r.live = &live{}
 	}
 
 	ticker := time.NewTicker(interval)
@@ -91,6 +99,16 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 	if err != nil {
 		return err
 	}
+	if r.live != nil {
+		r.live.observe(snapshot)
+		blocked := ""
+		if policy.SeekEncounters && r.seeker != nil {
+			blocked = r.seeker.blocked(snapshot)
+		}
+		if state, changed := r.live.describe(snapshot, policy.SeekEncounters, blocked); changed {
+			r.statef(state)
+		}
+	}
 	if decision, ok := Decide(snapshot, r.Tables, policy); ok {
 		err = r.Game.ExecuteExpected(ctx, snapshot.Revision, decision.Action)
 		switch {
@@ -106,6 +124,18 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 		}
 	}
 	if !policy.SeekEncounters {
+		return nil
+	}
+	// A notice waiting to be acknowledged is the one thing a walking loop can
+	// answer for an absent player without deciding anything.
+	if notice, ok := noticeAction(snapshot); ok {
+		if err := r.Game.ExecuteExpected(ctx, snapshot.Revision, notice); err != nil {
+			if errors.Is(err, aigame.ErrStaleRevision) || errors.Is(err, aigame.ErrInvalidAction) {
+				return nil
+			}
+			return err
+		}
+		r.logf("dismissed a notice window")
 		return nil
 	}
 	step, ok := r.seeker.next(snapshot, time.Now())
@@ -131,6 +161,12 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 func (r Runner) logf(format string, args ...any) {
 	if r.Log != nil {
 		r.Log(format, args...)
+	}
+}
+
+func (r Runner) statef(state State) {
+	if r.State != nil {
+		r.State(state)
 	}
 }
 

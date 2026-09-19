@@ -62,6 +62,7 @@
       automationActive: value.automation_active === true || value.automationActive === true,
       automationMode: String(value.automation_mode || value.automationMode || ""),
       automationNote: String(value.automation_note || value.automationNote || ""),
+      automationState: value.automation_state || value.automationState || null,
       recovery: value.automation_recovery || value.recovery || null,
       recoveryUnavailable: value.automation_recovery_unavailable === true || value.recoveryUnavailable === true,
     };
@@ -634,6 +635,7 @@
          keep coming. The server reads only the generation and the walk opt-in. */
       const seek = ensurePanel()?.querySelector("#ai-battle-seek")?.checked !== false;
       const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), seek }) });
+      followAutomationWalk();
       setStatus(`自动战斗中：血量低时先治疗，否则按顺序攻击，不会逃跑${seek ? "；会在原地来回走触发遇敌" : ""}。点「接管」随时停止。`, false);
       return data;
     }
@@ -695,11 +697,23 @@
     if (!panel || !status) return;
     const modeLabel = ({ manual: "人工", paused: "已暂停", quest: "自动任务", leveling: "自动练级", battle: "自动战斗", agent: "AI 玩家" })[control.mode] || control.mode;
     const detail = control.reason ? `（${control.reason}）` : "";
-    /* An auto battle loop carries no task to inspect, so its last decision is
-       the whole report the player gets: what it attacked, or where it is
-       walking to find something to attack. */
-    const note = control.mode === MODE_BATTLE && control.automationNote ? `\n上次决策：${control.automationNote}` : "";
-    if (!state.lastError) status.textContent = `控制：${modeLabel}${detail}${note}` + (control.recovery ? "\n发现断线前的自动任务，可恢复或取消旧任务。" : control.recoveryUnavailable ? "\n暂时无法读取断线任务，请稍后刷新。" : "");
+    /* An auto battle loop carries no task to inspect, so its counters and its
+       last decision are the whole report the player gets: whether it is in a
+       fight right now, how the fights have gone, and what it just did. */
+    const live = control.mode === MODE_BATTLE ? control.automationState : null;
+    let report = "";
+    if (live) {
+      /* Being stuck looks exactly like working when nothing says why: an open
+         dialogue blocks the walk, and the player has to know to close it. */
+      const stuck = ({ window: "有窗口未关，先点掉", phase: "不在世界里", battle: "战斗中" })[live.blocked] || "";
+      const doing = live.in_battle
+        ? `战斗中（第 ${live.turn} 回合${live.enemies ? ` · 敌人 ${live.enemies}` : ""}）`
+        : live.seeking ? (stuck ? `找架打受阻（${stuck}）` : "找架打（原地来回走）") : "待机";
+      const record = live.battles ? ` · 本次 ${live.battles} 场（胜 ${live.wins} 负 ${live.losses}）` : "";
+      report += `\n状态：${doing}${record}`;
+    }
+    if (control.mode === MODE_BATTLE && control.automationNote) report += `\n上次决策：${control.automationNote}`;
+    if (!state.lastError) status.textContent = `控制：${modeLabel}${detail}${report}` + (control.recovery ? "\n发现断线前的自动任务，可恢复或取消旧任务。" : control.recoveryUnavailable ? "\n暂时无法读取断线任务，请稍后刷新。" : "");
     status.classList.toggle("error", Boolean(state.lastError));
     panel.querySelector("#ai-build-section")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
     panel.querySelector("#ai-supply-section")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
@@ -751,6 +765,21 @@
     node.textContent = hasLimit ? `本地配置：保留 ${config.budget.reserve} · 花费上限 ${config.budget.maximum_spend}\n实际费用仍需后端知识库验证。` : "预算预览：未设置有效花费上限；费用未知时不可启动。";
   }
 
+  /* The 2.5 server never echoes a client's own walk, so a page that only knows
+     the steps it took itself shows a character standing still while the loop
+     walks it around. The read-only position query is what keeps the view
+     honest; it is the same request the page makes after its own steps. */
+  function followAutomationWalk() {
+    const control = currentControl();
+    if (!control || control.mode !== MODE_BATTLE || !app || app.phase !== "world") return;
+    try {
+      const result = client?.send?.("S", ["c"]);
+      if (result && typeof result.catch === "function") result.catch(() => {});
+    } catch (_) {
+      // A closed transport is reported by the session itself.
+    }
+  }
+
   function updateFromTransport(value) {
     if (value) dispatchControl(value);
     else publishControl(currentControl());
@@ -800,5 +829,6 @@
     refreshControl().catch(() => {});
     if (state.panelOpen && state.taskSession !== taskSessionKey()) refreshTasks().catch(() => {});
     refreshPets();
+    followAutomationWalk();
   }, 2000) || 0;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -39,6 +39,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
+	"github.com/k0ngk0ng/stoneage/internal/battleauto"
 	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
@@ -526,32 +527,34 @@ type tcpSession struct {
 	writeTimeout time.Duration
 	closed       chan struct{}
 
-	mu               sync.Mutex
-	writeMu          sync.Mutex
-	dispatchMu       sync.Mutex
-	activeDispatch   int
-	gateClosePending bool
-	gateCloseOnce    sync.Once
-	automationMu     sync.Mutex
-	automationHandle AutomationHandle
-	automationMode   aicontrol.Mode
-	automationGen    uint64
-	automationNote   string
-	authoritative    *aigame.Session
-	authoritativeMu  sync.RWMutex
-	authoritativeErr error
-	events           []packetEvent
-	eventBytes       int
-	lastActivity     time.Time
-	closeOnce        sync.Once
-	notify           chan struct{}
-	polling          bool
-	closing          bool
-	pollMode         eventPollMode
-	nextEventSeq     uint64
-	lastDeliveredSeq uint64
-	lastAckedSeq     uint64
-	finished         bool
+	mu                   sync.Mutex
+	writeMu              sync.Mutex
+	dispatchMu           sync.Mutex
+	activeDispatch       int
+	gateClosePending     bool
+	gateCloseOnce        sync.Once
+	automationMu         sync.Mutex
+	automationHandle     AutomationHandle
+	automationMode       aicontrol.Mode
+	automationGen        uint64
+	automationNote       string
+	automationState      battleauto.State
+	automationStateKnown bool
+	authoritative        *aigame.Session
+	authoritativeMu      sync.RWMutex
+	authoritativeErr     error
+	events               []packetEvent
+	eventBytes           int
+	lastActivity         time.Time
+	closeOnce            sync.Once
+	notify               chan struct{}
+	polling              bool
+	closing              bool
+	pollMode             eventPollMode
+	nextEventSeq         uint64
+	lastDeliveredSeq     uint64
+	lastAckedSeq         uint64
+	finished             bool
 }
 
 func newTCPSession(id string, conn net.Conn, packetLimit int) *tcpSession {
@@ -2241,9 +2244,11 @@ type controlResponse struct {
 	AutomationAvailable bool                `json:"automation_available"`
 	AutomationActive    bool                `json:"automation_active"`
 	AutomationMode      aicontrol.Mode      `json:"automation_mode,omitempty"`
-	// AutomationNote is the last decision an auto battle loop made. It is the
-	// only view a player gets of a mode that runs without a task to inspect.
-	AutomationNote string `json:"automation_note,omitempty"`
+	// AutomationNote is the last decision an auto battle loop made, and
+	// AutomationState its counters. Together they are the only view a player
+	// gets of a mode that runs without a task to inspect.
+	AutomationNote  string            `json:"automation_note,omitempty"`
+	AutomationState *battleauto.State `json:"automation_state,omitempty"`
 }
 
 func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
@@ -2265,8 +2270,12 @@ func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
 		recovery, recoveryErr = handler.recoveryOffer(context.Background(), session)
 	}
 	note := ""
+	var battleState *battleauto.State
 	if active && state.Mode == aicontrol.Battle {
 		note = session.automationNoteText()
+		if snapshot, ok := session.automationStateSnapshot(); ok {
+			battleState = &snapshot
+		}
 	}
 	return controlResponse{
 		Control:  state,
@@ -2275,6 +2284,7 @@ func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
 		AutomationActive:    active,
 		AutomationMode:      mode,
 		AutomationNote:      note,
+		AutomationState:     battleState,
 	}
 }
 

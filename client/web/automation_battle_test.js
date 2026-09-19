@@ -166,6 +166,47 @@ test('the panel reports what the running loop last decided', async () => {
   assert.ok(!/上次决策/.test(f.nodes['#ai-control-status'].textContent));
 });
 
+/* "Is it fighting?" is the whole question a player has about a mode they are
+   not watching, so the panel answers it in words and in numbers. */
+test('the panel says whether the loop is fighting and how it has gone', async () => {
+  const f = fixture();
+  f.api.publishControl({
+    control: { mode: 'battle', generation: 8, reason: '自动战斗中' },
+    automation_active: true,
+    automation_mode: 'battle',
+    automation_state: { in_battle: true, turn: 4, enemies: 2, battles: 6, wins: 5, losses: 1, seeking: false },
+  });
+  assert.match(f.nodes['#ai-control-status'].textContent, /状态：战斗中（第 4 回合 · 敌人 2） · 本次 6 场（胜 5 负 1）/);
+
+  f.api.publishControl({
+    control: { mode: 'battle', generation: 8 },
+    automation_active: true,
+    automation_mode: 'battle',
+    automation_state: { in_battle: false, turn: 0, enemies: 0, battles: 6, wins: 5, losses: 1, seeking: true },
+  });
+  assert.match(f.nodes['#ai-control-status'].textContent, /状态：找架打（原地来回走） · 本次 6 场（胜 5 负 1）/);
+
+  /* A loop that cannot walk has to say so; otherwise "nothing is happening"
+     and "it is broken" look identical. */
+  f.api.publishControl({
+    control: { mode: 'battle', generation: 8 },
+    automation_active: true,
+    automation_mode: 'battle',
+    automation_state: { in_battle: false, battles: 6, wins: 5, losses: 1, seeking: true, blocked: 'window' },
+  });
+  assert.match(f.nodes['#ai-control-status'].textContent, /状态：找架打受阻（有窗口未关，先点掉）/);
+
+  /* Before the first fight there is nothing to count, and the line must not
+     claim a record of zero. */
+  f.api.publishControl({
+    control: { mode: 'battle', generation: 8 },
+    automation_active: true,
+    automation_mode: 'battle',
+    automation_state: { in_battle: false, turning: 0, battles: 0, wins: 0, losses: 0, seeking: false },
+  });
+  assert.match(f.nodes['#ai-control-status'].textContent, /状态：待机$/m);
+});
+
 test('unchecking the walk keeps the character where the player parked it', async () => {
   const f = fixture({ mode: 'manual', generation: 7 }, false);
   await f.api.start();
@@ -192,6 +233,14 @@ test('auto battle stays startable without the task automation executor', async (
 
 test('the panel offers auto battle and leaves no client-side battle loop behind', () => {
   assert.match(source, /<option value="battle">自动战斗<\/option>/);
+  /* The transport copies a known list of automation_* fields out of every
+     control envelope. A field missing from that list reaches the panel as
+     undefined, which is exactly how the battle status line went missing. */
+  const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const copier = page.slice(page.indexOf('const next={...raw};'), page.indexOf('this.control=next;'));
+  for (const field of ['automation_state', 'automation_note']) {
+    assert.ok(copier.includes(`"${field}"`), `the control envelope must carry ${field}`);
+  }
   assert.match(source, /BATTLE_LOCK_CLASS = "stoneage-ai-battle-locked"/);
   assert.ok(!/maybeAutoBattleTurn/.test(source));
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');

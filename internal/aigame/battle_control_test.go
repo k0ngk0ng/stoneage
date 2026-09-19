@@ -6,7 +6,28 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 )
+
+// clientWindowPacket builds the WN the page sends when the player answers a
+// server window: x, y, seqno, objindex, button bit, text.
+func clientWindowPacket(t *testing.T, x, y, sequence, objectID, button int32, text string) []byte {
+	t.Helper()
+	fields := []string{
+		namedproto.EncodeInt(x), namedproto.EncodeInt(y), namedproto.EncodeInt(sequence),
+		namedproto.EncodeInt(objectID), namedproto.EncodeInt(button), namedproto.EncodeString([]byte(text)),
+	}
+	raw, err := namedproto.RawMessage(1, "WN", fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := namedproto.EncodePacket(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return packet
+}
 
 const playerPetRoster = "BC|0|0|Hero||100|1|23|23|4|5|Pet||100|1|23|23|0|A|Enemy||100|1|10|10|0"
 
@@ -211,5 +232,35 @@ func TestBattleSubmissionIsNotRecordedAgainstANewerTurn(t *testing.T) {
 	battle := session.Snapshot().Battle
 	if battle.LastCommand != "" || battle.PlayerSubmitted || !battle.PlayerCommandReady() {
 		t.Fatalf("the new turn was recorded as answered: %+v", battle)
+	}
+}
+
+// The native client destroys a server window when its answer is queued, and
+// the server need not send a replacement. A projection that keeps the window
+// open forever parks anything waiting for a free character behind it.
+func TestClientWindowAnswerMarksTheWindowSubmitted(t *testing.T) {
+	session, _ := battleControlSession(t, "0", false)
+	// The server's WN is windowType, buttonType, seqno, objindex, data: type 28
+	// with the 确定 bit is the login announcement.
+	session.applyEvent(Event{Function: "WN", Fields: []Field{
+		{Kind: FieldInt, Int: 28}, {Kind: FieldInt, Int: 1}, {Kind: FieldInt, Int: 7},
+		{Kind: FieldInt, Int: 9}, {Kind: FieldString, Text: []byte("確定")},
+	}})
+	if window := session.Snapshot().ActiveWindow; window == nil || !window.Open || window.Submitted {
+		t.Fatalf("window not open before the answer: %+v", window)
+	}
+	if err := session.ApplyClientPacket(clientWindowPacket(t, 480, 520, 7, 9, 1, "")); err != nil {
+		t.Fatal(err)
+	}
+	window := session.Snapshot().ActiveWindow
+	if window == nil || !window.Submitted {
+		t.Fatalf("answer not recorded: %+v", window)
+	}
+	// An answer for a window this session never saw changes nothing.
+	if err := session.ApplyClientPacket(clientWindowPacket(t, 480, 520, 99, 9, 1, "")); err != nil {
+		t.Fatal(err)
+	}
+	if window := session.Snapshot().ActiveWindow; window == nil || window.Sequence != 7 {
+		t.Fatalf("a stale answer replaced the open window: %+v", window)
 	}
 }
