@@ -23,7 +23,7 @@ function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
     control: { control },
     setControl(value) { this.control = value; return value; },
   };
-  const app = { transport, systemSettings: {} };
+  const app = { transport, systemSettings: {}, phase: 'world' };
   const root = { StoneAgeWebClient: { app } };
   const status = { textContent: '', classList: { toggle() {} } };
   const nodes = {
@@ -66,7 +66,7 @@ function lockedPageFixture() {
   const listeners = [];
   const control = { mode: 'battle', generation: 8 };
   const transport = { id: 'session-a', base: '', closed: false, control: { control }, setControl(value) { return value; } };
-  const app = { transport, systemSettings: {}, petSlots: [] };
+  const app = { transport, systemSettings: {}, petSlots: [], phase: 'world' };
   const root = { StoneAgeWebClient: { app } };
   class Element {}
   /* closest() only has to honour the allowlist: a target matches when the
@@ -165,6 +165,7 @@ test('the panel reports what the running loop last decided', async () => {
     automation_active: true,
     automation_mode: 'battle',
     automation_note: 'looking for a fight at (468,523)',
+    automation_state: { in_battle: false, battles: 3, wins: 3, losses: 0, seeking: true },
   });
   assert.match(f.nodes['#ai-control-status'].textContent, /上次决策：looking for a fight at \(468,523\)/);
 
@@ -178,6 +179,7 @@ test('the panel reports what the running loop last decided', async () => {
    not watching, so the panel answers it in words and in numbers. */
 test('the panel says whether the loop is fighting and how it has gone', async () => {
   const f = fixture();
+  assert.match(source, /control\.mode === MODE_LEVELING\) \? control\.automationState/, 'leveling runs the same loop');
   f.api.publishControl({
     control: { mode: 'battle', generation: 8, reason: '自动战斗中' },
     automation_active: true,
@@ -236,6 +238,15 @@ test('leveling runs the light loop, and only walks when asked', async () => {
   full.nodes['#ai-automation-mode'].value = 'leveling';
   await full.api.start();
   assert.ok(full.calls.some(entry => entry.url.includes('/automation/start')), 'a configured executor keeps its task plan');
+});
+
+/* Taking the lease at the login or character screen refuses the page's own
+   login packet, so a loop started there locks the page out of its own game. */
+test('automation cannot start before the character is in the world', async () => {
+  const f = fixture();
+  f.app.phase = 'character-list';
+  await assert.rejects(() => f.api.start(), /先进入世界/);
+  assert.ok(!f.calls.some(entry => entry.url.endsWith('/battle-auto')), 'nothing may be claimed yet');
 });
 
 test('auto battle cannot start while another owner holds the session', async () => {

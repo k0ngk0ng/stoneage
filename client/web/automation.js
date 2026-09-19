@@ -638,6 +638,10 @@
   async function start() {
     const control = await refreshControl();
     if (!control || control.mode !== MODE_MANUAL) throw new Error("请先处于人工控制状态");
+    /* The loop drives a character that is in the world; taking the lease at
+       the login or character screen would lock the page out of its own login
+       until the player hands control back. */
+    if (app?.phase !== "world") throw new Error("请先进入世界再启动自动化");
     const mode = String(panel_mode());
     if (mode === MODE_BATTLE) {
       /* Auto battle carries no task, budget or targets: it answers whatever
@@ -715,7 +719,8 @@
     /* An auto battle loop carries no task to inspect, so its counters and its
        last decision are the whole report the player gets: whether it is in a
        fight right now, how the fights have gone, and what it just did. */
-    const live = control.mode === MODE_BATTLE ? control.automationState : null;
+    /* Both claims run the same loop, so both report through it. */
+    const live = (control.mode === MODE_BATTLE || control.mode === MODE_LEVELING) ? control.automationState : null;
     let report = "";
     if (live) {
       /* Being stuck looks exactly like working when nothing says why: an open
@@ -727,7 +732,7 @@
       const record = live.battles ? ` · 本次 ${live.battles} 场（胜 ${live.wins} 负 ${live.losses}）` : "";
       report += `\n状态：${doing}${record}`;
     }
-    if (control.mode === MODE_BATTLE && control.automationNote) report += `\n上次决策：${control.automationNote}`;
+    if (live && control.automationNote) report += `\n上次决策：${control.automationNote}`;
     if (!state.lastError) status.textContent = `控制：${modeLabel}${detail}${report}` + (control.recovery ? "\n发现断线前的自动任务，可恢复或取消旧任务。" : control.recoveryUnavailable ? "\n暂时无法读取断线任务，请稍后刷新。" : "");
     status.classList.toggle("error", Boolean(state.lastError));
     panel.querySelector("#ai-build-section")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
@@ -765,7 +770,7 @@
     panel.querySelector("#ai-quest-pet-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-dependencies-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-leveling-seek-row")?.classList.toggle("hidden", mode !== MODE_LEVELING);
-    panel.querySelector("#ai-leveling-simple-row")?.classList.toggle("hidden", mode !== MODE_LEVELING || control?.automationAvailable !== false);
+    panel.querySelector("#ai-leveling-simple-row")?.classList.toggle("hidden", !levelingSimple);
     const simpleNote = panel.querySelector("#ai-leveling-simple-note");
     if (simpleNote) simpleNote.textContent = "当前部署未启用任务执行器：自动练级以简易模式运行（自动遇敌 + 自动战斗 + 自动加血），下面的目标与预算设置不生效。";
     ["ai-target-kind-row", "ai-target-level-row", "ai-target-pet-row", "ai-target-policy-row"].forEach(id => panel.querySelector(`#${id}`)?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple || (id === "ai-target-pet-row" && !["pet", "both"].includes(panel.querySelector("#ai-target-kind")?.value))));

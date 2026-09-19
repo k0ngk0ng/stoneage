@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
+	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/battleauto"
 )
@@ -71,6 +72,18 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 	state := session.gate.State()
 	if state.Mode != aicontrol.Manual {
 		http.Error(response, "character is already under automation control", http.StatusConflict)
+		return
+	}
+	// A loop drives a character in the world. Taking the lease before the
+	// character is in it leaves the page unable to log in -- the login packet
+	// is a manual one -- until somebody hands control back.
+	observed, observeErr := session.observeAuthoritative(request.Context())
+	if observeErr != nil {
+		http.Error(response, "session state is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if observed.Phase != aigame.PhaseWorld {
+		http.Error(response, "character is not in the world yet", http.StatusConflict)
 		return
 	}
 	reason := strings.TrimSpace(input.Reason)

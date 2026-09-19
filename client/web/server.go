@@ -2271,7 +2271,9 @@ func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
 	}
 	note := ""
 	var battleState *battleauto.State
-	if active && state.Mode == aicontrol.Battle {
+	// The light loop can hold either claim: battle answers turns, leveling
+	// walks between them. Both report through the same counters.
+	if active && (state.Mode == aicontrol.Battle || state.Mode == aicontrol.Leveling) {
 		note = session.automationNoteText()
 		if snapshot, ok := session.automationStateSnapshot(); ok {
 			battleState = &snapshot
