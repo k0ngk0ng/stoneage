@@ -58,6 +58,68 @@ function fixture(control = { mode: 'manual', generation: 7 }) {
   return { api: root.StoneAgeAutomation, app, calls, nodes, locked };
 }
 
+/* Auto battle takes the command bar and nothing else. Locking the whole page
+   the way the executor modes do cost the player the result screen as well:
+   with everything intercepted, 返回世界 only worked after handing control back. */
+function lockedPageFixture() {
+  const listeners = [];
+  const control = { mode: 'battle', generation: 8 };
+  const transport = { id: 'session-a', base: '', closed: false, control: { control }, setControl(value) { return value; } };
+  const app = { transport, systemSettings: {}, petSlots: [] };
+  const root = { StoneAgeWebClient: { app } };
+  class Element {}
+  /* closest() only has to honour the allowlist: a target matches when the
+     selector the module passes literally names it. */
+  class FakeElement extends Element {
+    constructor(token) { super(); this.token = token; }
+    closest(selector) { return this.token && String(selector).includes(this.token) ? this : null; }
+  }
+  /* The panel already exists in this fixture, so ensurePanel() returns it
+     instead of building one; this test only needs the document listener. */
+  const element = {
+    dataset: {}, textContent: '', hidden: false,
+    classList: { toggle() {} }, setAttribute() {}, addEventListener() {}, appendChild() {},
+    replaceChildren() {}, querySelector: () => null,
+  };
+  root.document = {
+    addEventListener(type, handler, capture) { listeners.push({ type, handler, capture }); },
+    body: { classList: { toggle() {} }, dataset: {}, appendChild() {} },
+    getElementById: id => id === 'ai-control-panel' ? element : {},
+    createElement: () => element,
+  };
+  vm.runInNewContext(source, { window: root, Element, fetch: async () => ({ ok: true, json: async () => ({}) }) });
+  return { api: root.StoneAgeAutomation, listeners, FakeElement };
+}
+
+test('auto battle leaves the page clickable except for the battle command bar', () => {
+  const f = lockedPageFixture();
+  /* The command bar goes away through CSS, not by swallowing clicks, so the
+     player keeps the result screen, the panels, the chat and the system menu. */
+  assert.match(source, /BATTLE_LOCK_CLASS = "stoneage-ai-battle-locked"/);
+  assert.match(source, /body\.\$\{BATTLE_LOCK_CLASS\} #battle-ui/);
+  assert.match(source, /body\.\$\{BATTLE_LOCK_CLASS\} #battle-target-overlay/);
+  const interceptors = f.listeners.filter(entry => entry.type === 'click' && entry.capture);
+  assert.equal(interceptors.length, 1, 'the full lock is one capture-phase click interceptor');
+  const intercept = interceptors[0].handler;
+
+  let prevented = 0;
+  const resultClose = { target: new f.FakeElement('#battle-result-close'), preventDefault() { prevented++; }, stopImmediatePropagation() { prevented++; } };
+  intercept(resultClose);
+  const command = { target: new f.FakeElement('#battle-ui'), preventDefault() { prevented++; }, stopImmediatePropagation() { prevented++; } };
+  intercept(command);
+  assert.equal(prevented, 0, 'auto battle must not intercept clicks at all');
+
+  /* The same interceptor still holds the executor modes shut. */
+  f.api.publishControl({ control: { mode: 'leveling', generation: 9 } });
+  const gameplay = { target: new f.FakeElement('#world-actions'), preventDefault() { prevented++; }, stopImmediatePropagation() { prevented++; } };
+  intercept(gameplay);
+  assert.equal(prevented, 2, 'the executor lock still blocks gameplay clicks');
+
+  /* The full lock keeps the result screen usable, too. */
+  assert.match(source, /LOCK_ALLOWED = "[^"]*#battle-result-screen/);
+  assert.match(source, /target\.closest\(LOCK_ALLOWED\)/);
+});
+
 test('auto battle sends only the generation and locks the browser against the running loop', async () => {
   const f = fixture();
   await f.api.start();
@@ -72,7 +134,10 @@ test('auto battle sends only the generation and locks the browser against the ru
   const control = f.api.currentControl();
   assert.equal(control.mode, 'battle');
   assert.equal(control.generation, 8);
-  assert.equal(f.locked.get('stoneage-ai-locked'), true);
+  /* The fight runs at full speed, but the page stays the player's: only the
+     battle command bar is taken away, so 接管 is not the sole clickable thing. */
+  assert.equal(f.locked.get('stoneage-ai-locked'), false);
+  assert.equal(f.locked.get('stoneage-ai-battle-locked'), true);
   assert.equal(f.app.systemSettings.battleAnimationSpeed, 10);
 
   /* The server's pause handler accepts the executor modes only, so the browser
@@ -102,7 +167,7 @@ test('auto battle stays startable without the task automation executor', async (
 
 test('the panel offers auto battle and leaves no client-side battle loop behind', () => {
   assert.match(source, /<option value="battle">自动战斗<\/option>/);
-  assert.match(source, /LOCKED_MODES/);
+  assert.match(source, /BATTLE_LOCK_CLASS = "stoneage-ai-battle-locked"/);
   assert.ok(!/maybeAutoBattleTurn/.test(source));
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   assert.ok(!/maybeAutoBattleTurn|systemSettings\.autoBattle/.test(html), 'the page must not run a second auto battle');

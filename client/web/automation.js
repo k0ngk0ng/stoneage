@@ -14,11 +14,18 @@
   const MODE_MANUAL = "manual";
   const MODE_PAUSED = "paused";
   const ACTIVE_MODES = new Set([MODE_QUEST, MODE_LEVELING, "agent"]);
-  /* Auto battle holds the same claim on the character as the executor modes --
-     hands off the game UI, battle animations at their fastest -- but it is not
-     a resumable task: the server accepts pause and resume for the executor
-     modes only, so it is deliberately absent from ACTIVE_MODES. */
-  const LOCKED_MODES = new Set([MODE_QUEST, MODE_LEVELING, "agent", MODE_BATTLE]);
+  /* Auto battle answers turns and nothing else, so it only takes the battle
+     command bar away: the panels, the chat, the system menu and the result
+     screen the player has to dismiss all stay live. The executor modes own the
+     whole character and keep the full lock. Auto battle is not a resumable
+     task either -- the server accepts pause and resume for the executor modes
+     only -- which is why it is absent from ACTIVE_MODES. */
+  const BATTLE_LOCK_CLASS = "stoneage-ai-battle-locked";
+  /* Surfaces the full lock leaves usable: the panel that hands control back,
+     and the screens the player has to be able to dismiss. The battle result
+     screen is named explicitly because it is not an .advanced-screen, so the
+     -close exception below never reached its 返回世界 button. */
+  const LOCK_ALLOWED = "#ai-control-panel,#ai-control-toggle,#world-tools,#battle-result-screen,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']";
   const MAX_CONFIG_BYTES = 64 * 1024;
 
   const state = {
@@ -109,10 +116,14 @@
 
   function updateLock(control) {
     if (!root.document?.body) return;
-    const locked = LOCKED_MODES.has(String(control?.mode || "").toLowerCase());
+    const mode = String(control?.mode || "").toLowerCase();
+    const locked = ACTIVE_MODES.has(mode);
     root.document.body.classList.toggle("stoneage-ai-locked", locked);
+    root.document.body.classList.toggle(BATTLE_LOCK_CLASS, mode === MODE_BATTLE);
     root.document.body.dataset.aiControlMode = String(control?.mode || "");
-    if (locked) {
+    /* Both kinds of automation want the fight over quickly; only the executor
+       modes also take the rest of the client away. */
+    if (locked || mode === MODE_BATTLE) {
       if (state.savedSpeed === null) state.savedSpeed = readBattleSpeed();
       setBattleSpeed(10);
     } else if (state.savedSpeed !== null) {
@@ -152,7 +163,11 @@
       #ai-control-panel .ai-note { color:#b8ad92; font-size:11px; }
       body.stoneage-ai-locked #world, body.stoneage-ai-locked #world-actions, body.stoneage-ai-locked #field-ui, body.stoneage-ai-locked #battle-ui, body.stoneage-ai-locked #battle-target-overlay, body.stoneage-ai-locked #chat-form { pointer-events:none !important; }
       body.stoneage-ai-locked #world-tools, body.stoneage-ai-locked #ai-control-panel, body.stoneage-ai-locked #ai-control-toggle, body.stoneage-ai-locked .advanced-screen { pointer-events:auto !important; }
+      body.stoneage-ai-locked :is(${LOCK_ALLOWED}) { pointer-events:auto !important; }
       body.stoneage-ai-locked .advanced-screen button:not([id$="-close"]):not([id$="-return"]), body.stoneage-ai-locked .advanced-screen input, body.stoneage-ai-locked .advanced-screen select, body.stoneage-ai-locked .advanced-screen textarea { pointer-events:none !important; }
+      /* Auto battle answers the turn itself, so the command bar is not the
+         player's to use -- but everything else on the page still is. */
+      body.${BATTLE_LOCK_CLASS} #battle-ui, body.${BATTLE_LOCK_CLASS} #battle-target-overlay { pointer-events:none !important; }
     `;
     root.document.head?.appendChild(style);
   }
@@ -735,10 +750,10 @@
 
   function lockGameplay(event) {
     const control = currentControl();
-    if (!control || !LOCKED_MODES.has(control.mode)) return;
+    if (!control || !ACTIVE_MODES.has(control.mode)) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (target.closest("#ai-control-panel,#ai-control-toggle,#world-tools,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']")) return;
+    if (target.closest(LOCK_ALLOWED)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   }
