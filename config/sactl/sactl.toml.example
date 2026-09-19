@@ -8,8 +8,18 @@
 # serve 监听的 Unix socket；一次性命令通过它找到守护进程。
 socket_path = "runtime/sactl/sactl.sock"
 
-# 命名协议网关地址，不是 GMSV 的裸数字协议地址。
+# 传输方式：
+#   tcp  （默认）直连命名协议网关，最快，适合本机开发
+#   http 走部署的 Web 入口，用域名即可（无需隧道或开放游戏端口）
+transport = "tcp"
+
+# tcp：命名协议网关地址，不是 GMSV 的裸数字协议地址。
 address = "127.0.0.1:9065"
+
+# http：部署的 Web 地址（与浏览器同一个入口）。
+# web_base_url = "https://sa.ichenj.com"
+# 游戏线路 ID，留空则取 Web 服务列表里第一条可用线路。
+# server_id = ""
 
 # 专用账号：不要使用人类玩家正在使用的账号，同一个角色只能有一条连接。
 account = "sactl"

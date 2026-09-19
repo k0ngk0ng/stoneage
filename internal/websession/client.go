@@ -54,21 +54,33 @@ func New(config Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(config.SocketPath) == "" {
-		return nil, fmt.Errorf("%w: private control socket is required", ErrInvalidConfig)
-	}
 	publicClient := &http.Client{
 		Transport:     cloneNoRedirectTransport(http.DefaultTransport),
 		Timeout:       defaultRequestTimeout,
 		CheckRedirect: noRedirect,
 	}
-	controlClient := newUnixHTTPClient(config.SocketPath)
-	return &Client{
+	client := &Client{
 		baseURL: base, serverID: strings.TrimSpace(config.ServerID),
-		web: publicClient, control: controlClient,
-		controlBase: &url.URL{Scheme: "http", Host: "stoneage-web-agent"},
+		web:         publicClient,
 		pollTimeout: defaultPollTimeout,
-	}, nil
+	}
+	// The private control socket carries the agent lease. A caller that only
+	// plays through the public Web session (a remote headless client) has no
+	// access to it, so the client is built without one and every lease call
+	// reports that instead of dialing a path that cannot exist.
+	if socket := strings.TrimSpace(config.SocketPath); socket != "" {
+		client.control = newUnixHTTPClient(socket)
+		client.controlBase = &url.URL{Scheme: "http", Host: "stoneage-web-agent"}
+	}
+	return client, nil
+}
+
+// requiresControl reports whether this client can reach the private agent API.
+func (client *Client) requiresControl() error {
+	if client == nil || client.control == nil {
+		return fmt.Errorf("%w: this client has no private control socket; agent leases are unavailable", ErrInvalidConfig)
+	}
+	return nil
 }
 
 // NewConnector is the composition entry point used by cmd/stoneage-admin.
@@ -87,8 +99,10 @@ func (client *Client) Close() error {
 	if transport, ok := client.web.Transport.(interface{ CloseIdleConnections() }); ok {
 		transport.CloseIdleConnections()
 	}
-	if transport, ok := client.control.Transport.(interface{ CloseIdleConnections() }); ok {
-		transport.CloseIdleConnections()
+	if client.control != nil {
+		if transport, ok := client.control.Transport.(interface{ CloseIdleConnections() }); ok {
+			transport.CloseIdleConnections()
+		}
 	}
 	return nil
 }
@@ -175,6 +189,9 @@ func (client *Client) Dial(ctx context.Context, address string) (net.Conn, error
 // Attach claims one existing Web session for this exact identity. Web
 // performs the final identity check and Gate compare-and-swap.
 func (client *Client) Attach(ctx context.Context, request AttachRequest) (AttachResponse, error) {
+	if err := client.requiresControl(); err != nil {
+		return AttachResponse{}, err
+	}
 	if err := request.Validate(); err != nil {
 		return AttachResponse{}, err
 	}
@@ -189,6 +206,9 @@ func (client *Client) Attach(ctx context.Context, request AttachRequest) (Attach
 }
 
 func (client *Client) Observe(ctx context.Context, token string) (ObserveResponse, error) {
+	if err := client.requiresControl(); err != nil {
+		return ObserveResponse{}, err
+	}
 	if strings.TrimSpace(token) == "" {
 		return ObserveResponse{}, ErrLeaseUnavailable
 	}
@@ -203,6 +223,10 @@ func (client *Client) Observe(ctx context.Context, token string) (ObserveRespons
 }
 
 func (client *Client) Execute(ctx context.Context, token string, request ExecuteRequest) error {
+	if err := client.requiresControl(); err != nil {
+		return err
+	}
+
 	if strings.TrimSpace(token) == "" {
 		return ErrLeaseUnavailable
 	}
@@ -213,6 +237,10 @@ func (client *Client) Execute(ctx context.Context, token string, request Execute
 }
 
 func (client *Client) Detach(ctx context.Context, token string) error {
+	if err := client.requiresControl(); err != nil {
+		return err
+	}
+
 	if strings.TrimSpace(token) == "" {
 		return nil
 	}
@@ -283,6 +311,9 @@ func (client *Client) publicJSON(ctx context.Context, method, endpoint string, b
 }
 
 func (client *Client) privateJSON(ctx context.Context, method, endpoint, token string, body any, result any) error {
+	if err := client.requiresControl(); err != nil {
+		return err
+	}
 	request, err := client.newPrivateRequest(ctx, method, endpoint, token, body)
 	if err != nil {
 		return err
@@ -308,6 +339,9 @@ func (client *Client) privateJSON(ctx context.Context, method, endpoint, token s
 }
 
 func (client *Client) privateNoContent(ctx context.Context, method, endpoint, token string, body any) error {
+	if err := client.requiresControl(); err != nil {
+		return err
+	}
 	request, err := client.newPrivateRequest(ctx, method, endpoint, token, body)
 	if err != nil {
 		return err

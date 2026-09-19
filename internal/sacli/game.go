@@ -2,10 +2,14 @@ package sacli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
+	"github.com/k0ngk0ng/stoneage/internal/websession"
 )
 
 // Game is the narrow seam sactl depends on for the protocol session.
@@ -32,13 +36,25 @@ type Game interface {
 
 var _ Game = (*aigame.Session)(nil)
 
-// connect dials the named-protocol gateway, authenticates with ClientLogin
-// and enters the requested character.
+// connect builds the game session for the configured transport, authenticates
+// with ClientLogin and enters the requested character. Both transports yield
+// the same *aigame.Session: the Web transport is the same protocol carried by
+// the site's normal HTTP session endpoints, so every command works the same.
 func connect(ctx context.Context, config Config, character string) (*aigame.Session, error) {
-	session, err := aigame.Connect(ctx, aigame.Config{Address: config.Address},
-		aigame.Credentials{Account: config.Account, Password: config.Password})
+	var session *aigame.Session
+	var err error
+	switch config.Transport {
+	case "http":
+		session, err = connectWeb(ctx, config)
+	default:
+		session, err = aigame.Connect(ctx, aigame.Config{Address: config.Address},
+			aigame.Credentials{Account: config.Account, Password: config.Password})
+		if err != nil {
+			err = fmt.Errorf("connect %s: %w", config.Address, err)
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("connect %s: %w", config.Address, err)
+		return nil, err
 	}
 	if character != "" {
 		if err := session.EnterCharacter(ctx, character); err != nil {
@@ -47,6 +63,63 @@ func connect(ctx context.Context, config Config, character string) (*aigame.Sess
 		}
 	}
 	return session, nil
+}
+
+// connectWeb opens a session through the deployment's Web front end.
+func connectWeb(ctx context.Context, config Config) (*aigame.Session, error) {
+	client, err := websession.New(websession.Config{BaseURL: config.WebBaseURL, ServerID: config.ServerID})
+	if err != nil {
+		return nil, fmt.Errorf("connect %s: %w", config.WebBaseURL, err)
+	}
+	serverID := config.ServerID
+	if serverID == "" {
+		serverID, err = firstWebServer(ctx, config.WebBaseURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	connection, err := client.Dial(ctx, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("open web session on %s: %w", config.WebBaseURL, err)
+	}
+	session := aigame.NewSession(connection, aigame.Config{Address: serverID})
+	if err := session.Authenticate(ctx, aigame.Credentials{Account: config.Account, Password: config.Password}); err != nil {
+		_ = session.Close()
+		return nil, fmt.Errorf("authenticate over %s: %w", config.WebBaseURL, err)
+	}
+	return session, nil
+}
+
+// firstWebServer asks the Web server directory for the first enabled line.
+func firstWebServer(ctx context.Context, baseURL string) (string, error) {
+	endpoint := strings.TrimRight(baseURL, "/") + "/api/servers"
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("list servers on %s: %w", baseURL, err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("list servers on %s: %w", baseURL, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("list servers on %s: HTTP %d", baseURL, response.StatusCode)
+	}
+	var payload struct {
+		Servers []struct {
+			ID       string `json:"id"`
+			Disabled bool   `json:"disabled"`
+		} `json:"servers"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+		return "", fmt.Errorf("list servers on %s: %w", baseURL, err)
+	}
+	for _, server := range payload.Servers {
+		if !server.Disabled && server.ID != "" {
+			return server.ID, nil
+		}
+	}
+	return "", fmt.Errorf("list servers on %s: no enabled game line", baseURL)
 }
 
 // directionLetter maps one user-facing direction to the native 2.5 wire

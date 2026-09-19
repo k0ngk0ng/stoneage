@@ -349,9 +349,20 @@ func TestStatusErrorsDoNotExposeBody(t *testing.T) {
 	}
 }
 
-func TestNewRequiresPrivateSocket(t *testing.T) {
-	if _, err := New(Config{BaseURL: "http://127.0.0.1:1"}); err == nil {
-		t.Fatal("missing private socket was accepted")
+// A remote headless client plays through the public Web session and has no
+// access to the private control socket, so a client without one is valid —
+// but every lease operation must say so instead of dialing a path that cannot
+// exist.
+func TestNewWithoutPrivateSocketServesPublicSessionsOnly(t *testing.T) {
+	client, err := New(Config{BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("public-only client: %v", err)
+	}
+	if _, err := client.Attach(context.Background(), AttachRequest{}); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("attach without a control socket = %v, want ErrInvalidConfig", err)
+	}
+	if err := client.Execute(context.Background(), "token", ExecuteRequest{}); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("execute without a control socket = %v, want ErrInvalidConfig", err)
 	}
 	if _, err := New(Config{BaseURL: "file:///tmp/web", SocketPath: os.DevNull}); err == nil {
 		t.Fatal("non-HTTP Web URL was accepted")

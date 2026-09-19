@@ -118,6 +118,24 @@ go build -mod=mod -o build/local/sactl ./cmd/sactl
 | 配置 | `$XDG_CONFIG_HOME/sactl/sactl.toml`（默认 `~/.config/sactl/sactl.toml`） |
 | socket 与状态 | `$XDG_STATE_HOME/sactl/`（默认 `~/.local/state/sactl/`） |
 
+### 两种传输：直连网关，或走 Web 域名
+
+```toml
+# 默认：直连网关（本机开发最快）
+transport = "tcp"
+address = "127.0.0.1:9065"
+
+# 或者：走部署的 Web 入口，用日常域名即可，无需隧道或额外端口
+transport = "http"
+web_base_url = "https://sa.ichenj.com"
+server_id = ""        # 留空自动取 Web 服务列表里第一条可用线路
+```
+
+`http` 传输把同一套游戏协议跑在站点既有的 HTTP 会话通道上（长轮询收事件、POST 发送），
+因此**只要有网页能打开，sactl 就能连**：不需要 SSH 隧道，也不需要把网关端口暴露出去。
+生产实测：用该传输完成了登录、建角、进世界、寻路、NPC 对话与跨图传送。代价是多一跳
+（会话由 Web 进程代持），延迟略高于直连。
+
 配置查找顺序：`--config` 指定的文件 → `$STONEAGE_SACTL_CONFIG` → `./sactl.toml` →
 `./runtime/sactl.toml`（仓库内开发用）→ `~/.config/sactl/sactl.toml`。socket 路径也可用
 `--socket` 或 `STONEAGE_SACTL_SOCKET` 覆盖。
