@@ -44,8 +44,25 @@ output.chmod(0o755)
         assert (f'{prefix}/bin/stoneage-web' in names) == (target_os == 'linux')
         with tarfile.open(dist / f'stoneage-assets-sync-v0.1.99-{target_os}-{arch}.tar.gz') as archive:
             assert archive.extractfile(f'bin/stoneage-assets-sync{suffix}').read().decode() == f'{target_os}/{arch}'
+        # The standalone client archive carries the binary, the config example
+        # and its documentation, because it is installed on an operator
+        # machine rather than deployed with the server.
+        sactl_prefix = f'stoneage-sactl-v0.1.99-{target_os}-{arch}'
+        if target_os == 'windows':
+            with zipfile.ZipFile(dist / f'{sactl_prefix}.zip') as archive:
+                sactl_names = archive.namelist()
+                payload = archive.read(f'{sactl_prefix}/sactl.exe').decode()
+        else:
+            with tarfile.open(dist / f'{sactl_prefix}.tar.gz') as archive:
+                sactl_names = archive.getnames()
+                payload = archive.extractfile(f'{sactl_prefix}/sactl{suffix}').read().decode()
+        assert payload == f'{target_os}/{arch}', payload
+        for entry in ['sactl.toml.example', 'sactl.md', 'install-sactl.sh']:
+            assert f'{sactl_prefix}/{entry}' in sactl_names, entry
     with tarfile.open(dist / 'stoneage-deploy-v0.1.99.tar.gz') as archive:
         assert archive.extractfile('VERSION').read() == b'v0.1.99\n'
         assert archive.extractfile('bin/stoneage-assets-sync').read() == b'linux/amd64'
-    assert len(list(dist.iterdir())) == 9
+    # 4 control-plane archives, 4 assets-sync archives, 4 sactl archives and
+    # the deploy bundle.
+    assert len(list(dist.iterdir())) == 13, sorted(p.name for p in dist.iterdir())
 print('Release target package layouts passed')

@@ -1,0 +1,28 @@
+# sactl 本地客户端配置示例。
+#
+# 复制到 runtime/sactl.toml（runtime/ 已被 gitignore）后填入真实凭据：
+#   cp config/sactl/sactl.toml.example runtime/sactl.toml
+#
+# 不要把这个文件复制进仓库的受控路径，也不要把密码写进命令行参数。
+
+# serve 监听的 Unix socket；一次性命令通过它找到守护进程。
+socket_path = "runtime/sactl/sactl.sock"
+
+# 命名协议网关地址，不是 GMSV 的裸数字协议地址。
+address = "127.0.0.1:9065"
+
+# 专用账号：不要使用人类玩家正在使用的账号，同一个角色只能有一条连接。
+account = "sactl"
+
+# 密码二选一：password 直接写（文件权限自行收紧），或 password_file 指向
+# 只含密码的文件（推荐）。两者都为空时只做连接测试。
+password = ""
+# password_file = "runtime/sactl-password"
+
+# 登录后自动进入的角色。留空时停在角色列表，可用
+# `sactl chars` / `sactl create-character <name>` / `sactl enter <name>` 操作。
+character = ""
+
+# 2.5 服务端数据目录：路由用 map/LS2MAP，跨图用 map/mapwarp.txt。
+# 可以是 gmsv 数据目录（含 map/）、gmsv 目录或 map 目录本身。
+map_directory = "runtime/legacy-server/gmsv/data"

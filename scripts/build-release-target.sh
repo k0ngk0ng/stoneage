@@ -71,6 +71,24 @@ build_target() {
 }
 
 build_target "$goos" "$goarch" "$suffix"
+
+# sactl is the headless game client an operator (or an AI player's executor)
+# runs on their own machine, so it ships as its own archive: the server
+# deployment bundle is not part of that workflow.
+sactl_root="$stage/stoneage-sactl-${RELEASE_TAG}-${goos}-${goarch}"
+mkdir -p "$sactl_root"
+CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+  go build -trimpath -ldflags='-s -w' -o "$sactl_root/sactl$suffix" ./cmd/sactl
+cp config/sactl/sactl.toml.example "$sactl_root/sactl.toml.example"
+cp docs/sactl.md "$sactl_root/sactl.md"
+cp scripts/install-sactl.sh "$sactl_root/install-sactl.sh"
+if [[ "$goos" == windows ]]; then
+  (cd "$stage" && zip -q -r -9 "$dist/stoneage-sactl-${RELEASE_TAG}-windows-amd64.zip" \
+    "stoneage-sactl-${RELEASE_TAG}-windows-amd64")
+else
+  (cd "$stage" && tar -czf "$dist/stoneage-sactl-${RELEASE_TAG}-${goos}-${goarch}.tar.gz" \
+    "stoneage-sactl-${RELEASE_TAG}-${goos}-${goarch}")
+fi
 if [[ "$goos" == windows ]]; then
   (cd "$stage" && zip -q -r -9 "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.zip" \
     "stoneage-control-plane-${RELEASE_TAG}-windows-amd64")
