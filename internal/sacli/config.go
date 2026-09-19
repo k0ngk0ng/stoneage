@@ -21,9 +21,22 @@ import (
 // PasswordFile; they are never command-line arguments.
 type Config struct {
 	SocketPath string `toml:"socket_path"`
+	// Transport selects how the game session reaches the server:
+	//
+	//   "tcp"  (default) dials the named-protocol gateway directly
+	//   "http" speaks the same protocol through the Web front end, which is
+	//          what lets a client reach a deployment over its normal HTTPS
+	//          address without a tunnel or an exposed game port
+	Transport string `toml:"transport"`
 	// Address is the named-protocol gateway listener, not a raw GMSV address.
 	Address string `toml:"address"`
-	Account string `toml:"account"`
+	// WebBaseURL is the deployment's Web address for the http transport, for
+	// example https://sa.ichenj.com. The browser client uses the same entry.
+	WebBaseURL string `toml:"web_base_url"`
+	// ServerID selects the game line for the http transport, as listed by the
+	// Web server directory. Empty picks the first enabled line.
+	ServerID string `toml:"server_id"`
+	Account  string `toml:"account"`
 	// Password is the account password. Prefer PasswordFile so the secret is
 	// not stored in a file that may be edited or shared casually.
 	Password     string `toml:"password"`
@@ -118,11 +131,22 @@ func LoadConfig(path string) (Config, error) {
 		}
 		config.Password = strings.TrimRight(string(data), "\r\n")
 	}
-	if config.Address == "" {
-		return Config{}, fmt.Errorf("config: address is required")
-	}
 	if config.SocketPath == "" {
 		return Config{}, fmt.Errorf("config: socket_path is required")
+	}
+	switch strings.ToLower(strings.TrimSpace(config.Transport)) {
+	case "", "tcp":
+		config.Transport = "tcp"
+		if config.Address == "" {
+			return Config{}, fmt.Errorf("config: address is required for the tcp transport")
+		}
+	case "http", "web":
+		config.Transport = "http"
+		if config.WebBaseURL == "" {
+			return Config{}, fmt.Errorf("config: web_base_url is required for the http transport")
+		}
+	default:
+		return Config{}, fmt.Errorf("config: unknown transport %q (use tcp or http)", config.Transport)
 	}
 	return config, nil
 }

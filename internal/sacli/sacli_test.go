@@ -12,6 +12,42 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aiplanner"
 )
 
+// The transport decides which endpoint a session talks to, so a config that
+// cannot carry a session must be refused before the daemon starts.
+func TestConfigTransportValidation(t *testing.T) {
+	directory := t.TempDir()
+	write := func(body string) string {
+		path := filepath.Join(directory, "sactl.toml")
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if _, err := LoadConfig(write("account = \"a\"\ntransport = \"http\"\n")); err == nil {
+		t.Error("http transport without web_base_url was accepted")
+	}
+	if _, err := LoadConfig(write("account = \"a\"\ntransport = \"carrier-pigeon\"\n")); err == nil {
+		t.Error("unknown transport was accepted")
+	}
+	// The defaults carry a local gateway address, so the check only fires when
+	// a config explicitly clears it.
+	if _, err := LoadConfig(write("account = \"a\"\ntransport = \"tcp\"\naddress = \"\"\n")); err == nil {
+		t.Error("tcp transport without an address was accepted")
+	}
+	config, err := LoadConfig(write("account = \"a\"\ntransport = \"http\"\nweb_base_url = \"https://example.test\"\n"))
+	if err != nil {
+		t.Fatalf("http transport: %v", err)
+	}
+	if config.Transport != "http" || config.WebBaseURL != "https://example.test" {
+		t.Fatalf("http config = %+v", config)
+	}
+	// An omitted transport keeps the direct gateway behaviour.
+	config, err = LoadConfig(write("account = \"a\"\naddress = \"127.0.0.1:9065\"\n"))
+	if err != nil || config.Transport != "tcp" {
+		t.Fatalf("default transport = %q (%v)", config.Transport, err)
+	}
+}
+
 // The wire alphabet is easy to get wrong: the preserved client encodes a
 // direction through cnvServDir()'s rotation (client/web/index.html:1669-1676)
 // and the navigator documents the same result (internal/ainavigation/types.go:87-90).
