@@ -83,6 +83,9 @@ cp config/sactl/sactl.toml.example "$sactl_root/sactl.toml.example"
 cp docs/sactl.md "$sactl_root/sactl.md"
 cp scripts/install-sactl.sh "$sactl_root/install-sactl.sh"
 if [[ "$goos" == windows ]]; then
+  cp scripts/install-sactl.ps1 "$sactl_root/install-sactl.ps1"
+fi
+if [[ "$goos" == windows ]]; then
   (cd "$stage" && zip -q -r -9 "$dist/stoneage-sactl-${RELEASE_TAG}-windows-amd64.zip" \
     "stoneage-sactl-${RELEASE_TAG}-windows-amd64")
 else

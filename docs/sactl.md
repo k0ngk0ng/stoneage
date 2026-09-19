@@ -28,7 +28,26 @@ sactl <命令> [参数]              一次性客户端：连 socket → 发一�
 
 ## 安装
 
-三种方式，任选一种：
+**0. 包管理器（推荐，macOS / Windows）**
+
+```bash
+# macOS
+brew install k0ngk0ng/tap/sactl
+
+# Windows（PowerShell）
+scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
+scoop install k0ngk0ng/sactl
+```
+
+两个渠道都由 Release workflow 里的 `packages` 作业自动更新：它按发布出来的 `SHA256SUMS`
+渲染公式与清单，推送到 `k0ngk0ng/homebrew-tap`（brew 里叫 `k0ngk0ng/tap`）和
+`k0ngk0ng/scoop-bucket`。该作业需要一个仓库 secret `TAP_GITHUB_TOKEN`（对两个仓库有
+`contents: write` 的 PAT）；未配置时它只打警告并跳过，不影响发版。
+
+用包管理器安装还顺带绕开了 macOS 的隔离问题：brew 与 scoop 都用 curl 下载，不会写入
+`com.apple.quarantine`。
+
+另外三种方式，任选一种：
 
 **1. 从 Release 下载（推荐给使用方）**
 
@@ -56,7 +75,16 @@ chmod 600 ~/.config/sactl/sactl.toml    # 填账号、密码、map_directory
 > scripts/install-sactl.sh --download        # 用 curl 下载，根本不会带该属性
 > ```
 >
-> 用 `curl`/`gh` 下载不受影响，因为只有浏览器一类应用会写这个属性。
+> 用 `curl`/`gh` 下载不受影响，因为只有浏览器一类应用会写这个属性；用上面的 Homebrew
+> 安装同样不受影响。
+
+> **Windows：** 浏览器下载的 zip 会被打上 Mark-of-the-Web，首次运行会有 SmartScreen
+> 提示。解压后执行 `Unblock-File .\sactl.exe`（或直接用 zip 内的
+> `install-sactl.ps1`，它会自动解除并安装到 `%LOCALAPPDATA%\Programs\sactl`）：
+
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File install-sactl.ps1 -AddToPath
+> ```
 
 **2. 用安装脚本（一次到位）**
 

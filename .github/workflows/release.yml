@@ -220,6 +220,29 @@ jobs:
           retention-days: 2
           if-no-files-found: error
 
+  # Package-manager distribution runs after the release exists, because the
+  # formula and manifest carry the checksums of the published archives. The
+  # token needs contents:write on k0ngk0ng/homebrew-tap and on the Scoop
+  # bucket; without it the step warns and the release stays green.
+  packages:
+    name: Publish Homebrew formula and Scoop manifest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish to the tap and the bucket
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::warning::TAP_GITHUB_TOKEN is not set; skipping the Homebrew and Scoop publish"
+            exit 0
+          fi
+          bash scripts/publish-homebrew-formula.sh "$TAG"
+          bash scripts/publish-scoop-manifest.sh "$TAG"
+
   publish:
     name: Publish verified release
     if: startsWith(github.ref, 'refs/tags/v')
