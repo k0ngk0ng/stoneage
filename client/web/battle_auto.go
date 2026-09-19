@@ -82,7 +82,7 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 		http.Error(response, "session state is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if observed.Phase != aigame.PhaseWorld {
+	if observed.Phase != aigame.PhaseWorld && observed.Phase != aigame.PhaseBattle {
 		http.Error(response, "character is not in the world yet", http.StatusConflict)
 		return
 	}

@@ -247,6 +247,11 @@ test('automation cannot start before the character is in the world', async () =>
   f.app.phase = 'character-list';
   await assert.rejects(() => f.api.start(), /先进入世界/);
   assert.ok(!f.calls.some(entry => entry.url.endsWith('/battle-auto')), 'nothing may be claimed yet');
+  /* A character already in a fight is in the world; that is when auto battle
+     is most wanted. */
+  f.app.phase = 'battle';
+  await f.api.start();
+  assert.ok(f.calls.some(entry => entry.url.endsWith('/battle-auto')), 'a fight in progress may be handed over');
 });
 
 test('auto battle cannot start while another owner holds the session', async () => {

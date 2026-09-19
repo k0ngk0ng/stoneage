@@ -641,7 +641,7 @@
     /* The loop drives a character that is in the world; taking the lease at
        the login or character screen would lock the page out of its own login
        until the player hands control back. */
-    if (app?.phase !== "world") throw new Error("请先进入世界再启动自动化");
+    if (app && app.phase !== "world" && app.phase !== "battle") throw new Error("请先进入世界再启动自动化");
     const mode = String(panel_mode());
     if (mode === MODE_BATTLE) {
       /* Auto battle carries no task, budget or targets: it answers whatever
