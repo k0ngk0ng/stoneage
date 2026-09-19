@@ -85,7 +85,12 @@ func ConfigSearchPaths() []string {
 	if env := strings.TrimSpace(os.Getenv("STONEAGE_SACTL_CONFIG")); env != "" {
 		paths = append(paths, env)
 	}
-	paths = append(paths, "sactl.toml", filepath.Join("runtime", "sactl.toml"))
+	// The working directory first, then the operator's config. A repository
+	// checkout is deliberately NOT searched: a stray runtime/sactl.toml would
+	// otherwise shadow the installed configuration for anyone running the
+	// binary from the source tree, and it made `sactl stop` target another
+	// daemon's socket.
+	paths = append(paths, "sactl.toml")
 	if base := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); base != "" {
 		paths = append(paths, filepath.Join(base, "sactl", "sactl.toml"))
 	} else if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
