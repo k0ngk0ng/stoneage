@@ -1,0 +1,37 @@
+--- a/net.c
++++ b/net.c
+@@ -2332,7 +2332,22 @@
+     }
+     loop_num=0;
+     CONNECT_advanceTickDeadline( &tick_deadline, &st, looptime_us );
+-    active_fds = CONNECT_countActiveFds();
++
++    /* STONEAGE_IDLE_NETLOOP_WAIT
++     * Counting the table walks every fdnum slot, and the count does not
++     * decide whether a slot is served -- it only says how the tick is
++     * divided between them. Refresh it once a second rather than once a
++     * pass: a connection that arrives in between waits one extra tick for
++     * its share, which is the granularity the pass already works at.
++     */
++    {
++      static struct timeval active_fds_at;
++      if ( active_fds <= 0 ||
++           time_diff_us( st, active_fds_at ) >= 1000000 ) {
++        active_fds = CONNECT_countActiveFds();
++        active_fds_at = st;
++      }
++    }
+     while(1)
+ 	{
+     char buf[ 65535 ];
+--- a/handletime.c
++++ b/handletime.c
+@@ -175,6 +175,8 @@
+ 
+ void Assess_SysEfficacy( int flg)
+ {
++	if ( !ASSESS_subEnabled() ) return;
++
+ 	if( flg == 0 ){
+ 		StartClock=clock();
+ 	}else if( flg == 1 ){

@@ -261,6 +261,14 @@ if ! grep -q 'STONEAGE_IDLE_NETLOOP_WAIT' /src/gmsv/main.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0029-idle-tick-overhead.patch
 fi
 
+# The remaining per-pass polls. Counting the connection table walks every slot
+# and only decides how the tick is divided, so it is refreshed once a second.
+# The headline CPU average sampled twice per pass for a line printed every 500
+# passes, so it rides the same switch as the stage timers.
+if ! grep -q 'active_fds_at' /src/gmsv/net.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0030-idle-poll-intervals.patch
+fi
+
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM
 # command password. The source files are GBK, so use checked, byte-preserving

@@ -58,17 +58,19 @@
  #include <time.h>
  #include <sys/time.h>
  
-@@ -207,9 +208,30 @@
- }
+@@ -151,6 +152,25 @@
  
- #ifdef _ASSESS_SYSEFFICACY_SUB
+ 	SubStartClock = 0;
+ #endif
++}
++
 +/* STONEAGE_IDLE_NETLOOP_WAIT
 + * clock() is a real syscall on this libc: there is no vDSO for process CPU
-+ * time. Two samples per stage, four stages, on every pass of a loop that
-+ * otherwise only waits, is a strange price for a diagnostic. The whole game
-+ * loop body lives inside _ASSESS_SYSEFFICACY_SUB, so the stage timers stay
-+ * compiled, but they only sample when STONEAGE_ASSESS_SUB=1 asks for it.
-+ * The variable is read once and remembered, so the disabled path is a branch.
++ * time. The stage timers take two samples each, four stages, on every pass of
++ * a loop whose body now only waits, which is a strange price for a
++ * diagnostic. The whole game loop body lives inside _ASSESS_SYSEFFICACY_SUB,
++ * so the timers stay compiled, but they only sample when STONEAGE_ASSESS_SUB=1
++ * asks for it. Read once and remembered, so the disabled path is a branch.
 + */
 +static INLINE BOOL ASSESS_subEnabled( void )
 +{
@@ -79,8 +81,11 @@
 +        enabled = ( value != NULL && value[ 0 ] == '1' ) ? 1 : 0;
 +    }
 +    return enabled;
-+}
-+
+ }
+ 
+ void Assess_SysEfficacy( int flg)
+@@ -209,7 +229,9 @@
+ #ifdef _ASSESS_SYSEFFICACY_SUB
  void Assess_SysEfficacy_sub( int flg, int loop)
  {
 +    if ( !ASSESS_subEnabled() ) return;

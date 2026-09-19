@@ -57,7 +57,11 @@ extern tagRidePetTable ridePetTable[296];
 #define STONEAGE_PA_MIN_PET_MODAI 0
 #define STONEAGE_PA_MAX_PET_MODAI 1000000
 #define STONEAGE_PA_MAX_AI_PETS 5
-#define STONEAGE_PA_POLL_INTERVAL_MS 25
+/* The console writes one request file per operator action, so this is a
+   human-scale queue: a slower poll is invisible next to the round trip the
+   console already makes, and it keeps the pass from scanning a directory
+   forty times a second on an idle server. */
+#define STONEAGE_PA_POLL_INTERVAL_MS 250
 
 typedef struct tagStoneAgePAField {
     char key[64];
