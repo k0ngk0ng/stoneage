@@ -212,3 +212,52 @@ func TestAnsweredWindowDoesNotBlockTheWalk(t *testing.T) {
 		t.Fatal("the walk must resume once the window is answered")
 	}
 }
+
+// A character standing where the server refuses every step looks identical to
+// a walking one from the panel's side: same position, same "looking for a
+// fight". The count of steps submitted against an unmoved position is what
+// separates them.
+func TestSeekerReportsATileItCannotStepOff(t *testing.T) {
+	s := &seeker{interval: DefaultSeekInterval}
+	snapshot := worldSnapshot()
+	if s.stalled() {
+		t.Fatal("a fresh walk is not stalled")
+	}
+	// The first step establishes the anchor; the ones after it are the
+	// evidence that none of them moved the character.
+	s.notePosition(snapshot.Position)
+	for i := 0; i < seekStalledAfter; i++ {
+		s.notePosition(snapshot.Position)
+	}
+	if !s.stalled() {
+		t.Fatalf("%d steps from one tile must count as stalled", seekStalledAfter)
+	}
+	// The server moved the character: whatever the count was, it walks again.
+	snapshot.Position.X++
+	s.notePosition(snapshot.Position)
+	if s.stalled() {
+		t.Fatal("a character that moved is not stuck")
+	}
+}
+
+// A refused direction is dropped at once: waiting out the rest of the pattern
+// would spend steps re-trying a wall.
+func TestRefusedStepTurnsTheLeg(t *testing.T) {
+	s := &seeker{interval: DefaultSeekInterval}
+	snapshot := worldSnapshot()
+	clock := time.Unix(0, 0)
+	clock = clock.Add(DefaultSeekInterval)
+	first, ok := s.next(snapshot, clock)
+	if !ok {
+		t.Fatal("the first pass must step")
+	}
+	s.rejectedStep()
+	clock = clock.Add(DefaultSeekInterval)
+	second, ok := s.next(snapshot, clock)
+	if !ok {
+		t.Fatal("the walk keeps trying after a refusal")
+	}
+	if first.Route == second.Route {
+		t.Fatalf("route %q repeated after a refusal", second.Route)
+	}
+}

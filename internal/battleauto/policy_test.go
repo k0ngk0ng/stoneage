@@ -259,3 +259,24 @@ func TestKeepsFightingWhileAnotherPlayerStands(t *testing.T) {
 		t.Fatal("the battle was ended while a party member was still standing")
 	}
 }
+
+// A concluded battle stays in the projection until the next one starts, so
+// answering it must stop at the first EO. A walking loop that kept answering
+// never looks for another fight, and the panel shows it as "looking" the whole
+// time.
+func TestConcludedBattleIsAnsweredOnce(t *testing.T) {
+	snapshot := worldSnapshot()
+	snapshot.Battle = aigame.BattleSnapshot{Ended: true, Result: "win"}
+	policy := DefaultPolicy()
+	policy.SeekEncounters = true
+
+	decision, ok := Decide(snapshot, nil, policy)
+	if !ok || decision.Action.Kind != aigame.ActionBattleEnd {
+		t.Fatalf("a concluded battle must be ended once: %+v ok=%v", decision, ok)
+	}
+	// The EO is applied: the projection records it and keeps the battle.
+	snapshot.Battle.LastCommand = "EO"
+	if decision, ok := Decide(snapshot, nil, policy); ok {
+		t.Fatalf("a battle already answered with EO must not be answered again: %+v", decision)
+	}
+}

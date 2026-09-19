@@ -37,7 +37,48 @@ type seeker struct {
 	last     time.Time
 	leg      int
 	step     int
+	// anchor is the last position the character was seen standing on, and
+	// unmoved counts the steps submitted since it last changed. A step the
+	// server refuses is silent -- the packet is written either way -- so a
+	// position that never moves is the only evidence that the character is
+	// standing somewhere it cannot leave, and without it the panel reports a
+	// walk that is not happening.
+	anchor      aigame.Point
+	anchorKnown bool
+	unmoved     int
 }
+
+// seekStalledAfter is how many steps may be submitted against an unchanged
+// position before the walk calls itself stuck. The pattern turns through all
+// four directions in eight steps, so this is a cycle and a half: long enough
+// that a single refused tile is not mistaken for a walled-in character.
+const seekStalledAfter = 12
+
+// reasonWalkStalled is the State.Blocked value for "the character is not
+// moving" as opposed to "the loop is not walking".
+const reasonWalkStalled = "walk"
+
+// notePosition counts a step against the position it was submitted from. A
+// character that moved clears the count; one that did not, keeps it.
+func (s *seeker) notePosition(position aigame.Point) {
+	if !s.anchorKnown || s.anchor != position {
+		s.anchor, s.anchorKnown, s.unmoved = position, true, 0
+		return
+	}
+	s.unmoved++
+}
+
+// rejectedStep turns the leg after the session refused the step outright:
+// waiting out the rest of the pattern would spend steps re-trying a direction
+// that is known to be blocked.
+func (s *seeker) rejectedStep() {
+	s.step = 0
+	s.leg = (s.leg + 1) % len(seekLegs)
+}
+
+// stalled reports whether the character has not moved for a whole cycle of the
+// pattern.
+func (s *seeker) stalled() bool { return s.unmoved >= seekStalledAfter }
 
 // Blocked reports what is stopping the walk, or "" when nothing is. A loop
 // that silently refuses to walk looks exactly like a broken one, and the
@@ -93,6 +134,7 @@ func (s *seeker) next(snapshot aigame.Snapshot, now time.Time) (aigame.Action, b
 		return positionQuery(), true
 	}
 	s.step++
+	s.notePosition(snapshot.Position)
 	// The 2.5 walk carries the origin tile, and the server only accepts it
 	// while it is still adjacent to the character, so the step is submitted
 	// from the last position the server confirmed.

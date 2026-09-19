@@ -17,7 +17,10 @@ type State struct {
 	Losses   int   `json:"losses"`
 	// Seeking means the loop is walking to find a fight rather than answering
 	// one, and Blocked names what is stopping it when it cannot: "window" for
-	// an unanswered dialogue, "phase" when the character is not in the world.
+	// an unanswered dialogue, "phase" when the character is not in the world,
+	// "walk" when the character will not move in any direction -- a tile it
+	// cannot step off, which is otherwise indistinguishable from a walk that
+	// is working.
 	Seeking bool   `json:"seeking"`
 	Blocked string `json:"blocked,omitempty"`
 }

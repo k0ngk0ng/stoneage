@@ -6,7 +6,10 @@ const path = require('node:path');
 
 function fixture() {
   const app = { petSlots: [] };
-  const root = { StoneAgeWebClient: { app } };
+  const sent = [];
+  /* The module runs in its own realm, so a recorded packet is flattened to a
+     string: deepStrictEqual would otherwise fail on the foreign prototypes. */
+  const root = { StoneAgeWebClient: { app, send: (name, values) => { sent.push(`${name}|${(values || []).join(",")}`); return Promise.resolve(); } } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'automation.js'), 'utf8'), { window: root });
   function select() {
     return {
@@ -26,7 +29,7 @@ function fixture() {
     getElementById: id => id === 'ai-control-panel' ? panel : {},
     createElement: () => ({ dataset: {} }),
   };
-  return { app, nodes, api: root.StoneAgeAutomation };
+  return { app, nodes, api: root.StoneAgeAutomation, sent };
 }
 
 test('human quest selection uses owned stable identity and never silently replaces a lost pet', () => {
@@ -94,6 +97,32 @@ test('running or paused automation keeps character build inputs locked until man
   }
   api.publishControl({ mode: 'manual', generation: 3 });
   assert.equal(disabled, false);
+});
+
+test('the panel asks the server for a pet serial instead of leaving every pet unselectable', () => {
+  const { app, api, sent } = fixture();
+  app.petSlots = [{ name: '乌力乌力', level: 1 }];
+  api.refreshPets();
+  assert.equal(sent[0], 'S|AI', 'an unidentified pet is asked about');
+  /* The panel refreshes on every control update; the ask must not become a
+     packet storm. */
+  api.refreshPets();
+  assert.equal(sent.length, 1);
+  app.petSlots = [{ name: '乌力乌力', id: '1789743703i10' }];
+  api.refreshPets();
+  assert.equal(sent.length, 1, 'an identified pet needs no request');
+});
+
+test('no pet identity request while a mode owns the session', () => {
+  const { app, nodes, api, sent } = fixture();
+  nodes['#ai-control-status'] = { textContent: '', classList: { toggle() {} } };
+  app.petSlots = [{ name: '乌力乌力', level: 1 }];
+  api.publishControl({ mode: 'leveling', generation: 2 });
+  api.refreshPets();
+  assert.equal(sent.length, 0, 'a task mode refuses outside packets, so asking is pointless');
+  api.publishControl({ mode: 'manual', generation: 3 });
+  api.refreshPets();
+  assert.equal(sent[0], 'S|AI', 'the player keeps the session again');
 });
 
 test('prerequisite execution is opt-in for quests and cannot leak into leveling', () => {

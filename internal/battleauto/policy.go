@@ -43,6 +43,14 @@ const itemTargetSelfOnly = 5
 // whenever the server has not both opened the menu and sent the roster.
 func Decide(snapshot aigame.Snapshot, tables *aiknowledge.RecoveryTables, policy Policy) (Decision, bool) {
 	battle := snapshot.Battle
+	/* EO is the client's acknowledgement of a terminal result, and it is sent
+	   once. The projection keeps the ended battle -- result and all -- until
+	   the next one replaces it, so a policy that kept answering it would do
+	   nothing else: for the walking loop that means never looking for another
+	   fight, which looks exactly like a loop that does not work. */
+	if battle.LastCommand == "EO" {
+		return Decision{}, false
+	}
 	if battle.Ended || battle.Result != "" {
 		return Decision{Action: aigame.EndBattle(), Reason: "battle result is in"}, true
 	}

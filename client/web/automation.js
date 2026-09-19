@@ -41,6 +41,7 @@
     taskRequest: null,
     taskRequestSerial: 0,
     supplies: [],
+    petIdentityAt: 0,
   };
 
   function finiteInteger(value, fallback = 0) {
@@ -236,10 +237,10 @@
             <p class="ai-note">每次补货保留 2 个背包空位；实际购买数量按短缺计算，并受花费上限限制。</p>
           </div>
         </fieldset>
-        <div class="ai-row"><label for="ai-budget-reserve">保留石币</label><input id="ai-budget-reserve" type="number" min="0" step="1" value="0"></div>
-        <div class="ai-row"><label for="ai-budget-max">花费上限</label><input id="ai-budget-max" type="number" min="0" step="1" value="0"></div>
-        <div class="ai-row"><label for="ai-time-limit">时间上限(秒)</label><input id="ai-time-limit" type="number" min="1" step="1" value="3600"></div>
-        <div class="ai-row"><label for="ai-death-limit">失败上限</label><input id="ai-death-limit" type="number" min="0" step="1" value="0"></div>
+        <div class="ai-row" id="ai-budget-reserve-row"><label for="ai-budget-reserve">保留石币</label><input id="ai-budget-reserve" type="number" min="0" step="1" value="0"></div>
+        <div class="ai-row" id="ai-budget-max-row"><label for="ai-budget-max">花费上限</label><input id="ai-budget-max" type="number" min="0" step="1" value="0"></div>
+        <div class="ai-row" id="ai-time-limit-row"><label for="ai-time-limit">时间上限(秒)</label><input id="ai-time-limit" type="number" min="1" step="1" value="3600"></div>
+        <div class="ai-row" id="ai-death-limit-row"><label for="ai-death-limit">失败上限</label><input id="ai-death-limit" type="number" min="0" step="1" value="0"></div>
         <label class="ai-note"><input id="ai-offline-continue" type="checkbox"> 页面关闭后继续托管（需服务端允许）</label>
         <div id="ai-budget-preview" class="ai-preview">预算预览：等待后端知识库核算。费用未知时不可启动。</div>
         <div class="ai-actions"><button id="ai-preview" type="button">预览预算</button><button id="ai-start" type="button">开始</button><button id="ai-pause" type="button">暂停</button><button id="ai-resume" type="button">恢复</button><button id="ai-takeover" type="button">接管</button></div>
@@ -280,6 +281,29 @@
     return "";
   }
 
+  /* Pet identity is a server fact: the client's own pet list carries name,
+     level and HP but no serial, and the task executor binds a target across
+     reconnects by that serial. The browser can ask for it -- the same
+     S("AI") own-state response the AI service reads -- so the panel does,
+     while a pet is still unidentified, at most once every few seconds. */
+  function requestPetIdentity() {
+    const pets = (Array.isArray(app?.petSlots) ? app.petSlots : []).filter(Boolean);
+    if (!pets.length || pets.every(pet => petIdentity(pet))) return;
+    const control = currentControl();
+    /* A mode that owns the session refuses outside packets, so asking then
+       would only produce a rejected send. */
+    if (control && ACTIVE_MODES.has(control.mode) && control.mode !== MODE_BATTLE) return;
+    const now = Date.now();
+    if (now - state.petIdentityAt < 5000) return;
+    state.petIdentityAt = now;
+    try {
+      const result = client?.send?.("S", ["AI"]);
+      if (result && typeof result.catch === "function") result.catch(() => {});
+    } catch (_) {
+      // A closed transport is reported by the session itself.
+    }
+  }
+
   function refreshPets() {
     const panel = ensurePanel();
     for (const selector of ["#ai-target-pet", "#ai-quest-pet"]) {
@@ -314,6 +338,7 @@
       });
       if ([...select.options].some(option => option.value === previous)) select.value = previous;
     }
+    requestPetIdentity();
     renderPreview();
   }
 
@@ -650,13 +675,16 @@
       setStatus("自动战斗中：只在战斗里生效，血量低时先治疗，否则按顺序攻击，不会逃跑；地图上的走动仍然是你自己的。点「接管」随时停止。", false);
       return data;
     }
-    if (mode === MODE_LEVELING && control?.automationAvailable === false) {
-      /* No task executor on this deployment, so leveling runs the light loop:
-         the same policy, plus the walk that starts the encounters. */
+    if (mode === MODE_LEVELING) {
+      /* Leveling is this light loop on every deployment: walk, answer the
+         turn, heal. The executor's leveling plan is a separate, heavier thing
+         with preconditions a deployment may not meet, and a player who asks
+         for 自动练级 wants the character to fight, not a plan accepted and
+         never carried out. */
       const seek = ensurePanel()?.querySelector("#ai-leveling-seek")?.checked === true;
       const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), mode: MODE_LEVELING, seek }) });
       followAutomationWalk();
-      setStatus(`自动练级（简易模式）：${seek ? "在原地来回走触发遇敌，" : ""}开打后血量低先治疗、否则按顺序攻击。点「接管」随时停止。`, false);
+      setStatus(`自动练级：${seek ? "在原地来回走触发遇敌，" : ""}开打后血量低先治疗、否则按顺序攻击。点「接管」随时停止。`, false);
       return data;
     }
     const config = selectedConfig();
@@ -665,7 +693,9 @@
       if (!task || task.id !== config.task_id) throw new Error("请加载任务列表并选择任务");
       if (task.requires_pet && !config.selected_pet_id) throw new Error("请选择已同步的任务宠物");
     }
-    if (config.mode === MODE_LEVELING && config.targets.some(target => target.kind === "pet" && !target.id)) throw new Error("目标宠物必须绑定稳定身份");
+    /* Only the quest mode reaches this point: leveling returns above with the
+       light loop, so its pet targets are never bound here. The quest pet is
+       validated with the task itself, which is where its requirement lives. */
     const data = await controlRequest("automation/start", { method: "POST", body: jsonBody(config) });
     setStatus("自动化已启动，游戏操作已锁定。", false);
     return data;
@@ -725,7 +755,7 @@
     if (live) {
       /* Being stuck looks exactly like working when nothing says why: an open
          dialogue blocks the walk, and the player has to know to close it. */
-      const stuck = ({ window: "有窗口未关，先点掉", phase: "不在世界里", battle: "战斗中" })[live.blocked] || "";
+      const stuck = ({ window: "有窗口未关，先点掉", phase: "不在世界里", battle: "战斗中", walk: "四个方向都被挡住，先手动走一步" })[live.blocked] || "";
       const doing = live.in_battle
         ? `战斗中（第 ${live.turn} 回合${live.enemies ? ` · 敌人 ${live.enemies}` : ""}）`
         : live.seeking ? (stuck ? `找架打受阻（${stuck}）` : "找架打（原地来回走）") : "待机";
@@ -759,10 +789,13 @@
     const mode = String(panel.querySelector("#ai-automation-mode")?.value || MODE_QUEST);
     panel.querySelector("#ai-task-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-task-details")?.classList.toggle("hidden", mode !== MODE_QUEST);
-    /* Without a task executor the leveling settings below have nothing to
-       drive, so showing them would only invite configuring a plan that is
-       never run. */
-    const levelingSimple = mode === MODE_LEVELING && currentControl()?.automationAvailable === false;
+    /* Leveling runs the light loop wherever it is started, so the settings
+       below -- level targets, stat build, supplies, budget -- have nothing to
+       drive: they belong to the executor, and showing them would only invite
+       configuring a plan that never runs. The pet target is the worst of
+       them: the browser has no pet identity to bind, so every pet would read
+       "缺少稳定身份" and be unselectable. */
+    const levelingSimple = mode === MODE_LEVELING;
     panel.querySelector("#ai-build-section")?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple);
     panel.querySelector("#ai-build-fields")?.classList.toggle("hidden", !panel.querySelector("#ai-build-enabled")?.checked);
     panel.querySelector("#ai-supply-section")?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple);
@@ -772,8 +805,14 @@
     panel.querySelector("#ai-leveling-seek-row")?.classList.toggle("hidden", mode !== MODE_LEVELING);
     panel.querySelector("#ai-leveling-simple-row")?.classList.toggle("hidden", !levelingSimple);
     const simpleNote = panel.querySelector("#ai-leveling-simple-note");
-    if (simpleNote) simpleNote.textContent = "当前部署未启用任务执行器：自动练级以简易模式运行（自动遇敌 + 自动战斗 + 自动加血），下面的目标与预算设置不生效。";
+    if (simpleNote) simpleNote.textContent = "自动练级运行轻量循环：自动遇敌 + 自动战斗 + 自动加血；升级对象、加点、补给与费用预算不在其中。";
     ["ai-target-kind-row", "ai-target-level-row", "ai-target-pet-row", "ai-target-policy-row"].forEach(id => panel.querySelector(`#${id}`)?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple || (id === "ai-target-pet-row" && !["pet", "both"].includes(panel.querySelector("#ai-target-kind")?.value))));
+    /* The budget only prices a task plan, so neither the light modes nor the
+       no-plan mode should offer to set one. */
+    const taskOnly = mode !== MODE_QUEST;
+    ["ai-budget-reserve-row", "ai-budget-max-row", "ai-time-limit-row", "ai-death-limit-row"].forEach(id => panel.querySelector(`#${id}`)?.classList.toggle("hidden", taskOnly));
+    panel.querySelector("#ai-budget-preview")?.classList.toggle("hidden", taskOnly);
+    panel.querySelector("#ai-preview")?.classList.toggle("hidden", taskOnly);
     refreshPets();
     refreshTasks().catch(() => {});
     renderSupplyDetails();

@@ -233,11 +233,16 @@ test('leveling runs the light loop, and only walks when asked', async () => {
   assert.equal(walkingCall.options.body, '{"generation":7,"mode":"leveling","seek":true}');
   assert.match(walking.nodes['#ai-control-status'].textContent, /来回走/);
 
-  /* With the executor configured, leveling keeps its full path. */
+  /* A configured executor is not the leveling path: a plan whose
+     preconditions the deployment cannot meet accepted the start and produced
+     no battles at all, which is indistinguishable from a broken button. */
   const full = fixture({ mode: 'manual', generation: 7, available: true }, true);
   full.nodes['#ai-automation-mode'].value = 'leveling';
   await full.api.start();
-  assert.ok(full.calls.some(entry => entry.url.includes('/automation/start')), 'a configured executor keeps its task plan');
+  const executorCall = full.calls.find(entry => entry.url.endsWith('/battle-auto'));
+  assert.ok(executorCall, 'leveling runs the light loop even with an executor configured');
+  assert.equal(executorCall.options.body, '{"generation":7,"mode":"leveling","seek":true}');
+  assert.ok(!full.calls.some(entry => entry.url.includes('/automation/start')), 'leveling never enters the task plan');
 });
 
 /* Taking the lease at the login or character screen refuses the page's own

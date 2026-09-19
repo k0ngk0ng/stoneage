@@ -104,6 +104,11 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 		blocked := ""
 		if policy.SeekEncounters && r.seeker != nil {
 			blocked = r.seeker.blocked(snapshot)
+			/* A walk whose every step is refused is not "looking for a fight",
+			   and the panel saying so would be a lie the player cannot check. */
+			if blocked == "" && r.seeker.stalled() {
+				blocked = reasonWalkStalled
+			}
 		}
 		if state, changed := r.live.describe(snapshot, policy.SeekEncounters, blocked); changed {
 			r.statef(state)
@@ -150,6 +155,9 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 		}
 		return nil
 	case errors.Is(err, aigame.ErrStaleRevision), errors.Is(err, aigame.ErrBattleNotReady), errors.Is(err, aigame.ErrInvalidAction):
+		if step.Kind == aigame.ActionMove && errors.Is(err, aigame.ErrInvalidAction) && r.seeker != nil {
+			r.seeker.rejectedStep()
+		}
 		// A step the server will not take is not a reason to stop; the next
 		// pass walks from wherever the character actually is.
 		return nil

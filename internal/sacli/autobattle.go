@@ -165,6 +165,10 @@ func describeAutoState(state battleauto.State) string {
 	switch {
 	case state.InBattle:
 		doing = fmt.Sprintf("in battle (turn %d, %d enemies left)", state.Turn, state.Enemies)
+	case state.Seeking && state.Blocked == "walk":
+		/* Every direction is refused: the character is standing somewhere it
+		   cannot step off, and no amount of waiting will change that. */
+		doing = "cannot walk (every direction is refused; step the character somewhere else)"
 	case state.Seeking:
 		doing = "looking for a fight (walking in place)"
 	}
