@@ -54,7 +54,7 @@ jobs:
           node client/web/world_frame_test.js
           node client/web/ai_observation_test.js
           node client/web/chat_identity_test.js
-          node --test client/web/automation_catalog_test.js client/web/automation_pet_test.js client/web/automation_recovery_test.js client/web/automation_supply_test.js
+          node --test client/web/automation_catalog_test.js client/web/automation_battle_test.js client/web/automation_pet_test.js client/web/automation_recovery_test.js client/web/automation_supply_test.js
           node internal/admin/app_time_test.js
           node internal/admin/audit_test.js
           node internal/admin/players_test.js

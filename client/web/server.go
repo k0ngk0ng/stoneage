@@ -38,6 +38,7 @@ import (
 
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
+	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
@@ -535,6 +536,7 @@ type tcpSession struct {
 	automationHandle AutomationHandle
 	automationMode   aicontrol.Mode
 	automationGen    uint64
+	automationNote   string
 	authoritative    *aigame.Session
 	authoritativeMu  sync.RWMutex
 	authoritativeErr error
@@ -1194,6 +1196,12 @@ type Handler struct {
 	automationMu    sync.RWMutex
 	automation      Automation
 	automationClose func() error
+
+	// Auto battle loads the game's recovery tables once and keeps the last
+	// decision of the loop for the control panel.
+	recoveryOnce sync.Once
+	recoveryData *aiknowledge.RecoveryTables
+	recoveryErr  error
 }
 
 // npcMetadata is deliberately a description, not a second NPC protocol.
@@ -1910,6 +1918,8 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			return
 		}
 		handler.control(response, request, session)
+	case "battle-auto":
+		handler.startBattleAuto(response, request, session)
 	case "takeover":
 		if request.Method != http.MethodPost {
 			response.Header().Set("Allow", "POST")
@@ -2242,7 +2252,7 @@ func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
 		state = session.gate.State()
 	}
 	_, mode, generation := session.automationStatus()
-	active := generation != 0 && (state.Mode == aicontrol.Quest || state.Mode == aicontrol.Leveling || state.Mode == aicontrol.Agent || state.Mode == aicontrol.Paused)
+	active := generation != 0 && (state.Mode == aicontrol.Quest || state.Mode == aicontrol.Leveling || state.Mode == aicontrol.Agent || state.Mode == aicontrol.Battle || state.Mode == aicontrol.Paused)
 	if !active {
 		mode = ""
 	}

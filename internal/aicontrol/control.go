@@ -17,6 +17,10 @@ const (
 	Leveling Mode = "leveling"
 	Agent    Mode = "agent"
 	Paused   Mode = "paused"
+	// Battle is the player-facing auto battle: it answers each turn with a
+	// heal or an attack. It is not a task run, so it owns the session without
+	// a plan or a durable checkpoint.
+	Battle Mode = "battle"
 )
 
 var (
@@ -63,7 +67,7 @@ func (g *Gate) Switch(expected uint64, mode Mode, reason string) (State, context
 	if expected != g.state.Generation {
 		return g.state, nil, ErrStale
 	}
-	if mode != Manual && mode != Paused && mode != Quest && mode != Leveling && mode != Agent {
+	if mode != Manual && mode != Paused && mode != Quest && mode != Leveling && mode != Agent && mode != Battle {
 		return g.state, nil, ErrMode
 	}
 	g.change(mode, reason)

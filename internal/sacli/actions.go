@@ -79,11 +79,15 @@ func (s *Server) commandBattle(ctx context.Context, request Request) Response {
 		return failure(KindUsage, "usage: sactl battle <command> (e.g. H|FF attack, T|FF defend, S|01|FF skill, N wait, G give up, HELP)")
 	}
 	command := strings.Join(request.Args, "")
+	// A hand-issued command wins. Leaving the loop running would have the two
+	// fight over the same turn.
+	s.stopAutoBattle()
 	return s.submitSimple(ctx, aigame.Battle(command), fmt.Sprintf("battle command %q", command))
 }
 
 // commandBattleEnd acknowledges a finished battle (native EO).
 func (s *Server) commandBattleEnd(ctx context.Context, request Request) Response {
+	s.stopAutoBattle()
 	return s.submitSimple(ctx, aigame.EndBattle(), "battle ended")
 }
 

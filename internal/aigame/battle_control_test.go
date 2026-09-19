@@ -182,3 +182,34 @@ func TestBattleResultLocksCommandsUntilEO(t *testing.T) {
 		t.Fatalf("command accepted after terminal result: %v", err)
 	}
 }
+
+// A server event that lands while a command write is completing already
+// describes the next turn. Recording the in-flight submission against that
+// newer turn would mark it answered and leave the caller waiting for a command
+// it never sends, which is a battle that never advances again.
+func TestBattleSubmissionIsNotRecordedAgainstANewerTurn(t *testing.T) {
+	session, peer := battleControlSession(t, "0", false)
+	revision := session.Snapshot().Revision
+	done := make(chan error, 1)
+	go func() { done <- session.ExecuteExpected(context.Background(), revision, Battle("H|A")) }()
+
+	// An unbuffered peer only completes the write while this read is in
+	// progress, so the next turn's menu packet is applied in the same instant
+	// the write returns.
+	if err := peer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	packet := make([]byte, 4096)
+	if _, err := peer.Read(packet); err != nil {
+		t.Fatal(err)
+	}
+	session.applyEvent(stringEvent("B", "BP|0|0|10"))
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	battle := session.Snapshot().Battle
+	if battle.LastCommand != "" || battle.PlayerSubmitted || !battle.PlayerCommandReady() {
+		t.Fatalf("the new turn was recorded as answered: %+v", battle)
+	}
+}

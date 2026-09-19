@@ -1727,7 +1727,7 @@
      so MyChatBuffer.color is never reduced to a browser-only four-colour
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,autoBattle:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false,battleAnimationSpeed:1}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false,battleAnimationSpeed:1}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   function battleAnimationSpeedValue(value){
     const number=Number(value);
     return BATTLE_ANIMATION_SPEED_OPTIONS.includes(number)?number:1;
@@ -5120,7 +5120,7 @@
     }
     if(!activePet){clearBattleChoiceTimer(state);resetBattleMenuMotion(state,{keepGeneration:true});return;}
     const needsDefault=Boolean(Number(state.bpFlags)&BATTLE_BP_PET_MENU_NON)||/^E(?:\||$)/i.test(String(command||""));
-    if(needsDefault||app.systemSettings.autoBattle){resetBattleMenuMotion(state,{keepGeneration:true});sendBattlePetDefault(state,{force:needsDefault});return;}
+    if(needsDefault){resetBattleMenuMotion(state,{keepGeneration:true});sendBattlePetDefault(state,{force:needsDefault});return;}
     if(state.petCommandLocked){resetBattleMenuMotion(state,{keepGeneration:true});return;}
     startBattleMenuMotion(state,"pet",state.turnKey);
     armBattlePetChoiceTimer(state);
@@ -9611,37 +9611,6 @@
        default without ever painting a forbidden pet menu. */
     queueBattlePetMenuStage(state,command);
   }
-  function maybeAutoBattleTurn(){
-    const state=app.battleState;
-    if(!app.systemSettings.autoBattle||!app.battle||!app.transport||!state||Number(state.bpFlags)&2||state.commandLocked||state.movieActive)return;
-    /* BP/BC arrive before BA in the 2.5 pre-command sequence.  BA updates
-       state.turn only after this function has already been called for the
-       new menu, so using that animation field here skips every second auto
-       turn (and the 40 ms callback then cancels when BA finally arrives).
-       turnKey is assigned by applyBattleTurnState at the actual BP/menu
-       boundary and therefore remains stable across the whole command stage. */
-    const turnKey=Number.isFinite(Number(state.turnKey))?Number(state.turnKey):Number(state.turn)||0;
-    if(Number(state.autoTurn)===turnKey)return;
-    state.autoTurn=turnKey;
-    const candidates=battleTargetCandidates({kind:"attack"}).filter(item=>battleAlive(item)&&battleIsEnemy(item));
-    const target=candidates.find(item=>!item.dead)||candidates[0];
-    const command=target?`H|${battleHex(target.battleId)}`:"G";
-    /* BC/BP may arrive as separate packets; commit after one task so a newer
-       BP state can cancel this action before the 2.5 B command is sent. */
-    window.setTimeout(()=>{
-      if(!app.systemSettings.autoBattle||!app.battle||!app.transport||app.battleState!==state||Number(app.battleState.turnKey)!==turnKey||!battleCommandAllowed(command))return;
-      const current=app.battleState;
-      setBattleMenuPressedCommand(current,/^H\|/i.test(command)?"H|A":/^(?:G|E)$/i.test(command)?command:"");
-      battleSetCommandLock(current,"player",true);battleStartCommandPending(current,"player",command);
-      const playerAction=typeof battleRememberPlayerAction==="function"?battleRememberPlayerAction(current,command,"attack"):null;
-      send("B",[command]).then(()=>{
-        if(app.battleState!==current||!app.battle)return;
-        if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(current,playerAction,true);
-        app.battleCommands.push(`自动：${command}`);if(app.battleCommands.length>64)app.battleCommands.shift();const log=$("battle-log");if(log){log.textContent+=`\n自动：${command}`;log.scrollTop=log.scrollHeight;}renderBattle();
-        maybeOpenBattlePetSkillMenu(current,command);
-      }).catch(error=>{if(typeof battleResolvePlayerAction==="function")battleResolvePlayerAction(current,playerAction,false);battleClearCommandPending(current,"player");battleSetCommandLock(current,"player",false);reportError(error);});
-    },40);
-  }
   function beginBattleAction(action,options={}){
     const state=app.battleState,nextCommand=battleButtonCommandForAction(action),pendingCommand=battleButtonCommandForAction(state?.pendingAction);
     /* CheckPetSuu() is evaluated before the native capture button's
@@ -10249,7 +10218,6 @@
     armDefaultBattleAttack(state);
     submitBattleUnavailableDefaults(state,state.turnKey??state.turn);
     continueBattlePetAfterPlayer(state);
-    maybeAutoBattleTurn();
   }
   function armBattleEntry(state,readyAt){
     if(!state||app.battleState!==state)return;
@@ -10728,7 +10696,6 @@
       battleOpenCommandCountdown(state);
       armDefaultBattleAttack(state);
       submitBattleUnavailableDefaults(state,turnKey);
-      maybeAutoBattleTurn();
     }
   }
   function battleApplyAnimationState(state,flags,serverTurn){
@@ -14266,7 +14233,7 @@
       window.clearTimeout(state.deathExitTimer);state.deathExitTimer=0;
       state.deathExitAt=0;state.deathExitPending=false;state.deathExitFromPosition=false;
     }
-    renderBattle();renderBattleWorld();maybeAutoBattleTurn();scheduleBattleTransientCleanup();
+    renderBattle();renderBattleWorld();scheduleBattleTransientCleanup();
   }
   function battleResourceMoviePacket(kind,data){
     if(kind!=="B")return false;

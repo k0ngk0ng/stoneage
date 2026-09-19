@@ -231,7 +231,7 @@ func (s *AutomationSession) ExecuteExpected(ctx context.Context, expectedRevisio
 	if generation == 0 {
 		return aicontrol.ErrOwner
 	}
-	if owner != aicontrol.Quest && owner != aicontrol.Leveling && owner != aicontrol.Agent {
+	if owner != aicontrol.Quest && owner != aicontrol.Leveling && owner != aicontrol.Agent && owner != aicontrol.Battle {
 		return aicontrol.ErrOwner
 	}
 	return s.session.dispatch(ctx, generation, owner, func(sendCtx context.Context) error {

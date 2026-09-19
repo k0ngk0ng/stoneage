@@ -10,9 +10,15 @@
   const transport = () => app && app.transport;
   const MODE_QUEST = "quest";
   const MODE_LEVELING = "leveling";
+  const MODE_BATTLE = "battle";
   const MODE_MANUAL = "manual";
   const MODE_PAUSED = "paused";
   const ACTIVE_MODES = new Set([MODE_QUEST, MODE_LEVELING, "agent"]);
+  /* Auto battle holds the same claim on the character as the executor modes --
+     hands off the game UI, battle animations at their fastest -- but it is not
+     a resumable task: the server accepts pause and resume for the executor
+     modes only, so it is deliberately absent from ACTIVE_MODES. */
+  const LOCKED_MODES = new Set([MODE_QUEST, MODE_LEVELING, "agent", MODE_BATTLE]);
   const MAX_CONFIG_BYTES = 64 * 1024;
 
   const state = {
@@ -103,7 +109,7 @@
 
   function updateLock(control) {
     if (!root.document?.body) return;
-    const locked = ACTIVE_MODES.has(String(control?.mode || "").toLowerCase());
+    const locked = LOCKED_MODES.has(String(control?.mode || "").toLowerCase());
     root.document.body.classList.toggle("stoneage-ai-locked", locked);
     root.document.body.dataset.aiControlMode = String(control?.mode || "");
     if (locked) {
@@ -177,7 +183,7 @@
       panel.setAttribute("aria-label", "自动练级与任务");
       panel.innerHTML = `
         <h2>自动练级与任务</h2>
-        <div class="ai-row"><label for="ai-automation-mode">模式</label><select id="ai-automation-mode"><option value="quest">自动任务</option><option value="leveling">自动练级</option></select></div>
+        <div class="ai-row"><label for="ai-automation-mode">模式</label><select id="ai-automation-mode"><option value="quest">自动任务</option><option value="leveling">自动练级</option><option value="battle">自动战斗</option></select></div>
         <div class="ai-row" id="ai-task-row"><label for="ai-task-id">任务</label><select id="ai-task-id"><option value="">请先加载任务列表</option></select><button id="ai-task-refresh" type="button">刷新</button></div>
         <div id="ai-task-details" class="ai-preview" role="status">任务列表尚未加载。</div>
         <div class="ai-row" id="ai-dependencies-row"><label><input id="ai-include-dependencies" type="checkbox"> 自动完成前置任务（预算包含全链）</label></div>
@@ -342,6 +348,10 @@
     const reorder = Number(panel.querySelector("#ai-supply-reorder")?.value);
     return Number.isSafeInteger(target) && target >= 2 && target <= 13 &&
       Number.isSafeInteger(reorder) && reorder >= 1 && reorder < target;
+  }
+
+  function panel_mode() {
+    return ensurePanel()?.querySelector("#ai-automation-mode")?.value || MODE_QUEST;
   }
 
   function selectedConfig() {
@@ -600,6 +610,14 @@
   async function start() {
     const control = await refreshControl();
     if (!control || control.mode !== MODE_MANUAL) throw new Error("请先处于人工控制状态");
+    const mode = String(panel_mode());
+    if (mode === MODE_BATTLE) {
+      /* Auto battle carries no task, budget or targets: it answers whatever
+         turn the character is in. The server reads only the generation. */
+      const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration() }) });
+      setStatus("自动战斗中：血量低时先治疗，否则按顺序攻击，不会逃跑。点「接管」随时停止。", false);
+      return data;
+    }
     const config = selectedConfig();
     if (config.mode === MODE_QUEST) {
       const task = selectedTask();
@@ -656,7 +674,7 @@
     const panel = root.document?.getElementById("ai-control-panel");
     const status = panel?.querySelector("#ai-control-status");
     if (!panel || !status) return;
-    const modeLabel = ({ manual: "人工", paused: "已暂停", quest: "自动任务", leveling: "自动练级", agent: "AI 玩家" })[control.mode] || control.mode;
+    const modeLabel = ({ manual: "人工", paused: "已暂停", quest: "自动任务", leveling: "自动练级", battle: "自动战斗", agent: "AI 玩家" })[control.mode] || control.mode;
     const detail = control.reason ? `（${control.reason}）` : "";
     if (!state.lastError) status.textContent = `控制：${modeLabel}${detail}` + (control.recovery ? "\n发现断线前的自动任务，可恢复或取消旧任务。" : control.recoveryUnavailable ? "\n暂时无法读取断线任务，请稍后刷新。" : "");
     status.classList.toggle("error", Boolean(state.lastError));
@@ -665,8 +683,13 @@
     panel.querySelector("#ai-include-dependencies")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
     const questMode = panel.querySelector("#ai-automation-mode")?.value === MODE_QUEST;
     const levelingMode = panel.querySelector("#ai-automation-mode")?.value === MODE_LEVELING;
+    const battleMode = panel.querySelector("#ai-automation-mode")?.value === MODE_BATTLE;
     const task = questMode ? selectedTask() : null;
-    panel.querySelector("#ai-start")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL || Boolean(control.recovery) || control.recoveryUnavailable || control.automationAvailable === false || (questMode && (!task || Boolean(task.review_blockers?.length))) || (levelingMode && !supplyConfigurationReady(panel)));
+    /* Auto battle answers turns on its own; it needs no task catalog, no
+       planner and no budget, so a bridge that reports automation_available
+       false must not make it un-startable. */
+    const needsExecutor = !battleMode && control.automationAvailable === false;
+    panel.querySelector("#ai-start")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL || Boolean(control.recovery) || control.recoveryUnavailable || needsExecutor || (questMode && (!task || Boolean(task.review_blockers?.length))) || (levelingMode && !supplyConfigurationReady(panel)));
     panel.querySelector("#ai-pause")?.toggleAttribute("disabled", !ACTIVE_MODES.has(control.mode));
     panel.querySelector("#ai-resume")?.toggleAttribute("disabled", control.mode !== MODE_PAUSED && !(control.mode === MODE_MANUAL && control.recovery));
     panel.querySelector("#ai-takeover")?.toggleAttribute("disabled", control.mode === MODE_MANUAL && !control.recovery);
@@ -712,7 +735,7 @@
 
   function lockGameplay(event) {
     const control = currentControl();
-    if (!control || !ACTIVE_MODES.has(control.mode)) return;
+    if (!control || !LOCKED_MODES.has(control.mode)) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (target.closest("#ai-control-panel,#ai-control-toggle,#world-tools,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']")) return;

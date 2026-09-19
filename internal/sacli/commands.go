@@ -52,6 +52,7 @@ const CommandHelp = `commands:
   choose <row>                        answer a choice window by the row number shown
   reply <ok|cancel|yes|no|prev|next> [text]  answer a message window
   look <direction>                    turn without moving
+  auto-battle on|off|status           heal the most hurt, otherwise attack in order
   battle <command>                    battle turn (H|FF attack, W|FF|FF pet, T|FF defend, S|01|FF skill, E escape, N wait, G give up, HELP)
   battle-end                          acknowledge the battle animation and leave the battle (EO)
   battle-help <0|1>                   toggle the native battle help flag
@@ -111,6 +112,8 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return s.commandLook(ctx, request)
 	case "battle":
 		return s.commandBattle(ctx, request)
+	case "auto-battle":
+		return s.commandAutoBattle(ctx, request)
 	case "battle-end":
 		return s.commandBattleEnd(ctx, request)
 	case "battle-help":

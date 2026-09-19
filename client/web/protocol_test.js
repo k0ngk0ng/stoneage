@@ -2317,9 +2317,6 @@ for (const expected of [
   /* The implicit N path must hand the original shared BattleCntDown deadline
      to the pet stage instead of assigning commandLocked directly. */
   /function submitBattleUnavailableDefaults\(state,turnKey=state\?\.turn\)[\s\S]{0,2200}battleSetCommandLock\(state,"player",true\)[\s\S]{0,1800}state\.implicitPlayerTurn=null[\s\S]{0,500}battleSetCommandLock\(state,"player",false\)/,
-  /* Auto battle is keyed by the BP/menu boundary.  BA updates state.turn
-     later in the same BP→BC→BA batch and must not cancel the new action. */
-  /function maybeAutoBattleTurn\(\)[\s\S]{0,650}const turnKey=Number\.isFinite\(Number\(state\.turnKey\)\)\?Number\(state\.turnKey\):Number\(state\.turn\)\|\|0;[\s\S]{0,180}Number\(state\.autoTurn\)===turnKey[\s\S]{0,900}Number\(app\.battleState\.turnKey\)!==turnKey/,
   /* The interactive client skips the pet stage entirely when no live pet
      occupies BattleMyNo+5; only an existing pet receives W|FF|FF. */
   /const activePet=battleActivePet\(state\);[\s\S]{0,520}if\(!activePet\)\{/,

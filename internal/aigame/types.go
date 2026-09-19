@@ -507,7 +507,7 @@ type Snapshot struct {
 	// for reconciliation only. It rotates on character lifecycle transitions,
 	// is never projected to MCP, and is not a durable game identity.
 	SessionToken string `json:"-"`
-	Trade            TradeSnapshot
+	Trade        TradeSnapshot
 	// AI is the raw latest validated S("AI") own-state response. Owned pet
 	// identities and mutable K status are reconciled into Pets; consumers
 	// should use Pets for the current authoritative projection.

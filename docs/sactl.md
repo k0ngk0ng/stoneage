@@ -185,6 +185,7 @@ sactl status                                           # 另开一个终端
 | `say <文本>` | 公屏发言（默认 color 0 / range 3） |
 | `talk <名字> [文本]` / `choose <行号>` / `reply <ok\|cancel\|…> [文本]` | NPC 对话：发起、选选项、答消息窗口 |
 | `battle <指令>` / `battle-end` / `battle-help <0\|1>` | 战斗回合（`H\|FF` 攻击、`W\|FF\|FF` 宠物、`T\|FF` 防御、`S\|01\|FF` 技能、`E` 逃跑、`N` 等待、`G` 放弃、`HELP`）；一个回合需要玩家和宠物各自提交一次，动画结束后用 `battle-end`（EO）确认 |
+| `auto-battle on\|off\|status` | 托管战斗循环：每回合自动加血或攻击，直到 `off`（详见下文） |
 | `item use\|drop\|drop-gold\|move\|magic\|pickup …` | 背包与地面物品 |
 | `mail list\|add\|send\|remove-contact …` | 名片簿与邮件 |
 | `pet status\|standby\|battle\|rename\|drop …` | 宠物 |
@@ -204,6 +205,29 @@ sactl status                                           # 另开一个终端
 能力对齐：浏览器的 37 个 `send()` 函数已有对应命令或走 `send` 兜底。唯一仍需注意的差异是
 `send` 只校验字段个数与类型、不校验取值，所以位置相关的保护（如 `talk` 的相邻判定）只在
 专用命令里生效。
+
+## 自动战斗
+
+```bash
+./build/local/sactl seek-encounter      # 走进遭遇区触发战斗
+./build/local/sactl auto-battle on      # 之后每回合由守护进程出招
+./build/local/sactl auto-battle status  # 看最后一条决策
+./build/local/sactl auto-battle off     # 立即停手，交回手动
+```
+
+每回合的规则是固定的几条：**谁血最少就给谁加血**（人物和出战宠物里血量百分比最低的那个，
+低于 30% 才治），**先道具后魔法**，都够不着就跳过；否则打 `BattleID` 最小的活敌人。玩家菜单
+被关或遭遇偷袭时只有一条合法指令，就直接出那条。全队（不含宠物）被打光时发 `EO` 收尾，
+因为服务端不会为战败再发结算包。**不逃跑。**
+
+治疗手段不是手写目录，而是读 `map_directory` 指向的服务端数据：`magic.txt` 里效果列为
+`MAGIC_Recovery` 的法术、`itemset.txt` 里带 `ITEM_useRecovery` 的道具。所以没配
+`map_directory` 时自动战斗照样能跑，只是不会加血（只进攻）。
+
+循环跑在守护进程里，不在命令里：命令的 `context` 在响应写回时就取消了。因此
+`auto-battle on` 返回之后可以直接关掉终端，守护进程会在断线后惰性重连并继续；`stop`、
+连接关闭或 `auto-battle off` 都会让循环退出。自动战斗占用这条连接的出招权，开着的时候不要
+再手动发 `battle` 指令。
 
 ## 两个必须知道的 2.5 协议事实
 
@@ -254,8 +278,7 @@ sactl status                                           # 另开一个终端
 
 - **`logout` 曾读不到应答，已修。** 根因不是 Ringo 解码，而是 `internal/aigame` 的并发缺陷：进入世界后后台读协程已拥有 socket，`request()` 又自己去读，两个 reader 交错导致封包框损坏（表现为 "truncated Ringo bit stream" / "invalid base64 length"）。现在进入世界后 `request()` 改为等后台读协程投递对应事件（`internal/aigame/protocol.go` 的 `awaitReply`/`deliverReply`），并有 `-race` 回归测试 `TestRequestAfterEnterWaitsForTheBackgroundReader` 钉住。
 
-- 动作面目前覆盖观察、移动、寻路、聊天、角色生命周期；**NPC 对话、战斗、物品、商店、邮件、
-  宠物、组队、交易仍待接入**（`internal/aigame` 已有对应动作种类，`internal/aiservice` 已有
-  语义层）。模型实测中最先要的就是对话。
+- 动作面以“命令”一节的表格为准；`send` 之外还有哪些语义化入口，看 `CommandHelp` 的输出
+  比看文档更可靠。
 - `goto` 只在同一层内寻路；跨图传送（EV/warp）尚未接入。
 - 地图数据来自 `map_directory`，与 GMSV 实际使用的版本必须一致。

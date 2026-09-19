@@ -54,6 +54,17 @@ type Server struct {
 	warpOnce sync.Once
 	warps    *aiplanner.WarpGraph
 	warpErr  error
+
+	// The auto battle loop runs alongside the command socket, so its state is
+	// kept separate from mu: commands must keep answering while it runs.
+	autoMu       sync.Mutex
+	autoRunning  bool
+	autoCancel   context.CancelFunc
+	autoLastLine string
+
+	recoveryOnce sync.Once
+	recoveryData *aiknowledge.RecoveryTables
+	recoveryErr  error
 }
 
 // NewServer builds an idle daemon. It connects on first use so that a
@@ -187,6 +198,7 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) shutdown() {
+	s.stopAutoBattle()
 	s.mu.Lock()
 	game := s.game
 	s.game = nil

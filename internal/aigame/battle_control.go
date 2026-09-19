@@ -26,6 +26,43 @@ func (b BattleSnapshot) HasActivePet() bool {
 	return false
 }
 
+// MySideDefeated reports that every player row on the character's side is
+// down. Pet rows are deliberately ignored, which is what the preserved Web
+// client does (battleServerSideDefeated): a pet outliving its master does not
+// keep the battle alive, and counting it left the client waiting in a battle
+// the server had already stopped resolving. The client answers this with EO
+// rather than waiting for a result packet.
+func (b BattleSnapshot) MySideDefeated() bool {
+	if !b.Active || !b.MyNoKnown {
+		return false
+	}
+	mine := battleSideOf(b.MyNo)
+	if mine < 0 {
+		return false
+	}
+	seen := false
+	for _, actor := range b.Participants {
+		if battleSideOf(actor.BattleID) != mine || actor.BattleID%10 >= 5 {
+			continue
+		}
+		seen = true
+		if !actor.Dead && actor.HP > 0 {
+			return false
+		}
+	}
+	return seen
+}
+
+func battleSideOf(battleID int32) int {
+	if battleID >= 0 && battleID < 10 {
+		return 0
+	}
+	if battleID >= 10 && battleID < 20 {
+		return 1
+	}
+	return -1
+}
+
 func (b BattleSnapshot) commandPhaseReady() bool {
 	// RS/RD and a successful local escape are terminal result boundaries. The
 	// server may keep the battle socket active until EO, but no further B

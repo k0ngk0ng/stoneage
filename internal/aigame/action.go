@@ -122,9 +122,14 @@ func (session *Session) execute(ctx context.Context, action Action, expectedRevi
 			return err
 		}
 		applyTradeActionLocked(&session.state, action, function)
-		applyActionLocked(&session.state, action, function)
+		applyActionLocked(&session.state, action, function, statRevision)
 		return nil
 	}
+	// submittedAt is the revision the write was issued against. It is read
+	// under the same lock as the write so a server event that lands while the
+	// write is completing cannot be mistaken for the state this action
+	// answered.
+	var submittedAt uint64
 	if expectedRevision != nil || action.Kind == ActionWindow || action.Kind == ActionAllocateStat || action.Kind == ActionSocialSetting {
 		session.stateMu.RLock()
 		if (expectedRevision != nil && session.state.snapshot.Revision != *expectedRevision) ||
@@ -133,6 +138,7 @@ func (session *Session) execute(ctx context.Context, action Action, expectedRevi
 			session.stateMu.RUnlock()
 			return ErrStaleRevision
 		}
+		submittedAt = session.state.snapshot.Revision
 		if err := session.writePacket(ctx, packet); err != nil {
 			session.stateMu.RUnlock()
 			session.invalidateSubmittedStatPoints(action, statEpoch)
@@ -141,16 +147,22 @@ func (session *Session) execute(ctx context.Context, action Action, expectedRevi
 			return err
 		}
 		session.stateMu.RUnlock()
-	} else if err := session.writePacket(ctx, packet); err != nil {
-		// A cancelled/short write is intentionally not retried. The peer may
-		// have received a non-idempotent command before the error surfaced.
-		session.recordActionError(err)
-		return err
+	} else {
+		session.stateMu.RLock()
+		submittedAt = session.state.snapshot.Revision
+		session.stateMu.RUnlock()
+		if err := session.writePacket(ctx, packet); err != nil {
+			// A cancelled/short write is intentionally not retried. The peer
+			// may have received a non-idempotent command before the error
+			// surfaced.
+			session.recordActionError(err)
+			return err
+		}
 	}
 	session.invalidateSubmittedStatPoints(action, statEpoch)
 	session.invalidateSubmittedSocialFlags(action, socialEpoch)
 	session.stateMu.Lock()
-	applyActionLocked(&session.state, action, function)
+	applyActionLocked(&session.state, action, function, submittedAt)
 	markWindowSubmittedLocked(&session.state, submittedWindow)
 	session.stateMu.Unlock()
 	return nil
@@ -439,7 +451,11 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 			}
 			return nil, "", fmt.Errorf("%w: battle is not active", ErrWrongPhase)
 		}
-		if state.snapshot.Battle.LastCommand == "EO" || (!state.snapshot.Battle.Ended && state.snapshot.Battle.Result == "") {
+		// The native client ends a battle it has lost as well as one the server
+		// has concluded: a wiped side is answered with EO immediately rather
+		// than waiting for a result that never arrives.
+		concluded := state.snapshot.Battle.Ended || state.snapshot.Battle.Result != "" || state.snapshot.Battle.MySideDefeated()
+		if state.snapshot.Battle.LastCommand == "EO" || !concluded {
 			return nil, "", ErrBattleNotReady
 		}
 		return []wireValue{{kind: wireInt, integer: 0}}, "EO", nil
@@ -595,12 +611,22 @@ func validMapEvent(event int32) bool {
 	}
 }
 
-func applyActionLocked(state *gameState, action Action, function string) {
+// applyActionLocked records the client's own action in the projection.
+//
+// submittedAt is the revision the write was issued against. A server event that
+// lands while the write completes already describes a newer turn, and claiming
+// that newer turn is answered would leave the caller waiting for a command it
+// never sends. The battle markers are therefore only applied while the
+// projection is still the one the action was submitted to. The error and
+// function bookkeeping stays unconditional, because it reports what this client
+// sent either way.
+func applyActionLocked(state *gameState, action Action, function string, submittedAt uint64) {
 	if state == nil {
 		return
 	}
 	state.snapshot.LastError = ""
-	if action.Kind == ActionBattle {
+	current := state.snapshot.Revision == submittedAt
+	if action.Kind == ActionBattle && current {
 		if strings.HasPrefix(strings.ToUpper(action.Command), "W|") {
 			state.snapshot.Battle.PetSubmitted = true
 		} else {
@@ -609,7 +635,7 @@ func applyActionLocked(state *gameState, action Action, function string) {
 		state.snapshot.Battle.LastCommand = action.Command
 		state.snapshot.Battle.updateCommandReadiness()
 	}
-	if action.Kind == ActionBattleEnd {
+	if action.Kind == ActionBattleEnd && current {
 		// The terminal server result was required before this write. EO
 		// completes that exit handshake; it is not a request to abort an
 		// unfinished battle or a substitute for a successful escape.

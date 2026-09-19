@@ -24,6 +24,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
 	"github.com/k0ngk0ng/stoneage/internal/automation"
+	"github.com/k0ngk0ng/stoneage/internal/battleauto"
 )
 
 var (
@@ -1565,38 +1566,8 @@ func (c *Coordinator) tickBattle(ctx context.Context, checkpoint *automation.Che
 	return *checkpoint, nil
 }
 
-// 2.5 petskill.txt defines ID 1 as PETSKILL_NormalAttack, battle field 1,
-// single-character target 6. Use its observed slot, never assume slot zero.
-// KS and the active roster must agree before selecting an owned pet's skills.
 func levelingPetCommand(snapshot aigame.Snapshot) string {
-	const wait = "W|FF|FF"
-	if !snapshot.Player.BattlePetSlotKnown || snapshot.Player.BattlePetSlot < 0 || snapshot.Player.BattlePetSlot >= 5 ||
-		snapshot.Battle.BPFlags&(aigame.BattlePetMenuOff|aigame.BattleEnemySurprise) != 0 || !snapshot.Battle.HasActivePet() {
-		return wait
-	}
-	var active aigame.BattleParticipant
-	for _, actor := range snapshot.Battle.Participants {
-		if actor.BattleID == snapshot.Battle.MyNo+5 {
-			active = actor
-			break
-		}
-	}
-	target, ok := chooseEnemy(snapshot)
-	if !ok {
-		return wait
-	}
-	for _, pet := range snapshot.Pets {
-		if pet.Slot != snapshot.Player.BattlePetSlot || pet.Graphic <= 0 || pet.Graphic != active.Graphic ||
-			(active.Name != pet.Name && (pet.FreeName == "" || active.Name != pet.FreeName)) {
-			continue
-		}
-		for _, skill := range pet.Skills {
-			if skill.ID == 1 && skill.Index >= 0 && skill.Index < 7 && skill.Field == 1 && skill.Target == 6 && !skill.DeadTarget {
-				return "W|" + battleHex(skill.Index) + "|" + battleHex(target.BattleID)
-			}
-		}
-	}
-	return wait
+	return battleauto.PetCommand(snapshot)
 }
 
 func (c *Coordinator) submitEndBattle(ctx context.Context, checkpoint *automation.Checkpoint, snapshot aigame.Snapshot, state progressState) (automation.Checkpoint, error) {
@@ -1639,47 +1610,21 @@ func (c *Coordinator) submit(ctx context.Context, checkpoint *automation.Checkpo
 }
 
 func battleSide(id int32) int {
-	if id >= 0 && id < 10 {
-		return 0
-	}
-	if id >= 10 && id < 20 {
-		return 1
-	}
-	return -1
+	return battleauto.Side(id)
 }
 
 func battleHex(id int32) string {
-	return strings.ToUpper(strconv.FormatInt(int64(id), 16))
+	return battleauto.Hex(id)
 }
 
+// The roster helpers live in internal/battleauto so the AI leveling run and
+// the player-facing auto battle cannot drift apart.
 func chooseEnemy(snapshot aigame.Snapshot) (aigame.BattleParticipant, bool) {
-	mine := battleSide(snapshot.Battle.MyNo)
-	if mine < 0 {
-		return aigame.BattleParticipant{}, false
-	}
-	var selected aigame.BattleParticipant
-	found := false
-	for _, participant := range snapshot.Battle.Participants {
-		if participant.BattleID < 0 || participant.BattleID >= 20 || battleSide(participant.BattleID) == mine || participant.Dead || participant.HP <= 0 {
-			continue
-		}
-		if !found || participant.BattleID < selected.BattleID {
-			selected, found = participant, true
-		}
-	}
-	return selected, found
+	return battleauto.ChooseEnemy(snapshot)
 }
 
 func battleHasNoLiveEnemy(snapshot aigame.Snapshot) bool {
-	if battleSide(snapshot.Battle.MyNo) < 0 {
-		return false
-	}
-	for _, participant := range snapshot.Battle.Participants {
-		if battleSide(participant.BattleID) != battleSide(snapshot.Battle.MyNo) && participant.BattleID >= 0 && participant.BattleID < 20 && !participant.Dead && participant.HP > 0 {
-			return false
-		}
-	}
-	return len(snapshot.Battle.Participants) > 0
+	return battleauto.HasNoLiveEnemy(snapshot)
 }
 
 // Run polls a durable handle until it completes or pauses. The context must
