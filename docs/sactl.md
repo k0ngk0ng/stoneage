@@ -136,9 +136,10 @@ server_id = ""        # 留空自动取 Web 服务列表里第一条可用线路
 生产实测：用该传输完成了登录、建角、进世界、寻路、NPC 对话与跨图传送。代价是多一跳
 （会话由 Web 进程代持），延迟略高于直连。
 
-配置查找顺序：`--config` 指定的文件 → `$STONEAGE_SACTL_CONFIG` → `./sactl.toml` →
-`./runtime/sactl.toml`（仓库内开发用）→ `~/.config/sactl/sactl.toml`。socket 路径也可用
-`--socket` 或 `STONEAGE_SACTL_SOCKET` 覆盖。
+配置查找顺序：`--config` 指定的文件 → `$STONEAGE_SACTL_CONFIG` → 当前目录的 `sactl.toml`
+→ `~/.config/sactl/sactl.toml`。仓库内的 `runtime/sactl.toml` **不在**隐式查找里（开发脚本
+一律用 `--config` 显式指定），否则从源码目录运行时它会悄悄盖掉你安装的配置。
+socket 路径也可用 `--socket` 或 `STONEAGE_SACTL_SOCKET` 覆盖。
 
 **`map_directory` 必须指向一份 2.5 服务端数据目录的副本**（含 `map/`）。`goto`、`warp`、
 `exits`、`encounters` 都在本地读这份数据；只做观察和对话可以不配它。
