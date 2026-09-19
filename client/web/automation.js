@@ -61,6 +61,7 @@
       automationAvailable: value.automation_available !== false && value.automationAvailable !== false,
       automationActive: value.automation_active === true || value.automationActive === true,
       automationMode: String(value.automation_mode || value.automationMode || ""),
+      automationNote: String(value.automation_note || value.automationNote || ""),
       recovery: value.automation_recovery || value.recovery || null,
       recoveryUnavailable: value.automation_recovery_unavailable === true || value.recoveryUnavailable === true,
     };
@@ -199,6 +200,7 @@
       panel.innerHTML = `
         <h2>自动练级与任务</h2>
         <div class="ai-row"><label for="ai-automation-mode">模式</label><select id="ai-automation-mode"><option value="quest">自动任务</option><option value="leveling">自动练级</option><option value="battle">自动战斗</option></select></div>
+        <div class="ai-row" id="ai-battle-seek-row"><label><input id="ai-battle-seek" type="checkbox" checked> 自动遇敌（原地来回走）</label></div>
         <div class="ai-row" id="ai-task-row"><label for="ai-task-id">任务</label><select id="ai-task-id"><option value="">请先加载任务列表</option></select><button id="ai-task-refresh" type="button">刷新</button></div>
         <div id="ai-task-details" class="ai-preview" role="status">任务列表尚未加载。</div>
         <div class="ai-row" id="ai-dependencies-row"><label><input id="ai-include-dependencies" type="checkbox"> 自动完成前置任务（预算包含全链）</label></div>
@@ -628,9 +630,11 @@
     const mode = String(panel_mode());
     if (mode === MODE_BATTLE) {
       /* Auto battle carries no task, budget or targets: it answers whatever
-         turn the character is in. The server reads only the generation. */
-      const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration() }) });
-      setStatus("自动战斗中：血量低时先治疗，否则按顺序攻击，不会逃跑。点「接管」随时停止。", false);
+         turn the character is in, and optionally walks in place so encounters
+         keep coming. The server reads only the generation and the walk opt-in. */
+      const seek = ensurePanel()?.querySelector("#ai-battle-seek")?.checked !== false;
+      const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), seek }) });
+      setStatus(`自动战斗中：血量低时先治疗，否则按顺序攻击，不会逃跑${seek ? "；会在原地来回走触发遇敌" : ""}。点「接管」随时停止。`, false);
       return data;
     }
     const config = selectedConfig();
@@ -691,7 +695,11 @@
     if (!panel || !status) return;
     const modeLabel = ({ manual: "人工", paused: "已暂停", quest: "自动任务", leveling: "自动练级", battle: "自动战斗", agent: "AI 玩家" })[control.mode] || control.mode;
     const detail = control.reason ? `（${control.reason}）` : "";
-    if (!state.lastError) status.textContent = `控制：${modeLabel}${detail}` + (control.recovery ? "\n发现断线前的自动任务，可恢复或取消旧任务。" : control.recoveryUnavailable ? "\n暂时无法读取断线任务，请稍后刷新。" : "");
+    /* An auto battle loop carries no task to inspect, so its last decision is
+       the whole report the player gets: what it attacked, or where it is
+       walking to find something to attack. */
+    const note = control.mode === MODE_BATTLE && control.automationNote ? `\n上次决策：${control.automationNote}` : "";
+    if (!state.lastError) status.textContent = `控制：${modeLabel}${detail}${note}` + (control.recovery ? "\n发现断线前的自动任务，可恢复或取消旧任务。" : control.recoveryUnavailable ? "\n暂时无法读取断线任务，请稍后刷新。" : "");
     status.classList.toggle("error", Boolean(state.lastError));
     panel.querySelector("#ai-build-section")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
     panel.querySelector("#ai-supply-section")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
@@ -723,6 +731,7 @@
     panel.querySelector("#ai-supply-fields")?.classList.toggle("hidden", !panel.querySelector("#ai-supply-enabled")?.checked);
     panel.querySelector("#ai-quest-pet-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-dependencies-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
+    panel.querySelector("#ai-battle-seek-row")?.classList.toggle("hidden", mode !== MODE_BATTLE);
     ["ai-target-kind-row", "ai-target-level-row", "ai-target-pet-row", "ai-target-policy-row"].forEach(id => panel.querySelector(`#${id}`)?.classList.toggle("hidden", mode !== MODE_LEVELING || (id === "ai-target-pet-row" && panel.querySelector("#ai-target-kind")?.value !== "pet")));
     refreshPets();
     refreshTasks().catch(() => {});

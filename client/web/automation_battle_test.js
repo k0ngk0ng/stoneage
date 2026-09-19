@@ -16,7 +16,7 @@ function button() {
   };
 }
 
-function fixture(control = { mode: 'manual', generation: 7 }) {
+function fixture(control = { mode: 'manual', generation: 7 }, seek = true) {
   const calls = [];
   const transport = {
     id: 'session-a', base: '', closed: false,
@@ -28,6 +28,7 @@ function fixture(control = { mode: 'manual', generation: 7 }) {
   const status = { textContent: '', classList: { toggle() {} } };
   const nodes = {
     '#ai-automation-mode': { value: 'battle' },
+    '#ai-battle-seek': { checked: seek },
     '#ai-build-section': button(),
     '#ai-supply-section': button(),
     '#ai-include-dependencies': button(),
@@ -128,8 +129,8 @@ test('auto battle sends only the generation and locks the browser against the ru
   assert.ok(call, 'the panel must start auto battle through its own endpoint');
   assert.equal(call.url, '/api/sessions/session-a/battle-auto');
   assert.equal(call.options.method, 'POST');
-  assert.equal(call.options.body, '{"generation":7}');
   assert.ok(!f.calls.some(entry => entry.url.includes('/automation/start')), 'auto battle carries no task or budget config');
+  assert.equal(call.options.body, '{"generation":7,"seek":true}', 'the panel asks for the walk it shows as checked');
 
   const control = f.api.currentControl();
   assert.equal(control.mode, 'battle');
@@ -147,6 +148,30 @@ test('auto battle sends only the generation and locks the browser against the ru
   assert.equal(f.nodes['#ai-takeover'].disabled, false);
   assert.equal(f.nodes['#ai-start'].disabled, true);
   assert.match(f.nodes['#ai-control-status'].textContent, /自动战斗/);
+});
+
+test('the panel reports what the running loop last decided', async () => {
+  const f = fixture();
+  f.api.publishControl({
+    control: { mode: 'battle', generation: 8, reason: '自动战斗中' },
+    automation_active: true,
+    automation_mode: 'battle',
+    automation_note: 'looking for a fight at (468,523)',
+  });
+  assert.match(f.nodes['#ai-control-status'].textContent, /上次决策：looking for a fight at \(468,523\)/);
+
+  /* The executor modes have plans and receipts to inspect; the note is for the
+     battle loop, and a stale one must not read as if it were still happening. */
+  f.api.publishControl({ control: { mode: 'manual', generation: 9 }, automation_note: 'looking for a fight at (468,523)' });
+  assert.ok(!/上次决策/.test(f.nodes['#ai-control-status'].textContent));
+});
+
+test('unchecking the walk keeps the character where the player parked it', async () => {
+  const f = fixture({ mode: 'manual', generation: 7 }, false);
+  await f.api.start();
+  const call = f.calls.find(entry => entry.url.endsWith('/battle-auto'));
+  assert.equal(call.options.body, '{"generation":7,"seek":false}');
+  assert.ok(!/来回走/.test(f.nodes['#ai-control-status'].textContent), 'the status must not promise a walk it will not do');
 });
 
 test('auto battle cannot start while another owner holds the session', async () => {

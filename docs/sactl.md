@@ -185,7 +185,7 @@ sactl status                                           # 另开一个终端
 | `say <文本>` | 公屏发言（默认 color 0 / range 3） |
 | `talk <名字> [文本]` / `choose <行号>` / `reply <ok\|cancel\|…> [文本]` | NPC 对话：发起、选选项、答消息窗口 |
 | `battle <指令>` / `battle-end` / `battle-help <0\|1>` | 战斗回合（`H\|FF` 攻击、`W\|FF\|FF` 宠物、`T\|FF` 防御、`S\|01\|FF` 技能、`E` 逃跑、`N` 等待、`G` 放弃、`HELP`）；一个回合需要玩家和宠物各自提交一次，动画结束后用 `battle-end`（EO）确认 |
-| `auto-battle on\|off\|status` | 托管战斗循环：每回合自动加血或攻击，直到 `off`（详见下文） |
+| `auto-battle on [walk\|stay]\|off\|status` | 托管战斗循环：每回合自动加血或攻击，直到 `off`；`walk` 还会原地来回走找架打（详见下文） |
 | `item use\|drop\|drop-gold\|move\|magic\|pickup …` | 背包与地面物品 |
 | `mail list\|add\|send\|remove-contact …` | 名片簿与邮件 |
 | `pet status\|standby\|battle\|rename\|drop …` | 宠物 |
@@ -211,6 +211,7 @@ sactl status                                           # 另开一个终端
 ```bash
 ./build/local/sactl seek-encounter      # 走进遭遇区触发战斗
 ./build/local/sactl auto-battle on      # 之后每回合由守护进程出招
+./build/local/sactl auto-battle on walk # 顺便原地来回走，让服务端一直刷怪
 ./build/local/sactl auto-battle status  # 看最后一条决策
 ./build/local/sactl auto-battle off     # 立即停手，交回手动
 ```
@@ -219,6 +220,12 @@ sactl status                                           # 另开一个终端
 低于 30% 才治），**先道具后魔法**，都够不着就跳过；否则打 `BattleID` 最小的活敌人。玩家菜单
 被关或遭遇偷袭时只有一条合法指令，就直接出那条。全队（不含宠物）被打光时发 `EO` 收尾，
 因为服务端不会为战败再发结算包。**不逃跑。**
+
+`walk` 是挂机用的：战斗之外它按 450 毫秒一步的节奏走"两格出去、两格回来，再换一个轴"，
+每走完一条腿就用只读的 `S:c` 问一次坐标（服务端不会把自己的走路回传，不重新问就会拿
+两格前的坐标去算下一步）。遇敌是服务端在移动时掷的，所以这就是刷怪速度。不带 `walk`
+时它只答回合、不移动，适合你自己把角色停在某处的情形。回血/收尾等决策 web 面板与 sactl
+共用同一份 `internal/battleauto`。
 
 治疗手段不是手写目录，而是读 `map_directory` 指向的服务端数据：`magic.txt` 里效果列为
 `MAGIC_Recovery` 的法术、`itemset.txt` 里带 `ITEM_useRecovery` 的道具。所以没配

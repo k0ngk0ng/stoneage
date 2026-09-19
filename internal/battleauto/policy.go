@@ -16,6 +16,10 @@ type Policy struct {
 	// caller sets both; an item is always preferred over a spell.
 	HealItems bool
 	HealMagic bool
+	// SeekEncounters walks a short back-and-forth pattern between battles. The
+	// server rolls the encounter on the movement itself, so this is what turns
+	// answering turns into leaving the character fighting until stopped.
+	SeekEncounters bool
 }
 
 // DefaultPolicy heals below 30% from the bag first and from magic second.

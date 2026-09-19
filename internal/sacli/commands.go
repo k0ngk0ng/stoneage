@@ -52,7 +52,7 @@ const CommandHelp = `commands:
   choose <row>                        answer a choice window by the row number shown
   reply <ok|cancel|yes|no|prev|next> [text]  answer a message window
   look <direction>                    turn without moving
-  auto-battle on|off|status           heal the most hurt, otherwise attack in order
+  auto-battle on [walk|stay]|off|status  heal the most hurt, otherwise attack in order; walk also looks for fights
   battle <command>                    battle turn (H|FF attack, W|FF|FF pet, T|FF defend, S|01|FF skill, E escape, N wait, G give up, HELP)
   battle-end                          acknowledge the battle animation and leave the battle (EO)
   battle-help <0|1>                   toggle the native battle help flag

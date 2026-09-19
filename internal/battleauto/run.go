@@ -30,9 +30,15 @@ type Runner struct {
 	Tables   *aiknowledge.RecoveryTables
 	Policy   Policy
 	Interval time.Duration
+	// Seek paces the walk that keeps encounters coming between battles. Zero
+	// uses DefaultSeekInterval.
+	SeekInterval time.Duration
 	// Log receives a line for every turn submitted and every error that did
 	// not end the loop. Nil silences it.
 	Log func(format string, args ...any)
+
+	// seeker carries the walking pattern across passes. Run owns it.
+	seeker *seeker
 }
 
 // Run blocks until ctx is cancelled. A transient failure never ends the loop:
@@ -50,6 +56,9 @@ func (r Runner) Run(ctx context.Context) error {
 	policy := r.Policy
 	if policy.HealBelowPercent == 0 && !policy.HealItems && !policy.HealMagic {
 		policy = DefaultPolicy()
+	}
+	if policy.SeekEncounters && r.seeker == nil {
+		r.seeker = &seeker{interval: r.SeekInterval}
 	}
 
 	ticker := time.NewTicker(interval)
@@ -82,18 +91,37 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 	if err != nil {
 		return err
 	}
-	decision, ok := Decide(snapshot, r.Tables, policy)
+	if decision, ok := Decide(snapshot, r.Tables, policy); ok {
+		err = r.Game.ExecuteExpected(ctx, snapshot.Revision, decision.Action)
+		switch {
+		case err == nil:
+			r.logf("%s", decision.Reason)
+			return nil
+		case errors.Is(err, aigame.ErrStaleRevision), errors.Is(err, aigame.ErrBattleNotReady):
+			// The turn moved under us. The next pass decides again from the
+			// state it finds, which is why nothing is retried here.
+			return nil
+		default:
+			return err
+		}
+	}
+	if !policy.SeekEncounters {
+		return nil
+	}
+	step, ok := r.seeker.next(snapshot, time.Now())
 	if !ok {
 		return nil
 	}
-	err = r.Game.ExecuteExpected(ctx, snapshot.Revision, decision.Action)
+	err = r.Game.ExecuteExpected(ctx, snapshot.Revision, step)
 	switch {
 	case err == nil:
-		r.logf("%s", decision.Reason)
+		if step.Kind == aigame.ActionMove {
+			r.logf("looking for a fight at (%d,%d)", snapshot.Position.X, snapshot.Position.Y)
+		}
 		return nil
-	case errors.Is(err, aigame.ErrStaleRevision), errors.Is(err, aigame.ErrBattleNotReady):
-		// The turn moved under us. The next pass decides again from the state
-		// it finds, which is why nothing is retried here.
+	case errors.Is(err, aigame.ErrStaleRevision), errors.Is(err, aigame.ErrBattleNotReady), errors.Is(err, aigame.ErrInvalidAction):
+		// A step the server will not take is not a reason to stop; the next
+		// pass walks from wherever the character actually is.
 		return nil
 	default:
 		return err

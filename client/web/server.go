@@ -2241,6 +2241,9 @@ type controlResponse struct {
 	AutomationAvailable bool                `json:"automation_available"`
 	AutomationActive    bool                `json:"automation_active"`
 	AutomationMode      aicontrol.Mode      `json:"automation_mode,omitempty"`
+	// AutomationNote is the last decision an auto battle loop made. It is the
+	// only view a player gets of a mode that runs without a task to inspect.
+	AutomationNote string `json:"automation_note,omitempty"`
 }
 
 func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
@@ -2261,12 +2264,17 @@ func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
 	if !active && state.Mode == aicontrol.Manual {
 		recovery, recoveryErr = handler.recoveryOffer(context.Background(), session)
 	}
+	note := ""
+	if active && state.Mode == aicontrol.Battle {
+		note = session.automationNoteText()
+	}
 	return controlResponse{
 		Control:  state,
 		Recovery: recovery, RecoveryUnavailable: recoveryErr != nil,
 		AutomationAvailable: handler.automationExecutor() != nil,
 		AutomationActive:    active,
 		AutomationMode:      mode,
+		AutomationNote:      note,
 	}
 }
 

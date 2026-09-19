@@ -30,20 +30,30 @@ func (g sessionGame) ExecuteExpected(ctx context.Context, revision uint64, actio
 // cancelled as soon as its response is written.
 func (s *Server) commandAutoBattle(ctx context.Context, request Request) Response {
 	if len(request.Args) == 0 {
-		return failure(KindUsage, "usage: auto-battle on|off|status")
+		return failure(KindUsage, "usage: auto-battle on [walk|stay]|off|status")
 	}
 	switch strings.ToLower(strings.TrimSpace(request.Args[0])) {
 	case "on":
-		changed, err := s.startAutoBattle()
+		walk, err := autoBattleWalk(request.Args[1:])
 		if err != nil {
-			return actionFailure(err)
+			return failure(KindUsage, "%v", err)
+		}
+		changed, startErr := s.startAutoBattle(walk)
+		if startErr != nil {
+			return actionFailure(startErr)
 		}
 		if !changed {
 			return Response{OK: true, Text: "auto battle is already on"}
 		}
+		if walk {
+			return Response{
+				OK:   true,
+				Text: "auto battle on: the character heals whoever is hurt most, otherwise attacks the first living enemy, and never runs away.\nbetween fights it walks a short back-and-forth pattern so the server keeps rolling encounters.\nstop it with `sactl auto-battle off`",
+			}
+		}
 		return Response{
 			OK:   true,
-			Text: "auto battle on: the character heals whoever is hurt most, otherwise attacks the first living enemy, and never runs away.\nstop it with `sactl auto-battle off`",
+			Text: "auto battle on: the character heals whoever is hurt most, otherwise attacks the first living enemy, and never runs away.\nit answers battles it is in and walks nowhere; add `walk` to look for fights.",
 		}
 	case "off":
 		if !s.stopAutoBattle() {
@@ -53,11 +63,28 @@ func (s *Server) commandAutoBattle(ctx context.Context, request Request) Respons
 	case "status":
 		return Response{OK: true, Text: s.autoBattleStatus()}
 	default:
-		return failure(KindUsage, "usage: auto-battle on|off|status")
+		return failure(KindUsage, "usage: auto-battle on [walk|stay]|off|status")
 	}
 }
 
-func (s *Server) startAutoBattle() (bool, error) {
+// autoBattleWalk reads the optional walk opt-in. Answering turns is the mode's
+// whole definition; walking after a fight is a choice, because a caller may
+// have parked the character deliberately.
+func autoBattleWalk(args []string) (bool, error) {
+	if len(args) == 0 {
+		return false, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "walk", "seek", "encounters":
+		return true, nil
+	case "stay", "hold":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unknown auto battle option %q (use walk or stay)", args[0])
+	}
+}
+
+func (s *Server) startAutoBattle(walk bool) (bool, error) {
 	s.autoMu.Lock()
 	defer s.autoMu.Unlock()
 	if s.autoRunning {
@@ -73,10 +100,12 @@ func (s *Server) startAutoBattle() (bool, error) {
 	s.autoCancel = cancel
 	s.autoRunning = true
 	go func() {
+		policy := battleauto.DefaultPolicy()
+		policy.SeekEncounters = walk
 		runner := battleauto.Runner{
 			Game:   sessionGame{server: s},
 			Tables: tables,
-			Policy: battleauto.DefaultPolicy(),
+			Policy: policy,
 			Log: func(format string, args ...any) {
 				s.autoMu.Lock()
 				s.autoLastLine = fmt.Sprintf(format, args...)
