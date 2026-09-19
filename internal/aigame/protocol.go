@@ -165,6 +165,11 @@ type Session struct {
 	requestMu sync.Mutex
 	stateMu   sync.RWMutex
 
+	// replyMu guards replyWaiters, which routes request() replies through the
+	// background reader once it owns the socket.
+	replyMu      sync.Mutex
+	replyWaiters map[string]chan Event
+
 	state  gameState
 	nextID uint32
 
@@ -395,6 +400,28 @@ func (session *Session) CreateCharacter(ctx context.Context, create CharacterCre
 	return nil
 }
 
+// DeleteCharacter performs CharDelete for a character on the account. The
+// preserved client requires a local confirmation before sending it; callers
+// own that decision, and the server remains the final authority. The caller
+// must refresh the character list afterwards.
+func (session *Session) DeleteCharacter(ctx context.Context, name string) error {
+	if err := session.requirePhase(PhaseAuthenticated, PhaseCharacterList); err != nil {
+		return err
+	}
+	nameBytes, err := encodeLegacyUTF8(name)
+	if err != nil {
+		return fmt.Errorf("%w: character name: %v", ErrTextEncoding, err)
+	}
+	response, err := session.request(ctx, "CharDelete", []wireValue{{kind: wireString, text: nameBytes}})
+	if err != nil {
+		return fmt.Errorf("CharDelete: %w", err)
+	}
+	if responseText(response, 0) != "successful" {
+		return fmt.Errorf("%w: server rejected character deletion", ErrUnexpectedReply)
+	}
+	return nil
+}
+
 // EnterCharacter performs CharLogin and starts the asynchronous gameplay
 // event reader after the successful response.  name must be one of the
 // latest CharList entries; the server remains the final authority.
@@ -456,6 +483,31 @@ func (session *Session) request(ctx context.Context, function string, values []w
 	if err != nil {
 		return Event{}, err
 	}
+
+	// Two readers must never share the socket. Before EnterCharacter this call
+	// owns it and reads the reply itself; afterwards the background reader
+	// owns it, and reading here as well interleaves both readers on one
+	// bufio.Reader — which corrupts packet framing and surfaced as
+	// "truncated Ringo bit stream" when CharLogout's reply was read.
+	session.stateMu.Lock()
+	reading := session.reading
+	session.stateMu.Unlock()
+	if reading {
+		waiter := session.awaitReply(function)
+		defer session.releaseReply(function, waiter)
+		if err := session.writePacket(ctx, packet); err != nil {
+			return Event{}, err
+		}
+		select {
+		case event := <-waiter:
+			return event, nil
+		case <-ctx.Done():
+			return Event{}, ctx.Err()
+		case <-session.done:
+			return Event{}, ErrClosed
+		}
+	}
+
 	if err := session.writePacket(ctx, packet); err != nil {
 		return Event{}, err
 	}
@@ -472,6 +524,48 @@ func (session *Session) request(ctx context.Context, function string, values []w
 		if event.Function == function {
 			return event, nil
 		}
+	}
+}
+
+// awaitReply registers the channel that delivers the next event with this
+// function name. Requests are serialized by requestMu, so one waiter per
+// function is enough.
+func (session *Session) awaitReply(function string) chan Event {
+	session.replyMu.Lock()
+	defer session.replyMu.Unlock()
+	if session.replyWaiters == nil {
+		session.replyWaiters = make(map[string]chan Event)
+	}
+	waiter := make(chan Event, 1)
+	session.replyWaiters[function] = waiter
+	return waiter
+}
+
+// releaseReply removes a waiter that was satisfied or abandoned.
+func (session *Session) releaseReply(function string, waiter chan Event) {
+	session.replyMu.Lock()
+	if session.replyWaiters[function] == waiter {
+		delete(session.replyWaiters, function)
+	}
+	session.replyMu.Unlock()
+}
+
+// deliverReply hands one decoded event to the request that waits for it.
+// It runs before the public event stream is published so a full event channel
+// cannot starve a waiting request.
+func (session *Session) deliverReply(event Event) {
+	session.replyMu.Lock()
+	waiter, ok := session.replyWaiters[event.Function]
+	if ok {
+		delete(session.replyWaiters, event.Function)
+	}
+	session.replyMu.Unlock()
+	if !ok {
+		return
+	}
+	select {
+	case waiter <- event:
+	default:
 	}
 }
 
@@ -664,6 +758,7 @@ func (session *Session) startReader() {
 				session.finish(err)
 				return
 			}
+			session.deliverReply(event)
 			session.applyAndPublish(event)
 		}
 	}()

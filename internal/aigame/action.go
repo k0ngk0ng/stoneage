@@ -382,7 +382,12 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 		if action.WindowType != 0 && action.WindowType != window.Type {
 			return nil, "", fmt.Errorf("%w: window type does not match active window", ErrInvalidAction)
 		}
-		if action.WindowSelect == 0 {
+		// A select window is answered with button 0 and the chosen row in the
+		// data field: the native hit-test sends the row number and the 2.5 NPC
+		// handlers read it with atoi(data) (client/web/index.html:15015-15033).
+		// Requiring a non-zero button here would reject every choice selection,
+		// so the button may only be empty when no row was supplied either.
+		if action.WindowSelect == 0 && action.Text == "" && action.TextUTF8 == "" && len(action.TextBytes) == 0 {
 			return nil, "", fmt.Errorf("%w: window button is empty", ErrInvalidAction)
 		}
 		var data []byte
