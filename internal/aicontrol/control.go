@@ -112,7 +112,12 @@ func (g *Gate) Dispatch(ctx context.Context, generation uint64, owner Mode, send
 	if generation != g.state.Generation {
 		return ErrStale
 	}
-	if owner != g.state.Mode && !(owner == Manual && g.state.Mode == Paused) {
+	// Auto battle answers turns and nothing else, so the player keeps the rest
+	// of the client: walking, chat, panels and items all stay theirs, and only
+	// the battle command bar is taken away (the page does that). Holding the
+	// whole session the way the task modes do would leave them unable to move
+	// after starting it.
+	if owner != g.state.Mode && !(owner == Manual && (g.state.Mode == Paused || g.state.Mode == Battle)) {
 		return ErrOwner
 	}
 	if err := ctx.Err(); err != nil {

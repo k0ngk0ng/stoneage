@@ -122,3 +122,29 @@ func TestTakeoverIsOrderedAfterInFlightWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Auto battle answers turns; it does not take the client. A player who started
+// it still has to be able to walk, chat and open their own panels, and the
+// bridge sends those browser packets under the manual owner.
+func TestAutoBattleLetsThePlayerKeepTheRestOfTheClient(t *testing.T) {
+	g := New()
+	state, _, err := g.Switch(g.State().Generation, Battle, "自动战斗中")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := 0
+	write := func(context.Context) error { writes++; return nil }
+	if err := g.Dispatch(context.Background(), state.Generation, Manual, write); err != nil {
+		t.Fatalf("manual packet refused during auto battle: %v", err)
+	}
+	// The task modes still hold the session: they drive the character.
+	if _, _, err := g.Switch(state.Generation, Leveling, "自动练级"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Dispatch(context.Background(), g.State().Generation, Manual, write); !errors.Is(err, ErrOwner) {
+		t.Fatalf("manual packet accepted during leveling: %v", err)
+	}
+	if writes != 1 {
+		t.Fatalf("writes = %d, want only the auto battle one", writes)
+	}
+}
