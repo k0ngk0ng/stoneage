@@ -28,7 +28,7 @@ function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
   const status = { textContent: '', classList: { toggle() {} } };
   const nodes = {
     '#ai-automation-mode': { value: 'battle' },
-    '#ai-battle-seek': { checked: seek },
+    '#ai-leveling-seek': { checked: seek },
     '#ai-build-section': button(),
     '#ai-supply-section': button(),
     '#ai-include-dependencies': button(),
@@ -44,7 +44,7 @@ function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
     window: root,
     fetch: async (url, options) => {
       calls.push({ url, options });
-      if (url.endsWith('/control')) return { ok: true, json: async () => ({ control }) };
+      if (url.endsWith('/control')) return { ok: true, json: async () => ({ control, automation_available: control.available !== false }) };
       return { ok: true, json: async () => ({ control: { mode: 'battle', generation: 8, reason: '自动战斗中' }, automation_active: true, automation_mode: 'battle', automation_available: true }) };
     },
   });
@@ -130,7 +130,7 @@ test('auto battle sends only the generation and locks the browser against the ru
   assert.equal(call.url, '/api/sessions/session-a/battle-auto');
   assert.equal(call.options.method, 'POST');
   assert.ok(!f.calls.some(entry => entry.url.includes('/automation/start')), 'auto battle carries no task or budget config');
-  assert.equal(call.options.body, '{"generation":7,"seek":false}', 'answering turns must not walk the character');
+  assert.equal(call.options.body, '{"generation":7,"mode":"battle"}', 'auto battle answers turns and walks nowhere');
 
   const control = f.api.currentControl();
   assert.equal(control.mode, 'battle');
@@ -215,18 +215,27 @@ test('the panel says whether the loop is fighting and how it has gone', async ()
   assert.match(f.nodes['#ai-control-status'].textContent, /状态：待机$/m);
 });
 
-test('the walk is an explicit opt-in and the status only promises what it does', async () => {
-  const parked = fixture({ mode: 'manual', generation: 7 }, false);
+test('leveling runs the light loop, and only walks when asked', async () => {
+  const parked = fixture({ mode: 'manual', generation: 7, available: false }, false);
+  parked.nodes['#ai-automation-mode'].value = 'leveling';
   await parked.api.start();
   const call = parked.calls.find(entry => entry.url.endsWith('/battle-auto'));
-  assert.equal(call.options.body, '{"generation":7,"seek":false}');
+  assert.ok(call, 'without a task executor leveling must start the light loop');
+  assert.equal(call.options.body, '{"generation":7,"mode":"leveling","seek":false}');
   assert.ok(!/来回走/.test(parked.nodes['#ai-control-status'].textContent), 'the status must not promise a walk it will not do');
 
-  const walking = fixture({ mode: 'manual', generation: 7 }, true);
+  const walking = fixture({ mode: 'manual', generation: 7, available: false }, true);
+  walking.nodes['#ai-automation-mode'].value = 'leveling';
   await walking.api.start();
   const walkingCall = walking.calls.find(entry => entry.url.endsWith('/battle-auto'));
-  assert.equal(walkingCall.options.body, '{"generation":7,"seek":true}');
+  assert.equal(walkingCall.options.body, '{"generation":7,"mode":"leveling","seek":true}');
   assert.match(walking.nodes['#ai-control-status'].textContent, /来回走/);
+
+  /* With the executor configured, leveling keeps its full path. */
+  const full = fixture({ mode: 'manual', generation: 7, available: true }, true);
+  full.nodes['#ai-automation-mode'].value = 'leveling';
+  await full.api.start();
+  assert.ok(full.calls.some(entry => entry.url.includes('/automation/start')), 'a configured executor keeps its task plan');
 });
 
 test('auto battle cannot start while another owner holds the session', async () => {

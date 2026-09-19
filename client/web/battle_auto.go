@@ -16,10 +16,16 @@ import (
 // was shown, exactly like every other control call. Seek asks the loop to walk
 // between fights so encounters keep coming; it is a pointer because absent
 // means no, and an older page must keep the loop off the character.
+//
+// Mode is which claim the loop takes on the character. Auto battle answers the
+// turn it is in and nothing else; leveling is the same loop plus the walk, and
+// it exists because the task-based leveling executor is a separate, heavier
+// thing that a deployment may not have configured at all.
 type battleAutoRequest struct {
 	Generation *uint64 `json:"generation"`
 	Reason     string  `json:"reason,omitempty"`
 	Seek       *bool   `json:"seek,omitempty"`
+	Mode       string  `json:"mode,omitempty"`
 }
 
 // startBattleAuto hands the session to the auto battle loop.
@@ -52,6 +58,16 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 		return
 	}
 
+	mode := aicontrol.Battle
+	switch strings.ToLower(strings.TrimSpace(input.Mode)) {
+	case "", string(aicontrol.Battle):
+		mode = aicontrol.Battle
+	case string(aicontrol.Leveling):
+		mode = aicontrol.Leveling
+	default:
+		http.Error(response, "unsupported loop mode", http.StatusBadRequest)
+		return
+	}
 	state := session.gate.State()
 	if state.Mode != aicontrol.Manual {
 		http.Error(response, "character is already under automation control", http.StatusConflict)
@@ -60,21 +76,25 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 	reason := strings.TrimSpace(input.Reason)
 	if reason == "" {
 		reason = "自动战斗中"
+		if mode == aicontrol.Leveling {
+			reason = "自动练级中"
+		}
 	}
 	// The returned context is the run lifetime: a takeover or any other
 	// ownership change cancels it and the loop exits on its own.
-	started, runContext, err := session.gate.Switch(*input.Generation, aicontrol.Battle, reason)
+	started, runContext, err := session.gate.Switch(*input.Generation, mode, reason)
 	if err != nil {
 		controlError(response, err)
 		return
 	}
 
 	policy := battleauto.DefaultPolicy()
-	// Walking outside a battle is opt-in: it drives the character, and a
-	// player who only wants the turns answered must keep their own movement.
-	policy.SeekEncounters = input.Seek != nil && *input.Seek
+	// Walking outside a battle is opt-in for the battle claim -- it drives the
+	// character, and a player who only wants the turns answered must keep their
+	// own movement -- and the whole point of the leveling claim.
+	policy.SeekEncounters = mode == aicontrol.Leveling || (input.Seek != nil && *input.Seek)
 	runner := battleauto.Runner{
-		Game:   &AutomationSession{ID: session.id, session: session, mode: aicontrol.Battle, generation: started.Generation},
+		Game:   &AutomationSession{ID: session.id, session: session, mode: mode, generation: started.Generation},
 		Tables: handler.recoveryTables(),
 		Policy: policy,
 		Log: func(format string, args ...any) {
@@ -82,7 +102,7 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 		},
 		State: session.setAutomationState,
 	}
-	if !session.setAutomation(runner, aicontrol.Battle, started.Generation) {
+	if !session.setAutomation(runner, mode, started.Generation) {
 		_, _ = session.gate.Takeover("auto battle failed to start")
 		http.Error(response, "auto battle failed to start", http.StatusConflict)
 		return

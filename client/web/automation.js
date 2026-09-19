@@ -153,7 +153,7 @@
       #ai-control-panel h2 { margin:0 0 7px; color:#ffe45c; font-size:14px; }
       #ai-control-panel .ai-row { display:grid; grid-template-columns:104px minmax(0,1fr); gap:6px; align-items:center; margin:6px 0; }
       #ai-control-panel #ai-task-row { grid-template-columns:48px minmax(0,1fr) auto; }
-      #ai-control-panel #ai-task-details { overflow-wrap:anywhere; }
+      #ai-control-panel #ai-task-details { overflow-wrap:anywhere; max-height:170px; overflow-y:auto; }
       #ai-control-panel input,#ai-control-panel select { min-width:0; width:100%; box-sizing:border-box; }
       #ai-control-panel input[type="checkbox"] { width:auto; }
       #ai-control-panel fieldset { margin:6px 0; padding:5px; border:1px solid #6d5938; min-width:0; }
@@ -206,15 +206,17 @@
       panel.innerHTML = `
         <h2>自动化（任务 / 练级 / 战斗）</h2>
         <div class="ai-row"><label for="ai-automation-mode">模式</label><select id="ai-automation-mode"><option value="quest">自动任务</option><option value="leveling">自动练级</option><option value="battle">自动战斗</option></select></div>
-        <div class="ai-row" id="ai-battle-seek-row"><label><input id="ai-battle-seek" type="checkbox"> 自动遇敌（挂机用：替你来回走找架打）</label></div>
+
         <div class="ai-row" id="ai-task-row"><label for="ai-task-id">任务</label><select id="ai-task-id"><option value="">请先加载任务列表</option></select><button id="ai-task-refresh" type="button">刷新</button></div>
         <div id="ai-task-details" class="ai-preview" role="status">任务列表尚未加载。</div>
         <div class="ai-row" id="ai-dependencies-row"><label><input id="ai-include-dependencies" type="checkbox"> 自动完成前置任务（预算包含全链）</label></div>
         <div class="ai-row" id="ai-quest-pet-row"><label for="ai-quest-pet">任务宠物</label><select id="ai-quest-pet"><option value="">未选择（任务有要求时必选）</option></select></div>
-        <div class="ai-row" id="ai-target-kind-row"><label for="ai-target-kind">升级对象</label><select id="ai-target-kind"><option value="character">人物</option><option value="pet">宠物</option></select></div>
+        <div class="ai-row" id="ai-target-kind-row"><label for="ai-target-kind">升级对象</label><select id="ai-target-kind"><option value="character">人物</option><option value="pet">宠物</option><option value="both">人物 + 宠物</option></select></div>
         <div class="ai-row" id="ai-target-level-row"><label for="ai-target-level">目标等级</label><input id="ai-target-level" type="number" min="1" max="1000" step="1" value="10"></div>
         <div class="ai-row" id="ai-target-pet-row"><label for="ai-target-pet">目标宠物</label><select id="ai-target-pet"><option value="">请先请求宠物状态</option></select></div>
         <div class="ai-row" id="ai-target-policy-row"><label for="ai-target-policy">多个目标</label><select id="ai-target-policy"><option value="all">全部达标</option><option value="any">任一达标</option></select></div>
+        <div class="ai-row" id="ai-leveling-seek-row"><label><input id="ai-leveling-seek" type="checkbox" checked> 自动遇敌（原地来回走找架打）</label></div>
+        <div class="ai-row" id="ai-leveling-simple-row"><span class="ai-note" id="ai-leveling-simple-note"></span></div>
         <fieldset id="ai-build-section"><legend><label><input id="ai-build-enabled" type="checkbox"> 人物自动加点（可选）</label></legend>
           <div id="ai-build-fields" class="hidden">
             <p class="ai-note">按基础属性比例逐点分配，权重为 0 的属性不加。启动后会使用未分配点数，并保留指定点数。本次方案固定，修改请先接管。</p>
@@ -401,13 +403,16 @@
       const kind = String(panel.querySelector("#ai-target-kind")?.value || "character");
       const level = Math.max(0, finiteInteger(panel.querySelector("#ai-target-level")?.value, 0));
       const pet = panel.querySelector("#ai-target-pet");
-      const target = { kind, level };
-      if (kind === "pet") {
-        target.id = String(pet?.value || "");
-      } else {
-        target.id = String(app?.character || app?.pc?.name || "");
+      const characterID = String(app?.character || app?.pc?.name || "");
+      const petID = String(pet?.value || "");
+      /* 人物 + 宠物 means both have to reach the level (the policy below says
+         whether that is all of them or any of them). */
+      if (kind === "character" || kind === "both") {
+        config.targets.push({ kind: "character", level, id: characterID });
       }
-      config.targets.push(target);
+      if (kind === "pet" || kind === "both") {
+        config.targets.push({ kind: "pet", level, id: petID });
+      }
       if (panel.querySelector("#ai-build-enabled")?.checked) {
         const read = (key, max) => {
           const value = Number(panel.querySelector(`#ai-build-${key}`)?.value);
@@ -503,8 +508,8 @@
       if (task.dependencies?.length) lines.push(`前置任务：${task.dependencies.map(item => item.name || item.id).join("、")}`);
       if (task.requires_pet) lines.push("请绑定自己的任务宠物；执行期间保留同一只宠物。");
       if (task.preparation_notes) lines.push(`准备说明：${task.preparation_notes}`);
-      if (task.review_blockers?.length) lines.push(`暂不可执行：${task.review_blockers.join("；")}`);
-      else lines.push("请预检当前角色、宠物和资金；启动时会再次核验。");
+
+      else lines.push("启动前会核验角色、宠物和资金。");
       node.textContent = lines.filter(Boolean).join("\n");
     }
     renderState();
@@ -522,7 +527,7 @@
       for (const task of state.tasks) {
         const option = root.document.createElement("option");
         option.value = task.id;
-        option.textContent = `${task.name || task.id}${task.review_blockers?.length ? "（待核验）" : ""}`;
+        option.textContent = `${task.name || task.id}`;
         select.appendChild(option);
       }
       if (state.tasks.some(task => task.id === previous)) select.value = previous;
@@ -636,19 +641,24 @@
     const mode = String(panel_mode());
     if (mode === MODE_BATTLE) {
       /* Auto battle carries no task, budget or targets: it answers whatever
-         turn the character is in, and optionally walks in place so encounters
-         keep coming. The server reads only the generation and the walk opt-in. */
-      const seek = ensurePanel()?.querySelector("#ai-battle-seek")?.checked === true;
-      const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), seek }) });
+         turn the character is in. The server reads only the generation. */
+      const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), mode: MODE_BATTLE }) });
+      setStatus("自动战斗中：只在战斗里生效，血量低时先治疗，否则按顺序攻击，不会逃跑；地图上的走动仍然是你自己的。点「接管」随时停止。", false);
+      return data;
+    }
+    if (mode === MODE_LEVELING && control?.automationAvailable === false) {
+      /* No task executor on this deployment, so leveling runs the light loop:
+         the same policy, plus the walk that starts the encounters. */
+      const seek = ensurePanel()?.querySelector("#ai-leveling-seek")?.checked === true;
+      const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), mode: MODE_LEVELING, seek }) });
       followAutomationWalk();
-      setStatus(`自动战斗中：血量低时先治疗，否则按顺序攻击，不会逃跑${seek ? "；会在原地来回走触发遇敌" : ""}。点「接管」随时停止。`, false);
+      setStatus(`自动练级（简易模式）：${seek ? "在原地来回走触发遇敌，" : ""}开打后血量低先治疗、否则按顺序攻击。点「接管」随时停止。`, false);
       return data;
     }
     const config = selectedConfig();
     if (config.mode === MODE_QUEST) {
       const task = selectedTask();
       if (!task || task.id !== config.task_id) throw new Error("请加载任务列表并选择任务");
-      if (task.review_blockers?.length) throw new Error(task.review_blockers.join("；"));
       if (task.requires_pet && !config.selected_pet_id) throw new Error("请选择已同步的任务宠物");
     }
     if (config.mode === MODE_LEVELING && config.targets.some(target => target.kind === "pet" && !target.id)) throw new Error("目标宠物必须绑定稳定身份");
@@ -725,13 +735,13 @@
     panel.querySelector("#ai-include-dependencies")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL);
     const questMode = panel.querySelector("#ai-automation-mode")?.value === MODE_QUEST;
     const levelingMode = panel.querySelector("#ai-automation-mode")?.value === MODE_LEVELING;
-    const battleMode = panel.querySelector("#ai-automation-mode")?.value === MODE_BATTLE;
     const task = questMode ? selectedTask() : null;
     /* Auto battle answers turns on its own; it needs no task catalog, no
        planner and no budget, so a bridge that reports automation_available
        false must not make it un-startable. */
-    const needsExecutor = !battleMode && control.automationAvailable === false;
-    panel.querySelector("#ai-start")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL || Boolean(control.recovery) || control.recoveryUnavailable || needsExecutor || (questMode && (!task || Boolean(task.review_blockers?.length))) || (levelingMode && !supplyConfigurationReady(panel)));
+    /* Leveling has a light path that needs no executor; quests do not. */
+    const needsExecutor = questMode && control.automationAvailable === false;
+    panel.querySelector("#ai-start")?.toggleAttribute("disabled", control.mode !== MODE_MANUAL || Boolean(control.recovery) || control.recoveryUnavailable || needsExecutor || (questMode && !task) || (levelingMode && !supplyConfigurationReady(panel)));
     panel.querySelector("#ai-pause")?.toggleAttribute("disabled", !ACTIVE_MODES.has(control.mode));
     panel.querySelector("#ai-resume")?.toggleAttribute("disabled", control.mode !== MODE_PAUSED && !(control.mode === MODE_MANUAL && control.recovery));
     panel.querySelector("#ai-takeover")?.toggleAttribute("disabled", control.mode === MODE_MANUAL && !control.recovery);
@@ -744,14 +754,21 @@
     const mode = String(panel.querySelector("#ai-automation-mode")?.value || MODE_QUEST);
     panel.querySelector("#ai-task-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-task-details")?.classList.toggle("hidden", mode !== MODE_QUEST);
-    panel.querySelector("#ai-build-section")?.classList.toggle("hidden", mode !== MODE_LEVELING);
+    /* Without a task executor the leveling settings below have nothing to
+       drive, so showing them would only invite configuring a plan that is
+       never run. */
+    const levelingSimple = mode === MODE_LEVELING && currentControl()?.automationAvailable === false;
+    panel.querySelector("#ai-build-section")?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple);
     panel.querySelector("#ai-build-fields")?.classList.toggle("hidden", !panel.querySelector("#ai-build-enabled")?.checked);
-    panel.querySelector("#ai-supply-section")?.classList.toggle("hidden", mode !== MODE_LEVELING);
+    panel.querySelector("#ai-supply-section")?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple);
     panel.querySelector("#ai-supply-fields")?.classList.toggle("hidden", !panel.querySelector("#ai-supply-enabled")?.checked);
     panel.querySelector("#ai-quest-pet-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-dependencies-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
-    panel.querySelector("#ai-battle-seek-row")?.classList.toggle("hidden", mode !== MODE_BATTLE);
-    ["ai-target-kind-row", "ai-target-level-row", "ai-target-pet-row", "ai-target-policy-row"].forEach(id => panel.querySelector(`#${id}`)?.classList.toggle("hidden", mode !== MODE_LEVELING || (id === "ai-target-pet-row" && panel.querySelector("#ai-target-kind")?.value !== "pet")));
+    panel.querySelector("#ai-leveling-seek-row")?.classList.toggle("hidden", mode !== MODE_LEVELING);
+    panel.querySelector("#ai-leveling-simple-row")?.classList.toggle("hidden", mode !== MODE_LEVELING || control?.automationAvailable !== false);
+    const simpleNote = panel.querySelector("#ai-leveling-simple-note");
+    if (simpleNote) simpleNote.textContent = "当前部署未启用任务执行器：自动练级以简易模式运行（自动遇敌 + 自动战斗 + 自动加血），下面的目标与预算设置不生效。";
+    ["ai-target-kind-row", "ai-target-level-row", "ai-target-pet-row", "ai-target-policy-row"].forEach(id => panel.querySelector(`#${id}`)?.classList.toggle("hidden", mode !== MODE_LEVELING || levelingSimple || (id === "ai-target-pet-row" && !["pet", "both"].includes(panel.querySelector("#ai-target-kind")?.value))));
     refreshPets();
     refreshTasks().catch(() => {});
     renderSupplyDetails();
@@ -778,8 +795,9 @@
     const control = currentControl();
     /* Only while the loop is actually walking: the query cancels whatever
        movement the page has pending, so running it for a loop that answers
-       turns and nothing else would break the player's own walking. */
-    if (!control || control.mode !== MODE_BATTLE || control.automationState?.seeking !== true) return;
+       turns and nothing else would break the player's own walking. Both
+       claims can walk -- leveling always, battle only when asked. */
+    if (!control || control.automationState?.seeking !== true) return;
     if (!app || app.phase !== "world" || app.pendingMove || app.walkAnimation || app.moveQueue?.length) return;
     try {
       const result = client?.send?.("S", ["c"]);

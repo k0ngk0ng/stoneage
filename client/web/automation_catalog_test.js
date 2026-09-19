@@ -60,19 +60,18 @@ test('a late catalog response from the old session cannot replace the new sessio
   assert.deepEqual(Array.from(f.api.state.tasks, item => item.id), ['new-task']);
 });
 
-test('review blockers explain an unavailable quest and prevent a start request', async () => {
-  let starts = 0;
-  const f = fixture(async url => {
-    if (url.endsWith('/control')) return { ok: true, json: async () => ({ mode: 'manual', generation: 1 }) };
-    if (url.endsWith('/automation/start')) starts++;
-    return response([{ ...task, review_blockers: ['宠物准备要求尚未核实'] }]);
-  });
+/* The review blockers are a knowledge-review detail the player asked not to
+   see: every shipped task carries them, so showing them marked every quest as
+   un-startable. The server still runs its own preflight when the executor
+   exists, and that is where a genuinely broken plan is refused. */
+test('a quest with review notes is listed like any other', async () => {
+  const f = fixture(async () => response([{ ...task, review_blockers: ['宠物准备要求尚未核实'] }]));
   await f.api.refreshTasks();
   f.select.value = task.id;
   await f.api.refreshTasks(true);
-  assert.match(f.details.textContent, /暂不可执行：宠物准备要求尚未核实/);
-  await assert.rejects(f.api.start(), /宠物准备要求尚未核实/);
-  assert.equal(starts, 0);
+  assert.ok(!/待核验|暂不可执行/.test(f.details.textContent), 'review notes stay out of the panel');
+  assert.ok(!/待核验/.test(f.select.options.map(option => option.textContent).join(' ')), 'nor out of the catalog');
+  assert.match(f.details.textContent, /人物至少 30 级/);
 });
 
 test('catalog failure leaves no selectable cached quest', async () => {
