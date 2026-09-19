@@ -503,6 +503,23 @@ def ui_pack(records, by_number, real_path, palette, output, manifest):
             manifest["bitmap_aliases"].pop(str(logical), None)
 
 
+def map_data_paths() -> list[Path]:
+    """Every floor's DAT data file, however its extension happens to be cased.
+
+    The preserved set is not consistent: 76 floors ship lowercase (200, 600,
+    3000.., 6004x..) while the rest are ``.DAT``.  A case-sensitive glob
+    silently skipped the lowercase ones, so nothing collected their tiles and
+    the browser painted the Garuka cave entrance and every other lowercase
+    floor's ground as black.
+    """
+    map_root = REPO / "runtime" / "legacy-client" / "map"
+    return [
+        path
+        for path in map_root.iterdir()
+        if path.is_file() and path.suffix.lower() == ".dat" and path.stem.isdigit()
+    ]
+
+
 def collect_map_resources(records, by_number, real_path, palette, output, manifest):
     """Index every visual used by the preserved DAT maps.
 
@@ -517,8 +534,7 @@ def collect_map_resources(records, by_number, real_path, palette, output, manife
     maps = manifest.setdefault("maps", {})
     missing: dict[str, list[int]] = {}
     visual_ids: set[int] = set()
-    map_root = REPO / "runtime" / "legacy-client" / "map"
-    map_paths = [path for path in map_root.glob("*.DAT") if path.stem.isdigit()]
+    map_paths = map_data_paths()
     for map_path in sorted(map_paths, key=lambda path: int(path.stem)):
         try:
             width, height, layers = legacy.read_map(map_path)
@@ -590,7 +606,15 @@ def collect_map_collision_metadata(manifest):
 
 
 def map_pack(map_number, records, by_number, real_path, palette, output, manifest):
-    map_path = REPO / "runtime" / "legacy-client" / "map" / f"{map_number}.DAT"
+    # The same casing split as the floor scan: floor 200's data is 200.dat.
+    # A single spelling works on a case-insensitive volume and fails on CI.
+    map_base = REPO / "runtime" / "legacy-client" / "map" / str(map_number)
+    map_path = next(
+        (candidate for candidate in (map_base.with_suffix(".DAT"), map_base.with_suffix(".dat")) if candidate.is_file()),
+        None,
+    )
+    if map_path is None:
+        raise legacy.AssetError(f"missing map/{map_number}.DAT")
     width, height, layers = legacy.read_map(map_path)
     # A full 800x1200 map is needlessly large for a 640x480 client window.
     # Keep a deterministic original-data slice around the centre of the map;
@@ -636,7 +660,7 @@ def map_pack(map_number, records, by_number, real_path, palette, output, manifes
         "height": crop_h,
         "origin": [origin_x, origin_y],
         "image": f"maps/map_{map_number}.png",
-        "source": f"runtime/legacy-client/map/{map_number}.DAT",
+        "source": f"runtime/legacy-client/map/{map_path.name}",
         "render": {
             "width": px_w,
             "height": px_h,

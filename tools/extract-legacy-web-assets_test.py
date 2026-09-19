@@ -55,3 +55,26 @@ class PetAlbumIntegrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MapFloorCasingTest(unittest.TestCase):
+    """The preserved DAT set mixes .DAT and .dat; both have to be indexed."""
+
+    def test_floor_discovery_accepts_either_extension_case(self):
+        stems = {path.stem for path in assets.map_data_paths()}
+        self.assertIn("100", stems, "uppercase floors must still be found")
+        self.assertIn("200", stems, "200.dat must not be skipped")
+        self.assertGreaterEqual(len(stems), 900)
+
+    def test_lowercase_floors_ship_their_tiles(self):
+        manifest = json.loads((ROOT / "client/web/assets/original/manifest.json").read_text())
+        self.assertIn("200", manifest["maps"])
+        output = ROOT / "client/web/assets/original"
+        # 8807..8849 are the Garuka cliff/entrance tiles the live M window
+        # needs; a case-sensitive floor scan left every one of them unpainted.
+        for logical in (8807, 8811, 8847, 8849):
+            physical = manifest["bitmap_aliases"].get(str(logical))
+            self.assertIsNotNone(physical, f"logical {logical} has no alias")
+            entry = manifest["bitmaps"].get(physical)
+            self.assertIsNotNone(entry, f"logical {logical} -> {physical} has no bitmap")
+            self.assertTrue((output / entry["file"]).is_file(), entry["file"])
