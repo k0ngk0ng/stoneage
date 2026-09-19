@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Render the Homebrew formula for a released sactl build and push it to the
-# tap. Runs locally with an authenticated gh, and in CI with TAP_GITHUB_TOKEN
-# (a PAT with contents:write on the tap repository).
+# tap. Runs locally with an authenticated gh, and in CI with a deploy key
+# (PACKAGES_DEPLOY_KEY) scoped to the package repositories, or with
+# TAP_GITHUB_TOKEN for an HTTPS token instead.
 #
 # Usage:
 #   scripts/publish-homebrew-formula.sh <tag>            # publish
@@ -89,9 +90,17 @@ if [[ "$mode" == "--dry-run" ]]; then
   exit 0
 fi
 
-# CI authenticates with the PAT; a local run uses the operator's git
-# credential helper, which already has access to the tap.
-if [[ -n "${TAP_GITHUB_TOKEN:-}" ]]; then
+# CI authenticates with a deploy key limited to the package repositories;
+# TAP_GITHUB_TOKEN still works for an HTTPS token. A local run falls back to
+# the operator's git credential helper.
+if [[ -n "${TAP_DEPLOY_KEY:-${PACKAGES_DEPLOY_KEY:-}}" ]]; then
+  key_file="$(mktemp)"
+  trap 'rm -f "$key_file"' EXIT
+  printf '%s\n' "${TAP_DEPLOY_KEY:-${PACKAGES_DEPLOY_KEY:-}}" > "$key_file"
+  chmod 600 "$key_file"
+  export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  clone_url="git@github.com:${tap}.git"
+elif [[ -n "${TAP_GITHUB_TOKEN:-}" ]]; then
   clone_url="https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${tap}.git"
 else
   clone_url="https://github.com/${tap}.git"
