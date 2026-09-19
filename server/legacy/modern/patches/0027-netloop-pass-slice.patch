@@ -1,0 +1,21 @@
+--- a/net.c
++++ b/net.c
+@@ -2635,8 +2635,17 @@
+      */
+     remain_us = (int)looptime_us - (int)time_diff_us( et, st );
+     if ( remain_us <= 0 ) break;
+-    wait_us = remain_us / active_fds;
+ 
++    /* STONEAGE_IDLE_NETLOOP_WAIT
++     * One slice of the tick per slot, not a share of what is left of it:
++     * dividing the remainder again on every pass halves it each time and buys
++     * about a dozen wakes per tick where the slots need one each. The slice
++     * is capped by the remainder so a slot at the end of the tick cannot wait
++     * past the deadline.
++     */
++    wait_us = (int)( looptime_us / active_fds );
++    if ( wait_us > remain_us ) wait_us = remain_us;
++
+     /* read select */
+     FD_ZERO( & rfds );
+ 		FD_SET( fdremember , & rfds );

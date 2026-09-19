@@ -29,21 +29,26 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[4]
 SOURCE = ROOT / "server/legacy/source/2.5/gmsv/net.c"
-PATCH = ROOT / "server/legacy/modern/patches/0026-idle-netloop-wait.patch"
+PATCHES = [
+    ROOT / "server/legacy/modern/patches/0026-idle-netloop-wait.patch",
+    ROOT / "server/legacy/modern/patches/0027-netloop-pass-slice.patch",
+    ROOT / "server/legacy/modern/patches/0028-netloop-line-buffer.patch",
+]
 COMMON = ROOT / "server/legacy/source/2.5/gmsv/include/common.h"
 
 MARKER = "/* STONEAGE_IDLE_NETLOOP_WAIT"
 
 
 def patched_source(directory):
-    """Apply the reviewed patch to a copy of the archived net.c."""
+    """Apply the reviewed patches to a copy of the archived net.c."""
     path = Path(directory) / "net.c"
     path.write_bytes(SOURCE.read_bytes())
-    subprocess.run(
-        ["patch", "-p1", "--quiet", "-i", str(PATCH)],
-        cwd=directory,
-        check=True,
-    )
+    for patch in PATCHES:
+        subprocess.run(
+            ["patch", "-p1", "--quiet", "-i", str(patch)],
+            cwd=directory,
+            check=True,
+        )
     return path.read_bytes().decode("latin-1")
 
 
@@ -60,9 +65,9 @@ def slice_to_next_marker(source, offset=0):
 
 
 def production_pieces(source):
-    if source.count(MARKER) != 4:
+    if source.count(MARKER) != 6:
         raise RuntimeError(
-            f"expected 4 {MARKER} blocks in net.c, found {source.count(MARKER)}"
+            f"expected 6 {MARKER} blocks in net.c, found {source.count(MARKER)}"
         )
 
     counter, cursor = slice_to_next_marker(source)
@@ -72,17 +77,20 @@ def production_pieces(source):
     empty, cursor = slice_from(source, MARKER, "\n#ifdef _AC_PIORITY", cursor)
     wait, _ = slice_from(source, MARKER, "    /* read select */", cursor)
 
+    reader, _ = slice_from(source, "SINGLETHREAD BOOL GetOneLine_fix",
+                           "\nANYTHREAD BOOL initConnectOne", 0)
+
     common = COMMON.read_bytes().decode("latin-1")
     time_macro = next(
         entry
         for entry in common.splitlines()
         if entry.startswith("#define time_diff_us")
     )
-    return counter, schedule, empty, wait, time_macro
+    return counter, schedule, empty, wait, time_macro, reader
 
 
 def harness_source(pieces):
-    counter, schedule, empty, wait, time_macro = pieces
+    counter, schedule, empty, wait, time_macro, reader = pieces
     return f"""\
 #define _DEFAULT_SOURCE
 #include <assert.h>
@@ -102,8 +110,25 @@ def harness_source(pieces):
 #define SINGLETHREAD
 {time_macro}
 
-static struct {{ int use; }} Connect[4];
+static struct {{
+  int use;
+  char *rb;
+  int rbuse;
+  int check_rb_oneline_b;
+  int check_rb_time;
+}} Connect[4];
 static int ConnectLen = 4;
+static int acfd = 3;
+#define AC_RBSIZE 4096
+#define logRBuseErr fixture_log_rbuse_err
+static int fixture_log_rbuse_err = 0;
+static void LogAcMess(int fd, const char *tag, const char *text)
+{{ (void)fd; (void)tag; (void)text; }}
+static void shiftRB(int fd, int count)
+{{
+  memmove(Connect[fd].rb, Connect[fd].rb + count, Connect[fd].rbuse - count);
+  Connect[fd].rbuse -= count;
+}}
 
 /* The schedule reads the wall clock, so the tick it computes is checked
    against a scripted one. Everything else keeps the real clock. */
@@ -127,6 +152,8 @@ static int fixture_gettimeofday(struct timeval *tv, void *tz)
 {counter}
 
 {schedule}
+
+{reader}
 
 static double wall_now(void)
 {{
@@ -186,6 +213,49 @@ static void set_scripted(long seconds, long microseconds)
   scripted_clock = 1;
   scripted_now.tv_sec = seconds;
   scripted_now.tv_usec = microseconds;
+}}
+
+/* The per-pass buffer is no longer zeroed, which is only safe while the
+   reader terminates what it hands back and leaves the buffer alone when it
+   reports that no line is ready. */
+static void check_line_reader(void)
+{{
+  static char ring[16];
+  static char buffer[32];
+  int i;
+
+  Connect[0].rb = ring;
+  Connect[0].rbuse = 0;
+  memset(buffer, 0xAA, sizeof(buffer));
+  assert(GetOneLine_fix(0, buffer, sizeof(buffer)) == FALSE);
+  for (i = 0; i < (int)sizeof(buffer); i++) assert((unsigned char)buffer[i] == 0xAA);
+
+  /* A complete line is copied and terminated, with nothing of the caller's
+     buffer left inside the string. */
+  memcpy(ring, "hello\\n", 6);
+  Connect[0].rbuse = 6;
+  Connect[0].check_rb_oneline_b = 0;
+  memset(buffer, 0xAA, sizeof(buffer));
+  assert(GetOneLine_fix(0, buffer, sizeof(buffer)) == TRUE);
+  assert(strcmp(buffer, "hello\\n") == 0);
+  assert(Connect[0].rbuse == 0);
+
+  /* A line without its newline yet is not handed back, and the buffer keeps
+     whatever the caller put there. */
+  memcpy(ring, "partial", 7);
+  Connect[0].rbuse = 7;
+  Connect[0].check_rb_oneline_b = 0;
+  memset(buffer, 0xAA, sizeof(buffer));
+  assert(GetOneLine_fix(0, buffer, sizeof(buffer)) == FALSE);
+  for (i = 0; i < (int)sizeof(buffer); i++) assert((unsigned char)buffer[i] == 0xAA);
+
+  /* The longest line the buffer can hold still terminates inside it. */
+  for (i = 0; i < (int)sizeof(buffer) - 1; i++) buffer[i] = 'x';
+  buffer[sizeof(buffer) - 1] = 'y';
+  Connect[0].rb = buffer;
+  Connect[0].rbuse = sizeof(buffer) - 1;
+  Connect[0].check_rb_oneline_b = 0;
+  assert(GetOneLine_fix(0, ring, 16) == FALSE);
 }}
 
 static void check_schedule(void)
@@ -263,6 +333,7 @@ int main(void)
   double a, b;
 
   check_schedule();
+  check_line_reader();
 
   /* A connected socket with nothing sent on it: never readable, always
      writable, which is the combination the wait has to survive. */
@@ -299,7 +370,10 @@ int main(void)
   for (i = 0; i < ticks; i++) {{
     cpu_ratio += run_tick(fd, tick_us, 0, &visits);
     total_visits += visits;
-    assert(visits <= 32);
+    /* One slice per slot: two slots wake about once each per tick, not the
+       hundreds of thousands of visits a poll loop makes, and not the dozen a
+       share-of-the-remainder wait takes as the remainder halves. */
+    assert(visits <= 4);
   }}
   b = wall_now();
   period_ms = (b - a) * 1000 / ticks;
@@ -309,6 +383,7 @@ int main(void)
   assert(cpu_ratio / ticks < 0.25);
   assert(period_ms > tick_us / 1000.0 * 0.96);
   assert(period_ms < tick_us / 1000.0 * 1.04);
+  assert(total_visits <= (long)ticks * 4);
 
   /* The control: waiting for writability ends the wait immediately, which is
      the zero-timeout spin this patch replaces. */

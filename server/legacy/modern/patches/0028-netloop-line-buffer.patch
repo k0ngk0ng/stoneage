@@ -1,0 +1,18 @@
+--- a/net.c
++++ b/net.c
+@@ -2703,7 +2703,14 @@
+     
+     for ( j = 0; j < 3; j ++ ) {
+       char rbmess[ 65535 * 2 ];
+-      memset( rbmess, 0, sizeof( rbmess ) );
++      /* STONEAGE_IDLE_NETLOOP_WAIT
++       * GetOneLine_fix copies one line and terminates it at buf[i+1] <= max-1,
++       * and returns FALSE without touching the buffer, so zeroing all 128 KiB
++       * three times per pass only warms memory. That cost a pass never got to
++       * spend, and the pass runs whether or not the slot has anything to say.
++       * Leave a valid empty string behind and let the copy own the content.
++       */
++      rbmess[ 0 ] = '\0';
+ 
+       if ( GetOneLine_fix( fdremember, rbmess, sizeof( rbmess ) ) == FALSE ) continue;
+ 

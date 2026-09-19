@@ -234,6 +234,22 @@ if ! grep -q 'STONEAGE_IDLE_NETLOOP_WAIT' /src/gmsv/net.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0026-idle-netloop-wait.patch
 fi
 
+# The wait above divides the tick between the slots. Dividing what is left of
+# the tick again on every pass halves it each time, so a two-slot table woke
+# about a dozen times per tick where each slot needed one. Take a fixed slice
+# of the tick per slot instead, capped by the remainder.
+if ! grep -q 'STONEAGE_IDLE_NETLOOP_WAIT' /src/gmsv/net.c || ! grep -q 'wait_us = (int)( looptime_us / active_fds )' /src/gmsv/net.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0027-netloop-pass-slice.patch
+fi
+
+# The per-pass line buffer was zeroed across all 128 KiB before every one of
+# its three reads, on every pass, whether or not the slot had anything to say.
+# GetOneLine_fix terminates what it copies and never touches the buffer when it
+# reports no line, so the zeroing only warmed memory.
+if ! grep -q "rbmess\[ 0 \] = '\\0';" /src/gmsv/net.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0028-netloop-line-buffer.patch
+fi
+
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM
 # command password. The source files are GBK, so use checked, byte-preserving
