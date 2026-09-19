@@ -28,7 +28,7 @@ func TestAIRuntimeRemainsUnavailableUntilAllServerOwnedSettingsArePresent(t *tes
 }
 
 func TestContainerAIRuntimeRequiresContainerSettingsWithoutHostBinaries(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	options := aiRuntimeOptions{
 		RuntimeRoot: filepath.Join(root, "runtime"),
 		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
@@ -72,7 +72,7 @@ func TestContainerAIRuntimeRequiresContainerSettingsWithoutHostBinaries(t *testi
 }
 
 func TestAIRuntimeRemainsUnavailableWhenGameplayDataIsMissing(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	options := aiRuntimeOptions{
 		RuntimeRoot: filepath.Join(root, "runtime"),
 		WebBaseURL:  "http://web.example", WebServerID: "main", WebAgentSocket: filepath.Join(root, "agent.sock"),
@@ -88,7 +88,7 @@ func TestAIRuntimeRemainsUnavailableWhenGameplayDataIsMissing(t *testing.T) {
 }
 
 func TestConfigureAIRuntimeWiresFakeDependenciesAndOwnsGateway(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	authStore, err := auth.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +297,7 @@ func TestValidateAIContainerGatewayURL(t *testing.T) {
 }
 
 func TestConfigureAIRuntimeWiresContainerBrokerWithoutHostBinaries(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	authStore := mustAuthStore(t)
 	defer authStore.Close()
 	modelStore, err := airuntime.OpenWithSecrets(":memory:", filepath.Join(root, "model-secrets"))
@@ -361,7 +361,7 @@ func TestConfigureAIRuntimeWiresContainerBrokerWithoutHostBinaries(t *testing.T)
 }
 
 func TestConfigureAIRuntimeFailureReleasesContainerResources(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	authStore := mustAuthStore(t)
 	defer authStore.Close()
 	modelStore, err := airuntime.OpenWithSecrets(":memory:", filepath.Join(root, "model-secrets"))
@@ -468,7 +468,7 @@ func shellQuote(value string) string {
 }
 
 func TestBootstrapAIModelCreatesReviewedDefaultAndPrivateKey(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	store, err := airuntime.OpenWithSecrets(filepath.Join(root, "models.db"), filepath.Join(root, "secrets"))
 	if err != nil {
 		t.Fatal(err)
@@ -514,7 +514,7 @@ func TestBootstrapAIModelCreatesReviewedDefaultAndPrivateKey(t *testing.T) {
 }
 
 func TestBootstrapAIModelReusesReviewedModelWithoutOverwritingExistingKey(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	store, err := airuntime.OpenWithSecrets(filepath.Join(root, "models.db"), filepath.Join(root, "secrets"))
 	if err != nil {
 		t.Fatal(err)
@@ -555,7 +555,7 @@ func TestBootstrapAIModelReusesReviewedModelWithoutOverwritingExistingKey(t *tes
 }
 
 func TestReadAIModelKeyFileRequiresPrivateRegularFile(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	path := filepath.Join(root, "key")
 	if err := os.WriteFile(path, []byte("sk-key"), 0644); err != nil {
 		t.Fatal(err)
@@ -563,4 +563,18 @@ func TestReadAIModelKeyFileRequiresPrivateRegularFile(t *testing.T) {
 	if _, err := readAIModelKeyFile(path); err == nil {
 		t.Fatal("world-readable key file was accepted")
 	}
+}
+
+// tempDir returns a temporary directory with symlinks resolved. On macOS
+// t.TempDir() lives under /var/folders and /var is a symlink to /private/var,
+// which the broker journal and skill path guards reject as "not isolated".
+// Linux CI is unaffected; this keeps the local suite green too.
+func tempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+	return resolved
 }

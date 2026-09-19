@@ -18,7 +18,7 @@ func TestFixedSkillCatalogVerifiesAndInstallsIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workdir := t.TempDir()
+	workdir := tempDir(t)
 	for _, spec := range SkillCatalog() {
 		verified, err := installer.Verify(spec.Name)
 		if err != nil {
@@ -52,16 +52,16 @@ func TestSkillInstallerRejectsSymlinkAndConflictingDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workdir := t.TempDir()
+	workdir := tempDir(t)
 	agents := filepath.Join(workdir, ".agents")
-	if err := os.Symlink(t.TempDir(), agents); err != nil {
+	if err := os.Symlink(tempDir(t), agents); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	if _, err := installer.Install("stoneage-play", workdir); !errors.Is(err, ErrSkillPath) {
 		t.Fatalf("symlink destination error = %v, want ErrSkillPath", err)
 	}
 
-	workdir = t.TempDir()
+	workdir = tempDir(t)
 	target := filepath.Join(workdir, ".agents", "skills", "stoneage-play")
 	if err := os.MkdirAll(target, 0755); err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestSkillReconcileRemovesDeselectedCatalogTreeAndPreservesModifiedContent(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace := t.TempDir()
+	workspace := tempDir(t)
 	if err := installer.Reconcile([]string{"stoneage-play", "stoneage-social"}, workspace); err != nil {
 		t.Fatal(err)
 	}
@@ -137,14 +137,14 @@ func TestSkillInstallerUpgradesOnlyAnIntactLegacyTree(t *testing.T) {
 		legacySkillTreeHashes = oldLegacyHashes
 	})
 
-	root := t.TempDir()
+	root := tempDir(t)
 	source := filepath.Join(root, "stoneage-play")
 	writeSkillFixture(t, source, "2.0.0", "current")
 	currentHash, err := hashSkillTree(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := filepath.Join(t.TempDir(), "legacy")
+	legacy := filepath.Join(tempDir(t), "legacy")
 	writeSkillFixture(t, legacy, "1.0.0", "legacy")
 	legacyHash, err := hashSkillTree(legacy)
 	if err != nil {
@@ -161,7 +161,7 @@ func TestSkillInstallerUpgradesOnlyAnIntactLegacyTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace := t.TempDir()
+	workspace := tempDir(t)
 	target := filepath.Join(workspace, ".agents", "skills", "stoneage-play")
 	if err := os.MkdirAll(target, 0755); err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestSkillInstallerUpgradesOnlyAnIntactLegacyTree(t *testing.T) {
 
 	// A byte added to the old tree changes its complete digest and must keep
 	// the installation in place rather than trigger an overwrite.
-	workspace = t.TempDir()
+	workspace = tempDir(t)
 	target = filepath.Join(workspace, ".agents", "skills", "stoneage-play")
 	if err := os.MkdirAll(target, 0755); err != nil {
 		t.Fatal(err)
@@ -214,14 +214,14 @@ func TestSkillReconcileRemovesAnIntactLegacyTree(t *testing.T) {
 		legacySkillTreeHashes = oldLegacyHashes
 	})
 
-	root := t.TempDir()
+	root := tempDir(t)
 	source := filepath.Join(root, "stoneage-social")
 	writeSkillFixture(t, source, "2.0.0", "current")
 	currentHash, err := hashSkillTree(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := filepath.Join(t.TempDir(), "legacy")
+	legacy := filepath.Join(tempDir(t), "legacy")
 	writeSkillFixture(t, legacy, "1.0.0", "legacy")
 	legacyHash, err := hashSkillTree(legacy)
 	if err != nil {
@@ -237,7 +237,7 @@ func TestSkillReconcileRemovesAnIntactLegacyTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace := t.TempDir()
+	workspace := tempDir(t)
 	target := filepath.Join(workspace, ".agents", "skills", "stoneage-social")
 	if err := os.MkdirAll(target, 0755); err != nil {
 		t.Fatal(err)
@@ -290,4 +290,18 @@ func assertNoSkillTransactionArtifacts(t *testing.T, directory string) {
 			t.Fatalf("skill transaction artifact remains: %s", entry.Name())
 		}
 	}
+}
+
+// tempDir returns a temporary directory with symlinks resolved. On macOS
+// t.TempDir() lives under /var/folders and /var is a symlink to /private/var,
+// which the broker journal and skill path guards reject as "not isolated".
+// Linux CI is unaffected; this keeps the local suite green too.
+func tempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+	return resolved
 }

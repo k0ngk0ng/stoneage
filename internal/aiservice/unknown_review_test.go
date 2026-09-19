@@ -44,7 +44,16 @@ func (d *reviewIntegrationDocker) Remove(context.Context, string) error { d.remo
 func TestUnknownReviewBrokerFactoryAndRunner(t *testing.T) {
 	ctx := context.Background()
 	daemon := &reviewIntegrationDocker{}
-	journal, err := aibroker.OpenSQLiteJournal(filepath.Join(t.TempDir(), "broker.db"))
+	// The broker rejects a journal path with a symlinked ancestor. On macOS
+	// t.TempDir() lives under /var/folders and /var is a symlink to
+	// /private/var, so the fixture resolves the directory first; without this
+	// the test fails on macOS only (Linux CI is unaffected).
+	tmp := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(tmp)
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+	journal, err := aibroker.OpenSQLiteJournal(filepath.Join(resolved, "broker.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
