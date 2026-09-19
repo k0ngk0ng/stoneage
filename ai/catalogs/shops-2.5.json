@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "knowledge_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+  "knowledge_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
   "npcs": [
     {
       "alias": "samgil-meat-shop",
@@ -10,7 +10,7 @@
       "name": "萨姆吉尔的肉店",
       "talk_range": 2,
       "verified": true,
-      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
       "windows": [
         {
           "type": 6,
@@ -46,7 +46,7 @@
       "name": "玛丽那丝的肉店",
       "talk_range": 2,
       "verified": true,
-      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
       "windows": [
         {
           "type": 6,

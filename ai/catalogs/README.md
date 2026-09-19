@@ -60,7 +60,7 @@ historical evidence, not a fresh live run. `drafts/riding-2.5.json` is a
 disabled review artifact and must not replace the active shop catalog.
 
 Adding the disabled adult-ceremony declaration rebinds the catalogs to
-`2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d`.
+`732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba`.
 Only `tasks/adult-ceremony.json` was added to the full knowledge manifest;
 NPC/item inputs remain unchanged. Both riding and adult drafts remain
 disabled; no live acceptance was performed during this rebinding.

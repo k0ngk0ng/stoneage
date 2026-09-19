@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "knowledge_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+  "knowledge_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
   "npcs": [
     {
       "alias": "riderman",
@@ -9,7 +9,7 @@
       "y": 45,
       "name": "骑乘训练师",
       "talk_range": 1,
-      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
       "verified": false,
       "windows": [
         {
@@ -60,7 +60,7 @@
       "y": 16,
       "name": "骑乘训练师",
       "talk_range": 1,
-      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
       "verified": false,
       "windows": [
         {
@@ -111,7 +111,7 @@
       "y": 21,
       "name": "骑乘训练师",
       "talk_range": 1,
-      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
       "verified": false,
       "windows": [
         {
@@ -162,7 +162,7 @@
       "y": 35,
       "name": "骑乘训练师",
       "talk_range": 1,
-      "source_fingerprint": "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d",
+      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
       "verified": false,
       "windows": [
         {

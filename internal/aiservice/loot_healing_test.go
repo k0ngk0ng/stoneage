@@ -14,7 +14,7 @@ import (
 )
 
 func TestPackagedLootHealingMatchesOriginalItemArguments(t *testing.T) {
-	const fingerprint = "2d007194c2557a7a7c52445bd2dc91eb0df8a2db917c6c842ef6289edbaeac3d"
+	const fingerprint = "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba"
 	data := filepath.Join("..", "..", "runtime", "legacy-server", "gmsv", "data", "itemset.txt")
 	raw, err := os.ReadFile(data)
 	if os.IsNotExist(err) {
