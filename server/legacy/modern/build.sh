@@ -269,6 +269,14 @@ if ! grep -q 'active_fds_at' /src/gmsv/net.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0030-idle-poll-intervals.patch
 fi
 
+# SAAC polls everything the same way: zero-timeout selects, bounded only by a
+# one microsecond yield that costs less than the pass it spaces out. Wait once
+# per pass for the listener and the registered peers instead. Checked after the
+# admin bridge because both add to SAAC's main loop.
+if ! grep -q 'STONEAGE_IDLE_SAAC_WAIT' /src/saac/main.c; then
+  patch -d /src/saac -p1 < /modern/patches/0031-idle-saac-wait.patch
+fi
+
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM
 # command password. The source files are GBK, so use checked, byte-preserving

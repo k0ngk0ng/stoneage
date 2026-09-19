@@ -1,0 +1,61 @@
+--- a/main.c
++++ b/main.c
+@@ -522,6 +522,14 @@
+     log( "\n开始工作...\n" );
+ 
+     signal(SIGUSR1,sigusr1);	// Arminius 7.20 memory lock
++
++/* STONEAGE_IDLE_SAAC_WAIT
++ * An idle SAAC pass waits here for a peer. Short enough that the per-second
++ * maintenance below still keeps its schedule, long enough that a server
++ * nobody is playing on is not a busy loop.
++ */
++#define STONEAGE_SAAC_IDLE_WAIT_US 20000
++
+ 	int itime=0;
+ 	while(1){
+ 		itime++;
+@@ -582,7 +590,43 @@
+          	log("记录家族(%fsec)\n", time_diff(et, st));
+       }
+ #endif
++        }
++    /* STONEAGE_IDLE_SAAC_WAIT
++     * Everything below polls. The accept select and the per-connection reads
++     * all pass a zero timeout, so a pass with nothing to do still pays for
++     * every poll, and the only thing bounding the rate is the one microsecond
++     * yield above -- which on a real timer costs far less than the pass it is
++     * meant to space out. A SAAC with no players was spending 13% of a core
++     * that way.
++     *
++     * Wait once for the listener and every registered peer together. A socket
++     * with work ends the wait at once, so nothing that has arrived waits
++     * longer than it used to; the wait only sets the floor under an idle pass.
++     * The pass below still runs after a timeout, deliberately: a line can
++     * already be sitting in a connection's own buffer with nothing left on
++     * the socket to wake the wait, and that line is only ever drained by the
++     * reads below. Skipping the pass would strand it until the peer spoke
++     * again, which is why this bounds the rate instead of gating the work.
++     */
++    {
++      fd_set waitfds;
++      struct timeval wait;
++      int waitfd = mainsockfd;
++      int w;
++
++      FD_ZERO( &waitfds );
++      FD_SET( mainsockfd , &waitfds );
++      for ( w = 0 ; w < MAXCONNECTION ; w ++ ) {
++        if ( con[ w ].use && con[ w ].fd >= 0 ) {
++          FD_SET( con[ w ].fd , &waitfds );
++          if ( con[ w ].fd > waitfd ) waitfd = con[ w ].fd;
+         }
++      }
++      wait.tv_sec = 0;
++      wait.tv_usec = STONEAGE_SAAC_IDLE_WAIT_US;
++      select( waitfd + 1 , &waitfds , (fd_set*)NULL , (fd_set*)NULL , &wait );
++    }
++
+     stoneage_admin_bridge_poll();
+     newti = tcpstruct_accept1();
+     if( newti >= 0 ){
