@@ -25,6 +25,16 @@ output.write_text(os.environ['GOOS'] + '/' + os.environ['GOARCH'])
 output.chmod(0o755)
 ''')
     go.chmod(0o755)
+    # The linux leg packages .deb/.rpm through nfpm; the layout test mocks it
+    # so it never needs the real tool.
+    nfpm = mock_bin / 'nfpm'
+    nfpm.write_text('''#!/usr/bin/env python3
+import pathlib, sys
+args = sys.argv[1:]
+target = pathlib.Path(args[args.index('--target') + 1])
+target.write_text('mock package')
+''')
+    nfpm.chmod(0o755)
     dist = stage / 'dist'
     env = dict(os.environ, PATH=f'{mock_bin}:{os.environ["PATH"]}',
                RELEASE_TAG='v0.1.99', RELEASE_STAGE=str(stage / 'packages'), RELEASE_DIST=str(dist))
@@ -62,7 +72,12 @@ output.chmod(0o755)
     with tarfile.open(dist / 'stoneage-deploy-v0.1.99.tar.gz') as archive:
         assert archive.extractfile('VERSION').read() == b'v0.1.99\n'
         assert archive.extractfile('bin/stoneage-assets-sync').read() == b'linux/amd64'
-    # 4 control-plane archives, 4 assets-sync archives, 4 sactl archives and
-    # the deploy bundle.
-    assert len(list(dist.iterdir())) == 13, sorted(p.name for p in dist.iterdir())
+    # Linux additionally ships an arm64 client plus .deb and .rpm packages.
+    for name in ['sactl_0.1.99_amd64.deb', 'sactl_0.1.99_arm64.deb',
+                 'sactl-0.1.99-1.x86_64.rpm', 'sactl-0.1.99-1.aarch64.rpm',
+                 'stoneage-sactl-v0.1.99-linux-arm64.tar.gz']:
+        assert (dist / name).exists(), name
+    # 4 control-plane archives, 4 assets-sync archives, 5 sactl archives,
+    # 4 Linux packages and the deploy bundle.
+    assert len(list(dist.iterdir())) == 18, sorted(p.name for p in dist.iterdir())
 print('Release target package layouts passed')

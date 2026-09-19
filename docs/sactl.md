@@ -28,16 +28,25 @@ sactl <命令> [参数]              一次性客户端：连 socket → 发一�
 
 ## 安装
 
-**0. 包管理器（推荐，macOS / Windows）**
+**0. 包管理器（推荐）**
 
 ```bash
-# macOS
+# macOS 与 Linux（Homebrew）
 brew install k0ngk0ng/tap/sactl
 
 # Windows（PowerShell）
 scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
 scoop install k0ngk0ng/sactl
+
+# Debian / Ubuntu
+sudo dpkg -i sactl_<版本>_amd64.deb        # 或 _arm64.deb
+
+# Fedora / RHEL / openSUSE
+sudo rpm -i sactl-<版本>-1.x86_64.rpm      # 或 .aarch64.rpm
 ```
+
+Linux 的 `.deb` 与 `.rpm`（amd64、arm64 各一份）随每个 Release 一起发布；Homebrew 在
+Linux 上同样可用（公式含 linux/amd64 与 linux/arm64）。
 
 两个渠道都由 Release workflow 里的 `packages` 作业自动更新：它按发布出来的 `SHA256SUMS`
 渲染公式与清单，推送到 `k0ngk0ng/homebrew-tap`（brew 里叫 `k0ngk0ng/tap`）和

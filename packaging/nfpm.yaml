@@ -1,0 +1,33 @@
+# nfpm configuration for the Linux packages (.deb and .rpm) that ship with a
+# release. nfpm itself does not expand these placeholders inside src paths, so
+# scripts/build-release-target.sh substitutes them with sed into a rendered
+# copy before packaging:
+#
+#   NFPM_VERSION  release version without the leading v
+#   NFPM_ARCH     amd64 or arm64
+#   NFPM_BIN      path to the staged sactl binary
+#   NFPM_DOC_DIR  directory holding sactl.md and sactl.toml.example
+name: sactl
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${NFPM_VERSION}
+section: utils
+priority: optional
+maintainer: k0ngk0ng
+vendor: k0ngk0ng
+homepage: https://github.com/k0ngk0ng/stoneage
+license: Unknown
+description: |
+  Headless StoneAge game client for terminals and agents.
+  sactl holds one game session in a long-running process and exposes the
+  whole client command surface to short shell commands, so a terminal agent
+  or a human can observe the world, move, talk, fight and trade.
+contents:
+  - src: ${NFPM_BIN}
+    dst: /usr/bin/sactl
+    file_info:
+      mode: 0755
+  - src: ${NFPM_DOC_DIR}/sactl.md
+    dst: /usr/share/doc/sactl/sactl.md
+  - src: ${NFPM_DOC_DIR}/sactl.toml.example
+    dst: /usr/share/doc/sactl/sactl.toml.example

@@ -123,6 +123,9 @@ jobs:
         id: go-cache
         with:
           target: ${{ matrix.os }}-${{ matrix.arch }}
+      - name: Install nfpm for the Linux packages
+        if: matrix.os == 'linux'
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.3
       - name: Build platform artifacts
         env:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.0.0' }}

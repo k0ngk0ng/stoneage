@@ -65,7 +65,8 @@ class Sactl < Formula
   end
   on_linux do
     on_arm do
-      odie "sactl publishes no linux/arm64 archive yet"
+      url "https://github.com/${repo}/releases/download/${tag}/stoneage-sactl-${tag}-linux-arm64.tar.gz"
+      sha256 "$(sum_for "stoneage-sactl-${tag}-linux-arm64")"
     end
     on_intel do
       url "https://github.com/${repo}/releases/download/${tag}/stoneage-sactl-${tag}-linux-amd64.tar.gz"
