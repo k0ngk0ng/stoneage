@@ -199,15 +199,18 @@ assert_empty_file "$removed_file"
 assert_file_not_contains "$calls_file" 'image rm'
 
 # The default mode removes only v* tags from the two exact configured
-# repositories. Current-image aliases, stopped-container images, current tags,
+# repositories. A tag that shares the current image's ID goes as a name --
+# docker drops the tag and keeps the image, which the current version and the
+# running container still reference. Stopped-container images, current tags,
 # non-v* tags and unrelated repositories remain untouched.
 setup_case apply
 populate_normal_state "$case_root"
 run_helper "$case_root/.env" >"$case_root/stdout" 2>"$case_root/stderr"
 assert_file_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.15'
 assert_file_contains "$removed_file" 'registry.example/stoneage/legacy-runtime:v0.1.15'
+assert_file_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.14'
+assert_file_contains "$case_root/stdout" 'Untag: registry.example/stoneage/control-plane:v0.1.14'
 assert_file_not_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.16'
-assert_file_not_contains "$removed_file" 'registry.example/stoneage/control-plane:v0.1.14'
 assert_file_not_contains "$removed_file" 'registry.example/stoneage/control-plane:latest'
 assert_file_not_contains "$removed_file" 'registry.example/stoneage/legacy-runtime:v0.1.14'
 assert_file_not_contains "$removed_file" 'registry.example/other:unrelated'

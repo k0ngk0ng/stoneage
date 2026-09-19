@@ -107,6 +107,22 @@ is_kept_version() {
 }
 used_ids="$(container_image_ids)"
 images="$("$docker_bin" image ls --no-trunc --format '{{.Repository}} {{.Tag}} {{.ID}}')"
+
+# Names this run keeps. A tag that shares its image with one of them can go as
+# a name: docker drops that tag and nothing else, because the image, its other
+# tags and the containers running it are all still referenced. Without this the
+# tags of a runtime image that did not change between releases pile up forever:
+# every version tag carries the current image's ID, so every one of them reads
+# as "in use by the current version" and none is ever eligible.
+kept_ids=""
+while read -r repo tag id; do
+    [[ "$repo" == "$control_repo" || "$repo" == "$legacy_repo" ]] || continue
+    [[ "$tag" =~ $release_tag_re ]] || continue
+    if [[ "$tag" == "$version" ]] || is_kept_version "$tag"; then
+        kept_ids+="$id"$'\n'
+    fi
+done <<< "$images"
+
 count=0
 failed=0
 while read -r repo tag id; do
@@ -118,22 +134,28 @@ while read -r repo tag id; do
         echo "Keep requested image: $ref"
         continue
     fi
-    if contains_id "$configured_ids" "$id" || contains_id "$used_ids" "$id"; then
+    alias_of_kept=0
+    if contains_id "$kept_ids" "$id"; then
+        alias_of_kept=1
+    elif contains_id "$configured_ids" "$id" || contains_id "$used_ids" "$id"; then
         echo "Keep referenced image: $ref"
         continue
     fi
+    verb="Remove"
+    preview="Would remove"
+    if (( alias_of_kept )); then verb="Untag"; preview="Would untag"; fi
     if (( dry_run )); then
-        echo "Would remove: $ref"
+        echo "$preview: $ref"
     else
         # Recheck references before each deletion. Remove by tag, never by ID
         # or force, so unrelated tags, containers, volumes and build cache stay.
         used_ids="$(container_image_ids)"
         current_id="$("$docker_bin" image inspect --format '{{.Id}}' "$ref")"
-        if [[ "$current_id" != "$id" ]] || contains_id "$used_ids" "$id"; then
+        if [[ "$current_id" != "$id" ]] || { contains_id "$used_ids" "$id" && ! contains_id "$kept_ids" "$id"; }; then
             echo "Keep changed/referenced image: $ref"
             continue
         fi
-        echo "Remove: $ref"
+        echo "$verb: $ref"
         if ! "$docker_bin" image rm "$ref"; then failed=1; continue; fi
     fi
     count=$((count+1))
