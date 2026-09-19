@@ -14,8 +14,8 @@ import (
 
 // battleAutoRequest is the whole request: the panel sends the generation it
 // was shown, exactly like every other control call. Seek asks the loop to walk
-// between fights so encounters keep coming; it is a pointer because the panel
-// default (and the deployed page before this field existed) is to walk.
+// between fights so encounters keep coming; it is a pointer because absent
+// means no, and an older page must keep the loop off the character.
 type battleAutoRequest struct {
 	Generation *uint64 `json:"generation"`
 	Reason     string  `json:"reason,omitempty"`
@@ -70,7 +70,9 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 	}
 
 	policy := battleauto.DefaultPolicy()
-	policy.SeekEncounters = input.Seek == nil || *input.Seek
+	// Walking outside a battle is opt-in: it drives the character, and a
+	// player who only wants the turns answered must keep their own movement.
+	policy.SeekEncounters = input.Seek != nil && *input.Seek
 	runner := battleauto.Runner{
 		Game:   &AutomationSession{ID: session.id, session: session, mode: aicontrol.Battle, generation: started.Generation},
 		Tables: handler.recoveryTables(),

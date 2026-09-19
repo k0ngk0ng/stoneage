@@ -151,7 +151,7 @@
       #ai-control-panel { position:fixed; right:12px; top:44px; z-index:2999; width:300px; max-width:calc(100vw - 24px); max-height:calc(100vh - 56px); max-height:calc(100dvh - 56px); overflow-y:auto; box-sizing:border-box; padding:10px; color:#f8efd2; background:#1c1712f5; border:1px solid #b49357; border-radius:4px; box-shadow:0 4px 18px #000b; font:12px/1.35 sans-serif; }
       #ai-control-panel[hidden] { display:none; }
       #ai-control-panel h2 { margin:0 0 7px; color:#ffe45c; font-size:14px; }
-      #ai-control-panel .ai-row { display:grid; grid-template-columns:88px minmax(0,1fr); gap:5px; align-items:center; margin:4px 0; }
+      #ai-control-panel .ai-row { display:grid; grid-template-columns:104px minmax(0,1fr); gap:6px; align-items:center; margin:6px 0; }
       #ai-control-panel #ai-task-row { grid-template-columns:48px minmax(0,1fr) auto; }
       #ai-control-panel #ai-task-details { overflow-wrap:anywhere; }
       #ai-control-panel input,#ai-control-panel select { min-width:0; width:100%; box-sizing:border-box; }
@@ -163,6 +163,11 @@
       #ai-control-panel .ai-status.error { color:#ff8d75; }
       #ai-control-panel .ai-preview { margin-top:6px; padding:5px; color:#d6d0bd; background:#09080688; white-space:pre-wrap; }
       #ai-control-panel .ai-note { color:#b8ad92; font-size:11px; }
+      /* The page styles form text dark with a light shadow for its own
+         screens, which is unreadable on this panel. Name the panel's own
+         colours instead of inheriting them. */
+      #ai-control-panel label, #ai-control-panel h2, #ai-control-panel legend { color:#ffe9a4 !important; text-shadow:none !important; font-size:12px; line-height:1.4; }
+      #ai-control-panel label input { margin-right:4px; }
       body.stoneage-ai-locked #world, body.stoneage-ai-locked #world-actions, body.stoneage-ai-locked #field-ui, body.stoneage-ai-locked #battle-ui, body.stoneage-ai-locked #battle-target-overlay, body.stoneage-ai-locked #chat-form { pointer-events:none !important; }
       body.stoneage-ai-locked #world-tools, body.stoneage-ai-locked #ai-control-panel, body.stoneage-ai-locked #ai-control-toggle, body.stoneage-ai-locked .advanced-screen { pointer-events:auto !important; }
       body.stoneage-ai-locked :is(${LOCK_ALLOWED}) { pointer-events:auto !important; }
@@ -197,11 +202,11 @@
       panel = root.document.createElement("aside");
       panel.id = "ai-control-panel";
       panel.hidden = !state.panelOpen;
-      panel.setAttribute("aria-label", "自动练级与任务");
+      panel.setAttribute("aria-label", "自动化：任务、练级与战斗");
       panel.innerHTML = `
-        <h2>自动练级与任务</h2>
+        <h2>自动化（任务 / 练级 / 战斗）</h2>
         <div class="ai-row"><label for="ai-automation-mode">模式</label><select id="ai-automation-mode"><option value="quest">自动任务</option><option value="leveling">自动练级</option><option value="battle">自动战斗</option></select></div>
-        <div class="ai-row" id="ai-battle-seek-row"><label><input id="ai-battle-seek" type="checkbox" checked> 自动遇敌（原地来回走）</label></div>
+        <div class="ai-row" id="ai-battle-seek-row"><label><input id="ai-battle-seek" type="checkbox"> 自动遇敌（挂机用：替你来回走找架打）</label></div>
         <div class="ai-row" id="ai-task-row"><label for="ai-task-id">任务</label><select id="ai-task-id"><option value="">请先加载任务列表</option></select><button id="ai-task-refresh" type="button">刷新</button></div>
         <div id="ai-task-details" class="ai-preview" role="status">任务列表尚未加载。</div>
         <div class="ai-row" id="ai-dependencies-row"><label><input id="ai-include-dependencies" type="checkbox"> 自动完成前置任务（预算包含全链）</label></div>
@@ -633,7 +638,7 @@
       /* Auto battle carries no task, budget or targets: it answers whatever
          turn the character is in, and optionally walks in place so encounters
          keep coming. The server reads only the generation and the walk opt-in. */
-      const seek = ensurePanel()?.querySelector("#ai-battle-seek")?.checked !== false;
+      const seek = ensurePanel()?.querySelector("#ai-battle-seek")?.checked === true;
       const data = await controlRequest("battle-auto", { method: "POST", body: JSON.stringify({ generation: currentGeneration(), seek }) });
       followAutomationWalk();
       setStatus(`自动战斗中：血量低时先治疗，否则按顺序攻击，不会逃跑${seek ? "；会在原地来回走触发遇敌" : ""}。点「接管」随时停止。`, false);
@@ -771,7 +776,11 @@
      honest; it is the same request the page makes after its own steps. */
   function followAutomationWalk() {
     const control = currentControl();
-    if (!control || control.mode !== MODE_BATTLE || !app || app.phase !== "world") return;
+    /* Only while the loop is actually walking: the query cancels whatever
+       movement the page has pending, so running it for a loop that answers
+       turns and nothing else would break the player's own walking. */
+    if (!control || control.mode !== MODE_BATTLE || control.automationState?.seeking !== true) return;
+    if (!app || app.phase !== "world" || app.pendingMove || app.walkAnimation || app.moveQueue?.length) return;
     try {
       const result = client?.send?.("S", ["c"]);
       if (result && typeof result.catch === "function") result.catch(() => {});

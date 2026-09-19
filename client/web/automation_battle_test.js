@@ -16,7 +16,7 @@ function button() {
   };
 }
 
-function fixture(control = { mode: 'manual', generation: 7 }, seek = true) {
+function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
   const calls = [];
   const transport = {
     id: 'session-a', base: '', closed: false,
@@ -130,7 +130,7 @@ test('auto battle sends only the generation and locks the browser against the ru
   assert.equal(call.url, '/api/sessions/session-a/battle-auto');
   assert.equal(call.options.method, 'POST');
   assert.ok(!f.calls.some(entry => entry.url.includes('/automation/start')), 'auto battle carries no task or budget config');
-  assert.equal(call.options.body, '{"generation":7,"seek":true}', 'the panel asks for the walk it shows as checked');
+  assert.equal(call.options.body, '{"generation":7,"seek":false}', 'answering turns must not walk the character');
 
   const control = f.api.currentControl();
   assert.equal(control.mode, 'battle');
@@ -148,6 +148,14 @@ test('auto battle sends only the generation and locks the browser against the ru
   assert.equal(f.nodes['#ai-takeover'].disabled, false);
   assert.equal(f.nodes['#ai-start'].disabled, true);
   assert.match(f.nodes['#ai-control-status'].textContent, /自动战斗/);
+});
+
+test('the panel only follows a walk the loop is actually doing', () => {
+  const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  assert.ok(page.includes('"automation_state"'), 'the state must reach the panel');
+  const follow = source.slice(source.indexOf('function followAutomationWalk'), source.indexOf('function updateFromTransport'));
+  assert.match(follow, /seeking !== true/, 'an answer-only loop must not query the position');
+  assert.match(follow, /app\.pendingMove/, 'a query cancels the move the player is making');
 });
 
 test('the panel reports what the running loop last decided', async () => {
@@ -207,12 +215,18 @@ test('the panel says whether the loop is fighting and how it has gone', async ()
   assert.match(f.nodes['#ai-control-status'].textContent, /状态：待机$/m);
 });
 
-test('unchecking the walk keeps the character where the player parked it', async () => {
-  const f = fixture({ mode: 'manual', generation: 7 }, false);
-  await f.api.start();
-  const call = f.calls.find(entry => entry.url.endsWith('/battle-auto'));
+test('the walk is an explicit opt-in and the status only promises what it does', async () => {
+  const parked = fixture({ mode: 'manual', generation: 7 }, false);
+  await parked.api.start();
+  const call = parked.calls.find(entry => entry.url.endsWith('/battle-auto'));
   assert.equal(call.options.body, '{"generation":7,"seek":false}');
-  assert.ok(!/来回走/.test(f.nodes['#ai-control-status'].textContent), 'the status must not promise a walk it will not do');
+  assert.ok(!/来回走/.test(parked.nodes['#ai-control-status'].textContent), 'the status must not promise a walk it will not do');
+
+  const walking = fixture({ mode: 'manual', generation: 7 }, true);
+  await walking.api.start();
+  const walkingCall = walking.calls.find(entry => entry.url.endsWith('/battle-auto'));
+  assert.equal(walkingCall.options.body, '{"generation":7,"seek":true}');
+  assert.match(walking.nodes['#ai-control-status'].textContent, /来回走/);
 });
 
 test('auto battle cannot start while another owner holds the session', async () => {
