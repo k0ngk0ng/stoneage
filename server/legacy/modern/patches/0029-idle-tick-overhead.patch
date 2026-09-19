@@ -1,0 +1,91 @@
+--- a/main.c
++++ b/main.c
+@@ -101,18 +101,16 @@
+ //	print("Íê³É\n");
+ //#endif
+ 
+-	int itime=0;
+ 	while(1){
+ 		STONEAGE_PlayerAdminProcess();
+ 		StoneAge_AIFundingRefresh();
+ 		StoneAge_ProcessAdminNotice();
+-		if(getCpuUse()!=-1){
+-			itime++;
+-			if(itime>getCpuUse()){
+-				itime=0;
+-				usleep(1);
+-			}
+-		}
++		/* STONEAGE_IDLE_NETLOOP_WAIT
++		 * The historic CPUUSE knob yielded one microsecond every few passes
++		 * because the pass itself could only ever spin. The pass now waits in
++		 * select() for whatever is left of Onelooptime, so the yield has
++		 * nothing left to give and only costs a timer syscall per tick.
++		 */
+ #ifdef _ASSESS_SYSEFFICACY
+ Assess_SysEfficacy( 0 );
+ #endif
+@@ -208,9 +206,23 @@
+ /* STONEAGE_ADMIN_NOTICE: consume one atomic web-console announcement file. */
+ static void StoneAge_ProcessAdminNotice( void )
+ {
++    static time_t lastcheck = 0;
++    static int checked = 0;
++    time_t now;
+     FILE *fp;
+     char line[1024];
+ 
++    /* STONEAGE_IDLE_NETLOOP_WAIT
++     * The console writes this file out of band, so a pass is the natural
++     * place to look for it, but looking costs a failed open every pass and
++     * 200 of those a second is real work on an idle server. An announcement
++     * arriving up to a second late is not something a player can notice.
++     */
++    now = time( NULL );
++    if ( checked && now == lastcheck ) return;
++    lastcheck = now;
++    checked = 1;
++
+     fp = fopen( "./admin-notice.txt", "r" );
+     if( fp == NULL ) return;
+     while( fgets( line, sizeof( line ), fp ) != NULL ) {
+--- a/handletime.c
++++ b/handletime.c
+@@ -1,5 +1,6 @@
+ #define __HANDLETIME_C__ 
+ #include "version.h"
++#include <stdlib.h>
+ #include <time.h>
+ #include <sys/time.h>
+ 
+@@ -207,9 +208,30 @@
+ }
+ 
+ #ifdef _ASSESS_SYSEFFICACY_SUB
++/* STONEAGE_IDLE_NETLOOP_WAIT
++ * clock() is a real syscall on this libc: there is no vDSO for process CPU
++ * time. Two samples per stage, four stages, on every pass of a loop that
++ * otherwise only waits, is a strange price for a diagnostic. The whole game
++ * loop body lives inside _ASSESS_SYSEFFICACY_SUB, so the stage timers stay
++ * compiled, but they only sample when STONEAGE_ASSESS_SUB=1 asks for it.
++ * The variable is read once and remembered, so the disabled path is a branch.
++ */
++static INLINE BOOL ASSESS_subEnabled( void )
++{
++    static int enabled = -1;
++
++    if ( enabled < 0 ) {
++        const char* value = getenv( "STONEAGE_ASSESS_SUB" );
++        enabled = ( value != NULL && value[ 0 ] == '1' ) ? 1 : 0;
++    }
++    return enabled;
++}
++
+ void Assess_SysEfficacy_sub( int flg, int loop)
+ {
++    if ( !ASSESS_subEnabled() ) return;
+ 
++
+ 	if( flg == 0 ){
+ 		SubStartClock = clock();
+ 	}else if( flg == 1 ){

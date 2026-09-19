@@ -250,6 +250,17 @@ if ! grep -q "rbmess\[ 0 \] = '\\0';" /src/gmsv/net.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0028-netloop-line-buffer.patch
 fi
 
+# Three more things the tick paid for on every pass whether or not there was
+# any work: a one microsecond yield that the pass's own wait made pointless, a
+# failed open of the admin notice file, and eight CPU-time samples from the
+# per-stage assessment. The samples are real syscalls on this libc. The whole
+# game loop body lives inside _ASSESS_SYSEFFICACY_SUB, so that define has to
+# stay; the stage timers are instead gated behind STONEAGE_ASSESS_SUB=1, which
+# is what a diagnostic should cost.
+if ! grep -q 'STONEAGE_IDLE_NETLOOP_WAIT' /src/gmsv/main.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0029-idle-tick-overhead.patch
+fi
+
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM
 # command password. The source files are GBK, so use checked, byte-preserving
