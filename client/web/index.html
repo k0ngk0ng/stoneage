@@ -1748,6 +1748,32 @@
     return number/factor;
   }
   function battleAnimationStorage(){try{return globalThis.localStorage||null;}catch(_){return null;}}
+  /* The system menu owns knobs a player sets once and expects to keep: chat
+     lines/colour/range, music and effect levels and switches, sound mute. The
+     original client keeps them in its own save data; the browser keeps them
+     here, beside the animation-speed and display-mode keys. */
+  const SYSTEM_SETTINGS_KEY="stoneage:web:system-settings:v1";
+  const SYSTEM_SETTINGS_FIELDS=Object.freeze(["chatLines","chatColor","chatRange","bgm","se","soundMuted","bgmVolumeLevel","bgmTempo","seVolumeLevel","seStereo","traditional","peopleVisible","experienceVisible","rightAttack","bgmPitch","bgmPitchByTrack"]);
+  function systemSettingsStorage(){try{return globalThis.localStorage||null;}catch(_){return null;}}
+  function loadSystemSettings(storage=systemSettingsStorage()){
+    if(!storage||!app.systemSettings)return;
+    try{
+      const saved=JSON.parse(storage.getItem(SYSTEM_SETTINGS_KEY)||"null");
+      if(!saved||typeof saved!=="object")return;
+      for(const field of SYSTEM_SETTINGS_FIELDS){
+        if(Object.prototype.hasOwnProperty.call(saved,field))app.systemSettings[field]=saved[field];
+      }
+    }catch(_){/* optional local storage */}
+  }
+  function saveSystemSettings(storage=systemSettingsStorage()){
+    if(!storage||!app.systemSettings)return;
+    try{
+      const value={};
+      for(const field of SYSTEM_SETTINGS_FIELDS)value[field]=app.systemSettings[field];
+      storage.setItem(SYSTEM_SETTINGS_KEY,JSON.stringify(value));
+    }catch(_){/* optional local storage */}
+  }
+  loadSystemSettings();
   function loadBattleAnimationSpeed(storage=battleAnimationStorage()){
     if(!storage)return 1;
     try{return battleAnimationSpeedValue(storage.getItem(BATTLE_ANIMATION_SPEED_KEY));}catch(_){return 1;}
@@ -2220,10 +2246,12 @@
     app.systemSettings.bgm=DEBUG_AUDIO_MUTED||app.systemSettings.soundMuted?false:Boolean(enabled);
     if(app.systemSettings.bgm){const target=musicIntentBgm();if(target>=0)setBackgroundMusic(target,{force:true});}
     else{soundState.pendingBgm=null;stopBackgroundMusic();}
+    saveSystemSettings();
   }
   function setSeEnabled(enabled){
     app.systemSettings.se=DEBUG_AUDIO_MUTED||app.systemSettings.soundMuted?false:Boolean(enabled);
     if(!app.systemSettings.se){soundState.pendingSE.length=0;stopSoundEffects();}
+    saveSystemSettings();
   }
   function setMasterMute(enabled){
     /* A debug-mute session is intentionally immutable: controls may still be
@@ -2241,7 +2269,7 @@
     }
     if(app.systemSettings.bgm){const target=musicIntentBgm();if(target>=0)setBackgroundMusic(target,{force:true});}
   }
-  function setBgmVolume(){if(soundState.bgm)soundState.bgm.volume=bgmVolume();}
+  function setBgmVolume(){saveSystemSettings();if(soundState.bgm)soundState.bgm.volume=bgmVolume();}
   function soundFileForTone(tone){
     const n=Math.trunc(Number(tone)||0);
     if(n>=1&&n<=11)return `sap_${String(n).padStart(2,"0")}.wav`;
@@ -8144,7 +8172,14 @@
      so a generic HTML row height cannot reproduce the native spacing. */
   function systemPlace(item,top,left=0){item.style.top=`${top}px`;item.style.left=`${left}px`;item.style.paddingLeft="0";item.style.margin="0";return item;}
   function systemValue(text,top=0,left=0){const item=document.createElement("span");item.className="system-value";item.textContent=text;return systemPlace(item,top,left);}
-  function systemAction(label,handler,top,left=0){const item=button(label,handler);item.className="system-action";return systemPlace(item,top,left);}
+  function systemAction(label,handler,top,left=0){
+    /* Every system-menu knob a player can change goes through here, so this is
+       the one place that has to remember the result: the original client keeps
+       these in its save data, and a browser reload used to reset them all. */
+    const item=button(label,()=>{handler();saveSystemSettings();});
+    item.className="system-action";
+    return systemPlace(item,top,left);
+  }
   function systemSubpage(caption="",left=-8){const page=document.createElement("div");page.className="system-subpage";if(String(caption)){const title=document.createElement("span");title.className="system-caption";title.textContent=caption;systemPlace(title,0,left);page.append(title);}return page;}
   function systemReturn(page,top,label="      回上一页      ",left=0){const back=systemAction(label,()=>{app.systemPage="menu";renderSystem();},top,left);back.classList.add("system-return");page.append(back);}
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
@@ -8315,7 +8350,7 @@
     }
     if(page==="chat"){
       const currentLines=chatSettingNumber(settings.chatLines,20,0,20),currentColor=chatSettingNumber(settings.chatColor,0,0,9),currentRange=chatSettingNumber(settings.chatRange,3,1,10);
-      const updateChatSetting=(name,value,rerenderLog=false)=>{settings[name]=value;saveLocalChatState();if(rerenderLog)renderChatLog();renderSystem();};
+      const updateChatSetting=(name,value,rerenderLog=false)=>{settings[name]=value;saveLocalChatState();saveSystemSettings();if(rerenderLog)renderChatLog();renderSystem();};
       const sub=systemSubpage(`◆目前显示的行数${String(currentLines).padStart(3," ")} 行◆`,-16);
       sub.append(systemAction("      增    加      ",()=>updateChatSetting("chatLines",Math.min(20,currentLines+1),true),32));
       sub.append(systemAction("      减    少      ",()=>updateChatSetting("chatLines",Math.max(0,currentLines-1),true),64));
