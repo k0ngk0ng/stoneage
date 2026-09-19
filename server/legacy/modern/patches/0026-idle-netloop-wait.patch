@@ -1,0 +1,155 @@
+--- a/net.c
++++ b/net.c
+@@ -2120,13 +2120,82 @@
+ 
+ extern int player_online = 0;
+ extern int player_maxonline = 0;
++
++/* STONEAGE_IDLE_NETLOOP_WAIT
++ * Count the table slots that could have something to read. netloop_faster
++ * shares its per-slot wait out over these, so the wait is divided between the
++ * sessions that can actually answer instead of between all fdnum slots.
++ */
++SINGLETHREAD static int CONNECT_countActiveFds( void )
++{
++  int i, count = 0;
++
++  for ( i = 0; i < ConnectLen; i++ ) {
++    if ( Connect[ i ].use ) count++;
++  }
++  return count;
++}
++
++/* STONEAGE_IDLE_NETLOOP_WAIT
++ * The pass ends at an absolute deadline that advances by one Onelooptime per
++ * pass, rather than one Onelooptime after each pass happened to start. The
++ * difference matters as soon as the wait is a real sleep: a sleep that gives
++ * the CPU back late then shortens the next wait instead of stretching the
++ * period. Walking and NPC movement advance once per pass, so a stretched tick
++ * is a game that runs slow.
++ *
++ * tick_deadline is in the future when this returns, so the caller's budget
++ * check still ends the pass at the deadline, and the window start is the
++ * deadline minus one Onelooptime.
++ */
++SINGLETHREAD static void CONNECT_advanceTickDeadline(
++    struct timeval* tick_deadline, struct timeval* window_start,
++    unsigned int looptime_us )
++{
++  struct timeval now;
++  long period = (long)looptime_us;
++  long lead_us;
+ 
++  gettimeofday( &now, NULL );
++  if ( tick_deadline->tv_sec == 0 && tick_deadline->tv_usec == 0 ) {
++    *tick_deadline = now;
++  }
++  tick_deadline->tv_usec += period;
++  while ( tick_deadline->tv_usec >= 1000000 ) {
++    tick_deadline->tv_usec -= 1000000;
++    tick_deadline->tv_sec++;
++  }
++  /* Hold the deadline within one period of now. A pass that gave the CPU
++     back late is followed by a shorter wait and the period is kept; only a
++     pass that fell a whole period behind, or a clock that stepped, starts a
++     fresh period instead of making the loop run back to back to catch up. */
++  lead_us = (long)( tick_deadline->tv_sec - now.tv_sec ) * 1000000L
++            + (long)( tick_deadline->tv_usec - now.tv_usec );
++  if ( lead_us > period || lead_us < -period ) {
++    *tick_deadline = now;
++    tick_deadline->tv_usec += period;
++    while ( tick_deadline->tv_usec >= 1000000 ) {
++      tick_deadline->tv_usec -= 1000000;
++      tick_deadline->tv_sec++;
++    }
++  }
++  *window_start = *tick_deadline;
++  window_start->tv_usec -= period;
++  while ( window_start->tv_usec < 0 ) {
++    window_start->tv_usec += 1000000;
++    window_start->tv_sec--;
++  }
++}
++
+ SINGLETHREAD BOOL netloop_faster( void )
+ {
+ 
+   int ret , loop_num;
++  int active_fds, remain_us, wait_us;
+   struct timeval tmv;    /*timeval*/
++  struct timeval idle;
+   static int fdremember = 0;
++  static struct timeval tick_deadline;
+ 
+   static unsigned int total_item_use=0;
+ 	static int petcnt=0;
+@@ -2262,7 +2331,8 @@
+        }
+     }
+     loop_num=0;
+-    gettimeofday( &st, NULL );
++    CONNECT_advanceTickDeadline( &tick_deadline, &st, looptime_us );
++    active_fds = CONNECT_countActiveFds();
+     while(1)
+ 	{
+     char buf[ 65535 ];
+@@ -2489,6 +2559,23 @@
+     } // if(>0.1sec)
+ 
+     loop_num++;
++
++    /* STONEAGE_IDLE_NETLOOP_WAIT
++     * With nothing in the table every slot below leaves through "continue"
++     * and this loop only stops once the whole Onelooptime budget has been
++     * burned, which holds a core at 100% on a server nobody is using. Until
++     * the accept above this loop nothing new can arrive, so sleep out the
++     * remainder of the tick instead of spinning through it.
++     */
++    if ( active_fds <= 0 ) {
++      remain_us = (int)looptime_us - (int)time_diff_us( et, st );
++      if ( remain_us > 0 ) {
++        idle.tv_sec  = remain_us / 1000000;
++        idle.tv_usec = remain_us % 1000000;
++        select( 0, (fd_set*)NULL, (fd_set*)NULL, (fd_set*)NULL, &idle );
++      }
++      break;
++    }
+ 
+ #ifdef _AC_PIORITY
+     switch ( flag_ac ) {
+@@ -2533,15 +2620,29 @@
+     if ( fdremember == acfd ) totalacfd++;
+ 
+ #endif
++
++    /* STONEAGE_IDLE_NETLOOP_WAIT
++     * The stock loop polls this slot with a zero timeout and can therefore
++     * only ever wait by spinning, and the whole tick is spent that way. Wait
++     * for the slot instead, for no longer than its share of what is left of
++     * the tick: a round-robin sweep still finishes inside one Onelooptime, a
++     * slot with data returns at once, and an idle slot sleeps.
++     *
++     * Only readability is waited on. The socket is writable almost always,
++     * which would end the wait immediately, and the read set is the one this
++     * block below actually tests. The write backlog keeps its own
++     * non-blocking check further down.
++     */
++    remain_us = (int)looptime_us - (int)time_diff_us( et, st );
++    if ( remain_us <= 0 ) break;
++    wait_us = remain_us / active_fds;
++
+     /* read select */
+     FD_ZERO( & rfds );
+-	  FD_ZERO( & wfds );
+-	  FD_ZERO( & efds );
+ 		FD_SET( fdremember , & rfds );
+-	  FD_SET( fdremember , & wfds );
+-	  FD_SET( fdremember , & efds );
+-	  tmv.tv_sec = tmv.tv_usec = 0;
+-	  ret = select( fdremember + 1 , &rfds,&wfds,&efds,&tmv );
++	  tmv.tv_sec  = 0;
++	  tmv.tv_usec = wait_us;
++	  ret = select( fdremember + 1 , &rfds,(fd_set*)NULL,(fd_set*)NULL,&tmv );
+ 
+     if ( ret > 0 && FD_ISSET( fdremember, &rfds ) ) {
+       errno = 0;

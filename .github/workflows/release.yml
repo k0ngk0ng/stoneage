@@ -73,6 +73,7 @@ jobs:
           python3 server/legacy/modern/tests/test-gmsv-ride-level.py
           python3 server/legacy/modern/tests/test-gmsv-white-tiger-ride.py
           python3 server/legacy/modern/tests/test-gmsv-enemy-bounds.py
+          python3 server/legacy/modern/tests/test-gmsv-idle-netloop.py
           python3 server/legacy/modern/tests/test-ai-funding.py
           python3 server/legacy/modern/tests/test-ai-observation.py
           python3 server/legacy/modern/tests/test-ai-initialize.py

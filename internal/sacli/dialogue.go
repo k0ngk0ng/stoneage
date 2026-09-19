@@ -50,16 +50,19 @@ func wireDirection(clientDirection int) int32 {
 	return int32(((clientDirection+5)%8 + 8) % 8)
 }
 
-// windowButtons maps the server's button bitmask to readable names
-// (client/web/index.html:15062-15070).
+// windowButtons names each response bit the way the browser client draws it
+// (client/web/index.html:1688, WINDOW_BUTTONS). Bits 4 and 8 are yes/no, not a
+// second 确定/取消 pair: a narrative window offering only bit 4 answers to
+// `reply yes`, and labelling it 确定 sent the caller to `reply ok`, which the
+// window correctly refuses.
 var windowButtons = []struct {
 	Bit  int32
 	Name string
 }{
 	{1, "确定"},
 	{2, "取消"},
-	{4, "确定"},
-	{8, "取消"},
+	{4, "是"},
+	{8, "否"},
 	{16, "上一页"},
 	{32, "下一页"},
 }
@@ -334,7 +337,7 @@ func (s *Server) commandTalk(ctx context.Context, request Request) Response {
 		}
 		if time.Now().After(deadline) {
 			return Response{
-				OK:   true,
+				OK: true,
 				Text: fmt.Sprintf("talked to %q, but no window arrived within %s (this NPC may have no dialogue). Current observation:\n%s",
 					target.Name, windowReplyTimeout, s.renderObservation(after)),
 				Data: replyJSON(after),

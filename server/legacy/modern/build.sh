@@ -225,6 +225,15 @@ if ! grep -q 'StoneAge_PersonIdentitySendC' /src/gmsv/lssproto_serv.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0025-person-identity.patch
 fi
 
+# netloop_faster() polls one slot at a time with a zero timeout and only leaves
+# the tick once the whole Onelooptime budget has been burned, so an empty or
+# idle server holds a core at 100% while doing nothing. Wait for the slot for
+# its share of what is left of the tick instead; the round-robin order, the
+# per-visit read limit and the write path are unchanged.
+if ! grep -q 'STONEAGE_IDLE_NETLOOP_WAIT' /src/gmsv/net.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0026-idle-netloop-wait.patch
+fi
+
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM
 # command password. The source files are GBK, so use checked, byte-preserving
