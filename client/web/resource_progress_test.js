@@ -8,6 +8,7 @@ function section(start, end) { return html.slice(html.indexOf(start), html.index
   const state = {images: new Map(), manifestBytes: 111, manifestTotalBytes: 222}, samples = [];
   let requestCount = 0;
   const context = {
+    window: {setTimeout(){return 1;},clearTimeout(){}},
     assetState: state, Uint8Array, performance: {now: () => 1000},
     Image: class {},
     fetch: async () => {requestCount++;return new Response(new Uint8Array([1,2,3,4,5]));},

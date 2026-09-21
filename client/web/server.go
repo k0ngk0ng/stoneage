@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	_ "embed"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -74,6 +74,9 @@ var serviceWorker []byte
 //
 //go:embed automation.js
 var automationScript []byte
+
+//go:embed world-resources.js map-pack.js resource-worker.js resource-client.js map-packs.json
+var runtimeScripts embed.FS
 
 // Installed mobile shortcuts must not force a particular orientation. The
 // page keeps the executable's 640x480 surface and scales it to the limiting
@@ -1743,6 +1746,22 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			return
 		}
 		_, _ = response.Write(serviceWorker)
+		return
+	}
+	if request.URL.Path == "/world-resources.js" || request.URL.Path == "/map-pack.js" || request.URL.Path == "/resource-worker.js" || request.URL.Path == "/resource-client.js" || request.URL.Path == "/map-packs.json" {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		response.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		if strings.HasSuffix(request.URL.Path, ".json") {
+			response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		}
+		response.Header().Set("Cache-Control", "no-cache")
+		if request.Method != http.MethodHead {
+			script, _ := runtimeScripts.ReadFile(strings.TrimPrefix(request.URL.Path, "/"))
+			_, _ = response.Write(script)
+		}
 		return
 	}
 	if request.URL.Path == "/automation.js" {

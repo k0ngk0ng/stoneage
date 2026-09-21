@@ -473,6 +473,19 @@ async function assertAssetErrorsReportHttpAndNetworkFailures() {
   await assertAssetErrorsReportHttpAndNetworkFailures();
 
   const opaqueURL = "https://game.test/assets/prefetched.png";
+  {
+    let active=0,peak=0;const gates=[];
+    const bounded=harness({fetchFactory:async()=>{active++;peak=Math.max(peak,active);await new Promise(resolve=>gates.push(resolve));active--;return new Response("prefetch");}});
+    let finished=false;
+    const pending=bounded.sendMessage({type:"prefetch-assets",urls:Array.from({length:12},(_,i)=>`https://game.test/assets/a${i}.png`)}).then(()=>{finished=true;});
+    for(let i=0;i<100&&!finished;i++){
+      await new Promise(resolve=>setTimeout(resolve,1));
+      assert(active<=2,"prefetch cannot occupy more than two downloads");
+      for(const release of gates.splice(0))release();
+    }
+    await Promise.race([pending,timeout("bounded prefetch")]);
+    assert.equal(peak,2);assert.equal(bounded.stats().fetchCalls,12);assert.equal(bounded.stats().putCalls,12,"prefetch lifetime includes cache writes");
+  }
   const opaque = harness();
   opaque.seedResponse(opaqueURL, {type: "opaque"});
   const readable = await opaque.dispatch(opaqueURL, {mode: "cors"});

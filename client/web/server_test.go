@@ -815,6 +815,33 @@ func TestHandlerServesServiceWorkerWithRootScope(t *testing.T) {
 	}
 }
 
+func TestHandlerServesResourceWorkerModules(t *testing.T) {
+	fake := newFakeTCP(t, []byte{'L', 0}, nil)
+	handler, err := NewHandler(testConfig(fake.address()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.Close()
+	for _, path := range []string{"/world-resources.js", "/map-pack.js", "/resource-worker.js", "/resource-client.js", "/map-packs.json"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(method, path, nil))
+			if method == http.MethodPost {
+				if response.Code != http.StatusMethodNotAllowed {
+					t.Fatalf("POST %s: %d", path, response.Code)
+				}
+				continue
+			}
+			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-cache" {
+				t.Fatalf("%s %s: %d %v", method, path, response.Code, response.Header())
+			}
+			if method == http.MethodGet && response.Body.Len() == 0 || method == http.MethodHead && response.Body.Len() != 0 {
+				t.Fatalf("%s %s: unexpected body size %d", method, path, response.Body.Len())
+			}
+		}
+	}
+}
+
 func TestHandlerServesConfiguredMaps(t *testing.T) {
 	fake := newFakeTCP(t, []byte{'L', 0}, nil)
 	maps := t.TempDir()

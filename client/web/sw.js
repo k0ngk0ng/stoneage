@@ -31,6 +31,19 @@ let storedStatePromise = null;
    network operation per strategy/URL until it settles; each fetch event gets
    its own Response clone below. */
 const inflightResponses = new Map();
+const prefetchQueue = new Map();
+let prefetchRunning = 0;
+function pumpPrefetch(){
+  while(prefetchRunning<2&&prefetchQueue.size){
+    const [url,job]=prefetchQueue.entries().next().value;
+    prefetchQueue.delete(url);prefetchRunning++;
+    const request=new Request(url,{method:"GET"});
+    const writes=[];
+    Promise.resolve().then(()=>isStaticRequest(request)?cacheFirst(request,job.clientId,promise=>writes.push(promise)):null)
+      .then(async response=>{if(response)await cancelResponseBody(response);await Promise.allSettled(writes);}).catch(()=>{})
+      .finally(()=>{prefetchRunning--;job.done();pumpPrefetch();});
+  }
+}
 
 function validRevision(value) {
   const revision = String(value || "").trim();
@@ -664,7 +677,9 @@ self.addEventListener("message", event => {
     event.waitUntil(Promise.all(urls.map(url => {
       try {
         const request = new Request(url, {method: "GET"});
-        return isStaticRequest(request) ? cacheFirst(request, clientId, promise => event.waitUntil(promise)).then(response => cancelResponseBody(response)).catch(() => null) : null;
+        if(!isStaticRequest(request)||prefetchQueue.has(url))return null;
+        if(prefetchQueue.size>=32){const [key,old]=prefetchQueue.entries().next().value;prefetchQueue.delete(key);old.done();}
+        return new Promise(done=>{prefetchQueue.set(url,{clientId,done});pumpPrefetch();});
       } catch (_) {
         return null;
       }

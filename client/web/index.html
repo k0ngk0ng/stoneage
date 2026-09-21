@@ -1188,6 +1188,9 @@
   <footer>网页只负责协议与显示；TCP 连接由同目录的 web 转发服务持有。不要把 9065 直接暴露到公网。</footer>
 </div>
 
+<script src="/world-resources.js"></script>
+<script src="/map-pack.js"></script>
+<script src="/resource-client.js"></script>
 <script>
 /*
  * This is a byte-for-byte port of the routines identified in sa_2903.exe:
@@ -5974,16 +5977,33 @@
     const key=`${paletteNo}|${String(file||"")}`,cached=mapPaletteState.variants.get(key);if(cached)return cached;
     if(mapPaletteState.variantPending.has(key))return image;
     mapPaletteState.variantPending.add(key);
-    try{
+    const convert=async()=>{
+      if(typeof Worker==="function"&&typeof OffscreenCanvas==="function"&&typeof createImageBitmap==="function"&&window.StoneAgeResources){
+        try{
+          const bitmap=await createImageBitmap(image);
+          return await window.StoneAgeResources.run("palette",{bitmap,base,target});
+        }catch(_){/* unsupported worker canvas uses the yielded path below */}
+      }
+      // Older WebViews yield between pixel batches and keep the canvas;
+      // never synchronously encode PNG and decode another Image.
       const width=Number(image.naturalWidth||image.width),height=Number(image.naturalHeight||image.height),canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
       const ctx=canvas.getContext("2d",{willReadFrequently:true});if(!ctx)throw new Error("地图调色板画布不可用");
-      ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,width,height);ctx.drawImage(image,0,0,width,height);
+      ctx.drawImage(image,0,0,width,height);
       const pixels=ctx.getImageData(0,0,width,height),lookup=new Map();
       for(let index=0;index<256;index++)lookup.set((base[index][0]<<16)|(base[index][1]<<8)|base[index][2],target[index]);
-      for(let offset=0;offset<pixels.data.length;offset+=4){if(pixels.data[offset+3]===0)continue;const color=lookup.get((pixels.data[offset]<<16)|(pixels.data[offset+1]<<8)|pixels.data[offset+2]);if(color){pixels.data[offset]=color[0];pixels.data[offset+1]=color[1];pixels.data[offset+2]=color[2];}}
-      ctx.putImageData(pixels,0,0);
-      const variant=new Image();variant.decoding="async";variant.onload=()=>{mapPaletteState.variantPending.delete(key);mapPaletteState.variants.set(key,variant);while(mapPaletteState.variants.size>MAP_PALETTE_VARIANT_MAX)mapPaletteState.variants.delete(mapPaletteState.variants.keys().next().value);app.mapLayerCache=null;renderWorld(true);};variant.onerror=()=>{mapPaletteState.variantPending.delete(key);renderWorld(true);};variant.src=canvas.toDataURL("image/png");
-    }catch(_){mapPaletteState.variantPending.delete(key);}
+      for(let start=0;start<pixels.data.length;start+=32768){
+        const end=Math.min(start+32768,pixels.data.length);
+        for(let offset=start;offset<end;offset+=4){if(pixels.data[offset+3]===0)continue;const color=lookup.get((pixels.data[offset]<<16)|(pixels.data[offset+1]<<8)|pixels.data[offset+2]);if(color){pixels.data[offset]=color[0];pixels.data[offset+1]=color[1];pixels.data[offset+2]=color[2];}}
+        await new Promise(resolve=>window.setTimeout(resolve,0));
+      }
+      ctx.putImageData(pixels,0,0);return canvas;
+    };
+    convert().then(variant=>{
+      variant.complete=true;variant.naturalWidth=variant.width;variant.naturalHeight=variant.height;
+      mapPaletteState.variants.set(key,variant);
+      while(mapPaletteState.variants.size>MAP_PALETTE_VARIANT_MAX)mapPaletteState.variants.delete(mapPaletteState.variants.keys().next().value);
+      if(mapPaletteNumber()===paletteNo){app.mapLayerCache=null;scheduleAssetRefresh(true);}
+    }).catch(()=>{mapPaletteState.variants.set(key,image);}).finally(()=>{mapPaletteState.variantPending.delete(key);scheduleAssetRefresh(true);});
     return image;
   }
   /* MENU.CPP::createAutoMap() always samples a 54x54 logical window around
@@ -6027,10 +6047,28 @@
   const SPRITE_MANIFEST_URL="/assets/sprites.json";
   function mapCacheKey(file){return `${MAP_TILE_CACHE_PREFIX}${String(file||"")}`;}
   function mapDataCacheKey(map){return `${MAP_DATA_CACHE_PREFIX}${Number(map?.floor)||0}.${Number(map?.x1)||0}.${Number(map?.y1)||0}.${Number(map?.width)||0}.${Number(map?.height)||0}`;}
+  const pendingMapDataWrites=new Map();
+  let mapDataWriteTimer=0;
+  function flushMapDataWrites(){
+    mapDataWriteTimer=0;
+    if(app.phase==="world"&&(app.walkAnimation||app.pendingMove)){
+      mapDataWriteTimer=window.setTimeout(flushMapDataWrites,750);return;
+    }
+    const entry=pendingMapDataWrites.entries().next();if(entry.done)return;
+    const [floor,payload]=entry.value;pendingMapDataWrites.delete(floor);
+    try{
+      const json=JSON.stringify(payload);
+      if(json.length<=MAP_DATA_CACHE_MAX_BYTES)localStorage.setItem(mapDataCacheKey(payload),json);
+    }catch(_){/* storage is optional; live map data remains authoritative */}
+    if(pendingMapDataWrites.size)mapDataWriteTimer=window.setTimeout(flushMapDataWrites,100);
+  }
   function rememberMapData(map){
     if(!map||!Array.isArray(map.tiles)||typeof localStorage==="undefined")return;
     const payload={floor:Number(map.floor)||0,x1:Number(map.x1)||0,y1:Number(map.y1)||0,width:Number(map.width)||0,height:Number(map.height)||0,fullWidth:Number(map.fullWidth)||0,fullHeight:Number(map.fullHeight)||0,name:String(map.name||""),paletteNo:Number(map.paletteNo??app.mapPaletteNo),drawTimeAnime:map.drawTimeAnime!==false&&app.mapDrawTimeAnime!==false,tiles:map.tiles,objects:Array.isArray(map.objects)?map.objects:[],events:Array.isArray(map.events)?map.events:[]};
-    try{const json=JSON.stringify(payload);if(json.length>MAP_DATA_CACHE_MAX_BYTES)return;localStorage.setItem(mapDataCacheKey(payload),json);}catch(_){/* local cache is optional */}
+    pendingMapDataWrites.set(payload.floor,payload);
+    // Bound retained data while moving through a long chain of floors.
+    while(pendingMapDataWrites.size>4)pendingMapDataWrites.delete(pendingMapDataWrites.keys().next().value);
+    if(!mapDataWriteTimer)mapDataWriteTimer=window.setTimeout(flushMapDataWrites,750);
   }
   function readCachedMapData(floor,x,y){
     if(typeof localStorage==="undefined")return null;
@@ -6123,6 +6161,7 @@
   }
   function settleMapAsset(file,failed=false){
     const cache=app.mapLayerCache;if(!cache?.pending?.has(file))return false;
+    if(cache.incremental&&incrementalMapLayers)return incrementalMapLayers.assetReady(cache,file,failed);
     cache.pending.delete(file);
     if(failed){
       /* A stale/corrupt localStorage data URL must not be selected again on
@@ -6155,6 +6194,21 @@
   const MAP_RENDER_OVERRIDES=Object.freeze({
     200:{id:200,image:"maps/map_200.png",origin:[308,617],render:{width:640,height:480,origin_x:-448,origin_y:240,tile_step:[32,24]}},
   });
+  let lastWalkingPrefetch=0;
+  function prefetchWalkingMap(from,target){
+    const now=performance.now(),data=app.autoMapData;
+    if(now-lastWalkingPrefetch<350||!data||Number(data.floor)!==Number(app.floor)||!assetState.assetWorkerReady)return;
+    lastWalkingPrefetch=now;
+    const dx=Math.sign(target[0]-from[0]),dy=Math.sign(target[1]-from[1]),urls=new Set();
+    // Warm a narrow leading strip, not the entire floor.
+    for(let ahead=10;ahead<=18&&urls.size<16;ahead+=2)for(let side=-8;side<=8&&urls.size<16;side+=2){
+      const x=target[0]+dx*ahead-dy*side,y=target[1]+dy*ahead+dx*side;
+      if(x<0||y<0||x>=data.width||y>=data.height)continue;
+      const index=y*data.width+x;
+      for(const value of [data.tile[index],data.parts[index]]){const info=resolveBitmapInfo(value);if(info?.file&&!assetState.images.has(info.file))urls.add(assetURL(info.file));}
+    }
+    if(urls.size)postAssetWorker({type:"prefetch-assets",urls:[...urls].slice(0,16)});
+  }
   function loadAsset(file,options={}){
     if(!file)return null;
     const mapAsset=Boolean(options.map);
@@ -6165,8 +6219,10 @@
          deployment CORS rule therefore pairs with anonymous image loading;
          same-origin development assets continue to work unchanged. */
       image=new Image();image.crossOrigin="anonymous";image.decoding="async";
+      let releaseLoad=()=>{};
       image._assetRequestedAt=Date.now();image._assetPhase="source";
       image.onload=()=>{
+        releaseLoad();if(image._assetFailed)return;
         image._assetPhase="ready";assetState.resourceErrors?.delete(assetURL(file));
         rememberAssetResourceSize(file,assetNetworkBytes(file));
         const settled=settleMapAsset(file,false);
@@ -6181,15 +6237,20 @@
         const cache=app.mapLayerCache;
         if(!mapAsset||!cache||cache.pending.size===0)scheduleAssetRefresh(settled&&(!cache||cache.pending.size===0));
       };
-      image.onerror=()=>{image._assetPhase="failed";image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
+      image.onerror=()=>{releaseLoad();if(image._assetFailed)return;image._assetPhase="failed";image._assetFailed=true;const settled=settleMapAsset(file,true);renderMapLoadingProgress("正在重试地图贴片…");scheduleAssetRefresh(settled&&app.mapLayerCache?.pending?.size===0);};
       assetState.images.set(file,image);
       /* Keep the old localStorage tile cache useful by migrating it into the
          worker's fixed-URL CacheStorage entry before the browser can request
          the CDN URL.  No temporary URL is ever assigned to an image. */
-      prepareAssetSource(file).then(source=>{
-        if(assetState.images.get(file)!==image||image._assetFailed)return;
-        image._assetPhase="image";image.src=source;
-      }).catch(()=>{image._assetPhase="image";image.src=assetURL(file);});
+      const start=done=>{
+        const timeout=window.setTimeout(()=>{image.onerror();image.removeAttribute?.("src");},30000);
+        releaseLoad=()=>{window.clearTimeout(timeout);done();};
+        prepareAssetSource(file).then(source=>{
+          if(assetState.images.get(file)!==image||image._assetFailed){releaseLoad();return;}
+          image._assetPhase="image";image.src=source;
+        }).catch(()=>{if(image._assetFailed){releaseLoad();return;}image._assetPhase="image";image.src=assetURL(file);});
+      };
+      if(window.StoneAgeResources?.enqueueImage)window.StoneAgeResources.enqueueImage(start);else start(()=>{});
     }
     return image;
   }
@@ -6385,7 +6446,8 @@
         armTimeout();
         if(app.mapLoading)renderMapLoadingProgress("正在下载资源清单…");
       });
-      return JSON.parse(new TextDecoder().decode(buffer));
+      return typeof Worker==="function"&&window.StoneAgeResources
+        ?window.StoneAgeResources.parseIndex(buffer):JSON.parse(new TextDecoder().decode(buffer));
     }).then(manifest=>{
       if(!manifest||typeof manifest!=="object")throw new Error("资源清单为空");
       assetState.manifest=manifest;
@@ -6420,7 +6482,8 @@
     assetState.creationSpriteLoading=fetchAssetIndex(CREATION_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`人物精灵资源 HTTP ${response.status}`);
       const buffer=await readAssetResponseBytes(response,null,null);
-      return JSON.parse(new TextDecoder().decode(buffer));
+      return typeof Worker==="function"&&window.StoneAgeResources
+        ?window.StoneAgeResources.parseIndex(buffer):JSON.parse(new TextDecoder().decode(buffer));
     }).then(payload=>{
       const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
       if(!sprites||typeof sprites!=="object")throw new Error("人物精灵资源清单为空");
@@ -6452,7 +6515,8 @@
       },progress);
       assetState.fieldBootstrapBytes=Number(progress.fieldBootstrapBytes)||buffer.byteLength;
       assetState.fieldBootstrapTotalBytes=Number(progress.fieldBootstrapTotalBytes)||buffer.byteLength;
-      return JSON.parse(new TextDecoder().decode(buffer));
+      return typeof Worker==="function"&&window.StoneAgeResources
+        ?window.StoneAgeResources.parseIndex(buffer):JSON.parse(new TextDecoder().decode(buffer));
     }).then(payload=>{
       const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
       if(!sprites||typeof sprites!=="object")throw new Error("首屏人物资源清单为空");
@@ -6479,7 +6543,9 @@
     assetState.fieldSpritesFailed=false;
     assetState.fieldSpriteLoading=fetchAssetIndex(FIELD_SPRITE_MANIFEST_URL,{cache:"no-cache"}).then(async response=>{
       if(!response.ok)throw new Error(`场景动作资源 HTTP ${response.status}`);
-      return JSON.parse(new TextDecoder().decode(await readAssetResponseBytes(response,null,null)));
+      const buffer=await readAssetResponseBytes(response,null,null);
+      return typeof Worker==="function"&&window.StoneAgeResources
+        ?window.StoneAgeResources.parseIndex(buffer):JSON.parse(new TextDecoder().decode(buffer));
     }).then(payload=>{
       const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
       if(!sprites||typeof sprites!=="object")throw new Error("场景动作资源清单为空");
@@ -6522,7 +6588,8 @@
       },progress);
       assetState.spriteBytes=Number(progress.spriteBytes)||buffer.byteLength;
       assetState.spriteTotalBytes=Number(progress.spriteTotalBytes)||buffer.byteLength;
-      return JSON.parse(new TextDecoder().decode(buffer));
+      return typeof Worker==="function"&&window.StoneAgeResources
+        ?window.StoneAgeResources.parseIndex(buffer):JSON.parse(new TextDecoder().decode(buffer));
     }).then(payload=>{
       const sprites=payload?.sprites&&typeof payload.sprites==="object"?payload.sprites:payload;
       if(!sprites||typeof sprites!=="object")throw new Error("精灵资源清单为空");
@@ -7961,7 +8028,10 @@
         try{
           const response=await fetch(`/maps/${encodeURIComponent(file)}`,{cache:"force-cache"});
           if(!response.ok)throw new Error(`地图 ${file} HTTP ${response.status}`);
-          const data=parseAutoMapData(await response.arrayBuffer(),id,file);
+          const buffer=await response.arrayBuffer();
+          const data=typeof Worker==="function"&&window.StoneAgeResources
+            ?await window.StoneAgeResources.run("dat",{buffer,floor:id,source:file})
+            :parseAutoMapData(buffer,id,file);
           if(data)return data;
           throw new Error(`地图 ${file} 格式无效`);
         }catch(error){lastError=error;}
@@ -8077,6 +8147,7 @@
     node.replaceChildren(wide,...half);
   }
   function renderMapDetails(){
+    if($("map-screen")?.classList.contains("hidden"))return;
     const summary=$("map-summary"),xNode=$("map-x"),yNode=$("map-y");
     const canvas=$("auto-map");
     if(!summary||!xNode||!yNode)return;
@@ -8333,7 +8404,12 @@
       add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
       add("    画面设定    ",()=>{app.systemPage="display";renderSystem();},160);
       add("    游戏速度    ",()=>{app.systemPage="game-speed";renderSystem();},200);
-      const close=systemChoice("    关    闭    ",closeGameplayOverlay,240);list.append(close);
+      add("    导入地图包    ",()=>window.StoneAgeResources.openPack(async()=>{
+        const version=await assetVersionPromise;
+        const controlled=await assetWorkerReadyPromise;
+        return {revision:version?.revision||"",controlled,roots:{assets:ASSET_RESOURCE_ROOT.href,maps:STATIC_RESOURCE_ROOTS[1].href}};
+      }),240);
+      const close=systemChoice("    关    闭    ",closeGameplayOverlay,280);list.append(close);
       return;
     }
     if(page==="logout-choice"){
@@ -16532,7 +16608,7 @@
        A same-floor checksum can also arrive after a reconnect; do not flash
        NOW LOADING over a playable window that is already resident. */
     if(!sameFloor||!hasWindow){app.mapLoadingStartedAt=Date.now();setMapLoading(true,"正在读取地图…");}
-    const cached=readCachedMapData(app.floor,app.position[0],app.position[1]);
+    const cached=(!sameFloor||!hasWindow)?readCachedMapData(app.floor,app.position[0],app.position[1]):null;
     /* MAP.CPP keeps the current back-buffer during a same-floor MC checksum
        and only swaps in a cached window when there is no playable window yet
        (initial login/reconnect) or when the floor actually changed.  Reusing
@@ -17625,9 +17701,26 @@
     if(!map.__layerKey)map.__layerKey=[Number(map.floor)||0,Number(map.x1)||0,Number(map.y1)||0,Number(map.width)||0,Number(map.height)||0,(map.tiles||[]).join(","),(map.objects||[]).join(",")].join("|");
     return map.__layerKey;
   }
+  let incrementalMapLayers=null;
+  function ensureIncrementalMapLayers(map,key){
+    if(!window.StoneAgeWorldResources?.MapLayers)return null;
+    if(!incrementalMapLayers)incrementalMapLayers=new window.StoneAgeWorldResources.MapLayers({
+      now:()=>performance.now(),enqueue:fn=>window.setTimeout(fn,0),focus:()=>app.position,
+      resolve:resolveBitmapInfo,pixel:mapPixel,image:file=>mapPaletteImage(file,loadAsset(file,{map:true})),ready:mapImageReady,
+      validImage:record=>mapPaletteImage(record.info.file,assetState.images.get(record.info.file))===record.image,
+      canvas:(width,height)=>{const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;return canvas;},draw:drawBitmapAt,
+      changed:cache=>{if(app.mapLayerCache!==cache)return;if(cache.ready)app.mapLayerFallback=null;renderMapLoadingProgress();scheduleAssetRefresh(true);},
+      error:error=>addEvent(`地图分块绘制失败：${error.message}`),
+      retry:(file,attempt,cache)=>{assetState.images.delete(file);window.setTimeout(()=>{if(app.mapLayerCache===cache)loadAsset(file,{map:true});},180*attempt);},
+    });
+    if(!app.mapLayerCache)incrementalMapLayers.current=null;
+    const cache=incrementalMapLayers.ensure(map,key,mapPaletteNumber(),Boolean(assetState.manifestReady));
+    app.mapLayerCache=cache;return cache;
+  }
   function ensureMapLayerCache(map){
     if(!map)return null;
     const key=mapLayerCacheKey(map),current=app.mapLayerCache;
+    if(typeof ensureIncrementalMapLayers==="function"){const incremental=ensureIncrementalMapLayers(map,key);if(incremental)return incremental;}
     if(current&&current.key===key&&mapLayerCacheNeedsRepair(current)){
       current.ready=false;current.dirty=true;current.rasterFailed=true;
     }
@@ -17763,6 +17856,15 @@
     return true;
   }
   function drawWorldGroundToBuffer(ctx,cache,center){
+    if(cache?.groundChunks){
+      const offsetX=ctx.canvas.width/2-center[0],offsetY=ctx.canvas.height/2-center[1];
+      for(const chunk of cache.groundChunks){
+        const x=Math.round(offsetX+chunk.minX),y=Math.round(offsetY+chunk.minY);
+        if(x>ctx.canvas.width||y>ctx.canvas.height||x+chunk.canvas.width<0||y+chunk.canvas.height<0)continue;
+        ctx.drawImage(chunk.canvas,x,y);
+      }
+      return true;
+    }
     const source=cache?.canvas;
     if(!ctx||!source||!center)return false;
     const x=Math.round(ctx.canvas.width/2-Number(center[0])+Number(cache.minX||0));
@@ -17976,6 +18078,7 @@
   // sa_2903's original ground/object bitmaps, while the static map-200
   // viewport remains available as the exact legacy preview.
   function renderWorld(force=false){
+    if(!app._worldPaintTick&&typeof requestWorldRender==="function"){requestWorldRender(force);return;}
     const visible=$("world"),canvas=worldBackBuffer(visible),ctx=getWorld2DContext(canvas);if(!visible||!canvas||!ctx)return;
     const now=performance.now();updateMapEffects(now);
     /* Do not render the hidden field back-buffer during title/server/battle;
@@ -18059,64 +18162,45 @@
     if(!actors.some(actor=>actor.name===app.character))drawActor(ctx,{name:app.character||"我",kind:"character",objectType:1,graphic:app.pc?.image||100025,direction:app.direction,action:3},tilePoint(app.position[0],app.position[1],view));
     presentWorldBackBuffer(canvas);renderWorldOverlay();scheduleWorldAnimation();
   }
+  function requestWorldRender(force=false){
+    app._worldRenderRequested=true;
+    app._worldRenderForce=Boolean(app._worldRenderForce||force);
+    scheduleWorldAnimation();
+  }
   function scheduleWorldAnimation(){
-    /* The native client advances its position on a fixed 8ms processing
-       clock, but presents the back-buffer on the display cadence.  The
-       scheduler below shares one handle so a tile boundary cannot leave
-       duplicate loops behind.  Field actions additionally skip paints when
-       the selected frame is visually unchanged; this keeps the native timing
-       without redrawing a large DAT window for repeated bitmaps. */
     if(app._worldAnimationTicking||app._worldAnimationFrame||app._worldAnimationTimer)return;
-    /* requestAnimationFrame is attractive for a visible desktop tab, but it
-       can be suspended by mobile WebViews/headless Chromium even while the
-       document reports `visibilityState === "visible"`.  The native client
-       never suspends its process tick, and a suspended RAF leaves Action rows
-       on their first bitmap forever.  Drive this small (render-throttled)
-       scheduler from a timeout instead; renderWorld() still limits actual
-       canvas paints to the legacy 50/60 ms cadence, while the timer keeps
-       advancing both looping and one-shot actions in every browser state.
-       Walking remains smooth because its interpolation is sampled on the
-       same fixed 16.7 ms presentation cadence. */
-    const useRAF=false;
-    const tick=(timestamp)=>{
-      app._worldAnimationFrame=0;
-      app._worldAnimationTimer=0;
-      const now=Number.isFinite(timestamp)?timestamp:performance.now();
-      const animation=currentWorldWalkAnimation(),walking=Boolean(animation),actionActive=!walking&&fieldActorAnimationActive(now);
-      if(app.phase!=="world"||(!walking&&!actionActive)){renderWorldOverlay();return;}
-      if(animation&&walkProgress(now,animation)>=1){
-        /* Either local W prediction or partyMoveProc() may install the next
-           tile immediately.  Let that new animation own its handle; do not
-           schedule a second one from this boundary callback. */
-        app._worldAnimationTicking=true;
-        try{
+    if(app.phase!=="world"||app.battle)return;
+    // Foreground painting follows the display. A guarded timer still advances
+    // a suspended RAF/WebView; tile completion has its own simulation timer.
+    const useRAF=typeof window.requestAnimationFrame==="function"&&document.visibilityState!=="hidden";
+    let settled=false;
+    const tick=()=>{
+      if(settled)return;settled=true;
+      if(app._worldAnimationFrame&&typeof window.cancelAnimationFrame==="function")window.cancelAnimationFrame(app._worldAnimationFrame);
+      window.clearTimeout(app._worldAnimationTimer);
+      app._worldAnimationFrame=0;app._worldAnimationTimer=0;
+      if(app.phase!=="world"||app.battle)return;
+      const now=performance.now();
+      app._worldAnimationTicking=true;
+      try{
+        let animation=currentWorldWalkAnimation();
+        if(animation&&walkProgress(now,animation)>=1){
           if(animation===app.partyFollowAnimation)finalizePartyFollowMove();
           else finalizePendingMove();
-        }finally{app._worldAnimationTicking=false;}
-        if(app.phase==="world"&&!currentWorldWalkAnimation()&&fieldActorAnimationActive(now))scheduleWorldAnimation();
-        return;
-      }
-      /* Walking needs every presentation sample for its fractional tile
-         position.  A field Action only changes when its sprite frame changes;
-         renderWorld()'s native 50/60ms throttle is enough for those rows and
-         prevents a large DAT ground layer from monopolising the main thread
-         at 60Hz on phones. */
-      if(app.phase==="world"&&(walking||actionActive&&fieldActorVisualChanged(now))){
-        /* renderWorld() itself calls scheduleWorldAnimation() after painting.
-           Suppress that nested registration while this tick owns the one
-           continuation timer below. */
-        app._worldAnimationTicking=true;
-        try{renderWorld(walking);}finally{app._worldAnimationTicking=false;}
-      }
-      if(app.phase!=="world"||(!currentWorldWalkAnimation()&&!fieldActorAnimationActive(now)))return;
-      if(useRAF){
-        app._worldAnimationFrame=window.requestAnimationFrame(tick);
-      }else{
-        app._worldAnimationTimer=window.setTimeout(()=>tick(performance.now()),LEGACY_RENDER_TICK_MS);
-      }
+          animation=currentWorldWalkAnimation();
+        }
+        const walking=Boolean(animation),actionActive=!walking&&fieldActorAnimationActive(now);
+        const requested=app._worldRenderRequested,force=app._worldRenderForce;
+        app._worldRenderRequested=false;app._worldRenderForce=false;
+        if(requested||walking||actionActive&&fieldActorVisualChanged(now)){
+          app._worldPaintTick=true;
+          try{renderWorld(Boolean(force||walking));}finally{app._worldPaintTick=false;}
+        }
+      }finally{app._worldAnimationTicking=false;}
+      if(app._worldRenderRequested||currentWorldWalkAnimation()||fieldActorAnimationActive(performance.now()))scheduleWorldAnimation();
     };
     if(useRAF)app._worldAnimationFrame=window.requestAnimationFrame(tick);
-    else app._worldAnimationTimer=window.setTimeout(()=>tick(performance.now()),LEGACY_RENDER_TICK_MS);
+    app._worldAnimationTimer=window.setTimeout(tick,useRAF?150:100);
   }
   /* handletime.cpp uses a 5,400-second game day and 1,024 SaTime hours.  The
      D packet supplies the server's epoch seconds; the native client stores
@@ -18952,6 +19036,7 @@
     if(!app.pendingMove)startNextMove();
   }
   function startWalkAnimation(from,target,direction){
+    if(typeof prefetchWalkingMap==="function")prefetchWalkingMap(from,target);
     window.clearTimeout(app._moveFinalizeTimer);app._moveFinalizeTimer=0;
     const wallNow=performance.now();
     /* Keep adjacent tiles on the fixed legacy process timeline even when a

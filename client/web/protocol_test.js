@@ -1535,15 +1535,8 @@ if(!/function fieldActorFrameVisualKey\(frame\)[\s\S]{0,700}function fieldActorV
    !/actionActive&&fieldActorVisualChanged\(now\)/.test(script)) {
   throw new Error("field Action animation must avoid repainting unchanged bitmaps");
 }
-if(!/const useRAF=false/.test(script) ||
-   !/app\._worldAnimationTimer=window\.setTimeout\(\(\)=>tick\(performance\.now\(\)\),LEGACY_RENDER_TICK_MS\)/.test(script)) {
-  throw new Error("field Action scheduler must keep progressing when requestAnimationFrame is throttled");
-}
-if(!/app\._worldAnimationTicking\|\|app\._worldAnimationFrame\|\|app\._worldAnimationTimer/.test(script) ||
-   !/app\._worldAnimationTicking=true;\s*try\{renderWorld\(walking\);\}finally\{app\._worldAnimationTicking=false;\}/.test(script) ||
-   !/app\._worldAnimationTicking=true;\s*try\{[\s\S]{0,180}finalizePartyFollowMove\(\);[\s\S]{0,100}finalizePendingMove\(\);[\s\S]{0,80}\}finally\{app\._worldAnimationTicking=false;\}/.test(script)) {
-  throw new Error("field Action scheduler must not recursively register duplicate timers during a paint tick");
-}
+// Display coalescing, suspended RAF fallback and duplicate step fencing are
+// exercised with a deterministic clock in walking_scheduler_test.js.
 if(!/function ensureOwnFieldActor\(\)[\s\S]{0,1200}app\.actors\.set\(id,actor\)/.test(script) ||
    !/const actor=ensureOwnFieldActor\(\);\s*setLocalActorAction\(actor,actionNo\)/.test(script)) {
   throw new Error("field Action selection must animate even before the owner's first C record");
@@ -1623,7 +1616,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,240\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,280\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -2000,7 +1993,7 @@ for (const expected of [
   /const MAP_EFFECT_RAIN_COLOR="#e3f8ff"/,
   /function drawMapEffects\(ctx,view\)[\s\S]{0,1800}fillRect\(x,y-1,1,1\)[\s\S]{0,700}MAP_EFFECT_SNOW_BRIGHT/,
   /function ensureMapEffectStars\(now\)[\s\S]{0,1000}MAP_EFFECT_STAR_PATTERNS/,
-  /function renderWorld\(force=false\)[\s\S]{0,260}updateMapEffects\(now\)[\s\S]{0,6200}renderSceneActorsAndParts\(domActors,parts,canvas,frame\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
+  /function renderWorld\(force=false\)[\s\S]{0,450}updateMapEffects\(now\)[\s\S]{0,6200}renderSceneActorsAndParts\(domActors,parts,canvas,frame\);[\s\S]{0,160}presentWorldBackBuffer\(canvas\)/,
   /function renderSceneActorsAndParts\([\s\S]{0,2600}drawMapEffects\(ctx,view\)[\s\S]{0,420}StockFontBuffer|DISP_PRIO_RESERVE is emitted[\s\S]{0,260}drawMapEffects\(ctx,view\)/,
   /* map.cpp's held-left-button mode samples a new moveStack point every
      250 ms.  Once MOVE_MODE_CHANGE_TIME elapses it keeps the fish pointer,
@@ -4483,7 +4476,7 @@ for (const expected of [
   /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
   /add\("\s+画面设定\s+",[\s\S]{0,120}systemPage="display"/,
   /add\("\s+游戏速度\s+",[\s\S]{0,120}systemPage="game-speed"/,
-  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,240\);list\.append\(close\)/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,280\);list\.append\(close\)/,
   /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
@@ -6268,6 +6261,7 @@ if (!/dirx\[i\+1\] = CHAR_getDX\([\s\S]{0,260}dirx\[0\] = CHAR_getDX[\s\S]{0,180
   throw new Error("CHAR_DropMoney must exhaust surrounding cells before the player cell");
 }
 // Keep deferred HTTP/selector races in the normal protocol regression gate.
+require("node:child_process").execFileSync(process.execPath, ["--test", __dirname + "/walking_scheduler_test.js", __dirname + "/map_layers_test.js", __dirname + "/map_pack_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_async_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/battle_target_rules_test.js"], {stdio:"inherit"});
 require("node:child_process").execFileSync(process.execPath, [__dirname + "/npc_interaction_test.js"], {stdio:"inherit"});

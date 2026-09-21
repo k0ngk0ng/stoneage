@@ -30,7 +30,7 @@ function harness(delta, following = false) {
   const animation = delta ? {from: [10, 10], to: [10 + delta[0], 10 + delta[1]], startedAt: 0, duration: 1000, direction: 5} : null;
   const ctx = {canvas, fillRect: (...args) => calls.push({kind: "pixel", args}), save() {}, restore() {}, drawImage: (image, x, y) => calls.push({kind: "ground", image, point: [x, y]})};
   const app = {
-    phase: "world", battle: false, position: [10, 10], character: "self", playerActorId: 1,
+    _worldPaintTick: true, phase: "world", battle: false, position: [10, 10], character: "self", playerActorId: 1,
     walkAnimation: following ? null : animation, partyFollowAnimation: following ? animation : null,
     map: {tiles: [100]}, actors: new Map([[1, {id: 1, name: "self", kind: "character", x: 10, y: 10}]]),
     mapEffectParticles: [{kind: "star", gx: 11, gy: 10, mode: 5}, {kind: "rain", x: 40, y: 50}],

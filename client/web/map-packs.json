@@ -1,0 +1,17 @@
+{
+  "revision": "f4f25d2d7a79b737c84c0873b02f88532bc8f1a1cb0dd96638395f34a05d6820",
+  "packages": [
+    {
+      "name": "常用四村",
+      "floors": 4,
+      "bytes": 7866223,
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.1.69/stoneage-common.samap"
+    },
+    {
+      "name": "全部地图",
+      "floors": 995,
+      "bytes": 89239954,
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.1.69/stoneage-full.samap"
+    }
+  ]
+}
