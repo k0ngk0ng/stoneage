@@ -49,7 +49,7 @@ func TestConfigTransportValidation(t *testing.T) {
 }
 
 // The wire alphabet is easy to get wrong: the preserved client encodes a
-// direction through cnvServDir()'s rotation (client/web/index.html:1669-1676)
+// direction through cnvServDir()'s rotation (client/web/runtimeassets/index.html:1669-1676)
 // and the navigator documents the same result (internal/ainavigation/types.go:87-90).
 // These cases pin the mapping so a plausible-looking rewrite cannot shift it.
 func TestDirectionLetterMatchesWireAlphabet(t *testing.T) {

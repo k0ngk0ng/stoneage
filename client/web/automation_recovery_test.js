@@ -51,7 +51,7 @@ test('late response from prior connection cannot replace current controls',async
  assert.equal(api.currentControl().generation,1);assert.equal(api.currentControl().mode,'manual');
 });
 test('HTTP transport retains nested recovery offers and clears them after handoff',()=>{
- const html=fs.readFileSync(__dirname+'/index.html','utf8');
+ const html=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
  const start=html.indexOf('  class HTTPTransport');
  const end=html.indexOf("  /* Keep the browser's logical direction",start);
  assert(start>=0 && end>start);

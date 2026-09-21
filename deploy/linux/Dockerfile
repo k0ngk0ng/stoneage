@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
     ./cmd/stoneage-assets-sync
 
-COPY client/web/*.go client/web/index.html ./client/web/
+COPY client/web/*.go ./client/web/
 
 ARG RELEASE_VERSION=dev
 RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \

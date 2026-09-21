@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const start = html.indexOf("  /* Resource index transport. */");
 const end = html.indexOf("  function loadAssetManifest(", start);
 assert(start >= 0 && end > start, "index transport must be independently testable");

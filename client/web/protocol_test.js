@@ -145,7 +145,7 @@ for (let battle = 0; battle < BATTLE_MAP_FILES_25; battle++) {
   }
 }
 
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const webReadme = fs.readFileSync(__dirname + "/README.md", "utf8");
 const serviceWorker = fs.readFileSync(__dirname + "/runtimeassets/sw.js", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -5508,7 +5508,7 @@ if (futureProjectileState.projectiles.length !== 141 || futureProjectileState.pr
   throw new Error("battle projectile cleanup must remove only completed records and preserve all future records");
 }
 const context = {window: {}, TextEncoder, TextDecoder, console};
-vm.runInNewContext(script.slice(0, protocolEnd) + "\n})();", context, {filename: "index.html"});
+vm.runInNewContext(script.slice(0, protocolEnd) + "\n})();", context, {filename: "runtimeassets/index.html"});
 const P = context.window.StoneAgeProtocol;
 {
   const trim=new Function("encodeLegacyText",`${script.slice(byteHelpersStart,byteHelpersEnd)};return trimChatInputToBytes;`)(P.encodeLegacyText);

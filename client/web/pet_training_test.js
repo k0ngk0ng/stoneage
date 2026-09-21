@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const start = html.indexOf("  function parsePetSkillShop(");
 const end = html.indexOf("  function windowAssetButton", start);
 assert(start >= 0 && end > start, "pet skill shop function boundary missing");

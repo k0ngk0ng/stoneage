@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
+const html = fs.readFileSync(__dirname + '/runtimeassets/index.html', 'utf8');
 function section(start, end) { return html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start))); }
 (async () => {
   const state = {images: new Map(), manifestBytes: 111, manifestTotalBytes: 222}, samples = [];

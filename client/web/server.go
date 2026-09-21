@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -48,11 +47,7 @@ import (
 	"golang.org/x/text/encoding/traditionalchinese"
 )
 
-// The executable is intentionally self-contained: index.html is the only
-// runtime asset beside this forwarding service.
-//
-//go:embed index.html
-var page []byte
+var page = runtimeassets.SourcePage
 
 // Injected from the release tag at build time; independent of asset revisions.
 var releaseVersion = "dev"
@@ -382,9 +377,9 @@ func pageWithCDNBase(source []byte, baseURL string) []byte {
 		if entry.Name() == "sw.js" {
 			continue
 		} // Registration must be same-origin.
-		result = bytes.ReplaceAll(result, []byte("/"+entry.Name()), []byte(baseURL+"/"+runtimeassets.Root()+entry.Name()))
+		result = bytes.ReplaceAll(result, []byte("/"+entry.Name()), []byte(baseURL+"/"+runtimeassets.Root(baseURL)+entry.Name()))
 	}
-	return result
+	return runtimeassets.Externalize(result, baseURL)
 }
 
 var autoMapFilenamePattern = regexp.MustCompile(`^([0-9]+)\.(?i:dat|map)$`)
@@ -1694,8 +1689,8 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		name := strings.TrimPrefix(request.URL.Path, "/")
 		_, embeddedErr := runtimeassets.Files.ReadFile(name)
 		target := ""
-		if embeddedErr == nil && name != "sw.js" {
-			target = base + "/" + runtimeassets.Root() + name
+		if (embeddedErr == nil || runtimeassets.Extra(base)[name] != nil) && name != "sw.js" {
+			target = base + "/" + runtimeassets.Root(base) + name
 		}
 		if strings.HasPrefix(name, "assets/") || strings.HasPrefix(name, "maps/") || strings.HasPrefix(name, "audio/") || name == "_client-version.json" {
 			target = base + request.URL.EscapedPath()
@@ -1746,7 +1741,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 			return
 		}
 		if handler.publicAssetBaseURL != "" {
-			workerURL, _ := json.Marshal(handler.publicAssetBaseURL + "/" + runtimeassets.Root() + "sw.js")
+			workerURL, _ := json.Marshal(handler.publicAssetBaseURL + "/" + runtimeassets.Root(handler.publicAssetBaseURL) + "sw.js")
 			fmt.Fprintf(response, "importScripts(%s);\n", workerURL)
 		} else {
 			_, _ = response.Write(serviceWorker)

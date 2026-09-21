@@ -11,13 +11,13 @@ import (
 )
 
 // clientDirections mirrors DIRS in the preserved web client
-// (client/web/index.html:1606): index 0 is down-left and 3 is up. The wire
+// (client/web/runtimeassets/index.html:1606): index 0 is down-left and 3 is up. The wire
 // direction is this index rotated by +5 (cnvServDir/serverDirectionFromClient).
 var clientDirections = [8][2]int{{-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}}
 
 // talkFacingDelay is the pause the preserved client keeps between LOOK and TK
 // so CHAR_Look has updated CHAR_DIR before NPC_Util_isFaceToFace() runs
-// (client/web/index.html:15531-15542).
+// (client/web/runtimeassets/index.html:15531-15542).
 const talkFacingDelay = 80 * time.Millisecond
 
 // windowReplyTimeout bounds how long `talk` waits for the NPC window.
@@ -51,7 +51,7 @@ func wireDirection(clientDirection int) int32 {
 }
 
 // windowButtons names each response bit the way the browser client draws it
-// (client/web/index.html:1688, WINDOW_BUTTONS). Bits 4 and 8 are yes/no, not a
+// (client/web/runtimeassets/index.html:1688, WINDOW_BUTTONS). Bits 4 and 8 are yes/no, not a
 // second 确定/取消 pair: a narrative window offering only bit 4 answers to
 // `reply yes`, and labelling it 确定 sent the caller to `reply ok`, which the
 // window correctly refuses.
@@ -92,7 +92,7 @@ type windowView struct {
 }
 
 // windowUnescape reverts the legacy escape layer carried inside window data
-// (client/web/index.html:15968-15978). The outer protocol decoder has already
+// (client/web/runtimeassets/index.html:15968-15978). The outer protocol decoder has already
 // removed its own quoting by the time the payload reaches us.
 func windowUnescape(value string) string {
 	replaced := strings.NewReplacer(`\y`, `\`, `\z`, `|`, `\n`, "\n", `\c`, ",").Replace(value)
@@ -128,7 +128,7 @@ func wrapWindowRow(row string) []string {
 // row may be a one-digit selector naming how many wrapped rows are message
 // text; every later row is a selectable row, and its wire value is its row
 // number counted from the first selectable row (including blank rows), which
-// is what the native hit-test sends (client/web/index.html:15015-15033).
+// is what the native hit-test sends (client/web/runtimeassets/index.html:15015-15033).
 func parseWindow(window *aigame.WindowSnapshot) *windowView {
 	if window == nil {
 		return nil
@@ -261,7 +261,7 @@ func findTalkTarget(snapshot aigame.Snapshot, name string) (aigame.ActorSnapshot
 // faceActor turns the character toward one visible actor and lets the server
 // apply the facing. Face-to-face checks (talk, trade request) are decided
 // server-side from CHAR_DIR, so the pause matters
-// (client/web/index.html:15531-15542).
+// (client/web/runtimeassets/index.html:15531-15542).
 func (s *Server) faceActor(ctx context.Context, snapshot aigame.Snapshot, target aigame.ActorSnapshot) error {
 	clientDirection, ok := clientDirectionFor(int(target.X-snapshot.Position.X), int(target.Y-snapshot.Position.Y))
 	if !ok {

@@ -1,6 +1,6 @@
 "use strict";
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const html=fs.readFileSync(__dirname+'/index.html','utf8');
+const html=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
 const between=(a,b)=>{const start=html.indexOf(a),end=html.indexOf(b,start);assert(start>=0&&end>start);return html.slice(start,end);};
 const digits='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function encode62(n){let s='';do{s=digits[n%62]+s;n=Math.floor(n/62);}while(n);return s;}

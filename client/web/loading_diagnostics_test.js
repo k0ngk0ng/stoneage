@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const html=fs.readFileSync(__dirname+'/index.html','utf8');
+const html=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
 const section=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
 assert.doesNotMatch(html,/url\(['"]?[^)]*bitmap_9112/,'loading surface must not request artwork');
 const nodes=new Map();

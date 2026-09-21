@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const html=fs.readFileSync(__dirname+'/index.html','utf8');
+const html=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
 function section(a,b){return html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));}
 function fixture(hidden=false){
  let now=0,id=0,paint=0,finalized=0;const raf=new Map(),timers=new Map();

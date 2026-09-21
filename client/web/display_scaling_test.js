@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
+const html = fs.readFileSync(__dirname + '/runtimeassets/index.html', 'utf8');
 const source = html.slice(html.indexOf('  const DISPLAY_MODE_KEY='), html.indexOf('  /* A focused title input', html.indexOf('  function fitLegacyViewport()')));
 function harness(width, height, dpr, saved) {
   const properties = {}, storage = new Map(saved ? [['stoneage:web:display-mode', saved]] : []);

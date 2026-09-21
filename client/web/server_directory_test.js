@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+const html = fs.readFileSync(path.join(__dirname, "runtimeassets/index.html"), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const directoryStart = script.indexOf("  let serverSelectionStage=");
 const directoryEnd = script.indexOf("  function connectionFailureMessage", directoryStart);
@@ -83,7 +83,7 @@ function makeHarness(initialFetch) {
     script.slice(selectStart, selectEnd),
     `globalThis.__serverDirectoryTest={loadServerDirectory,openServerSelection,renderServerSelection,invalidateServerDirectory,invalidateServerSelectionView,selectServer,HTTPTransport,getState:()=>({state:serverDirectoryState,directory:serverDirectory,request:serverDirectoryRequest,stage:serverSelectionStage,viewToken:serverSelectionViewToken})};`,
   ].join("\n");
-  vm.runInContext(source, context, {filename: "client/web/index.html"});
+  vm.runInContext(source, context, {filename: "client/web/runtimeassets/index.html"});
   return {
     context,
     api: context.__serverDirectoryTest,

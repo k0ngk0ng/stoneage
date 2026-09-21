@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
 
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const start = html.indexOf("  async function sendBattleTarget(target){");
 const end = html.indexOf("  function battleActivePet(", start);
 assert.ok(start >= 0 && end > start, "production target handler missing");

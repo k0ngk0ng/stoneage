@@ -1,5 +1,5 @@
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
-const source=fs.readFileSync(__dirname+'/index.html','utf8');
+const source=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
 function fn(name){const start=source.indexOf('  function '+name+'(');assert(start>=0,name);const lineEnd=source.indexOf('\n',start);if(source.slice(start,lineEnd).endsWith('}'))return source.slice(start,lineEnd);return source.slice(start,source.indexOf('\n  }',lineEnd)+4);}
 const context={app:{systemSettings:{battleAnimationSpeed:1}}, BATTLE_ANIMATION_SPEED_OPTIONS:JSON.parse(source.match(/BATTLE_ANIMATION_SPEED_OPTIONS=Object\.freeze\((\[[^\]]+\])\)/)[1]),BATTLE_PROC_TICK_MS:1000/60,performance:{now:()=>10000},Date:{now:()=>1000},Map,battleSide:()=>0,battleSlotDirection:()=>5};
 vm.createContext(context);

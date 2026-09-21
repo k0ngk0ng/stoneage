@@ -358,7 +358,7 @@ func run(arguments []string) error {
 		if err != nil {
 			return err
 		}
-		return publishWeb(store, prefix, assetDirectory, *mapPacks)
+		return publishWeb(store, prefix, assetDirectory, *mapPacks, publicationCDNBase(disk))
 	}
 	if *mapPacks != "" {
 		return errors.New("-map-packs requires -web-only")
@@ -460,7 +460,7 @@ func run(arguments []string) error {
 		RemovedObjects: removedObjects,
 		ChangedAll:     changedAll,
 	}
-	if err := publishWeb(store, prefix, assetDirectory, ""); err != nil {
+	if err := publishWeb(store, prefix, assetDirectory, "", publicationCDNBase(disk)); err != nil {
 		return err
 	}
 	/* The tiny version marker is the final publication write.  A browser that

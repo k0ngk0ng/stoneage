@@ -5,8 +5,8 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const baselineRef = process.argv[process.argv.indexOf("--baseline") + 1] || "HEAD";
 const html = process.argv.includes("--baseline")
-  ? require("node:child_process").execFileSync("git", ["show", `${baselineRef}:client/web/index.html`], {cwd: __dirname, encoding: "utf8", maxBuffer: 8 * 1024 * 1024})
-  : fs.readFileSync(__dirname + "/index.html", "utf8");
+  ? require("node:child_process").execFileSync("git", ["show", `${baselineRef}:client/web/runtimeassets/index.html`], {cwd: __dirname, encoding: "utf8", maxBuffer: 8 * 1024 * 1024})
+  : fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 function section(start, end) {
   const a = html.indexOf(start), b = html.indexOf(end, a);
   assert(a >= 0 && b > a, `missing source boundary: ${start}`);

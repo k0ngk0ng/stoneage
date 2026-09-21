@@ -151,7 +151,7 @@ test('auto battle sends only the generation and locks the browser against the ru
 });
 
 test('the panel only follows a walk the loop is actually doing', () => {
-  const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const page = fs.readFileSync(path.join(__dirname, 'runtimeassets/index.html'), 'utf8');
   assert.ok(page.includes('"automation_state"'), 'the state must reach the panel');
   const follow = source.slice(source.indexOf('function followAutomationWalk'), source.indexOf('function updateFromTransport'));
   assert.match(follow, /seeking !== true/, 'an answer-only loop must not query the position');
@@ -280,14 +280,14 @@ test('the panel offers auto battle and leaves no client-side battle loop behind'
   /* The transport copies a known list of automation_* fields out of every
      control envelope. A field missing from that list reaches the panel as
      undefined, which is exactly how the battle status line went missing. */
-  const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const page = fs.readFileSync(path.join(__dirname, 'runtimeassets/index.html'), 'utf8');
   const copier = page.slice(page.indexOf('const next={...raw};'), page.indexOf('this.control=next;'));
   for (const field of ['automation_state', 'automation_note']) {
     assert.ok(copier.includes(`"${field}"`), `the control envelope must carry ${field}`);
   }
   assert.match(source, /BATTLE_LOCK_CLASS = "stoneage-ai-battle-locked"/);
   assert.ok(!/maybeAutoBattleTurn/.test(source));
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, 'runtimeassets/index.html'), 'utf8');
   assert.ok(!/maybeAutoBattleTurn|systemSettings\.autoBattle/.test(html), 'the page must not run a second auto battle');
 });
 

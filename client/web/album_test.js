@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const extension = JSON.parse(fs.readFileSync(__dirname + "/album-extensions.json", "utf8"))[0];
 const source = html.slice(html.indexOf("  function albumStorageKey("), html.indexOf("  function attachMapImage("));
 const store = new Map();

@@ -26,7 +26,7 @@ func TestPublishWebPreservesRevisionAndCompressesIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := append([]byte(nil), store.objects["game/"+clientManifestName]...)
-	if err := publishWeb(store, "game", root, ""); err != nil {
+	if err := publishWeb(store, "game", root, "", "https://cdn.example/game"); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, store.objects["game/"+clientManifestName]) {
@@ -54,13 +54,13 @@ func TestPublishWebPreservesRevisionAndCompressesIndexes(t *testing.T) {
 	if store.metadata[key].CacheControl != "public, max-age=31536000, immutable" {
 		t.Fatal("gzip is not immutable")
 	}
-	if len(store.objects["game/"+runtimeassets.Root()+"resource-worker.js"]) == 0 {
+	if len(store.objects["game/"+runtimeassets.Root("https://cdn.example/game")+"resource-worker.js"]) == 0 {
 		t.Fatal("runtime missing")
 	}
 	if err := os.WriteFile(filepath.Join(root, "sprites.json"), []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := publishWeb(store, "game", root, ""); err == nil {
+	if err := publishWeb(store, "game", root, "", "https://cdn.example/game"); err == nil {
 		t.Fatal("unpublished index accepted")
 	}
 }

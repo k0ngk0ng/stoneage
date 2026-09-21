@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const start = html.indexOf("  function battleActorTraveling(");
 const end = html.indexOf("  function battleTargetHighlightIds(", start);
 assert.ok(start >= 0 && end > start, "production target eligibility helpers missing");

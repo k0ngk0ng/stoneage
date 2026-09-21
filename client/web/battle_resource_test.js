@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const html=fs.readFileSync(__dirname+'/index.html','utf8');
+const html=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
 const read=name=>{const data=JSON.parse(fs.readFileSync(__dirname+'/assets/original/'+name,'utf8'));return data.sprites||data;};
 const full=read('sprites.json'),bootstrap=read('field-bootstrap-sprites.json');
 const spriteSource=html.slice(html.indexOf('  function assetManifestKeys'),html.indexOf('  function reportError'));

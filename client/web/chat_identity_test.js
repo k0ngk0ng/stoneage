@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("assert");
 const fs = require("fs");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 const start = html.indexOf("  function handlePacket(");
 const end = html.indexOf("  function unescapeCharacterOption", start);
 assert(start >= 0 && end > start);

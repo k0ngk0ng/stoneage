@@ -2,7 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+const html = fs.readFileSync(path.join(__dirname, "runtimeassets/index.html"), "utf8");
 const start = html.indexOf("  function splitAIObservationEscaped");
 const end = html.indexOf("  function receiveSystemState", start);
 if (start < 0 || end <= start) throw new Error("AI observation parser boundary missing");

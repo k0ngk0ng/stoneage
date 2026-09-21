@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 
 // publishWeb adds supplementary objects without changing the asset revision or
 // invalidating existing image/map caches. Catalogs are published last.
-func publishWeb(store objectStore, prefix, assetDirectory, packDirectory string) error {
+func publishWeb(store objectStore, prefix, assetDirectory, packDirectory, cdnBase string) error {
 	manifest, err := readManifest(store, path.Join(prefix, clientManifestName))
 	if err != nil {
 		return err
@@ -98,6 +99,15 @@ func publishWeb(store objectStore, prefix, assetDirectory, packDirectory string)
 			fmt.Printf("published %s (%d bytes)\n", pack.Path, len(data))
 		}
 	}
+	for name, data := range runtimeassets.Extra(cdnBase) {
+		kind := "text/css; charset=utf-8"
+		if strings.HasSuffix(name, ".js") {
+			kind = "application/javascript; charset=utf-8"
+		}
+		if err = put(runtimeassets.Root(cdnBase)+name, data, kind); err != nil {
+			return err
+		}
+	}
 	entries, _ := runtimeassets.Files.ReadDir(".")
 	for _, entry := range entries {
 		data, err := runtimeassets.Files.ReadFile(entry.Name())
@@ -105,13 +115,40 @@ func publishWeb(store objectStore, prefix, assetDirectory, packDirectory string)
 			return err
 		}
 		kind := mime.TypeByExtension(path.Ext(entry.Name()))
+		if strings.HasSuffix(entry.Name(), ".webmanifest") {
+			kind = "application/manifest+json"
+		}
 		if kind == "" {
 			kind = "application/octet-stream"
 		}
-		if err = put(runtimeassets.Root()+entry.Name(), data, kind); err != nil {
+		if err = put(runtimeassets.Root(cdnBase)+entry.Name(), data, kind); err != nil {
 			return err
 		}
 	}
-	fmt.Printf("published runtime %s; resource revision unchanged: %s\n", runtimeassets.Root(), revision)
+	fmt.Printf("published runtime %s; resource revision unchanged: %s\n", runtimeassets.Root(cdnBase), revision)
 	return nil
+}
+
+func publicationCDNBase(config configFile) string {
+	base := strings.TrimRight(strings.TrimSpace(envOr("STONEAGE_WEB_CDN_BASE_URL", config.Static.CDN.BaseURL)), "/")
+	if base != "" {
+		return base
+	}
+	oss := config.Static.OSS
+	if oss.Provider == "cloudflare-r2" || oss.Endpoint == "" || oss.Bucket == "" {
+		return ""
+	}
+	endpoint, err := url.Parse(oss.Endpoint)
+	if err != nil || endpoint.Host == "" {
+		return ""
+	}
+	host := endpoint.Host
+	if !strings.HasPrefix(strings.ToLower(endpoint.Hostname()), strings.ToLower(oss.Bucket)+".") {
+		host = oss.Bucket + "." + host
+	}
+	base = endpoint.Scheme + "://" + host
+	if prefix := strings.Trim(oss.Prefix, "/"); prefix != "" {
+		base += "/" + prefix
+	}
+	return base
 }

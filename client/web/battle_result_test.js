@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/runtimeassets/index.html", "utf8");
 function section(start, end) {
   const a=html.indexOf(start), b=html.indexOf(end,a);
   assert(a>=0 && b>a, `missing section ${start}`);

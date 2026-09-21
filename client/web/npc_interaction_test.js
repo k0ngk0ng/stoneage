@@ -1,5 +1,5 @@
 const fs=require("node:fs"),assert=require("node:assert/strict");
-const html=fs.readFileSync(__dirname+"/index.html","utf8");
+const html=fs.readFileSync(__dirname+"/runtimeassets/index.html","utf8");
 function section(from,to){const start=html.indexOf(from),end=html.indexOf(to,start);assert.ok(start>=0&&end>start,from);return html.slice(start,end);}
 const rules=html.match(/  const DIRS=.*;/)[0]+html.match(/  const clientDirectionFromServer=.*;/)[0]+section("  function npcInteractionRange(","  function pendingTalkActor(");
 const talk=section("  async function talkToTarget(","  async function talkToFacingNPC(");

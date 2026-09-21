@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/k0ngk0ng/stoneage/client/web/runtimeassets"
 	"io"
 	"net"
 	"net/http"
@@ -296,8 +297,8 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("page status=%d", response.StatusCode)
 	}
-	text := string(body)
 	base := "https://cdn.example.com/stoneage"
+	text := string(body) + string(runtimeassets.Extra(base)["app.js"]) + string(runtimeassets.Extra(base)["app.css"])
 	for _, fragment := range []string{
 		base + "/assets/bitmaps/bitmap_9113.png",
 		base + "/assets/manifest.json",
@@ -336,7 +337,7 @@ func TestHandlerRewritesOnlyStaticResourcesToCDN(t *testing.T) {
 		`new URL("audio/",STATIC_RESOURCE_BASE)`,
 		`const ASSET_VERSION_URL=new URL("_client-version.json",STATIC_RESOURCE_BASE)`,
 	} {
-		if !strings.Contains(string(handler.page), fragment) {
+		if !strings.Contains(text, fragment) {
 			t.Errorf("CDN page lost valid relative resource fragment %q", fragment)
 		}
 	}
@@ -524,7 +525,7 @@ func TestHandlerUsesPublicOSSRootWhenCDNIsUnset(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handler.Close()
-	text := string(handler.page)
+	text := string(handler.page) + string(runtimeassets.Extra(handler.publicAssetBaseURL)["app.js"])
 	for _, fragment := range []string{
 		"https://stoneage-web-assets.oss-cn-hangzhou.aliyuncs.com/stoneage/assets/",
 		"https://stoneage-web-assets.oss-cn-hangzhou.aliyuncs.com/stoneage/maps/",
@@ -1731,7 +1732,7 @@ func TestHandlerLimitsSessionsAndPackets(t *testing.T) {
 
 func TestCDNStaticRoutesNeverServeOriginPayloads(t *testing.T) {
 	handler := &Handler{publicAssetBaseURL: "https://cdn.example/game"}
-	for _, name := range []string{"/assets/manifest.json", "/maps/1000.dat", "/audio/bgm/1.wav", "/_client-version.json", "/automation.js", "/resource-client.js", "/resource-worker.js", "/map-pack.js", "/map-packs.json", "/manifest.webmanifest"} {
+	for _, name := range []string{"/assets/manifest.json", "/maps/1000.dat", "/audio/bgm/1.wav", "/_client-version.json", "/automation.js", "/resource-client.js", "/resource-worker.js", "/map-pack.js", "/map-packs.json", "/manifest.webmanifest", "/app.js", "/app.css"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, name, nil))
 		if response.Code != http.StatusTemporaryRedirect || !strings.HasPrefix(response.Header().Get("Location"), "https://cdn.example/game/") {
