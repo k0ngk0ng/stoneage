@@ -9759,7 +9759,79 @@
     if(action?.kind==="pet")return !(flags&BATTLE_BP_PET_MENU_NON)&&!state.petCommandLocked;
     return !(flags&BATTLE_BP_PLAYER_MENU_NON)&&!state.commandLocked;
   }
-  function renderBattle(){const state=app.battleState,menu=$("battle-menu"),participants=$("battle-participants"),summary=$("battle-menu-state");renderBattleTaskbar();syncBattleMenuMotion(state);syncBattleButtonVisualStates(state);if(!menu||!participants)return;menu.replaceChildren();participants.replaceChildren();const flags=state.bpFlags;
+  // Fast battle is presentation only. The server-side owner still handles
+  // every command and EO; the browser retains just the latest control/roster
+  // packets so human takeover can rebuild the normal battle surface.
+  function fastBattleEnabled(){
+    const c=window.StoneAgeAutomation?.currentControl?.();
+    return app.systemSettings?.fastBattle===true&&c?.automationActive===true&&["battle","leveling"].includes(c.mode);
+  }
+  function stopFastBattlePresentation(state){
+    for(const key of ["resultTransitionTimer","battleExitTimer","escapeExitTimer","deathExitTimer","initializationTimer","transientTimer","turnApplyTimer","entryTimer"]){window.clearTimeout(state[key]);state[key]=0;}
+    clearBattleChoiceTimer(state);battleCancelPendingUi(state);battleCancelPendingDamage(state);battleClearCommandPending(state);
+    cancelBattleMenuMotionFrame(state);
+    state.pendingBattleControls=[];state.pendingBattleStatuses=[];
+    state.movieActive=false;state.movieDone=true;state.entryPending=false;state.initializing=false;
+    state.motions=[];state.projectiles=[];state.effects=[];state.movieHoldUntil=0;
+  }
+  function beginFastBattle(state){
+    state.fastAwaitingTurn=Boolean(state.movieActive);
+    state.fastBattle=true;state.fastSawActive=window.StoneAgeAutomation?.currentControl?.()?.automationState?.in_battle===true;stopFastBattlePresentation(state);
+    cancelSceneTransition();applyScreenVisibility(worldScreen);restoreMapMusic();
+    closeBattlePopup({skipDefault:true,clearChoiceTimer:true});
+    setWorldState("快速战斗中…","good");
+    addChat("系统","快速战斗开始。");
+  }
+  function finishFastBattle(state,result=null){
+    if(!state||app.battleState!==state)return;
+    if(result&&!state.fastResultLogged){
+      state.fastResultLogged=true;
+      const rows=result.characters.map((entry,index)=>{
+        const name=result.duel?(index===0?"人物":"宠物"):entry.petNo===-2?(app.character||"人物"):(petDisplayName(app.petSlots[entry.petNo])||`宠物 ${entry.petNo+1}`);
+        return `${name} 经验 ${entry.exp>=0?"+":""}${entry.exp}${entry.levelUp?"（升级）":""}`;
+      });
+      if(!result.duel)rows.push(`获得物品：${result.items.length?result.items.join("、"):"无"}`);
+      addChat("系统",`战斗结算：${rows.join("；")}`);
+    }
+    if(state.fastFinished)return;
+    state.fastFinished=true;stopFastBattlePresentation(state);clearPendingBattlePackets();
+    app.battle=false;app.phase="world";app.ignoreBattlePacketsUntil=Date.now()+3000;
+    cancelSceneTransition();applyScreenVisibility(worldScreen);restoreMapMusic();
+    setWorldState("战斗结束，等待下一次行动","good");
+    if(!result)addChat("系统","战斗结束。");
+    renderWorld(true);scheduleWorldAnimation();
+  }
+  function syncFastBattlePresentation(){
+    const state=app.battleState;if(!state)return;
+    const enabled=fastBattleEnabled();
+    const live=window.StoneAgeAutomation?.currentControl?.()?.automationState;
+    if(state.fastBattle&&app.battle&&live?.in_battle===true)state.fastSawActive=true;
+    if(state.fastBattle&&app.battle&&state.fastSawActive&&live?.in_battle===false){finishFastBattle(state);return;}
+    if(app.battle&&enabled&&!state.fastBattle){beginFastBattle(state);return;}
+    if(app.battle&&state.fastBattle&&!enabled){
+      const roster=state.lastRosterPacket,bp=state.lastTurnPacket,ba=state.lastAnimationPacket;
+      stopFastBattlePresentation(state);
+      enterBattle(state.fieldNo,state.type);
+      if(roster)receiveBattleStatus(roster);
+      if(bp&&!state.fastAwaitingTurn)receiveBattlePacket(bp);
+      if(ba)receiveBattlePacket(ba);
+    }
+  }
+  function receiveFastBattlePacket(command){
+    const state=app.battleState;
+    if(!state?.fastBattle)return false;
+    const parts=String(command||"").split("|"),marker=parts[0];
+    if(marker==="BU")finishFastBattle(state);
+    else if(app.battle&&marker==="BC")state.lastRosterPacket=command;
+    else if(app.battle&&marker==="BP"){
+      const values=parts.slice(1).filter(Boolean);
+      if(values.length===3&&values.every(v=>/^[0-9a-f]+$/i.test(v))&&parseInt(values[0],16)<=20){state.lastTurnPacket=command;state.fastAwaitingTurn=false;}
+      else state.fastAwaitingTurn=true;
+    }else if(app.battle&&marker==="BA")state.lastAnimationPacket=command;
+    else if(app.battle)state.fastAwaitingTurn=true;
+    return true;
+  }
+  function renderBattle(){if(app.battleState?.fastBattle)return;const state=app.battleState,menu=$("battle-menu"),participants=$("battle-participants"),summary=$("battle-menu-state");renderBattleTaskbar();syncBattleMenuMotion(state);syncBattleButtonVisualStates(state);if(!menu||!participants)return;menu.replaceChildren();participants.replaceChildren();const flags=state.bpFlags;
     /* Player and pet command gates are independent in BP.  A dead/escaped
        pet sets bit 3 while the player is already allowed to choose the next
        action; prioritising petCommandLocked here used to label that state
@@ -9873,6 +9945,7 @@
     state.battleExitTimer=window.setTimeout(()=>finishBattleWorldExit(state),Math.max(80,Math.max(0,lastVisual-now)+80));
   }
   function openBattleResult(kind,data){
+    if(app.battleState?.fastBattle){finishFastBattle(app.battleState,parseBattleResult(kind,data));return;}
     if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket(kind,data))return;
     /* RS/RD belongs to the currently active BattleProc back-buffer.  A
        delayed result packet can still arrive after BU, a local death
@@ -14052,6 +14125,8 @@
     },30000);
   }
   function receiveBattleStatus(text){
+    if(app.battle&&app.battleState)app.battleState.lastRosterPacket=String(text||"");
+    if(app.battleState?.fastBattle)return;
     if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket("BC",text))return;
     /* lssproto_BC_recv delivers the participant payload as the only field of
        a BC envelope (the function name is not repeated in the field).  The
@@ -14349,6 +14424,7 @@
     return true;
   }
   function receiveBattlePacket(text){
+    if(typeof receiveFastBattlePacket==="function"&&receiveFastBattlePacket(text))return;
     if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket("B",text))return;
     const command=String(text||"");
     /* A successful local escape can be followed by queued B/BC/BP packets
@@ -14398,6 +14474,7 @@
           const ownerNo=bpValues.length===3?battleNumber(bpValues[0]):-1;
           const isTurnState=parts[0]==="BP"&&bpValues.length===3&&ownerNo>=0&&ownerNo<=20&&bpValues.every(value=>/^[0-9A-Fa-f]+$/.test(String(value)));
           if(isTurnState){
+            state.lastTurnPacket=command;
             const snapshot={myNo:battleNumber(bpValues[0]),bpFlags:battleNumber(bpValues[1]),myMp:battleNumber(bpValues[2])};
             /* BATTLE_PreCommandSeq() is sent before the native movie has
                finished.  Queue it behind the visual timeline; the helper
@@ -14417,6 +14494,7 @@
         state.animations.push(command);if(state.animations.length>32)state.animations.shift();{const effects=battleMovieEffects(command);if(effects.length){state.effects.push(...effects);if(state.effects.length>64)state.effects.splice(0,state.effects.length-64);}state.movieHoldUntil=Math.max(Number(state.movieHoldUntil)||0,battleMovieHoldUntil(state));renderBattleWorld();}break;
       case "BA":
         {
+          state.lastAnimationPacket=command;
           const flags=battleNumber(parts[1]),turn=battleNumber(parts[2]);
           /* BA is the final control packet in BATTLE_PreCommandSeq().  Keep
              it behind the movie and behind BP/BC so a fresh turn can never
@@ -15945,7 +16023,7 @@
         break;
       }
       case "RS": case "RD": openBattleResult(message.function,values[0]||""); $("battle-log").textContent+=`\n${message.function}：${values[0]||""}`; break;
-      case "B": receiveBattlePacket(values[0]); $("battle-log").textContent+=`\n服务器：${values[0]||""}`; $("battle-log").scrollTop=$("battle-log").scrollHeight; break;
+      case "B": receiveBattlePacket(values[0]); if(app.battleState?.fastBattle)break; $("battle-log").textContent+=`\n服务器：${values[0]||""}`; $("battle-log").scrollTop=$("battle-log").scrollHeight; break;
       case "FS": { const flags=Number(values[0])||0;setStatus("etcFlag",flags);setStatus("partyAllowed",Boolean(flags&1));setStatus("duelAllowed",Boolean(flags&4));renderFieldSettings();break; }
       case "HL": { const help=Number(values[0])?1:0;setStatus("helpFlag",help);addChat("战斗",help?"队伍求助已开启":"队伍求助已关闭");break; }
       case "PR": { const request=Number(values[0])||0,result=Number(values[1])||0,ok=result===1;const message=ok?(request===1?"组队成功":"已离开队伍"):(request===1?"组队请求失败":"离队失败");setStatus("partyResult",`${request}:${result}`);addChat("队伍",message);if(ok&&request===0){app.party.fill(null);clearPartyFollow();}renderPartyFixed();break; }
@@ -19155,6 +19233,7 @@
     return true;
   }
   function renderBattleWorld(){
+    if(app.battleState?.fastBattle)return;
     const mapNode=$("battle-map-image"),mapCanvas=$("battle-map-canvas"),layer=$("battle-actors-layer"),targetOverlay=$("battle-target-overlay");
     if(!layer)return;
     const state=app.battleState||{};const now=Date.now();state.motions=Array.isArray(state.motions)?state.motions.filter(motion=>Number(motion.until)>now):[];state.projectiles=Array.isArray(state.projectiles)?state.projectiles.filter(projectile=>Number(projectile.until)>now):[];battleScreen?.classList.toggle("battle-flash",Number(state.flashUntil)>now);
@@ -19599,6 +19678,7 @@
        already decoding while the curtain runs.  This does not pull actor or
        map resources forward; renderBattleWorld() still waits for BC/BP and
        the battle back-buffer remains locked until native entry is complete. */
+    if(typeof fastBattleEnabled==="function"&&fastBattleEnabled()){beginFastBattle(app.battleState);return;}
     if(!assetState.spritesReady&&!assetState.spriteLoading)loadSpriteManifest();
     hydrateScreenImages(battleScreen);
     beginBattleMusic(type,fieldNo);$("battle-result-screen")?.classList.add("hidden");show(battleScreen);
@@ -20768,7 +20848,7 @@
        appear slower (especially on a phone).  The RAF owns interpolation;
        keep this watchdog limited to an actually moving/pending tile. */
     if(app.phase==="world"&&(currentWorldWalkAnimation()||app.pendingMove))renderWorld();
-    if(app.battle){
+    if(app.battle&&!app.battleState?.fastBattle){
       const state=app.battleState||{},now=Date.now();
       /* Retire a completed B movie before deciding whether this watchdog
          needs a high-rate repaint.  BP still owns command availability; this
@@ -20815,7 +20895,7 @@
       if(battleChoiceActive(state,now)||battleChoiceDeadline(state)>0||countdownNode?.classList.contains("is-visible"))renderBattleTaskbar();
     }
   },32);
-  window.StoneAgeWebClient={app,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginWorldLabelFrame,syncWorldLabelSurface,paintWorldLabels,presentWorldLabels,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState,battleAnimationSpeed,setBattleAnimationSpeed};
+  window.StoneAgeWebClient={app,syncFastBattlePresentation,HTTPTransport,Protocol,send,handlePacket,handleConnectionLost,requestNormalLogout,requestInPlaceLogout,renderWorld,renderBattle,renderBattleWorld,renderBattleTaskbar,renderBattleCountdown,renderWorldOverlay,renderBattlePopup,openBattlePopup,closeBattlePopup,renderBattleResult,openBattleResult,beginBattleAction,battleMovieEffects,battlePushProjectile,battleProjectileValue,battleBowPlan,battleAxePlan,battlePetNixPlan,battleAttackMotionSpec,battleAttackSequenceSpec,battleContactHoldDuration,battleMotionRenderPriority,battleMotionValue,battleQueueDeath,battleLocalDeath,battleLocalSideDefeated,battleTerminalHoldUntil,scheduleBattleDeathExit,spriteAnimationTiming,battleRosterStatuses,battleApplyRosterStatus,battleMergeRosterStatuses,battleVisibleRosterStatuses,battleStatusTerminalCorpse,receiveBattlePacket,receiveBattleStatus,enterBattle,battleCommandAllowed,battleActionAllowed,battleCommandKind,battleTargetCandidates,battleTargetSelectable,battleActorTargetAtPoint,battleBoomerangTargetAllowed,parseBattleCommandSegments,renderCharacterList:receiveCharacterList,parseCharacterRecords,parseLegacyActorRecord,receiveActors,receiveActions,receiveTK,clearChatBuffer,consumeLocalChatCommand,isChatClearKey,isShiftBackspace,insertChatTextAtSelection,pasteChatClipboard,fieldActionShortcutIndex,facingActor,talkToFacingNPC,updateFieldTimeAnimation,renderSocial,openMailCompose,closeMailCompose,renderMailCompose,renderSystem,openPanel,mapPartBeforeActor,renderSceneActorsAndParts,actorFrame,actorHasCharacterLabels,drawActorLabels,drawActor,beginWorldLabelFrame,syncWorldLabelSurface,paintWorldLabels,presentWorldLabels,beginHeldWorldPointer,updateHeldWorldPointer,endHeldWorldPointer,sampleHeldWorldPointer,touchPointerNearWorldTaskbar,battleRasterMap,battleRasterPoint,drawBattleRasterMap,assetState,battleAnimationSpeed,setBattleAnimationSpeed};
     Object.assign(window.StoneAgeWebClient,{startMapFloorTransition,requestMapFloorReveal,cancelMapFloorTransition,receiveSystemState,parseAIObservation,applyAIObservation,receiveMap,receiveMapChecksum,mapTimeSection,mapWarpAllowedAtHour,hydrateScreenImages,hydratePanelImages,applyScreenVisibility});
     if(window.__stoneageDebug) Object.assign(window.__stoneageDebug,{move,setMoveTarget,localCellWalkable,mapCellAt,nearestTileAt,tilePoint,moveStepDuration,floorDimensions,isInsideFloor,routeFromCells,buildMoveQueueFrom});
   show(loginScreen);

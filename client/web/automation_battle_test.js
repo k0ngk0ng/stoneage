@@ -56,7 +56,7 @@ function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
     getElementById: id => id === 'ai-control-panel' ? panel : id === 'ai-control-status' ? status : {},
     createElement: () => ({ dataset: {}, classList: { toggle() {} }, setAttribute() {} }),
   };
-  return { api: root.StoneAgeAutomation, app, calls, nodes, locked };
+  return { api: root.StoneAgeAutomation, app, calls, nodes, locked, root };
 }
 
 /* Auto battle takes the command bar and nothing else. Locking the whole page
@@ -289,4 +289,31 @@ test('the panel offers auto battle and leaves no client-side battle loop behind'
   assert.ok(!/maybeAutoBattleTurn/.test(source));
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   assert.ok(!/maybeAutoBattleTurn|systemSettings\.autoBattle/.test(html), 'the page must not run a second auto battle');
+});
+
+test('seeking closes results locally, but manual and stopped modes preserve them', () => {
+  for (const mode of ['battle', 'leveling', 'manual', 'paused']) {
+    for (const active of [false, true]) {
+      for (const seeking of [false, true]) {
+        const f = fixture();
+        let closes = 0;
+        const getElement = f.root.document.getElementById;
+        f.root.document.getElementById = id => id === 'battle-result-close' ? {
+          click() { closes++; f.app.phase = 'world'; },
+        } : getElement(id);
+        f.app.phase = 'battle-result';
+        const control = {control: {mode, generation: 8}, automation_active: active, automation_state: {seeking}};
+        f.api.publishControl(control);
+        const expected = active && seeking && ['battle', 'leveling'].includes(mode) ? 1 : 0;
+        assert.equal(closes, expected, `${mode} active=${active} seeking=${seeking}`);
+        f.api.publishControl(control);
+        assert.equal(closes, expected, 'a repeated update must not close twice');
+        assert.equal(f.calls.length, 0, 'closing a result emits no game packet');
+        f.app.phase = 'battle';
+        f.app.battle = true;
+        f.api.publishControl(control);
+        assert.equal(closes, expected, 'a running battle must not be dismissed');
+      }
+    }
+  }
 });

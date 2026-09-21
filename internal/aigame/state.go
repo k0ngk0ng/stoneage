@@ -1250,6 +1250,11 @@ func (state *gameState) applyWindow(event Event) {
 		return
 	}
 	window := WindowSnapshot{Type: eventInt(event, 0, 0), ButtonType: eventInt(event, 1, 0), Sequence: eventInt(event, 2, 0), ObjectID: eventInt(event, 3, 0), Data: legacyText(eventText(event, 4)), Open: true}
+	// Match the Web client's inert post-login notification filter. It is not
+	// a dialog and must neither block walking nor replace a real active window.
+	if window.Type == 28 && strings.TrimSpace(window.Data) == "" && window.Sequence < 0 && window.ObjectID < 0 {
+		return
+	}
 	state.windows = append(state.windows, window)
 	if len(state.windows) > 32 {
 		state.windows = state.windows[len(state.windows)-32:]

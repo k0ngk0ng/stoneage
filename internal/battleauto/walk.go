@@ -21,7 +21,7 @@ var seekLegs = [4]string{stepRight, stepLeft, stepDown, stepUp}
 // DefaultSeekInterval paces the steps. The server rolls the encounter on the
 // movement itself, so this is the encounter rate as much as the walking speed;
 // a person walks about this fast.
-const DefaultSeekInterval = 450 * time.Millisecond
+const DefaultSeekInterval = 200 * time.Millisecond
 
 // seekLeg is how many steps go one way before the direction turns back.
 const seekLeg = 2
@@ -101,15 +101,10 @@ func (s *seeker) blocked(snapshot aigame.Snapshot) string {
 // that as "still blocked" would park the walk behind a message that is already
 // on its way out.
 func unansweredWindow(snapshot aigame.Snapshot) bool {
-	if window := snapshot.ActiveWindow; window != nil && window.Open && !window.Submitted {
-		return true
-	}
-	for _, window := range snapshot.Windows {
-		if window.Open && !window.Submitted {
-			return true
-		}
-	}
-	return false
+	// Windows is the last 32 received envelopes, not a queue of dialogs.
+	// A replacement can leave an unanswered historical envelope behind.
+	window := snapshot.ActiveWindow
+	return window != nil && window.Open && !window.Submitted
 }
 
 // next returns the action that keeps encounters coming, or false when walking

@@ -80,6 +80,8 @@
     if (app) app.control = next;
     updateLock(next);
     renderState(next);
+    client?.syncFastBattlePresentation?.();
+    closeSeekingBattleResult();
     return next;
   }
 
@@ -216,6 +218,7 @@
         <div class="ai-row" id="ai-target-level-row"><label for="ai-target-level">目标等级</label><input id="ai-target-level" type="number" min="1" max="1000" step="1" value="10"></div>
         <div class="ai-row" id="ai-target-pet-row"><label for="ai-target-pet">目标宠物</label><select id="ai-target-pet"><option value="">请先请求宠物状态</option></select></div>
         <div class="ai-row" id="ai-target-policy-row"><label for="ai-target-policy">多个目标</label><select id="ai-target-policy"><option value="all">全部达标</option><option value="any">任一达标</option></select></div>
+        <div class="ai-row" id="ai-fast-battle-row"><label><input id="ai-fast-battle" type="checkbox"> 快速战斗</label><span>保留地图画面，文字结算</span></div>
         <div class="ai-row" id="ai-leveling-seek-row"><label><input id="ai-leveling-seek" type="checkbox" checked> 自动遇敌（原地来回走找架打）</label></div>
         <div class="ai-row" id="ai-leveling-simple-row"><span class="ai-note" id="ai-leveling-simple-note"></span></div>
         <fieldset id="ai-build-section"><legend><label><input id="ai-build-enabled" type="checkbox"> 人物自动加点（可选）</label></legend>
@@ -249,6 +252,16 @@
       root.document.body?.appendChild(panel);
       const mode = panel.querySelector("#ai-automation-mode");
       mode?.addEventListener("change", renderForm);
+      const fastBattle = panel.querySelector("#ai-fast-battle");
+      try { app.systemSettings.fastBattle = root.localStorage?.getItem("stoneage.fastBattle") === "true"; } catch (_) {}
+      if (fastBattle) {
+        fastBattle.checked = app.systemSettings.fastBattle === true;
+        fastBattle.addEventListener("change", () => {
+          app.systemSettings.fastBattle = fastBattle.checked;
+          try { root.localStorage?.setItem("stoneage.fastBattle", String(fastBattle.checked)); } catch (_) {}
+          client?.syncFastBattlePresentation?.();
+        });
+      }
       panel.querySelector("#ai-build-enabled")?.addEventListener("change", renderForm);
       panel.querySelector("#ai-supply-enabled")?.addEventListener("change", renderForm);
       ["vital", "strength", "toughness", "dexterity", "reserve"].forEach(key => panel.querySelector(`#ai-build-${key}`)?.addEventListener("input", renderPreview));
@@ -802,6 +815,7 @@
     panel.querySelector("#ai-supply-fields")?.classList.toggle("hidden", !panel.querySelector("#ai-supply-enabled")?.checked);
     panel.querySelector("#ai-quest-pet-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
     panel.querySelector("#ai-dependencies-row")?.classList.toggle("hidden", mode !== MODE_QUEST);
+    panel.querySelector("#ai-fast-battle-row")?.classList.toggle("hidden", ![MODE_BATTLE, MODE_LEVELING].includes(mode));
     panel.querySelector("#ai-leveling-seek-row")?.classList.toggle("hidden", mode !== MODE_LEVELING);
     panel.querySelector("#ai-leveling-simple-row")?.classList.toggle("hidden", !levelingSimple);
     const simpleNote = panel.querySelector("#ai-leveling-simple-note");
@@ -831,11 +845,20 @@
     node.textContent = hasLimit ? `本地配置：保留 ${config.budget.reserve} · 花费上限 ${config.budget.maximum_spend}\n实际费用仍需后端知识库验证。` : "预算预览：未设置有效花费上限；费用未知时不可启动。";
   }
 
+  function closeSeekingBattleResult() {
+    const control = currentControl();
+    if (!control?.automationActive || ![MODE_BATTLE, MODE_LEVELING].includes(control.mode) || control.automationState?.seeking !== true) return;
+    if (app?.phase !== "battle-result" || app.battle) return;
+    // Use the normal local scene transition; closing a result sends no EO.
+    root.document?.getElementById("battle-result-close")?.click?.();
+  }
+
   /* The 2.5 server never echoes a client's own walk, so a page that only knows
      the steps it took itself shows a character standing still while the loop
      walks it around. The read-only position query is what keeps the view
      honest; it is the same request the page makes after its own steps. */
   function followAutomationWalk() {
+    closeSeekingBattleResult();
     const control = currentControl();
     /* Only while the loop is actually walking: the query cancels whatever
        movement the page has pending, so running it for a loop that answers

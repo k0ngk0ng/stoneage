@@ -133,16 +133,6 @@ func TestSeekerLeavesTheCharacterAloneWhenBusy(t *testing.T) {
 			s.ActiveWindow = &aigame.WindowSnapshot{Open: true}
 			return s
 		}(),
-		"queued window": func() aigame.Snapshot {
-			s := worldSnapshot()
-			s.Windows = []aigame.WindowSnapshot{{Open: true}}
-			return s
-		}(),
-		"queued windows": func() aigame.Snapshot {
-			s := worldSnapshot()
-			s.Windows = []aigame.WindowSnapshot{{Open: true}}
-			return s
-		}(),
 		"not in the world": func() aigame.Snapshot {
 			s := worldSnapshot()
 			s.Phase = aigame.PhaseCharacterList
@@ -210,6 +200,21 @@ func TestAnsweredWindowDoesNotBlockTheWalk(t *testing.T) {
 	}
 	if _, ok := (&seeker{interval: DefaultSeekInterval}).next(answered, time.Unix(1, 0)); !ok {
 		t.Fatal("the walk must resume once the window is answered")
+	}
+}
+
+func TestHistoricalWindowsDoNotBlockTheWalk(t *testing.T) {
+	for _, active := range []*aigame.WindowSnapshot{
+		nil,
+		{Open: false},
+		{Open: true, Submitted: true},
+	} {
+		snapshot := worldSnapshot()
+		snapshot.ActiveWindow = active
+		snapshot.Windows = []aigame.WindowSnapshot{{Open: true, Sequence: 1}, {Open: true, Submitted: true, Sequence: 2}}
+		if _, ok := (&seeker{}).next(snapshot, time.Unix(1, 0)); !ok {
+			t.Fatalf("historical window blocked walking: active=%+v", active)
+		}
 	}
 }
 

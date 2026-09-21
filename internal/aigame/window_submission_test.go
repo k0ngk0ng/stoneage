@@ -90,3 +90,35 @@ func TestFailedWindowWriteDoesNotClaimSubmission(t *testing.T) {
 		t.Fatal("write failure was not recorded")
 	}
 }
+
+func TestInertLoginNotificationDoesNotBecomeActiveWindow(t *testing.T) {
+	for _, withDialog := range []bool{false, true} {
+		state := gameState{}
+		if withDialog {
+			state.applyWindow(windowSubmissionEvent())
+		}
+		previous := state.activeWindow
+		count := len(state.windows)
+		event := windowSubmissionEvent()
+		event.Fields[0].Int = 28
+		event.Fields[2].Int = -1
+		event.Fields[3].Int = -1
+		event.Fields[4].Text = []byte(" ")
+		state.applyWindow(event)
+		if state.activeWindow != previous || len(state.windows) != count {
+			t.Fatal("inert notification changed dialog state")
+		}
+		// Unknown windows with content or valid object context remain real.
+		event.Fields[4].Text = []byte("notice")
+		state.applyWindow(event)
+		if state.activeWindow == previous || state.activeWindow.Data != "notice" {
+			t.Fatal("real notice was discarded")
+		}
+		event.Fields[4].Text = nil
+		event.Fields[3].Int = 42
+		state.applyWindow(event)
+		if state.activeWindow.ObjectID != 42 {
+			t.Fatal("window with object context was discarded")
+		}
+	}
+}
