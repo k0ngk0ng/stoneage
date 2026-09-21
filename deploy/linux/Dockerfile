@@ -23,6 +23,7 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     ./cmd/stoneage-assets-sync
 
 COPY client/web/*.go client/web/index.html client/web/sw.js client/web/automation.js ./client/web/
+COPY client/web/world-resources.js client/web/map-pack.js client/web/resource-client.js client/web/resource-worker.js client/web/map-packs.json ./client/web/
 
 ARG RELEASE_VERSION=dev
 RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \

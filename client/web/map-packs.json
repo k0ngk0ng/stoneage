@@ -5,13 +5,13 @@
       "name": "常用四村",
       "floors": 4,
       "bytes": 7866223,
-      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.1.69/stoneage-common.samap"
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.1.70/stoneage-common.samap"
     },
     {
       "name": "全部地图",
       "floors": 995,
       "bytes": 89239954,
-      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.1.69/stoneage-full.samap"
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.1.70/stoneage-full.samap"
     }
   ]
 }
