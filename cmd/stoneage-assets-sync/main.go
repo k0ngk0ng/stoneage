@@ -274,6 +274,8 @@ func run(arguments []string) error {
 	configPath := flags.String("config", envOr("STONEAGE_WEB_CONFIG", "/etc/stoneage/web.toml"), "Web TOML configuration")
 	assetsRoot := flags.String("assets", "", "sprite asset directory (defaults to static.assets_directory)")
 	clientRoot := flags.String("client-data", "/game/client", "2.5 client root containing map/ and data/{auto.dat,bgm,se}")
+	webOnly := flags.Bool("web-only", false, "publish CDN runtime and compressed indexes without changing core assets")
+	mapPacks := flags.String("map-packs", "", "directory with matching map packs for CDN publication")
 	dryRun := flags.Bool("dry-run", false, "list the upload plan without writing object-storage objects")
 	workers := flags.Int("workers", envPositiveInt("STONEAGE_ASSET_SYNC_WORKERS", 8), "parallel object-storage uploads")
 	if err := flags.Parse(arguments); err != nil {
@@ -347,6 +349,19 @@ func run(arguments []string) error {
 	assetDirectory := strings.TrimSpace(*assetsRoot)
 	if assetDirectory == "" {
 		assetDirectory = strings.TrimSpace(disk.Static.AssetsDirectory)
+	}
+	if *webOnly {
+		if *dryRun {
+			return errors.New("web-only requires reading the published manifest; dry-run is not supported")
+		}
+		store, err := newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
+		if err != nil {
+			return err
+		}
+		return publishWeb(store, prefix, assetDirectory, *mapPacks)
+	}
+	if *mapPacks != "" {
+		return errors.New("-map-packs requires -web-only")
 	}
 	clientDirectory := strings.TrimSpace(*clientRoot)
 	if clientDirectory == "" {
@@ -444,6 +459,9 @@ func run(arguments []string) error {
 		ChangedObjects: changedObjects,
 		RemovedObjects: removedObjects,
 		ChangedAll:     changedAll,
+	}
+	if err := publishWeb(store, prefix, assetDirectory, ""); err != nil {
+		return err
 	}
 	/* The tiny version marker is the final publication write.  A browser that
 	   observes a new revision can therefore fetch a complete _client-manifest

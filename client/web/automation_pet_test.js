@@ -10,7 +10,7 @@ function fixture() {
   /* The module runs in its own realm, so a recorded packet is flattened to a
      string: deepStrictEqual would otherwise fail on the foreign prototypes. */
   const root = { StoneAgeWebClient: { app, send: (name, values) => { sent.push(`${name}|${(values || []).join(",")}`); return Promise.resolve(); } } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'automation.js'), 'utf8'), { window: root });
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'runtimeassets/automation.js'), 'utf8'), { window: root });
   function select() {
     return {
       value: '', options: [],

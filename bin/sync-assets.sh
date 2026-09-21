@@ -8,6 +8,7 @@ env_file="$(printenv STONEAGE_ENV_FILE 2>/dev/null || true)"
 if [[ -z "$env_file" ]]; then
     env_file="$project_root/.env"
 fi
+web_args=()
 dry_run=0
 workers=""
 asset_sync_bin=""
@@ -22,6 +23,8 @@ config/web/web.toml. The host-native bin/stoneage-assets-sync uploader is
 required; set STONEAGE_ASSET_SYNC_BIN to override its path.
 
 Options:
+  --web-only      Publish CDN modules and compressed indexes only.
+  --map-packs DIR Publish matching map packages (with --web-only).
   --dry-run       Validate the source trees and print the object count only.
   --workers N     Number of parallel uploads (1..64; default from .env/8).
   --env FILE      Read FILE instead of .env.
@@ -35,6 +38,10 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --web-only) web_args+=(-web-only) ;;
+        --map-packs)
+            [[ $# -ge 2 ]] || { echo "--map-packs requires a directory" >&2; exit 2; }
+            web_args+=(-map-packs "$2"); shift ;;
         --dry-run) dry_run=1 ;;
         --workers)
             if [[ $# -lt 2 ]]; then
@@ -282,7 +289,7 @@ if [[ "$dry_run" == 1 ]]; then
 fi
 
 echo "Publishing the complete client asset tree (assets, maps, audio)…"
-"$asset_sync_bin" "${run_args[@]}"
+"$asset_sync_bin" "${run_args[@]}" ${web_args[@]+"${web_args[@]}"}
 if [[ "$dry_run" == 1 ]]; then
     echo "Client asset dry-run completed; no objects uploaded."
 else

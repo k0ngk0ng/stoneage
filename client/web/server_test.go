@@ -1728,3 +1728,25 @@ func TestHandlerLimitsSessionsAndPackets(t *testing.T) {
 		t.Fatalf("oversize send status=%d", response.StatusCode)
 	}
 }
+
+func TestCDNStaticRoutesNeverServeOriginPayloads(t *testing.T) {
+	handler := &Handler{publicAssetBaseURL: "https://cdn.example/game"}
+	for _, name := range []string{"/assets/manifest.json", "/maps/1000.dat", "/audio/bgm/1.wav", "/_client-version.json", "/automation.js", "/resource-client.js", "/resource-worker.js", "/map-pack.js", "/map-packs.json", "/manifest.webmanifest"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, name, nil))
+		if response.Code != http.StatusTemporaryRedirect || !strings.HasPrefix(response.Header().Get("Location"), "https://cdn.example/game/") {
+			t.Fatalf("origin served %s: %d", name, response.Code)
+		}
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sw.js", nil))
+	if response.Code != 200 || !strings.HasPrefix(response.Body.String(), `importScripts("https://cdn.example/game/web/`) || response.Body.Len() > 180 {
+		t.Fatalf("unexpected SW bootstrap: %s", response.Body.String())
+	}
+	rewritten := string(pageWithCDNBase(page, "https://cdn.example/game"))
+	for _, name := range []string{"automation.js", "resource-client.js", "world-resources.js", "manifest.webmanifest"} {
+		if strings.Contains(rewritten, `"/`+name+`"`) {
+			t.Fatalf("page retains origin resource %s", name)
+		}
+	}
+}

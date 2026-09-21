@@ -35,7 +35,7 @@ function fixture(responseData) {
     '#ai-offline-continue': { checked: false },
   };
   const panel = { querySelector: id => nodes[id] };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'automation.js'), 'utf8'), {
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'runtimeassets/automation.js'), 'utf8'), {
     window: root,
     fetch: async url => {
       assert.match(url, /\/automation\/tasks$/);

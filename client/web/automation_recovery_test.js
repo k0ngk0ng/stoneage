@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(__dirname + '/automation.js', 'utf8');
+const source = fs.readFileSync(__dirname + '/runtimeassets/automation.js', 'utf8');
 function fixture(fetcher) {
  const requests=[];
  const transport={id:'new-session',base:'',closed:false,setControl(value){this.control=value;return value;}};

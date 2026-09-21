@@ -303,3 +303,21 @@ disabled = false
 数据库和接口仍保存带时区的时间。资源页“开始同步”会实际调用对象存储上传器，
 需要配置 `web.toml` 的存储参数并挂载对应凭据和资源目录；任务运行时按钮禁用，
 刷新页面可查看执行状态。它不会把 CDN 上的资源下载到游戏客户端。
+
+## CDN 程序资源发布（v0.1.71 起）
+
+配置 CDN 后，脚本、Web Manifest、图片、地图、音频及资源版本文件均由 CDN 提供；旧同源静态地址只返回跳转，不提供资源正文。浏览器要求 Service Worker 注册入口同源，因此 `/sw.js` 只保留一行 CDN `importScripts` 引导。HTML 入口和游戏 API 仍由游戏服务提供。
+
+每次更新 Web 程序前，先从已成功发布的部署包更新 `bin/`，使用该版本上传器发布对应的内容哈希脚本目录及 gzip 索引，然后执行正常的镜像发布流程：
+
+```sh
+./bin/stoneage sync-assets --web-only
+# 如同时发布地图包，改用：
+./bin/stoneage sync-assets --web-only --map-packs /path/to/map-packs
+./bin/stoneage check
+./bin/stoneage pull
+./bin/stoneage deploy --no-image-update
+./bin/stoneage status
+```
+
+`--web-only` 校验本地 JSON 与已发布清单一致，只新增 `web/<hash>/`、`indexes/` 和可选 `packs/<资源版本>/` 对象，不重发图片、不改资源版本。普通全量 `sync-assets` 也会发布脚本和压缩索引。CDN 须透传这些对象的 `Cache-Control: public, max-age=31536000, immutable`，允许跨域 GET/HEAD，并正确返回 JS MIME 类型。gzip 对象是 `application/gzip`，不设置 `Content-Encoding`；浏览器解压后验证大小和 SHA-256，沿用既有本地索引缓存。缓存命中不下载；不支持解压 API 的旧浏览器使用 CDN 原始 JSON。

@@ -6300,7 +6300,30 @@
     return buffer.buffer;
   }
   /* Resource index transport. */
-  const assetIndexWrites=new Map();
+  const assetIndexWrites=new Map(),compressedIndexCatalogs=new Map();
+  async function fetchCompressedIndex(url,revision,options){
+    if(!revision||revision==="local-dev"||typeof DecompressionStream!=="function")return null;
+    const root=STATIC_RESOURCE_BASE;
+    if(!url.href.startsWith(root.href))return null;
+    if(!compressedIndexCatalogs.has(revision)){
+      compressedIndexCatalogs.set(revision,fetch(new URL(`indexes/${encodeURIComponent(revision)}/catalog.json`,root)).then(r=>r.ok?r.json():null).catch(()=>null));
+    }
+    const catalog=await compressedIndexCatalogs.get(revision);
+    const relative=url.pathname.slice(root.pathname.length);
+    const entry=catalog?.[relative];
+    if(!entry||!/^indexes\/[a-f0-9]{64}\.json\.gz$/.test(entry.path)||!Number.isSafeInteger(entry.bytes)||entry.bytes<=0||entry.bytes>128*1024*1024)return null;
+    const response=await fetch(new URL(entry.path,root),{signal:options.signal});
+    if(!response.ok||!response.body)throw new Error("压缩资源下载失败");
+    const reader=response.body.pipeThrough(new DecompressionStream("gzip")).getReader();
+    const chunks=[];let length=0;
+    try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>entry.bytes)throw new Error("压缩资源大小不一致");chunks.push(part.value);}}
+    catch(error){await reader.cancel().catch(()=>{});throw error;}
+    if(length!==entry.bytes)throw new Error("压缩资源读取不完整");
+    const bytes=await new Blob(chunks).arrayBuffer();
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),b=>b.toString(16).padStart(2,"0")).join("");
+    if(digest!==entry.sha256)throw new Error("压缩资源校验失败");
+    return new Response(bytes,{headers:{"Content-Type":"application/json","Content-Length":String(length)}});
+  }
   async function fetchAssetIndex(path,options={}){
     const version=await assetVersionPromise.catch(()=>null);
     const url=new URL(path,window.location.href);
@@ -6326,6 +6349,15 @@
       });
       cache=cached?.store||null;
       if(cached?.hit){cached.hit._assetFromCache=true;return cached.hit;}
+    }
+    const compressed=await fetchCompressedIndex(url,revision,options);
+    if(compressed){
+      if(cache){
+        const task=cache.put(key,compressed.clone()).catch(()=>{});
+        assetIndexWrites.set(key,task);
+        task.finally(()=>{if(assetIndexWrites.get(key)===task)assetIndexWrites.delete(key);});
+      }
+      return compressed;
     }
     const controller=new AbortController();
     const abort=()=>controller.abort();

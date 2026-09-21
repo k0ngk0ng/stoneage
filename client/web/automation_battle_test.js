@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-const source = fs.readFileSync(path.join(__dirname, 'automation.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, 'runtimeassets/automation.js'), 'utf8');
 
 function button() {
   return {

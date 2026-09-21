@@ -1,5 +1,5 @@
 "use strict";
-importScripts("/map-pack.js");
+importScripts(new URL("map-pack.js",self.STONEAGE_RUNTIME_ROOT||self.location.href).href);
 let importing=null;
 const cancelled=new Set();
 const indexes=new Map();

@@ -1,5 +1,7 @@
 (function(){
   "use strict";
+  const runtimeRoot=new URL(".",document.currentScript?.src||location.href).href;
+  const staticRoot=new URL(runtimeRoot.includes("/web/")?"../../":"./",runtimeRoot).href;
   let worker=null,nextID=1;
   const pending=new Map();
   const imageQueue=[];let activeImages=0;
@@ -13,7 +15,9 @@
   function enqueueImage(start){imageQueue.push(start);pumpImages();}
   function run(type,args,onProgress){
     if(!worker){
-      worker=new Worker("/resource-worker.js");
+      const source=`self.STONEAGE_RUNTIME_ROOT=${JSON.stringify(runtimeRoot)};importScripts(${JSON.stringify(new URL("resource-worker.js",runtimeRoot).href)});`;
+      const bootstrap=URL.createObjectURL(new Blob([source],{type:"application/javascript"}));
+      try{worker=new Worker(bootstrap);}finally{URL.revokeObjectURL(bootstrap);}
       worker.onmessage=({data})=>{
         const task=pending.get(data.id);if(!task)return;
         if(data.progress){task.onProgress?.(data.progress);return;}
@@ -60,11 +64,11 @@
     document.body.append(node);node.showModal();
     const downloads=document.createElement("p");downloads.textContent="正在查询地图包下载…";
     node.querySelector("input").before(downloads);
-    Promise.all([config(),fetch("/map-packs.json",{cache:"no-cache"}).then(response=>{if(!response.ok)throw new Error("目录不可用");return response.json();})]).then(([ready,catalog])=>{
+    Promise.all([config(),fetch(new URL("map-packs.json",runtimeRoot)).then(response=>{if(!response.ok)throw new Error("目录不可用");return response.json();})]).then(([ready,catalog])=>{
       downloads.replaceChildren();
       if(catalog.revision!==ready.revision){downloads.textContent="当前环境暂无匹配下载包，可选择本地文件。";return;}
       for(const entry of catalog.packages||[]){
-        const url=new URL(entry.url);if(url.protocol!=="https:"||url.hostname!=="github.com")continue;
+        const url=new URL(entry.path,staticRoot);if(!url.href.startsWith(staticRoot+"packs/"))continue;
         const link=document.createElement("a");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";link.style.display="block";
         link.textContent=`下载${entry.name} · ${entry.floors} 张 · ${mb(entry.bytes)}`;downloads.append(link);
       }

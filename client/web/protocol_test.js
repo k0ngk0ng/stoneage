@@ -147,7 +147,7 @@ for (let battle = 0; battle < BATTLE_MAP_FILES_25; battle++) {
 
 const html = fs.readFileSync(__dirname + "/index.html", "utf8");
 const webReadme = fs.readFileSync(__dirname + "/README.md", "utf8");
-const serviceWorker = fs.readFileSync(__dirname + "/sw.js", "utf8");
+const serviceWorker = fs.readFileSync(__dirname + "/runtimeassets/sw.js", "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 if (!/^# StoneAge 2\.5 Web\n/.test(webReadme) || /^# sa_2903 web$/im.test(webReadme) ||
     !/<title>StoneAge 2\.5<\/title>/.test(html) || /<title>[^<]*sa_2903 web/i.test(html)) {

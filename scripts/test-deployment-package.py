@@ -16,14 +16,14 @@ root = Path(__file__).resolve().parent.parent
 dockerfile = (root / 'deploy/linux/Dockerfile').read_text()
 web_sources = []
 for line in dockerfile.splitlines():
-    if line.startswith('COPY ') and line.endswith('./client/web/'):
+    if line.startswith('COPY ') and './client/web/' in line:
         web_sources.extend(shlex.split(line)[1:-1])
-for source in (root / 'client/web').glob('*.go'):
+for source in (root / 'client/web').rglob('*.go'):
     for directive in re.findall(r'^//go:embed (.+)$', source.read_text(), re.M):
         for pattern in shlex.split(directive):
-            for resource in (root / 'client/web').glob(pattern):
+            for resource in source.parent.glob(pattern):
                 relative = resource.relative_to(root).as_posix()
-                assert any(fnmatch.fnmatchcase(relative, item) for item in web_sources), f'image COPY missing embedded resource: {relative}'
+                assert any((relative.startswith(item) if item.endswith("/") else fnmatch.fnmatchcase(relative, item)) for item in web_sources), f'image COPY missing embedded resource: {relative}'
 (root / 'build').mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as temporary:
     stage = Path(temporary)

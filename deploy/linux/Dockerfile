@@ -8,6 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 # Only Go build inputs belong in this layer. Legacy C sources, map data and
 # deployment documentation must not invalidate the control-plane compilation.
+COPY client/web/runtimeassets/ ./client/web/runtimeassets/
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY server/go/ ./server/go/
@@ -22,8 +23,7 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     ./cmd/stoneage-gateway ./cmd/stoneage-admin ./cmd/stoneage-operator \
     ./cmd/stoneage-assets-sync
 
-COPY client/web/*.go client/web/index.html client/web/sw.js client/web/automation.js ./client/web/
-COPY client/web/world-resources.js client/web/map-pack.js client/web/resource-client.js client/web/resource-worker.js client/web/map-packs.json ./client/web/
+COPY client/web/*.go client/web/index.html ./client/web/
 
 ARG RELEASE_VERSION=dev
 RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \

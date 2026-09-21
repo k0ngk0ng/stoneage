@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {MapLayers}=require('./world-resources.js');
+const {MapLayers}=require('./runtimeassets/world-resources.js');
 function fixture(){
  const tasks=[],images=new Map(),draws=[];let clock=0,canvasCount=0;
  const h={now:()=>clock+=0.02,enqueue:fn=>{tasks.push(fn);return tasks.length;},resolve:value=>({file:`${value}.png`,xoffset:-32,yoffset:-24}),pixel:(x,y)=>[(x+y)*32,(y-x)*24],

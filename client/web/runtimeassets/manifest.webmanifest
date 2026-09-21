@@ -1,0 +1,8 @@
+{
+  "name": "StoneAge 2.5",
+  "short_name": "StoneAge",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#101820"
+}

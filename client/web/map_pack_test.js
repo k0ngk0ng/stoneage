@@ -1,15 +1,15 @@
 "use strict";
 const assert=require("node:assert/strict"),test=require("node:test"),fs=require("node:fs"),vm=require("node:vm"),{webcrypto}=require("node:crypto");
-const pack=require("./map-pack.js");
+const pack=require("./runtimeassets/map-pack.js");
 function harness(){
   const stores=new Map(),requests=new Map();let seq=0;
-  const scope={crypto:webcrypto,Blob,Response,TextDecoder,Uint16Array,DataView,URL,Map,Set,ArrayBuffer,console,
+  const scope={location:{href:"https://cdn.example/game/web/test/resource-worker.js"},crypto:webcrypto,Blob,Response,TextDecoder,Uint16Array,DataView,URL,Map,Set,ArrayBuffer,console,
     caches:{async open(name){if(!stores.has(name))stores.set(name,new Map());const rows=stores.get(name);return {async match(key){return rows.get(key)?.clone();},async put(key,value){rows.set(key,value.clone());}};}},
     fetch(){throw new Error("import must not download resources");},
     postMessage(message){const task=requests.get(message.id);if(message.progress){task.progress?.(message.progress,message.id);return;}requests.delete(message.id);message.error?task.reject(new Error(message.error)):task.resolve(message.result);},
   };
-  scope.self=scope;scope.importScripts=()=>vm.runInContext(fs.readFileSync(__dirname+"/map-pack.js","utf8"),context);
-  const context=vm.createContext(scope);vm.runInContext(fs.readFileSync(__dirname+"/resource-worker.js","utf8"),context);
+  scope.self=scope;scope.importScripts=()=>vm.runInContext(fs.readFileSync(__dirname+"/runtimeassets/map-pack.js","utf8"),context);
+  const context=vm.createContext(scope);vm.runInContext(fs.readFileSync(__dirname+"/runtimeassets/resource-worker.js","utf8"),context);
   return {stores,cancel:id=>scope.onmessage({data:{id,type:"cancel"}}),run(type,args,progress){const id=++seq;return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject,progress});scope.onmessage({data:{id,type,args}});});}};
 }
 async function fixture(){
@@ -53,7 +53,7 @@ test("large indexes return bounded batches with exact nested content",async()=>{
   assert(batches>20);assert.equal(JSON.stringify(result),JSON.stringify(input));
 });
 test("image downloads stay bounded and duplicate completion cannot release twice",()=>{
-  const scope={window:{}};vm.createContext(scope);vm.runInContext(fs.readFileSync(__dirname+"/resource-client.js","utf8"),scope);
+  const scope={URL,location:{href:"https://game.example/"},document:{currentScript:{src:"https://cdn.example/game/web/test/resource-client.js"}},window:{}};vm.createContext(scope);vm.runInContext(fs.readFileSync(__dirname+"/runtimeassets/resource-client.js","utf8"),scope);
   const releases=[];let active=0,peak=0,started=0;
   for(let i=0;i<40;i++)scope.window.StoneAgeResources.enqueueImage(done=>{active++;started++;peak=Math.max(peak,active);releases.push(()=>{active--;done();done();});});
   assert.equal(started,6);while(releases.length)releases.shift()();

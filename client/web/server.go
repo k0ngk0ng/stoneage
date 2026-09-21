@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"embed"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -36,6 +36,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/client/web/runtimeassets"
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
@@ -60,38 +61,11 @@ func pageWithReleaseVersion(source []byte, version string) []byte {
 	return bytes.ReplaceAll(source, []byte("<!--STONEAGE_RELEASE_VERSION-->dev"), []byte(html.EscapeString(version)))
 }
 
-// Keep the worker beside the self-contained page so `go run ./client/web`
-// and the production binary expose the exact same cache/update behavior.
-// The worker is intentionally not bundled into index.html: browsers need a
-// stable same-origin /sw.js URL in order to install it.
-//
-//go:embed sw.js
-var serviceWorker []byte
-
-// AI controls are kept in a separate module so the large legacy-compatible
-// page remains easy to audit. The module is served by this same origin and
-// therefore shares the browser session's normal HTTP protections.
-//
-//go:embed automation.js
-var automationScript []byte
-
-//go:embed world-resources.js map-pack.js resource-worker.js resource-client.js map-packs.json
-var runtimeScripts embed.FS
-
-// Installed mobile shortcuts must not force a particular orientation. The
-// page keeps the executable's 640x480 surface and scales it to the limiting
-// viewport axis, so both portrait and landscape remain playable.
-var webManifest = []byte(`{
-  "name": "StoneAge 2.5",
-  "short_name": "StoneAge",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
-  "display": "fullscreen",
-  "orientation": "any",
-  "background_color": "#000000",
-  "theme_color": "#101820"
-}`)
+// Production workers and modules are published under a content-addressed CDN root.
+var serviceWorker, _ = runtimeassets.Files.ReadFile("sw.js")
+var automationScript, _ = runtimeassets.Files.ReadFile("automation.js")
+var runtimeScripts = runtimeassets.Files
+var webManifest, _ = runtimeassets.Files.ReadFile("manifest.webmanifest")
 
 // A local checkout does not run the object-storage publisher, but the page
 // still probes the publication marker so the same Service Worker update path
@@ -402,6 +376,13 @@ func pageWithCDNBase(source []byte, baseURL string) []byte {
 	}
 	for _, item := range markers {
 		result = bytes.ReplaceAll(result, []byte(item.marker), []byte(baseURL+item.prefix))
+	}
+	entries, _ := runtimeassets.Files.ReadDir(".")
+	for _, entry := range entries {
+		if entry.Name() == "sw.js" {
+			continue
+		} // Registration must be same-origin.
+		result = bytes.ReplaceAll(result, []byte("/"+entry.Name()), []byte(baseURL+"/"+runtimeassets.Root()+entry.Name()))
 	}
 	return result
 }
@@ -1182,26 +1163,27 @@ func (store *sessionStore) closeAll() {
 }
 
 type Handler struct {
-	agentMu         sync.Mutex
-	agentLeases     map[string]*webAgentLease
-	agentFrontdoor  *webAgentFrontdoor
-	trustedProxies  []netip.Prefix
-	config          Config
-	sessions        *sessionStore
-	page            []byte
-	assets          http.Handler
-	maps            http.Handler
-	audio           http.Handler
-	npcDir          string
-	npcMu           sync.RWMutex
-	npcData         map[int][]npcMetadata
-	npcErr          error
-	npcDone         bool
-	stop            chan struct{}
-	stopOnce        sync.Once
-	automationMu    sync.RWMutex
-	automation      Automation
-	automationClose func() error
+	publicAssetBaseURL string
+	agentMu            sync.Mutex
+	agentLeases        map[string]*webAgentLease
+	agentFrontdoor     *webAgentFrontdoor
+	trustedProxies     []netip.Prefix
+	config             Config
+	sessions           *sessionStore
+	page               []byte
+	assets             http.Handler
+	maps               http.Handler
+	audio              http.Handler
+	npcDir             string
+	npcMu              sync.RWMutex
+	npcData            map[int][]npcMetadata
+	npcErr             error
+	npcDone            bool
+	stop               chan struct{}
+	stopOnce           sync.Once
+	automationMu       sync.RWMutex
+	automation         Automation
+	automationClose    func() error
 
 	// Auto battle loads the game's recovery tables once and keeps the last
 	// decision of the loop for the control panel.
@@ -1590,7 +1572,7 @@ func NewHandler(config Config) (*Handler, error) {
 		config.Automation = automation
 		config.AutomationClose = closeAutomation
 	}
-	handler := &Handler{trustedProxies: trustedProxies, config: config, agentFrontdoor: agentFrontdoor, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata), automation: config.Automation, automationClose: config.AutomationClose}
+	handler := &Handler{publicAssetBaseURL: publicAssetBaseURL, trustedProxies: trustedProxies, config: config, agentFrontdoor: agentFrontdoor, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata), automation: config.Automation, automationClose: config.AutomationClose}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository
@@ -1708,6 +1690,24 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		response.WriteHeader(http.StatusNoContent)
 		return
 	}
+	if base := handler.publicAssetBaseURL; base != "" {
+		name := strings.TrimPrefix(request.URL.Path, "/")
+		_, embeddedErr := runtimeassets.Files.ReadFile(name)
+		target := ""
+		if embeddedErr == nil && name != "sw.js" {
+			target = base + "/" + runtimeassets.Root() + name
+		}
+		if strings.HasPrefix(name, "assets/") || strings.HasPrefix(name, "maps/") || strings.HasPrefix(name, "audio/") || name == "_client-version.json" {
+			target = base + request.URL.EscapedPath()
+		}
+		if target != "" {
+			if request.URL.RawQuery != "" {
+				target += "?" + request.URL.RawQuery
+			}
+			http.Redirect(response, request, target, http.StatusTemporaryRedirect)
+			return
+		}
+	}
 	if request.URL.Path == "/_client-version.json" {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
@@ -1745,7 +1745,12 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		if request.Method == http.MethodHead {
 			return
 		}
-		_, _ = response.Write(serviceWorker)
+		if handler.publicAssetBaseURL != "" {
+			workerURL, _ := json.Marshal(handler.publicAssetBaseURL + "/" + runtimeassets.Root() + "sw.js")
+			fmt.Fprintf(response, "importScripts(%s);\n", workerURL)
+		} else {
+			_, _ = response.Write(serviceWorker)
+		}
 		return
 	}
 	if request.URL.Path == "/world-resources.js" || request.URL.Path == "/map-pack.js" || request.URL.Path == "/resource-worker.js" || request.URL.Path == "/resource-client.js" || request.URL.Path == "/map-packs.json" {

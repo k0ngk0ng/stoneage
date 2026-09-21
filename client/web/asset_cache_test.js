@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-const serviceWorker = fs.readFileSync(__dirname + "/sw.js", "utf8");
+const serviceWorker = fs.readFileSync(__dirname + "/runtimeassets/sw.js", "utf8");
 
 function harness() {
   const listeners = new Map();

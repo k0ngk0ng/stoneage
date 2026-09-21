@@ -25,6 +25,7 @@ function harness(settings = {}) {
   const caches = {open: async () => cache, match: cache.match};
   const context = {
     URL, Request, Response, Blob, Headers, ReadableStream, AbortController, DOMException, Uint8Array,
+    DecompressionStream: settings.compressed ? DecompressionStream : undefined, crypto: require("node:crypto").webcrypto, STATIC_RESOURCE_BASE: new URL("https://game.example/"),
     Promise, TextDecoder, TextEncoder, setTimeout, clearTimeout, caches,
     window: {location: {href: "https://game.example/"}, caches, setTimeout, clearTimeout},
     assetState: {}, assetVersionPromise: Promise.resolve({revision: "resources-0001"}),
@@ -32,6 +33,11 @@ function harness(settings = {}) {
       const request = new Request(input, init);
       if(request.signal.aborted) throw new DOMException("aborted", "AbortError");
       calls.push(request);
+      if(settings.compressed){
+        if(request.url.endsWith("catalog.json"))return Response.json({"assets/manifest.json":{path:"indexes/"+"a".repeat(64)+".json.gz",bytes:data.length,sha256:require("node:crypto").createHash("sha256").update(settings.corrupt?"corrupt":data).digest("hex")}});
+        if(request.url.endsWith(".json.gz"))return new Response(require("node:zlib").gzipSync(data));
+        throw new Error("compressed transport must not fetch raw JSON or HEAD");
+      }
       const headers = {"Content-Type": "application/json", "Content-Length": String(data.length), "Last-Modified": "Sun, 13 Sep 2026 01:00:00 GMT"};
       if(request.method === "HEAD") return new Response(null, {status: settings.headFails ? 405 : 200, headers});
       const range = request.headers.get("Range");
@@ -61,6 +67,15 @@ function harness(settings = {}) {
 }
 async function flush(h) {for(let i = 0; i < 20; i++) await Promise.resolve();await Promise.all(h.writes);}
 (async () => {
+  const compressed=harness({compressed:true});
+  assert.deepEqual(Buffer.from(await(await compressed.context.fetchAssetIndex("/assets/manifest.json")).arrayBuffer()),compressed.data);
+  await flush(compressed);
+  assert.equal(compressed.calls.length,2);
+  await(await compressed.context.fetchAssetIndex("/assets/manifest.json")).arrayBuffer();
+  assert.equal(compressed.calls.length,2,"cached decompressed index must not hit CDN");
+  const corrupt=harness({compressed:true,corrupt:true});
+  await assert.rejects(corrupt.context.fetchAssetIndex("/assets/manifest.json"),/校验/);
+  assert.equal(corrupt.stored.size,0);
   const h = harness();
   const response = await h.context.fetchAssetIndex("/assets/manifest.json");
   const bytes = Buffer.from(await response.arrayBuffer());

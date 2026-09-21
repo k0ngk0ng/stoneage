@@ -9,7 +9,7 @@ function fixture(fetch) {
   const transport = { id: 'session-a', base: '', closed: false, setControl() { controlUpdates++; } };
   const app = { transport, petSlots: [] };
   const root = { StoneAgeWebClient: { app } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'automation.js'), 'utf8'), { window: root, fetch });
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'runtimeassets/automation.js'), 'utf8'), { window: root, fetch });
   const select = {
     value: '', options: [],
     replaceChildren() { this.value = ''; this.options = []; },
