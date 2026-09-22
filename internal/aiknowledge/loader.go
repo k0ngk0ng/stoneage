@@ -83,10 +83,20 @@ func isDataDir(directory string) bool {
 }
 
 func load(ctx context.Context, dataDir string, options Options) (*Knowledge, error) {
+	groupFile := options.GroupFile
+	if groupFile == "" {
+		groupFile = "group.txt"
+	}
+	if filepath.Base(groupFile) != groupFile || strings.ContainsAny(groupFile, `/\\`) || !strings.HasSuffix(groupFile, ".txt") {
+		return nil, fmt.Errorf("aiknowledge: invalid group table filename")
+	}
 	k := &Knowledge{Version: "stoneage-2.5", DataDir: dataDir, Files: make([]FileDigest, 0, len(coreDataFiles)), Issues: make([]Issue, 0)}
 	contents := make(map[string][]byte)
 
 	for _, name := range coreDataFiles {
+		if name == "group.txt" {
+			name = groupFile
+		}
 		if err := contextErr(ctx); err != nil {
 			return nil, err
 		}
@@ -116,7 +126,7 @@ func load(ctx context.Context, dataDir string, options Options) (*Knowledge, err
 		return nil, parseErr
 	}
 	k.Issues = append(k.Issues, issues...)
-	if k.Groups, issues, parseErr = parseGroups(contents["group.txt"], "group.txt", options.Strict); parseErr != nil {
+	if k.Groups, issues, parseErr = parseGroups(contents[groupFile], groupFile, options.Strict); parseErr != nil {
 		return nil, parseErr
 	}
 	k.Issues = append(k.Issues, issues...)

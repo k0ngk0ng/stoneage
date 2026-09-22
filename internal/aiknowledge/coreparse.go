@@ -152,6 +152,10 @@ func parseEnemyBases(raw []byte, path string, strict bool) ([]EnemyBase, []Issue
 			Source: SourceRef{Path: path, Line: line.Number, Encoding: line.Encoding, Extractor: "enemybase.txt"},
 		}
 		for i := 19; i <= 25; i++ {
+			base.PetSkillSlots[i-19] = -1
+			if strings.TrimSpace(fields[6+i]) != "" {
+				base.PetSkillSlots[i-19] = n[i]
+			}
 			if n[i] >= 0 {
 				base.PetSkillIDs = append(base.PetSkillIDs, n[i])
 			}

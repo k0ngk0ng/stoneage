@@ -113,3 +113,22 @@ func TestStrictCoreParserRejectsMalformedRows(t *testing.T) {
 		t.Fatalf("non-strict parser: warps=%#v issues=%#v err=%v", warps, issues, err)
 	}
 }
+
+func TestEnemyBasePreservesBlankSkillSlots(t *testing.T) {
+	fields := make([]string, 56)
+	fields[0] = "pet"
+	fields[6] = "1"
+	fields[36] = "100"
+	fields[25] = "1"
+	fields[26] = ""
+	fields[27] = "0"
+	fields[28] = "-1"
+	fields[29] = "10"
+	rows, _, err := parseEnemyBases([]byte(strings.Join(fields, ",")+"\n"), "enemybase.txt", false)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("parse: %v", err)
+	}
+	if rows[0].PetSkillSlots != [7]int{1, -1, 0, -1, 10, -1, -1} {
+		t.Fatal(rows[0].PetSkillSlots)
+	}
+}

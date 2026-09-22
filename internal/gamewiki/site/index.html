@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>石器百科 · StoneAge</title>
+    <link rel="stylesheet" href="/wiki/style.css" />
+    <script defer src="/wiki/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/wiki"
+        >石器百科 <small>STONEAGE FIELD GUIDE</small></a
+      ><a href="/">进入游戏 ↗</a>
+    </header>
+    <div class="layout">
+      <aside>
+        <p class="eyebrow">探索石器世界</p>
+        <nav id="categories" aria-label="资料分类"></nav>
+        <p class="aside-note">游戏表资料 · 历史任务攻略<br />原版 2.5 及以前</p>
+      </aside>
+      <main>
+        <section class="intro">
+          <p class="eyebrow">THE WORLD, DOCUMENTED</p>
+          <h1>每一次冒险，都有迹可循。</h1>
+          <p>查找宠物、装备、地图与战斗资料，重温各岛任务和精灵王传说。</p>
+        </section>
+        <form id="search">
+          <label for="query">搜索百科</label>
+          <div class="search-row">
+            <input
+              id="query"
+              placeholder="名称、编号、地图、技能或任务奖励…"
+              autocomplete="off"
+            /><button>搜索</button>
+          </div>
+        </form>
+        <div id="status" role="status" aria-live="polite"></div>
+        <section id="results" aria-label="查询结果"></section>
+        <div id="pagination"></div>
+        <footer id="notes"></footer>
+      </main>
+    </div>
+    <dialog id="detail">
+      <div class="dialog-toolbar">
+        <span>石器百科 / 资料详情</span
+        ><button id="close" aria-label="关闭详情">关闭 ×</button>
+      </div>
+      <article id="article"></article>
+    </dialog>
+  </body>
+</html>

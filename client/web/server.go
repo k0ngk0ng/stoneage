@@ -43,6 +43,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
+	"github.com/k0ngk0ng/stoneage/internal/gamewiki"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
@@ -1158,6 +1159,7 @@ func (store *sessionStore) closeAll() {
 }
 
 type Handler struct {
+	wiki               *gamewiki.Handler
 	publicAssetBaseURL string
 	agentMu            sync.Mutex
 	agentLeases        map[string]*webAgentLease
@@ -1644,6 +1646,11 @@ func NewHandler(config Config) (*Handler, error) {
 			handler.npcDir = npcDirectory
 		}
 	}
+	wikiRoot := filepath.Dir(handler.npcDir)
+	if handler.npcDir == "" {
+		wikiRoot = filepath.Dir(config.NPCDirectory)
+	}
+	handler.wiki = gamewiki.NewHandler(wikiRoot)
 	go handler.expiryLoop()
 	return handler, nil
 }
@@ -1676,6 +1683,10 @@ func (handler *Handler) Close() {
 }
 
 func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if request.URL.Path == "/wiki" || strings.HasPrefix(request.URL.Path, "/wiki/") {
+		handler.wiki.ServeHTTP(response, request)
+		return
+	}
 	if handler.agentFrontdoor != nil && handler.agentFrontdoor.owns(request.URL.Path) {
 		handler.agentFrontdoor.ServeHTTP(response, request)
 		return

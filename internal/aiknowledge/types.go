@@ -21,6 +21,9 @@ import (
 
 // Options controls a knowledge load.
 type Options struct {
+	// GroupFile selects the deployed enemy-group table (for example group1.txt).
+	// Empty preserves the historical group.txt default. Only basenames are accepted.
+	GroupFile string
 	// DataDir is the gmsv data directory.  A repository root, gmsv directory,
 	// or data directory is accepted.  An empty value searches the current
 	// working directory using the same repository layouts as gamecatalog.
@@ -153,29 +156,31 @@ type Enemy struct {
 // the already validated gamecatalog representation, while the fields below
 // retain the numeric attributes needed by an AI combat/leveling planner.
 type EnemyBase struct {
-	TemplateID   int             `json:"template_id"`
-	Name         string          `json:"name"`
-	InitNum      int             `json:"init_num"`
-	LevelUpPoint int             `json:"level_up_point"`
-	BaseVital    int             `json:"base_vital"`
-	BaseStr      int             `json:"base_str"`
-	BaseTough    int             `json:"base_tough"`
-	BaseDex      int             `json:"base_dex"`
-	ModAI        int             `json:"mod_ai"`
-	Get          int             `json:"get"`
-	Elements     [4]int          `json:"elements"`
-	Resistances  [6]int          `json:"resistances"`
-	PetSkillIDs  []int           `json:"pet_skill_ids"`
-	Rare         int             `json:"rare"`
-	Critical     int             `json:"critical"`
-	Counter      int             `json:"counter"`
-	Slot         int             `json:"slot"`
-	ImageID      int             `json:"image_id"`
-	PetFlag      int             `json:"pet_flag"`
-	Size         int             `json:"size"`
-	LimitLevel   int             `json:"limit_level"`
-	Pet          gamecatalog.Pet `json:"catalog_pet"`
-	Source       SourceRef       `json:"source"`
+	TemplateID   int    `json:"template_id"`
+	Name         string `json:"name"`
+	InitNum      int    `json:"init_num"`
+	LevelUpPoint int    `json:"level_up_point"`
+	BaseVital    int    `json:"base_vital"`
+	BaseStr      int    `json:"base_str"`
+	BaseTough    int    `json:"base_tough"`
+	BaseDex      int    `json:"base_dex"`
+	ModAI        int    `json:"mod_ai"`
+	Get          int    `json:"get"`
+	Elements     [4]int `json:"elements"`
+	Resistances  [6]int `json:"resistances"`
+	PetSkillIDs  []int  `json:"pet_skill_ids"`
+	// PetSkillSlots preserves empty (-1) native slots for runtime overrides.
+	PetSkillSlots [7]int          `json:"pet_skill_slots"`
+	Rare          int             `json:"rare"`
+	Critical      int             `json:"critical"`
+	Counter       int             `json:"counter"`
+	Slot          int             `json:"slot"`
+	ImageID       int             `json:"image_id"`
+	PetFlag       int             `json:"pet_flag"`
+	Size          int             `json:"size"`
+	LimitLevel    int             `json:"limit_level"`
+	Pet           gamecatalog.Pet `json:"catalog_pet"`
+	Source        SourceRef       `json:"source"`
 }
 
 // EncounterGroup is one row from group.txt.  EnemyIDs and CreateProbabilities
