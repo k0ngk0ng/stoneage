@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 )
@@ -46,9 +45,9 @@ func TestNativeCatalog(t *testing.T) {
 	if strings.Contains(string(raw), "setup.cf") {
 		t.Fatal("setup file exposed")
 	}
-	h := &Handler{cached: c}
+	h := NewHandler()
 	r := httptest.NewRecorder()
-	h.ServeHTTP(r, httptest.NewRequest("GET", "/wiki/api?kind=battle_npc&q="+"1690", nil))
+	h.ServeHTTP(r, httptest.NewRequest("GET", "/wiki/data/catalog.json", nil))
 	if r.Code != 200 {
 		t.Fatal(r.Code)
 	}
@@ -107,7 +106,7 @@ func TestQuestCoverage(t *testing.T) {
 	}
 }
 func TestHTTPReadOnly(t *testing.T) {
-	h := &Handler{cached: &Catalog{Entries: map[string]*Entry{}, LoadedAt: time.Now()}}
+	h := NewHandler()
 	for _, tc := range []struct {
 		method, path string
 		status       int

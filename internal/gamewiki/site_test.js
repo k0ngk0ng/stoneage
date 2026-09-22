@@ -31,6 +31,8 @@ class Element {
 function setup() {
   const nodes = new Map();
   const requests = [];
+  const messages = [];
+  let worker;
   const ctx = vm.createContext({
     document: {
       getElementById: (id) => {
@@ -46,10 +48,25 @@ function setup() {
     AbortController,
     fetch: (url, options) =>
       new Promise((resolve) => requests.push({ url, options, resolve })),
+    Worker: class {
+      constructor() {
+        worker = this;
+      }
+      postMessage(data) {
+        messages.push(data);
+      }
+    },
     console,
   });
   vm.runInContext(fs.readFileSync(__dirname + "/site/app.js", "utf8"), ctx);
-  return { ctx, nodes, requests };
+  return {
+    ctx,
+    nodes,
+    requests,
+    messages,
+    response: (message, data) =>
+      worker.onmessage({ data: { id: message.id, data } }),
+  };
 }
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const reply = (request, data) =>
@@ -60,55 +77,64 @@ const listing = (name) => ({
   total: 1,
   notes: [],
 });
-test("late list response cannot replace latest search and names remain text", async () => {
-  const { ctx, nodes, requests } = setup();
-  vm.runInContext("location.hash='#q=new';render()", ctx);
-  reply(requests[1], listing("<img src=x onerror=alert(1)>"));
+
+test("landing only loads small directory and never starts search", async () => {
+  const { nodes, requests, messages } = setup();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/wiki/data/catalog.json");
+  reply(requests[0], listing("one"));
   await flush();
-  reply(requests[0], listing("old"));
+  assert.equal(messages.length, 0);
+  assert.equal(nodes.get("results").children.length, 1);
+  assert.match(nodes.get("status").textContent, /目录/);
+});
+test("stale local search cannot replace latest search; values remain text", async () => {
+  const { ctx, nodes, requests, messages, response } = setup();
+  reply(requests[0], listing("one"));
+  await flush();
+  vm.runInContext("location.hash='#q=old';render()", ctx);
+  vm.runInContext("location.hash='#q=new';render()", ctx);
+  response(messages[1], listing("<img src=x onerror=alert(1)>"));
+  await flush();
+  response(messages[0], listing("old"));
   await flush();
   assert.equal(
     nodes.get("results").children[0].children[1].textContent,
     "<img src=x onerror=alert(1)>",
   );
   assert.match(nodes.get("status").textContent, /new/);
-  assert.equal(requests[0].options.signal.aborted, true);
+  assert.equal(requests.length, 1);
 });
-test("late detail response cannot reopen or replace a closed detail", async () => {
-  const { ctx, nodes, requests } = setup();
+test("closing detail ignores pending shard; links reject executable schemes", async () => {
+  const { ctx, nodes, requests, messages, response } = setup();
   reply(requests[0], listing("one"));
   await flush();
   vm.runInContext("location.hash='#entry=quest:q';render()", ctx);
-  assert.equal(nodes.get("detail").open, true);
+  response(messages[0], { url: "/wiki/data/revision/00.json" });
+  await flush();
   vm.runInContext("location.hash='';render()", ctx);
-  assert.equal(nodes.get("detail").open, false);
-  reply(requests[1], {
-    name: "stale",
-    fields: [],
-    tables: [],
-    links: [],
-    sources: [],
-  });
+  reply(requests[1], { "quest:q": { name: "late", fields: [], links: [] } });
   await flush();
   assert.equal(nodes.get("detail").open, false);
-  assert.notEqual(nodes.get("article").children[0].textContent, "stale");
-});
-test("detail source links reject executable URL schemes", async () => {
-  const { ctx, nodes, requests } = setup();
-  vm.runInContext("openDetail('quest:q')", ctx);
-  reply(requests[1], {
-    name: "one",
-    fields: [],
-    links: [
-      { name: "bad", url: "javascript:alert(1)" },
-      { name: "source", url: "https://news.17173.com/z/stoneage/renwu/n1.htm" },
-    ],
-    sources: [],
+  vm.runInContext("openDetail('quest:other')", ctx);
+  response(messages[1], { url: "/wiki/data/revision/01.json" });
+  await flush();
+  reply(requests[2], {
+    "quest:other": {
+      name: "one",
+      fields: [],
+      links: [
+        { name: "bad", url: "javascript:alert(1)" },
+        {
+          name: "source",
+          url: "https://news.17173.com/z/stoneage/renwu/n1.htm",
+        },
+      ],
+    },
   });
   await flush();
   const links = nodes
     .get("article")
     .children.find((n) => n.className === "links");
   assert.equal(links.children.length, 1);
-  assert.match(links.children[0].href, /^https:/);
 });

@@ -1646,11 +1646,7 @@ func NewHandler(config Config) (*Handler, error) {
 			handler.npcDir = npcDirectory
 		}
 	}
-	wikiRoot := filepath.Dir(handler.npcDir)
-	if handler.npcDir == "" {
-		wikiRoot = filepath.Dir(config.NPCDirectory)
-	}
-	handler.wiki = gamewiki.NewHandler(wikiRoot)
+	handler.wiki = gamewiki.NewHandler()
 	go handler.expiryLoop()
 	return handler, nil
 }

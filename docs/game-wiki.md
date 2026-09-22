@@ -1,6 +1,6 @@
 # 公开石器百科
 
-`/wiki` 是独立公开网站，无需管理端账号；静态页面与只读 `/wiki/api` 由 Web 服务发布。百科不建立游戏连接，也不读取账号、角色、存档、聊天或 AI 记忆。管理端没有百科入口。
+`/wiki` 是独立公开网站，无需管理端账号；页面、目录、搜索索引与详情全部是发布前生成的静态文件，搜索在浏览器 Worker 内执行；生产没有百科查询 API。百科不建立游戏连接，也不读取账号、角色、存档、聊天或 AI 记忆。管理端没有百科入口。
 
 ## 资料范围
 
@@ -14,7 +14,17 @@
 
 ## 数据口径
 
-`internal/gamewiki` 从 Web 的 NPC 目录推导原生 data 目录，复用 `aiknowledge` 和 `gamecatalog`。只读取 setup.cf 的 groupfile 选项选择 group.txt/group1.txt，不返回配置文件内容。目录快照缓存五分钟，失败重试间隔三十秒；发布任务资料须更新嵌入的 `quests.json`。
+`cmd/stoneage-wiki-index` 只在本地或构建环境读取原生数据；生产 Web 不读取游戏表、不构建 Catalog、不启动数据库、不定时重建百科。首页仅加载 `catalog.json` 分类目录；进入分类后加载对应 `category-*.json`，只有主动全站搜索才加载 `index.json`。Worker 至多保留一份搜索索引；详情按 SHA-256 前缀分为256片，只保留最近查看的一片。
+
+离线索引仅包含名称、编号、摘要、位置、技能名称及任务前提/奖励等查询字段，排除完整对白、脚本参数、关联表和阵容长表。完整资料保留在详情分片。索引及详情路径包含内容版本，使用长缓存；仅目录重新校验缓存。gzip 在本地预先生成，生产浏览器请求直接读取压缩文件，旧 `/wiki/api` 返回404。
+
+更新游戏表或攻略后，在本地重新生成并随代码发布：
+
+```sh
+go run ./cmd/stoneage-wiki-index -data server/legacy/source/2.5/gmsv/data -output internal/gamewiki/snapshot
+```
+
+生成器不覆盖游戏表，不包含账号/角色档案；产物是普通静态 JSON gzip 文件，也可直接交给支持静态 gzip 文件的 Web 服务器托管。旧版本详情分片可在确认不再使用后清理。
 
 怪物HP范围依照原生 `ENEMY_createEnemy` / `CHAR_initcharWorkInt` 计算：等级成长整数处理、四属性独立±2扰动，以及十点共享分配。结果是创建时、装备修正前的基础满血范围，不是实时剩余HP。道场等级覆盖、技能槽空白、随机技能池及缺失技能定义分别处理；掉落表显示物品生成概率，不等于玩家最终获奖概率。
 
@@ -24,7 +34,11 @@
 
 ```sh
 go test ./internal/gamewiki ./internal/aiknowledge ./internal/gamecatalog ./client/web
-node --test internal/gamewiki/site_test.js
+node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js
 ```
 
 原版归档存在时，测试校验278处战斗放置、黑暗精灵王HP和交叉链接；历史来源覆盖测试始终校验全部64个URL及48项委托。发布随现有control-plane镜像，不需要新的CDN资源或独立管理端服务。
+
+静态验收还校验首页不含资料行、不启动搜索 Worker，分类加载不请求全站索引，所有索引条目均有详情分片，重复请求无百科常驻缓存增长。
+
+媒体资源约定：百科当前展示文字、数值和资料链接，没有内嵌图片或音乐。后续图片、地图预览和音乐必须复用 Web 客户端配置的 CDN 固定地址，不打包到百科快照、不通过百科服务器代理、不使用临时 blob 地址；按需加载并复用有效浏览器缓存。

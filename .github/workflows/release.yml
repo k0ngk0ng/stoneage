@@ -31,7 +31,7 @@ jobs:
         run: |
           go test ./...
           go vet ./...
-          node --test internal/gamewiki/site_test.js
+          node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js
           node client/web/battle_target_async_test.js
           node client/web/battle_target_rules_test.js
           node client/web/battle_result_test.js

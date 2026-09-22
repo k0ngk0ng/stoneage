@@ -57,7 +57,6 @@ type Entry struct {
 	Notes   []string `json:"notes"`
 	Links   []Link   `json:"links"`
 	Sources []string `json:"sources"`
-	search  string
 }
 type Catalog struct {
 	Entries  map[string]*Entry
@@ -241,8 +240,6 @@ func Load(ctx context.Context, root string) (*Catalog, error) {
 		e.Issues = len(e.Notes)
 		b.c.Counts[e.Kind]++
 		b.c.List = append(b.c.List, e.Summary)
-		raw, _ := json.Marshal(e)
-		e.search = strings.ToLower(string(raw))
 	}
 	sort.Slice(b.c.List, func(i, j int) bool {
 		a, z := b.c.List[i], b.c.List[j]

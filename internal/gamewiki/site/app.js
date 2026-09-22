@@ -25,11 +25,83 @@ function navigate(changes) {
   for (const [k, v] of Object.entries(s)) if (v) p.set(k, String(v));
   location.hash = p.toString();
 }
+// Search runs in a worker against one prebuilt static index. No query text is
+// sent to the server. Only the most recently viewed detail shard is retained.
+let requestID = 0,
+  shardCache;
+const pending = new Map();
+let searchWorker;
+function ensureWorker() {
+  if (searchWorker) return;
+  searchWorker = new Worker("/wiki/search-worker.js");
+
+  searchWorker.onmessage = ({ data }) => {
+    const task = pending.get(data.id);
+    if (!task) return;
+    pending.delete(data.id);
+    task.cleanup();
+    if (data.error) task.reject(new Error(data.error));
+    else task.resolve(data.data);
+  };
+  searchWorker.onerror = () => {
+    for (const task of pending.values()) {
+      task.cleanup();
+      task.reject(new Error("本地搜索无法启动，请刷新页面"));
+    }
+    pending.clear();
+  };
+}
+function localLookup(params, signal) {
+  ensureWorker();
+  return new Promise((resolve, reject) => {
+    const id = ++requestID;
+    const abort = () => {
+      pending.delete(id);
+      reject(Object.assign(new Error("已取消"), { name: "AbortError" }));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    pending.set(id, { resolve, reject, cleanup });
+    signal?.addEventListener("abort", abort, { once: true });
+    searchWorker.postMessage({ id, params });
+  });
+}
 async function request(params, signal) {
-  const r = await fetch("/wiki/api?" + new URLSearchParams(params), { signal });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || "资料读取失败");
-  return data;
+  const result = await localLookup(params, signal);
+  if (!params.entry) return result;
+  if (!shardCache || shardCache.url !== result.url) {
+    const url = result.url;
+    const promise = fetch(url).then((r) => {
+      if (!r.ok) throw new Error("详情读取失败，请刷新页面后重试");
+      return r.json();
+    });
+    shardCache = { url, promise };
+    promise.catch(() => {
+      if (shardCache?.promise === promise) shardCache = null;
+    });
+  }
+  const shard = await shardCache.promise;
+  if (!shard[params.entry]) throw new Error("没有找到该条目");
+  return shard[params.entry];
+}
+
+let directoryPromise;
+function directory() {
+  if (!directoryPromise)
+    directoryPromise = fetch("/wiki/data/catalog.json", { cache: "no-cache" })
+      .then((r) => {
+        if (!r.ok) throw new Error("目录读取失败");
+        return r.json();
+      })
+      .then((d) => ({ ...d, directory: true }))
+      .catch((e) => {
+        directoryPromise = null;
+        throw e;
+      });
+  return directoryPromise;
 }
 function btn(text, fn, cls) {
   const b = el("button", text, cls);
@@ -52,24 +124,28 @@ async function render() {
     $("detail").close();
   }
   try {
-    const d = await request(
-      { kind: s.kind, q: s.q, offset: s.offset, limit: 40 },
-      controller.signal,
-    );
+    const d =
+      s.kind || s.q
+        ? await request(
+            { kind: s.kind, q: s.q, offset: s.offset, limit: 40 },
+            controller.signal,
+          )
+        : await directory();
     if (seq !== sequence) return;
     labels = Object.fromEntries(d.categories.map((c) => [c.id, c.name]));
     $("categories").replaceChildren(
       ...[
         {
           id: "",
-          name: "全部资料",
+          name: "百科目录",
           count: d.categories.reduce((n, c) => n + c.count, 0),
         },
         ...d.categories,
       ].map((c) => {
         const b = btn(
           c.name,
-          () => navigate({ kind: c.id, offset: 0, entry: "" }),
+          () =>
+            navigate({ kind: c.id, q: c.id ? s.q : "", offset: 0, entry: "" }),
           c.id === s.kind ? "active" : "",
         );
         b.append(el("span", c.count.toLocaleString()));
@@ -77,6 +153,33 @@ async function render() {
         return b;
       }),
     );
+    if (d.directory) {
+      $("status").textContent = "百科目录 · 选择分类开始查阅";
+      $("results").replaceChildren(
+        ...d.categories.map((c) => {
+          const b = btn(
+            "",
+            () =>
+              navigate({
+                kind: c.id,
+                q: c.id ? s.q : "",
+                offset: 0,
+                entry: "",
+              }),
+            "card directory-card",
+          );
+          b.append(
+            el("h2", c.name),
+            el("p", c.count.toLocaleString() + " 条资料"),
+            el("span", "进入分类 →", "metrics"),
+          );
+          return b;
+        }),
+      );
+      $("pagination").replaceChildren();
+      $("notes").replaceChildren(...d.notes.map((n) => el("p", n)));
+      return;
+    }
     $("status").textContent =
       `${labels[s.kind] || "全部资料"} · ${d.total.toLocaleString()} 条${s.q ? " · 搜索「" + s.q + "」" : ""}`;
     $("results").replaceChildren(
