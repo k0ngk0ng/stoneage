@@ -28,7 +28,7 @@ func shardFor(key string) string {
 func searchText(e *Entry) string {
 	parts := []string{e.Key, e.Name, e.Description, e.Location, e.Group, e.Skills}
 	for _, f := range e.Fields {
-		if strings.Contains(f.Label, "编号") || f.Label == "历史攻略奖励" || f.Label == "历史攻略前提" {
+		if strings.Contains(f.Label, "编号") || f.Label == "任务奖励" || f.Label == "任务前提" {
 			parts = append(parts, f.Value)
 		}
 	}
@@ -62,12 +62,34 @@ func writeJSON(path string, v any) error {
 
 // BuildSnapshot runs locally before a release. No runtime calls this builder.
 func BuildSnapshot(ctx context.Context, root, output string) error {
+	return BuildSnapshotWithMedia(ctx, root, output, "")
+}
+
+func BuildSnapshotWithMedia(ctx context.Context, root, output, mediaPath string) error {
 	c, err := Load(ctx, root)
 	if err != nil {
 		return err
 	}
-	index := StaticIndex{Revision: c.Revision, Categories: append([]category(nil), categories...), Notes: append([]string(nil), c.Notes...)}
-	index.Notes[0] = "资料与搜索索引在发布前生成；搜索在浏览器本地完成，游戏表变更后需重新生成并发布。"
+	if mediaPath != "" {
+		raw, err := os.ReadFile(mediaPath)
+		if err != nil {
+			return err
+		}
+		var media map[string]struct {
+			Images []MediaImage `json:"images"`
+			Map    *MapMedia    `json:"map"`
+		}
+		if err := json.Unmarshal(raw, &media); err != nil {
+			return err
+		}
+		for key, m := range media {
+			if entry := c.Entries[key]; entry != nil {
+				entry.Images = m.Images
+				entry.Map = m.Map
+			}
+		}
+	}
+	index := StaticIndex{Revision: c.Revision, Categories: append([]category(nil), categories...), Notes: nil}
 	for i := range index.Categories {
 		index.Categories[i].Count = c.Counts[index.Categories[i].ID]
 	}
@@ -79,8 +101,12 @@ func BuildSnapshot(ctx context.Context, root, output string) error {
 			shards[shard] = map[string]*Entry{}
 		}
 		shards[shard][s.Key] = e
+		image := ""
+		if len(e.Images) > 0 {
+			image = e.Images[0].Path
+		}
 		// Fixed-position rows avoid repeating JSON property names 22,000 times.
-		index.Rows = append(index.Rows, []string{s.Key, s.Kind, s.Name, s.Description, s.Location, s.Level, s.HP, s.Skills, s.Group, searchText(e), shard})
+		index.Rows = append(index.Rows, []string{s.Key, s.Kind, s.Name, s.Description, s.Location, s.Level, s.HP, s.Skills, s.Group, searchText(e), shard, image})
 	}
 	// Content-address every shard so cached index and details remain consistent.
 	// Hash serialized content as well as the source revision (generator changes matter).

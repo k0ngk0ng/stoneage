@@ -72,7 +72,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const reply = (request, data) =>
   request.resolve({ ok: true, json: async () => data });
 const listing = (name) => ({
-  categories: [{ id: "quest", name: "历史任务", count: 1 }],
+  categories: [{ id: "quest", name: "任务", count: 1 }],
   entries: [{ kind: "quest", key: "quest:q", name, description: "简介" }],
   total: 1,
   notes: [],
@@ -137,4 +137,14 @@ test("closing detail ignores pending shard; links reject executable schemes", as
     .get("article")
     .children.find((n) => n.className === "links");
   assert.equal(links.children.length, 1);
+});
+
+test("media only uses configured CDN paths, never local media or arbitrary URLs", () => {
+  const {ctx,nodes}=setup();
+  vm.runInContext('$("media-config")',ctx);
+  nodes.get('media-config').getAttribute=()=> 'https://cdn.example.com/stoneage';
+  assert.equal(vm.runInContext('mediaURL("assets/bitmaps/bitmap_9136.png")',ctx),'https://cdn.example.com/stoneage/assets/bitmaps/bitmap_9136.png');
+  for(const path of ['https://evil.example/a.png','../secret','assets/../x','wiki/maps/1.png']) {
+    ctx.badPath=path; assert.equal(vm.runInContext('mediaURL(badPath)',ctx),'');
+  }
 });

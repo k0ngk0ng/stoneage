@@ -1,10 +1,10 @@
 :root {
   color-scheme: light;
-  --ink: #24392f;
-  --muted: #69766e;
-  --paper: #f7f6f0;
-  --line: #dce1d6;
-  --green: #2f624c;
+  --ink: #493522;
+  --muted: #7b684c;
+  --paper: #f5ecd7;
+  --line: #dfc99e;
+  --accent: #955021;
 }
 * {
   box-sizing: border-box;
@@ -20,7 +20,7 @@ body {
     sans-serif;
 }
 a {
-  color: var(--green);
+  color: var(--accent);
   text-decoration: none;
 }
 a:hover {
@@ -39,7 +39,7 @@ button {
   color: var(--ink);
 }
 button:hover {
-  background: #edf2e9;
+  background: #f9e8bb;
 }
 button:disabled {
   opacity: 0.4;
@@ -52,7 +52,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fffef8;
+  background: #fff5d9;
 }
 .brand {
   font-size: 25px;
@@ -78,7 +78,7 @@ aside {
 .eyebrow {
   font-size: 11px;
   letter-spacing: 2px;
-  color: #7d8d74;
+  color: #987040;
   font-weight: 700;
 }
 nav {
@@ -93,7 +93,7 @@ nav button {
   border-color: transparent;
 }
 nav button.active {
-  background: var(--green);
+  background: var(--accent);
   color: white;
 }
 nav span {
@@ -133,13 +133,13 @@ label {
 input {
   width: 100%;
   min-width: 0;
-  border: 1px solid #bac9b9;
+  border: 1px solid #c9ac77;
   border-radius: 8px;
   padding: 12px 16px;
   background: white;
 }
 .search-row button {
-  background: var(--green);
+  background: var(--accent);
   color: white;
   white-space: nowrap;
   padding: 10px 26px;
@@ -158,15 +158,15 @@ input {
   display: block;
   width: 100%;
   text-align: left;
-  background: #fffefa;
+  background: #fffaf0;
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow-wrap: anywhere;
 }
 .card:hover {
-  border-color: #91ad8b;
-  box-shadow: 0 4px 12px #24392f08;
+  border-color: #c88836;
+  box-shadow: 0 4px 12px #49352208;
 }
 .card h2 {
   font-size: 18px;
@@ -175,7 +175,7 @@ input {
 .badge {
   font-size: 11px;
   letter-spacing: 0.5px;
-  color: #75836e;
+  color: #927042;
 }
 .card p {
   font-size: 13px;
@@ -184,7 +184,7 @@ input {
 }
 .card .metrics {
   font-size: 13px;
-  color: var(--green);
+  color: var(--accent);
 }
 .skills {
   display: -webkit-box;
@@ -199,12 +199,6 @@ input {
   align-items: center;
   margin: 24px;
 }
-footer {
-  border-top: 1px solid var(--line);
-  padding-top: 20px;
-  font-size: 12px;
-  color: var(--muted);
-}
 dialog {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -215,7 +209,7 @@ dialog {
   color: var(--ink);
 }
 dialog::backdrop {
-  background: #14251de0;
+  background: #352a20cf;
 }
 .dialog-toolbar {
   position: sticky;
@@ -262,7 +256,7 @@ table {
   border-collapse: collapse;
   width: 100%;
   font-size: 13px;
-  background: #fffefa;
+  background: #fffaf0;
 }
 th,
 td {
@@ -274,11 +268,11 @@ td {
   white-space: pre-line;
 }
 th {
-  background: #eaf0e5;
+  background: #f3dfb6;
 }
 .notice {
-  background: #f0eddb;
-  border-left: 3px solid #b7aa68;
+  background: #fff0c8;
+  border-left: 3px solid #d29335;
   padding: 12px 18px;
   font-size: 13px;
 }
@@ -300,7 +294,7 @@ pre {
   color: var(--muted);
 }
 :focus-visible {
-  outline: 3px solid #b49341;
+  outline: 3px solid #32768c;
   outline-offset: 3px;
 }
 @media (max-width: 850px) {
@@ -346,3 +340,32 @@ pre {
     padding: 10px 16px;
   }
 }
+
+/* Sandstone, amber and sky-blue from the original login and village art. */
+body { background: linear-gradient(180deg, #e2f2f3 0, #f5ecd7 300px); }
+header { border-bottom: 3px solid #d3a353; box-shadow: 0 2px 0 #fffae8; }
+.brand { color: #805020; text-shadow: 0 1px #fff; }
+aside { background: #f1e3c4aa; }
+.card { border-top: 3px solid #ddba73; position: relative; min-height: 140px; box-shadow: 0 2px 0 #d8be8b30; }
+.card:has(.card-image) { padding-right: 130px; }
+.card-image { position: absolute; right: 16px; top: 20px; width: 98px; height: 98px; object-fit: contain; image-rendering: pixelated; }
+.category-heading { grid-column: 1 / -1; margin: 26px 0 6px; font-size: 13px; color: #886237; letter-spacing: 2px; }
+.media-gallery { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+.media-gallery figure { margin: 0; padding: 16px; min-width: 140px; background: #fff7df; border: 1px solid var(--line); border-radius: 12px; text-align: center; }
+.entry-image { display: block; width: 150px; height: 150px; object-fit: contain; image-rendering: pixelated; }
+figcaption { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.map-viewer { margin: 20px 0; border: 1px solid #c5ad81; border-radius: 10px; overflow: hidden; }
+.map-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; background: #fff4d5; }
+.map-tools strong { margin-right: auto; }
+.map-tools button { padding: 4px 12px; }
+.map-tools a { font-size: 12px; }
+.map-viewport { height: min(65vh, 700px); overflow: auto; background: #f4e5c1; cursor: grab; }
+.map-viewport:active { cursor: grabbing; }
+.map-stage { position: relative; width: 100%; }
+.map-image { display: block; width: 100%; height: auto; user-select: none; }
+.map-pin { position: absolute; transform: translate(-50%,-50%); padding: 0; width: 22px; height: 22px; line-height: 20px; border: 2px solid #fff9e9; border-radius: 50%; background: #296f8d; color: white; box-shadow: 0 1px 4px #33241088; font-size: 12px; }
+.map-pin.exit { background: #a9501e; }
+.map-pin:hover { background: #3a2930; z-index: 2; }
+.hide-markers .map-pin { display: none; }
+.map-help { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--muted); }
+@media (max-width: 850px) { nav .category-heading { align-self: center; margin: 0 8px; white-space: nowrap; } .map-tools strong { width: 100%; } .map-viewport { height: 48vh; } }

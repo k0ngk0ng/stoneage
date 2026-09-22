@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -38,7 +39,7 @@ func TestStaticSnapshotCoverage(t *testing.T) {
 	seen := map[string]bool{}
 	shards := map[string]map[string]Entry{}
 	for _, row := range index.Rows {
-		if len(row) != 11 || seen[row[0]] {
+		if len(row) != 12 || seen[row[0]] {
 			t.Fatal("invalid index row", row[0])
 		}
 		seen[row[0]] = true
@@ -54,6 +55,21 @@ func TestStaticSnapshotCoverage(t *testing.T) {
 		if !ok || entry.Name != row[2] {
 			t.Fatal("missing detail", row[0])
 		}
+		if entry.Kind == "map" && (entry.Map == nil || !strings.HasPrefix(entry.Map.Path, "wiki/maps/") || entry.Map.Width > 4096 || entry.Map.Height > 4096) {
+			t.Fatal("missing or unbounded map", entry.Key)
+		}
+		if entry.Kind == "pet" || entry.Kind == "equipment" || entry.Kind == "battle_npc" || entry.Kind == "quest" {
+			if len(entry.Images) == 0 {
+				t.Fatal("missing media", entry.Key)
+			}
+		}
+		if entry.Kind == "quest" {
+			raw, _ := json.Marshal(entry)
+			if strings.Contains(string(raw), "17173") {
+				t.Fatal("external reference exposed", entry.Key)
+			}
+		}
+
 	}
 	for _, cat := range catalog.Categories {
 		var part StaticIndex

@@ -133,6 +133,7 @@ async function render() {
         : await directory();
     if (seq !== sequence) return;
     labels = Object.fromEntries(d.categories.map((c) => [c.id, c.name]));
+    const ordered = [...d.categories.filter(c=>c.id!=="guide"), ...d.categories.filter(c=>c.id==="guide")];
     $("categories").replaceChildren(
       ...[
         {
@@ -140,8 +141,8 @@ async function render() {
           name: "百科目录",
           count: d.categories.reduce((n, c) => n + c.count, 0),
         },
-        ...d.categories,
-      ].map((c) => {
+        ...ordered,
+      ].flatMap((c) => {
         const b = btn(
           c.name,
           () =>
@@ -150,13 +151,13 @@ async function render() {
         );
         b.append(el("span", c.count.toLocaleString()));
         if (c.id === s.kind) b.setAttribute("aria-current", "page");
-        return b;
+        return c.id === "guide" ? [el("p", "设计与开发", "category-heading"), b] : [b];
       }),
     );
     if (d.directory) {
       $("status").textContent = "百科目录 · 选择分类开始查阅";
       $("results").replaceChildren(
-        ...d.categories.map((c) => {
+        ...ordered.flatMap((c) => {
           const b = btn(
             "",
             () =>
@@ -173,11 +174,10 @@ async function render() {
             el("p", c.count.toLocaleString() + " 条资料"),
             el("span", "进入分类 →", "metrics"),
           );
-          return b;
+          return c.id === "guide" ? [el("h2", "设计与开发", "category-heading"), b] : [b];
         }),
       );
       $("pagination").replaceChildren();
-      $("notes").replaceChildren(...d.notes.map((n) => el("p", n)));
       return;
     }
     $("status").textContent =
@@ -202,6 +202,7 @@ async function render() {
             ),
           );
         if (e.skills) b.append(el("p", e.skills, "skills"));
+        const img=mediaImage(e.image,e.name,"card-image");if(img)b.append(img);
         return b;
       }),
     );
@@ -221,12 +222,81 @@ async function render() {
       ),
       next,
     );
-    $("notes").replaceChildren(...d.notes.map((n) => el("p", n)));
   } catch (e) {
     if (e.name !== "AbortError" && seq === sequence)
       $("status").textContent = e.message;
   }
 }
+let mediaCacheReady;
+function ensureMediaCache() {
+  if (!mediaCacheReady) mediaCacheReady = (async () => {
+    if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
+    try {
+      await navigator.serviceWorker.register("/sw.js", {scope:"/"});
+      await Promise.race([navigator.serviceWorker.ready, new Promise(resolve => setTimeout(resolve, 3000))]);
+      if (!navigator.serviceWorker.controller) await new Promise(resolve => {
+        const done = () => { navigator.serviceWorker.removeEventListener("controllerchange", done); resolve(); };
+        navigator.serviceWorker.addEventListener("controllerchange", done);
+        setTimeout(done, 1500);
+      });
+    } catch { /* Ordinary HTTP cache remains available if workers are disabled. */ }
+  })();
+  return mediaCacheReady;
+}
+function mediaURL(path) {
+  const base = $("media-config")?.getAttribute?.("content") || "";
+  if (!/^https:\/\//.test(base) || !/^(assets\/bitmaps\/bitmap_\d+\.png|wiki\/maps\/(thumb-)?\d+-[a-f0-9]+\.webp)$/.test(path || "")) return "";
+  return base.replace(/\/$/, "") + "/" + path;
+}
+function mediaImage(path, caption, cls) {
+  const url = mediaURL(path);
+  if (!url) return null;
+  const img = el("img", null, cls);
+  img.alt = caption;
+  img.loading = "lazy";
+  img.decoding = "async";
+  ensureMediaCache().then(() => { img.src = url; });
+  img.onerror = () => { img.hidden = true; };
+  return img;
+}
+function showMedia(entry, article) {
+  if (entry.map) {
+    const map = entry.map, section = el("section", null, "map-viewer");
+    const toolbar = el("div", null, "map-tools"), viewport = el("div", null, "map-viewport"), stage = el("div", null, "map-stage");
+    const picture = mediaImage(map.path, entry.name + "全图", "map-image");
+    if (!picture) return;
+    let zoom = 1;
+    const zoomText = el("span", "100%");
+    function resize(value) { zoom = Math.max(1, Math.min(6, value)); stage.style.width = (zoom * 100) + "%"; zoomText.textContent = Math.round(zoom * 100) + "%"; }
+    toolbar.append(el("strong", entry.name + " · 全图"), btn("−", () => resize(zoom / 1.5)), zoomText, btn("＋", () => resize(zoom * 1.5)), btn("适应窗口", () => resize(1)));
+    const toggle = btn("隐藏标记", () => { stage.classList.toggle("hide-markers"); toggle.textContent = stage.classList.contains("hide-markers") ? "显示标记" : "隐藏标记"; });
+    toolbar.append(toggle);
+    const original = el("a", "查看原图 ↗"); original.href = mediaURL(map.path); original.target = "_blank"; original.rel = "noopener noreferrer"; toolbar.append(original);
+    stage.append(picture);
+    for (const marker of map.markers || []) {
+      if(marker.x<0 || marker.x>1 || marker.y<0 || marker.y>1)continue;
+      const pin = btn(marker.kind === "exit" ? "↗" : "●", () => navigate({entry:marker.key}), "map-pin " + marker.kind);
+      pin.style.left = (marker.x * 100) + "%"; pin.style.top = (marker.y * 100) + "%";
+      pin.title = marker.name; pin.setAttribute("aria-label", marker.name); stage.append(pin);
+    }
+    viewport.append(stage); section.append(toolbar,viewport,el("p", "拖动查看 · ＋ / − 缩放 · 蓝色为 NPC，橙色为出口", "map-help"));
+    let drag;
+    viewport.onpointerdown = (event) => { if (event.target.closest("button") || event.pointerType === "touch") return; drag = {x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop}; viewport.setPointerCapture(event.pointerId); };
+    viewport.onpointermove = (event) => { if (!drag)return; viewport.scrollLeft=drag.left+drag.x-event.clientX;viewport.scrollTop=drag.top+drag.y-event.clientY; };
+    viewport.onpointerup = viewport.onpointercancel = () => { drag=null; };
+    picture.draggable = false;
+    article.append(section);
+    return;
+  }
+  if (!entry.images?.length) return;
+  const gallery = el("div", null, "media-gallery");
+  for (const m of entry.images) {
+    const img=mediaImage(m.path,m.caption,"entry-image"); if(!img)continue;
+    const figure=el("figure");figure.append(img,el("figcaption",m.caption));gallery.append(figure);
+  }
+  article.append(gallery);
+}
+
 async function openDetail(id) {
   const seq = ++detailSequence;
   $("article").replaceChildren(el("p", "正在读取详情…"));
@@ -240,6 +310,7 @@ async function openDetail(id) {
       el("h2", e.name),
       el("p", e.description),
     );
+    showMedia(e, a);
     const dl = el("dl");
     for (const f of e.fields || [])
       dl.append(el("dt", f.label), el("dd", f.value));
@@ -268,7 +339,7 @@ async function openDetail(id) {
       a.append(wrap);
     }
     if (e.links?.length) {
-      a.append(el("h3", "相关资料与参考来源"));
+      a.append(el("h3", "相关词条"));
       const links = el("div", null, "links");
       for (const l of e.links) {
         const link = el("a", l.name);
@@ -291,7 +362,7 @@ async function openDetail(id) {
       }
       a.append(links);
     }
-    a.append(el("h3", "资料出处"), el("pre", (e.sources || []).join("\n")));
+    if(e.kind !== "quest") a.append(el("h3", "配置参考"), el("pre", (e.sources || []).join("\n")));
     $("detail").scrollTop = 0;
   } catch (e) {
     if (seq === detailSequence)

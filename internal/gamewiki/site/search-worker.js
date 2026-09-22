@@ -52,6 +52,7 @@ function summary(r) {
     hp: r[6],
     skills: r[7],
     group: r[8],
+    image: r[11] || "",
   };
 }
 self.onmessage = async ({ data: { id, params } }) => {

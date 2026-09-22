@@ -3,8 +3,10 @@ package gamewiki
 import (
 	"compress/gzip"
 	"embed"
+	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 )
@@ -15,13 +17,26 @@ var questData, _ = content.ReadFile("quests.json")
 
 // Handler serves immutable files only. It does not open native game data,
 // construct catalogs, search, compress data or keep a catalog cache.
-type Handler struct{}
+type Handler struct {
+	page   []byte
+	policy string
+}
 
-func NewHandler() *Handler { return &Handler{} }
+func NewHandler(cdn ...string) *Handler {
+	base, origin := "", ""
+	if len(cdn) > 0 {
+		if u, err := url.Parse(cdn[0]); err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil {
+			base = strings.TrimRight(cdn[0], "/")
+			origin = u.Scheme + "://" + u.Host
+		}
+	}
+	page, _ := content.ReadFile("site/index.html")
+	return &Handler{page: []byte(strings.ReplaceAll(string(page), "__WIKI_CDN__", html.EscapeString(base))), policy: "default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; connect-src 'self'; img-src " + origin + "; base-uri 'none'; frame-ancestors 'none'"}
+}
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", h.policy)
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "只支持读取静态文件", 405)
@@ -30,8 +45,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	name, mime := "", ""
 	switch r.URL.Path {
 	case "/wiki", "/wiki/":
-		name = "site/index.html"
-		mime = "text/html; charset=utf-8"
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		if r.Method != http.MethodHead {
+			w.Write(h.page)
+		}
+		return
 	case "/wiki/app.js", "/wiki/search-worker.js":
 		name = "site/" + path.Base(r.URL.Path)
 		mime = "text/javascript; charset=utf-8"
@@ -97,4 +116,4 @@ type category struct {
 	Count int    `json:"count"`
 }
 
-var categories = []category{{ID: "guide", Name: "新增与修改指南"}, {ID: "quest", Name: "历史任务"}, {ID: "pet", Name: "宠物与生物"}, {ID: "equipment", Name: "装备"}, {ID: "item", Name: "物品"}, {ID: "skill", Name: "宠物技能"}, {ID: "battle_npc", Name: "战斗 NPC"}, {ID: "enemy", Name: "敌人"}, {ID: "map", Name: "地图"}, {ID: "npc", Name: "城镇与任务 NPC"}, {ID: "encounter", Name: "野外遭遇"}, {ID: "server_task", Name: "本服任务验证"}, {ID: "npc_template", Name: "未放置 NPC 模板"}}
+var categories = []category{{ID: "quest", Name: "任务"}, {ID: "pet", Name: "宠物与生物"}, {ID: "equipment", Name: "装备"}, {ID: "item", Name: "物品"}, {ID: "skill", Name: "宠物技能"}, {ID: "battle_npc", Name: "战斗 NPC"}, {ID: "enemy", Name: "敌人"}, {ID: "map", Name: "地图"}, {ID: "npc", Name: "城镇与任务 NPC"}, {ID: "encounter", Name: "野外遭遇"}, {ID: "server_task", Name: "本服任务验证"}, {ID: "npc_template", Name: "未放置 NPC 模板"}, {ID: "guide", Name: "新增与修改指南"}}

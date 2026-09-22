@@ -50,13 +50,32 @@ type Summary struct {
 	Group       string `json:"group,omitempty"`
 	Issues      int    `json:"issues"`
 }
+type MediaImage struct {
+	Path    string `json:"path"`
+	Caption string `json:"caption"`
+}
+type MapMarker struct {
+	Key  string  `json:"key"`
+	Name string  `json:"name"`
+	Kind string  `json:"kind"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+type MapMedia struct {
+	Path    string      `json:"path"`
+	Width   int         `json:"width"`
+	Height  int         `json:"height"`
+	Markers []MapMarker `json:"markers"`
+}
 type Entry struct {
 	Summary
-	Fields  []Field  `json:"fields"`
-	Tables  []Table  `json:"tables"`
-	Notes   []string `json:"notes"`
-	Links   []Link   `json:"links"`
-	Sources []string `json:"sources"`
+	Images  []MediaImage `json:"images,omitempty"`
+	Map     *MapMedia    `json:"map,omitempty"`
+	Fields  []Field      `json:"fields"`
+	Tables  []Table      `json:"tables"`
+	Notes   []string     `json:"notes"`
+	Links   []Link       `json:"links"`
+	Sources []string     `json:"sources"`
 }
 type Catalog struct {
 	Entries  map[string]*Entry

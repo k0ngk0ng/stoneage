@@ -1646,7 +1646,7 @@ func NewHandler(config Config) (*Handler, error) {
 			handler.npcDir = npcDirectory
 		}
 	}
-	handler.wiki = gamewiki.NewHandler()
+	handler.wiki = gamewiki.NewHandler(publicAssetBaseURL)
 	go handler.expiryLoop()
 	return handler, nil
 }

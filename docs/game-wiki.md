@@ -5,9 +5,9 @@
 ## 资料范围
 
 - 当前挂载游戏表中的宠物/生物模板、装备与物品、宠物技能、敌人配置。
-- 全部 NPC 放置记录、战斗阵容、道场候选、地图头信息、传送与野外遭遇。
+- 全部 NPC 放置记录、战斗阵容、道场候选、地图全图、传送与野外遭遇。
 - 新增宠物、装备、修改/创建战斗 NPC 的资料维护指南。
-- 17173 历史任务索引中 2.0、2.5、南北岛、吉鲁、沙姆、转生四洞及 JOT/SOT 栏目。64 篇页面合并为 97 个条目，含 48 项村庄委托；繁简重复、修订攻略保留来源链接。流程为重新归纳的事实摘要，不转载全文。
+- 17173 历史任务索引中 2.0、2.5、南北岛、吉鲁、沙姆、转生四洞及 JOT/SOT 栏目。64 篇页面合并为 97 个条目，含 48 项村庄委托；繁简重复、修订攻略的来源只在维护资料中保留。流程为重新归纳的事实摘要，不转载全文。
 - 已有本服任务定义的验证状态单列。历史攻略收录不表示已通过本服完整流程验收，也不声称涵盖17173索引以外从未核实的任务。
 
 历史来源索引：https://news.17173.com/z/stoneage/renwu/renwu.htm
@@ -21,7 +21,7 @@
 更新游戏表或攻略后，在本地重新生成并随代码发布：
 
 ```sh
-go run ./cmd/stoneage-wiki-index -data server/legacy/source/2.5/gmsv/data -output internal/gamewiki/snapshot
+go run ./cmd/stoneage-wiki-index -data server/legacy/source/2.5/gmsv/data -output internal/gamewiki/snapshot -media build/wiki-media-final/media.json
 ```
 
 生成器不覆盖游戏表，不包含账号/角色档案；产物是普通静态 JSON gzip 文件，也可直接交给支持静态 gzip 文件的 Web 服务器托管。旧版本详情分片可在确认不再使用后清理。
@@ -37,8 +37,23 @@ go test ./internal/gamewiki ./internal/aiknowledge ./internal/gamecatalog ./clie
 node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js
 ```
 
-原版归档存在时，测试校验278处战斗放置、黑暗精灵王HP和交叉链接；历史来源覆盖测试始终校验全部64个URL及48项委托。发布随现有control-plane镜像，不需要新的CDN资源或独立管理端服务。
+原版归档存在时，测试校验278处战斗放置、黑暗精灵王HP和交叉链接；历史来源覆盖测试始终校验全部64个URL及48项委托。发布随现有control-plane镜像，地图媒体在验证后的版本发布时上传 CDN 独立命名空间，无需独立管理端服务。
 
 静态验收还校验首页不含资料行、不启动搜索 Worker，分类加载不请求全站索引，所有索引条目均有详情分片，重复请求无百科常驻缓存增长。
 
-媒体资源约定：百科当前展示文字、数值和资料链接，没有内嵌图片或音乐。后续图片、地图预览和音乐必须复用 Web 客户端配置的 CDN 固定地址，不打包到百科快照、不通过百科服务器代理、不使用临时 blob 地址；按需加载并复用有效浏览器缓存。
+## 媒体与页面
+
+百科媒体复用 Web 配置的 CDN 根地址。图像直接使用固定 CDN URL，按需加载，并复用游戏已有 `/sw.js` 与浏览器缓存；不使用 blob URL，不经生产 Web 代理。列表只显示当前页缩略图，地图详情才加载全图。目录末尾的“设计与开发”收纳新增与修改指南；用户页面不显示版本限制或外部攻略署名、链接。
+
+`tools/build-wiki-media.py` 使用已验证的客户端 PNG 清单，将实体图号解析到实际图片。地图用服务端 LS2MAP 地形、物体层和已解码客户端图块离线合成，遵循 `asset_cooker.py` 的等距投影与绘制顺序；单张 RGBA 画布上限 4096×4096，顺序处理，裁去空白，生成全图和缩略图。输出使用内容哈希路径，并为 NPC、出口保存归一化位置。原版未提供的图块记录在生成报告中，不伪造替代图像。
+
+```sh
+# Pillow 安装在项目内虚拟环境；不要写入仓库外目录。
+python tools/build-wiki-media.py --output build/wiki-media-final/maps --manifest build/wiki-media-final/media.json
+```
+
+媒体文件以新增的内容哈希对象发布到 CDN `wiki/maps/`，不覆盖共享原图。生成的引用随百科快照嵌入程序，图片本身不进入镜像；原始素材不更改。维护资料中的外部来源与网页内容分别管理，来源不会输出到任务页面。
+
+## 任务奖励
+
+全部任务有独立奖励表。`rewards.go` 显式关联马祖、梦幻洞窟、JOT/SOT 的本服脚本，依据 `NPC_RandItemGet` / `NPC_EventAddPet` 计算同一列表内重复 ID 的权重，分别列出道具与宠物抽取池，不把中途退出或阶段奖励混成最终奖。`rand()%N` 的理论比例以近似值展示。其余任务按整理的资料说明奖励，尚未核对本服配置的概率不擅自填成 100%。
