@@ -267,7 +267,13 @@ function showMedia(entry, article) {
     if (!picture) return;
     let zoom = 1;
     const zoomText = el("span", "100%");
-    function resize(value) { zoom = Math.max(1, Math.min(6, value)); stage.style.width = (zoom * 100) + "%"; zoomText.textContent = Math.round(zoom * 100) + "%"; }
+    function resize(value) {
+      zoom = Math.max(1, Math.min(6, value));
+      const fit = Math.min(1, (viewport.clientHeight * map.width) / (Math.max(1, viewport.clientWidth) * map.height));
+      stage.style.width = (Math.max(0.01, fit) * zoom * 100) + "%";
+      zoomText.textContent = Math.round(zoom * 100) + "%";
+      if (zoom === 1) { viewport.scrollLeft = 0; viewport.scrollTop = 0; }
+    }
     toolbar.append(el("strong", entry.name + " · 全图"), btn("−", () => resize(zoom / 1.5)), zoomText, btn("＋", () => resize(zoom * 1.5)), btn("适应窗口", () => resize(1)));
     const toggle = btn("隐藏标记", () => { stage.classList.toggle("hide-markers"); toggle.textContent = stage.classList.contains("hide-markers") ? "显示标记" : "隐藏标记"; });
     toolbar.append(toggle);
@@ -286,6 +292,7 @@ function showMedia(entry, article) {
     viewport.onpointerup = viewport.onpointercancel = () => { drag=null; };
     picture.draggable = false;
     article.append(section);
+    requestAnimationFrame(() => resize(1));
     return;
   }
   if (!entry.images?.length) return;

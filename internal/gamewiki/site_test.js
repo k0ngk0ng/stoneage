@@ -5,6 +5,9 @@ const fs = require("node:fs");
 class Element {
   constructor(tag) {
     this.tag = tag;
+    this.style = {};
+    this.clientWidth = 800;
+    this.clientHeight = 400;
     this.children = [];
     this.textContent = "";
     this.attributes = {};
@@ -56,6 +59,7 @@ function setup() {
         messages.push(data);
       }
     },
+    requestAnimationFrame: fn => fn(),
     console,
   });
   vm.runInContext(fs.readFileSync(__dirname + "/site/app.js", "utf8"), ctx);
@@ -147,4 +151,19 @@ test("media only uses configured CDN paths, never local media or arbitrary URLs"
   for(const path of ['https://evil.example/a.png','../secret','assets/../x','wiki/maps/1.png']) {
     ctx.badPath=path; assert.equal(vm.runInContext('mediaURL(badPath)',ctx),'');
   }
+});
+
+test("map initially fits both viewport dimensions and preserves bounded zoom", () => {
+  const {ctx,nodes}=setup();
+  vm.runInContext('$("media-config")',ctx);
+  nodes.get('media-config').getAttribute=()=> 'https://cdn.example.com/stoneage';
+  vm.runInContext('showMedia({name:"测试地图",map:{path:"wiki/maps/1-abcdef1234567890.webp",width:800,height:800,markers:[]}},$("article"))',ctx);
+  const viewer=nodes.get('article').children[0];
+  const toolbar=viewer.children[0],viewport=viewer.children[1],stage=viewport.children[0];
+  assert.equal(stage.style.width,'50%');
+  toolbar.children[3].onclick();
+  assert.equal(stage.style.width,'75%');
+  toolbar.children[4].onclick();
+  assert.equal(stage.style.width,'50%');
+  assert.equal(viewport.scrollTop,0);
 });
