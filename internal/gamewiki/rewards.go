@@ -35,6 +35,7 @@ var questRewardScripts = map[string]string{
 	"news_10":            "npc/poru/girl",
 	"news_02":            "npc/poru/team01,npc/poru/team02,npc/poru/mary12,npc/poru/team03,npc/poru/mary01",
 	"sa25_01":            "npc/king/event69_7",
+	"sa25_03":            "npc/king/event69_7",
 	"sa25_04":            "npc/king/event69_11,npc/king/event69_14,npc/king/event69_16,npc/king/event69_18,npc/king/event69_20,npc/king/event69_22,npc/king/event69_24",
 	"mining-certificate": "npc/sainasu/event/nevent03_3",
 	"z1":                 "npc/jaruga/event/ruri01",
@@ -107,7 +108,7 @@ func (b *builder) questRewards(e *Entry, q Quest) Table {
 	}
 	if script == "" {
 		switch q.ID {
-		case "n11", "b7", "b11", "j2", "z5", "sa25_03", "faq01":
+		case "n11", "b7", "b11", "j2", "z5", "faq01":
 			table.Rows = append(table.Rows, []string{q.Reward, "资格 / 服务解锁", "非随机道具奖励", q.Prerequisites})
 			return table
 		}
@@ -137,6 +138,12 @@ func (b *builder) questRewards(e *Entry, q Quest) Table {
 			}
 			condition := "完成任务并交付；背包需有空位"
 			switch q.ID {
+			case "sa25_03":
+				if fields["TYPE"] != "ACCEPT" || fields["GetRandItem"] == "" {
+					continue
+				}
+				stone := atoi(strings.TrimSuffix(fields["DelItem"], "*1"))
+				condition = "已通过成人仪式并领养玛蕾菲雅，持有原项链；交出" + b.items[stone].Name + " 1 颗，随机兑换该属性培养用项链；背包需有空位"
 			case "sa25_01":
 				if fields["EndSetFlg"] != "70" {
 					continue
@@ -380,6 +387,9 @@ func (b *builder) questRewards(e *Entry, q Quest) Table {
 			}
 		}
 		e.Sources = append(e.Sources, script)
+	}
+	if q.ID == "sa25_03" {
+		table.Rows = append(table.Rows, []string{"宠物转生", "服务解锁", "非随机道具奖励", "完成少女培养流程，带少女与待转生宠物到漆黑二十层精灵王处"})
 	}
 	if voucher != 0 && len(table.Rows) == 0 {
 		table.Rows = append(table.Rows, []string{"本服未启用发奖", "—", "发奖分支已停用", "当前不能兑换；委托资料保留供查阅"})

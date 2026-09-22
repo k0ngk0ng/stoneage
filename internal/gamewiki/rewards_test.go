@@ -206,3 +206,36 @@ func TestQuestStagesQuantitiesAndFame(t *testing.T) {
 		t.Fatal("missing first-completion fame rewards")
 	}
 }
+
+func TestGirlNecklacePools(t *testing.T) {
+	c, err := Load(context.Background(), "../../server/legacy/source/2.5/gmsv/data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := c.Entries["quest:sa25_03"]
+	rows := e.Tables[0].Rows
+	if len(rows) != 21 {
+		t.Fatalf("want twenty necklace outcomes and service unlock: %v", rows)
+	}
+	pools := map[string]int{}
+	for i, row := range rows[:20] {
+		weight := []int{1, 2, 3, 2, 1}[i%5]
+		if !strings.Contains(row[2], fmt.Sprintf("%d/9", weight)) {
+			t.Fatal(row)
+		}
+		pools[row[3]] += weight
+	}
+	if len(pools) != 4 {
+		t.Fatal(pools)
+	}
+	for _, total := range pools {
+		if total != 9 {
+			t.Fatal(pools)
+		}
+	}
+	for _, link := range e.Links {
+		if link.Key == "pet:1479" || link.Key == "enemy:1479" || link.Key == "item:19624" || link.Key == "equipment:19624" {
+			t.Fatal("upper chapter reward leaked", link)
+		}
+	}
+}
