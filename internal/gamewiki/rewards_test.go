@@ -2,6 +2,7 @@ package gamewiki
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -80,6 +81,50 @@ func TestNativeRewardListBufferBoundary(t *testing.T) {
 	}
 }
 
+func TestCommissionRewardsUseActiveNativeBranches(t *testing.T) {
+	root := "../../server/legacy/source/2.5/gmsv/data"
+	if _, err := os.Stat(root); err != nil {
+		t.Skip("native archive unavailable")
+	}
+	c, err := Load(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for village := 1; village <= 4; village++ {
+		for _, kind := range []string{"pet", "food"} {
+			for _, letter := range "ABCDEF" {
+				key := fmt.Sprintf("quest:wt%02d-%s-%c", village, kind, letter)
+				rows := c.Entries[key].Tables[0].Rows
+				if len(rows) == 0 || strings.Contains(rows[0][2], "未核") {
+					t.Fatal(key, rows)
+				}
+			}
+		}
+		rows := c.Entries[fmt.Sprintf("quest:wt%02d-pet-F", village)].Tables[0].Rows
+		want := "15000"
+		if village >= 3 {
+			want = "18000"
+		}
+		if len(rows) != 1 || rows[0][0] != "石币" || rows[0][1] != want {
+			t.Fatal(village, rows)
+		}
+	}
+	for _, key := range []string{"quest:wt01-pet-E", "quest:wt04-pet-E"} {
+		rows := c.Entries[key].Tables[0].Rows
+		if len(rows) != 11 {
+			t.Fatal(key, rows)
+		}
+		for _, row := range rows {
+			if !strings.Contains(row[2], "1/11") {
+				t.Fatal(key, row)
+			}
+		}
+	}
+	if rows := c.Entries["quest:wt03-pet-D"].Tables[0].Rows; len(rows) != 1 || rows[0][2] != "发奖分支已停用" {
+		t.Fatal("commented-out reward must not be offered", rows)
+	}
+}
+
 func TestRewardPoolTracksNativeReaderCapacity(t *testing.T) {
 	path := "../../server/legacy/source/2.5/gmsv/npc/npc_exchangeman.c"
 	raw, err := os.ReadFile(path)
@@ -108,5 +153,56 @@ func TestRewardPoolTracksNativeReaderCapacity(t *testing.T) {
 		if !strings.Contains(row[2], "1/17") {
 			t.Fatal(row)
 		}
+	}
+}
+
+func TestQuestStagesQuantitiesAndFame(t *testing.T) {
+	root := "../../server/legacy/source/2.5/gmsv/data"
+	if _, err := os.Stat(root); err != nil {
+		t.Skip("native archive unavailable")
+	}
+	c, err := Load(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := range questRewardScripts {
+		rows := c.Entries["quest:"+id].Tables[0].Rows
+		if len(rows) == 0 {
+			t.Fatal("mapped quest has no reward", id)
+		}
+	}
+	fish := c.Entries["quest:n13"].Tables[0].Rows
+	if len(fish) != 9 || fish[1][1] != "2 件" {
+		t.Fatal("fishing reward quantity", fish)
+	}
+	grapes := c.Entries["quest:n8"].Tables[0].Rows
+	if len(grapes) != 5 {
+		t.Fatal("bait is not a final reward", grapes)
+	}
+	for _, row := range grapes[:4] {
+		if !strings.Contains(row[2], "1/4") || !strings.Contains(row[0], "[245") {
+			t.Fatal("distinct grapes need ID and probability", row)
+		}
+	}
+	doctor := c.Entries["quest:b2"].Tables[0].Rows
+	if len(doctor) != 9 || !strings.Contains(doctor[0][2], "1/8") || !strings.Contains(doctor[8][3], "30") {
+		t.Fatal("doctor stages", doctor)
+	}
+	blessing := c.Entries["quest:news_10"].Tables[0].Rows
+	if blessing[1][1] != "5 件" {
+		t.Fatal("five blessings for the complete set", blessing)
+	}
+	king := c.Entries["quest:sa25_04"]
+	found := false
+	for _, table := range king.Tables {
+		if table.Title == "声望奖励" {
+			found = true
+			if len(table.Rows) != 2 || table.Rows[0][1] != "150.00" || table.Rows[1][1] != "200.00" {
+				t.Fatal(table.Rows)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing first-completion fame rewards")
 	}
 }

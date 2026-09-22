@@ -95,6 +95,7 @@ type builder struct {
 	items   map[int]gamecatalog.Item
 	maps    map[int]*Entry
 	files   map[string]aiknowledge.NPCFile
+	fame    map[int]int
 }
 
 func key(kind string, id any) string { return fmt.Sprintf("%s:%v", kind, id) }

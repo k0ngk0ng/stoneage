@@ -36,6 +36,8 @@ def build(args):
         if not (assets/file).is_file():return None
         return {'path':'assets/'+file,'caption':caption}
     result = {}
+    reusable = json.loads(args.reuse_maps.read_text()) if args.reuse_maps else {}
+    rebuild = set(args.rebuild_maps)
     for k,e in entries.items():
         fields = {f['label']:f['value'] for f in e['fields'] or []}
         number = fields.get('图号')
@@ -63,6 +65,11 @@ def build(args):
         if raw[:6]!=b'LS2MAP':raise ValueError(source)
         w,h=struct.unpack_from('>HH',raw,40);cells=w*h
         layers=struct.unpack_from('>'+str(cells*2)+'H',raw,44)
+        missing.update(number for number in set(layers) if number>99 and
+                       (not bitmap(number) or not (assets/bitmap(number)['file']).is_file()))
+        if k in reusable and reusable[k].get('map') and int(k.split(':')[1]) not in rebuild:
+            result[k] = reusable[k]
+            continue
         # Maximum RGBA canvas is 4096 x 4096, regardless of island dimensions.
         cw,ch=(w+h)*32+512,(w+h)*24+632
         scale=min(1,4096/max(cw,ch));size=(round(cw*scale),round(ch*scale))
@@ -77,7 +84,7 @@ def build(args):
                     if number<=99:continue
                     if number not in cache:
                         info=bitmap(number)
-                        if not info or not (assets/info['file']).is_file():cache[number]=None;missing[number]+=1
+                        if not info or not (assets/info['file']).is_file():cache[number]=None
                         else:
                             with Image.open(assets/info['file']) as im:
                                 im=im.convert('RGBA'); im=im.resize((max(1,round(im.width*scale)),max(1,round(im.height*scale))),Image.Resampling.LANCZOS)
@@ -127,6 +134,7 @@ def build(args):
 
 def enrich_related(result,entries):
     quest_maps={'n2':20801,'n4':20401,'n8':3400,'n11':10901,'b3':2000,'b4':11201,'b7':10001,'z1':21001,'z3':21201,'z5':32001,'wt02-food-C':2000,'wt02-food-F':2000,'wt04-food-C':4000,'wt04-food-E':4000}
+    quest_maps.update({'j1':31701,'j2':31901,'j5':31601})
     quest_maps.update({'n3': 3300, 'n12': 21001, 'n5': 21001, 'n13': 2000, 'z2': 11201, 'sa25_03': 2000, 'n1': 3100, 'n7': 3305, 'faq01': 2008, 'b6': 1400, 'sa25_04': 30619, 'news_01': 1000, 'b8': 10701, 'j3': 30600, 'wt03-food-A': 3000, 'wt03-food-B': 3000, 'wt03-food-C': 3000, 'wt03-food-D': 3000, 'wt03-food-E': 3000, 'wt03-food-F': 3000})
     for quest,floor in quest_maps.items():
         key='quest:'+quest;mapkey='map:'+str(floor)
@@ -134,7 +142,7 @@ def enrich_related(result,entries):
             image=dict(result[mapkey]['images'][0]);image['caption']='任务地点：'+entries[mapkey]['name'];result[key]['images']=[image]
     for key,entry in entries.items():
         if result[key]['images']:continue
-        if entry['kind']=='npc':
+        if entry['kind'] in ('npc','encounter'):
             for link in entry['links'] or []:
                 if link.get('key','').startswith('map:') and result.get(link['key'],{}).get('images'):
                     image=dict(result[link['key']]['images'][0]);image['caption']='所在地图：'+entries[link['key']]['name'];result[key]['images']=[image];break
@@ -159,4 +167,6 @@ if __name__=='__main__':
     p.add_argument('--snapshot',type=Path,default=Path('internal/gamewiki/snapshot'))
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--manifest',type=Path,required=True)
+    p.add_argument('--reuse-maps',type=Path,help='Reuse unchanged map previews from a previous media manifest')
+    p.add_argument('--rebuild-maps',type=int,nargs='*',default=[],help='Map IDs whose source or tiles changed; rebuild despite --reuse-maps')
     build(p.parse_args())

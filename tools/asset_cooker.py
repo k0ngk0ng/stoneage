@@ -214,7 +214,15 @@ def decode_rd(blob: bytes, expected_width: int, expected_height: int) -> tuple[i
             position += count
 
         if len(output) > target_size:
-            raise AssetError("RD decompressor produced too many pixels")
+            # The native encoder tests two zero bytes before checking eBuf.
+            # When the last pixel is transparent it can emit a final C2 run
+            # containing one extra zero. The client displays width*height
+            # pixels. Accept only this exact, terminal encoder artifact;
+            # other overruns still indicate malformed data.
+            if marker == 0xC2 and position == len(payload) and len(output) == target_size + 1:
+                del output[target_size:]
+            else:
+                raise AssetError("RD decompressor produced too many pixels")
 
     if len(output) != target_size:
         raise AssetError(f"RD decompressor produced {len(output)} pixels, expected {target_size}")

@@ -58,7 +58,7 @@ func TestStaticSnapshotCoverage(t *testing.T) {
 		if entry.Kind == "map" && (entry.Map == nil || !strings.HasPrefix(entry.Map.Path, "wiki/maps/") || entry.Map.Width > 4096 || entry.Map.Height > 4096) {
 			t.Fatal("missing or unbounded map", entry.Key)
 		}
-		if entry.Kind == "pet" || entry.Kind == "equipment" || entry.Kind == "battle_npc" || entry.Kind == "quest" {
+		if entry.Kind == "pet" || entry.Kind == "equipment" || entry.Kind == "item" || entry.Kind == "npc" || entry.Kind == "battle_npc" || entry.Kind == "quest" || (entry.Kind == "encounter" && len(entry.Links) > 0) {
 			if len(entry.Images) == 0 {
 				t.Fatal("missing media", entry.Key)
 			}

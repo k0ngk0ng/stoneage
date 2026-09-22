@@ -136414,6 +136414,97 @@
       "hit_y": 1,
       "hit": 1,
       "prio_type": 0
+    },
+    "2221": {
+      "file": "bitmaps/bitmap_2221.png",
+      "physical": 2221,
+      "width": 64,
+      "height": 47,
+      "xoffset": -32,
+      "yoffset": -24,
+      "bmp_number": 6293,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 1,
+      "prio_type": 0
+    },
+    "2920": {
+      "file": "bitmaps/bitmap_2920.png",
+      "physical": 2920,
+      "width": 64,
+      "height": 47,
+      "xoffset": -32,
+      "yoffset": -24,
+      "bmp_number": 7110,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 1,
+      "prio_type": 0
+    },
+    "2939": {
+      "file": "bitmaps/bitmap_2939.png",
+      "physical": 2939,
+      "width": 64,
+      "height": 47,
+      "xoffset": -32,
+      "yoffset": -24,
+      "bmp_number": 7129,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 1,
+      "prio_type": 0
+    },
+    "6722": {
+      "file": "bitmaps/bitmap_6722.png",
+      "physical": 6722,
+      "width": 28,
+      "height": 28,
+      "xoffset": -15,
+      "yoffset": -13,
+      "bmp_number": 24077,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 0,
+      "prio_type": 0
+    },
+    "6726": {
+      "file": "bitmaps/bitmap_6726.png",
+      "physical": 6726,
+      "width": 28,
+      "height": 28,
+      "xoffset": -14,
+      "yoffset": -14,
+      "bmp_number": 24137,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 0,
+      "prio_type": 0
+    },
+    "6727": {
+      "file": "bitmaps/bitmap_6727.png",
+      "physical": 6727,
+      "width": 28,
+      "height": 28,
+      "xoffset": -14,
+      "yoffset": -12,
+      "bmp_number": 24138,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 0,
+      "prio_type": 0
+    },
+    "6729": {
+      "file": "bitmaps/bitmap_6729.png",
+      "physical": 6729,
+      "width": 40,
+      "height": 30,
+      "xoffset": -20,
+      "yoffset": -13,
+      "bmp_number": 24140,
+      "hit_x": 1,
+      "hit_y": 1,
+      "hit": 0,
+      "prio_type": 0
     }
   },
   "ui": {
@@ -151973,7 +152064,10 @@
     "8846": "3406",
     "8847": "3407",
     "8848": "3408",
-    "8849": "3409"
+    "8849": "3409",
+    "6293": "2221",
+    "7110": "2920",
+    "7129": "2939"
   },
   "faces": {
     "30000": {
@@ -232812,11 +232906,6 @@
       ]
     }
   },
-  "item_visual_bitmap_count": 1287,
-  "missing_item_graphics": [
-    24077,
-    24137,
-    24138,
-    24140
-  ]
+  "item_visual_bitmap_count": 1291,
+  "missing_item_graphics": []
 }

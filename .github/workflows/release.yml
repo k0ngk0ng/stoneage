@@ -56,6 +56,7 @@ jobs:
           node client/web/world_frame_test.js
           node --test client/web/walking_scheduler_test.js client/web/map_layers_test.js client/web/map_pack_test.js
           PYTHONDONTWRITEBYTECODE=1 python3 tools/build-map-pack_test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/asset-cooker_test.py
           node client/web/ai_observation_test.js
           node client/web/chat_identity_test.js
           node --test client/web/automation_catalog_test.js client/web/automation_battle_test.js client/web/automation_pet_test.js client/web/automation_recovery_test.js client/web/automation_supply_test.js

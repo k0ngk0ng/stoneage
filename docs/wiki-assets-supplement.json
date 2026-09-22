@@ -1,0 +1,129 @@
+{
+  "sources": {
+    "runtime/legacy-client/data/adrn_15.bin": "92d0137590d35a7a1f4fb11af3ad13bbc585813a4b0e1e3f933c397007fbff74",
+    "runtime/legacy-client/data/real_15.bin": "c7640643804d550bc07e33661103fb7b5f557ee01e68a5a5d92382c5305c2b0d",
+    "runtime/legacy-client/data/pal/Palet_1.sap": "32870080c47537a59beaf770b6df7bd79820fd52a23825058460900494f0b4b0"
+  },
+  "logical_graphics": [
+    6293,
+    7110,
+    7129,
+    24077,
+    24137,
+    24138,
+    24140
+  ],
+  "files": {
+    "bitmaps/bitmap_2920.png": "700473287b729c169fd99d88320aca966dd963cba5e600e1d7e776c58b0ca107",
+    "bitmaps/bitmap_6729.png": "1984ffe9c70cb8b439cb0b89659881930a6279629f92bd54eb1cdc6b2d63861e",
+    "bitmaps/bitmap_6727.png": "7bf9f9f0baf605328525009e7814489d30289b9077dbeda86fe9b72ef6f70c5b",
+    "bitmaps/bitmap_6726.png": "e303b983d6622181af2eaf1c9a07606ae150585d68f9e6c50c473fd44278670f",
+    "bitmaps/bitmap_2221.png": "1e0964fe59b529af00734bcb9f4ab3f2a72ce6a97fda6868bc72f99d97a237f8",
+    "bitmaps/bitmap_6722.png": "53e8eba028c14396d9e6df42900ad041c3e6c685c3ee43c4f8a8c012efc51710",
+    "bitmaps/bitmap_2939.png": "1c7a2e43ea1445b455297c66047a2ac8ae38a16352927abb3ab72c39e8351e46"
+  },
+  "mappings": {
+    "bitmaps": {
+      "2221": {
+        "file": "bitmaps/bitmap_2221.png",
+        "physical": 2221,
+        "width": 64,
+        "height": 47,
+        "xoffset": -32,
+        "yoffset": -24,
+        "bmp_number": 6293,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 1,
+        "prio_type": 0
+      },
+      "2920": {
+        "file": "bitmaps/bitmap_2920.png",
+        "physical": 2920,
+        "width": 64,
+        "height": 47,
+        "xoffset": -32,
+        "yoffset": -24,
+        "bmp_number": 7110,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 1,
+        "prio_type": 0
+      },
+      "2939": {
+        "file": "bitmaps/bitmap_2939.png",
+        "physical": 2939,
+        "width": 64,
+        "height": 47,
+        "xoffset": -32,
+        "yoffset": -24,
+        "bmp_number": 7129,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 1,
+        "prio_type": 0
+      },
+      "6722": {
+        "file": "bitmaps/bitmap_6722.png",
+        "physical": 6722,
+        "width": 28,
+        "height": 28,
+        "xoffset": -15,
+        "yoffset": -13,
+        "bmp_number": 24077,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 0,
+        "prio_type": 0
+      },
+      "6726": {
+        "file": "bitmaps/bitmap_6726.png",
+        "physical": 6726,
+        "width": 28,
+        "height": 28,
+        "xoffset": -14,
+        "yoffset": -14,
+        "bmp_number": 24137,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 0,
+        "prio_type": 0
+      },
+      "6727": {
+        "file": "bitmaps/bitmap_6727.png",
+        "physical": 6727,
+        "width": 28,
+        "height": 28,
+        "xoffset": -14,
+        "yoffset": -12,
+        "bmp_number": 24138,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 0,
+        "prio_type": 0
+      },
+      "6729": {
+        "file": "bitmaps/bitmap_6729.png",
+        "physical": 6729,
+        "width": 40,
+        "height": 30,
+        "xoffset": -20,
+        "yoffset": -13,
+        "bmp_number": 24140,
+        "hit_x": 1,
+        "hit_y": 1,
+        "hit": 0,
+        "prio_type": 0
+      }
+    },
+    "bitmap_aliases": {
+      "6293": "2221",
+      "7110": "2920",
+      "7129": "2939",
+      "24077": "6722",
+      "24137": "6726",
+      "24138": "6727",
+      "24140": "6729"
+    }
+  }
+}
