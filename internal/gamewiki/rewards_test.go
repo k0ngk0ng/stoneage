@@ -239,3 +239,26 @@ func TestGirlNecklacePools(t *testing.T) {
 		}
 	}
 }
+
+func TestDocumentedRewardsDoNotInventProbabilities(t *testing.T) {
+	c, err := Load(context.Background(), "../../server/legacy/source/2.5/gmsv/data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := c.Entries["quest:b10"].Tables[0].Rows
+	if len(rows) != 13 {
+		t.Fatal(rows)
+	}
+	for i, row := range rows {
+		if !strings.Contains(row[2], "概率未公布") || strings.Contains(row[2], "%") {
+			t.Fatal(row)
+		}
+		pool := "道具奖励池"
+		if i >= 8 {
+			pool = "宠物奖励池"
+		}
+		if !strings.Contains(row[3], pool) {
+			t.Fatal(row)
+		}
+	}
+}

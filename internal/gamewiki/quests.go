@@ -4,17 +4,26 @@ import (
 	"encoding/json"
 )
 
+type QuestRewardPool struct {
+	Name        string   `json:"name"`
+	Candidates  []string `json:"candidates"`
+	Quantity    string   `json:"quantity"`
+	Probability string   `json:"probability"`
+	Condition   string   `json:"condition"`
+}
+
 type Quest struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Group         string   `json:"group"`
-	Version       string   `json:"version"`
-	Summary       string   `json:"summary"`
-	Prerequisites string   `json:"prerequisites"`
-	Reward        string   `json:"reward"`
-	Steps         []string `json:"steps"`
-	Sources       []Link   `json:"sources"`
-	Notes         []string `json:"notes"`
+	RewardPools   []QuestRewardPool `json:"reward_pools,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Group         string            `json:"group"`
+	Version       string            `json:"version"`
+	Summary       string            `json:"summary"`
+	Prerequisites string            `json:"prerequisites"`
+	Reward        string            `json:"reward"`
+	Steps         []string          `json:"steps"`
+	Sources       []Link            `json:"sources"`
+	Notes         []string          `json:"notes"`
 }
 
 func (b *builder) addQuests() {

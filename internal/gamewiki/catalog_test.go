@@ -101,8 +101,14 @@ func TestQuestCoverage(t *testing.T) {
 			t.Error("missing source", id)
 		}
 	}
-	if len(sources) != 64 {
-		t.Fatal("source count", len(sources))
+	originalSources := 0
+	for source := range sources {
+		if strings.HasPrefix(source, "https://news.17173.com/z/stoneage/renwu/") {
+			originalSources++
+		}
+	}
+	if originalSources != 64 {
+		t.Fatal("original source count", originalSources)
 	}
 }
 func TestHTTPReadOnly(t *testing.T) {

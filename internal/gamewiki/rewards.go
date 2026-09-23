@@ -107,6 +107,14 @@ func (b *builder) questRewards(e *Entry, q Quest) Table {
 		script = commission
 	}
 	if script == "" {
+		if len(q.RewardPools) > 0 {
+			for _, pool := range q.RewardPools {
+				for _, name := range pool.Candidates {
+					table.Rows = append(table.Rows, []string{name, pool.Quantity, pool.Probability, pool.Name + "；" + pool.Condition})
+				}
+			}
+			return table
+		}
 		switch q.ID {
 		case "n11", "b7", "b11", "j2", "z5", "faq01":
 			table.Rows = append(table.Rows, []string{q.Reward, "资格 / 服务解锁", "非随机道具奖励", q.Prerequisites})
