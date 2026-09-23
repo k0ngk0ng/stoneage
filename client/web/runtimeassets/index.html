@@ -9901,6 +9901,40 @@
     closeBattlePopup({skipDefault:true,clearChoiceTimer:true});
     setWorldState("快速战斗中…","good");
     addChat("系统","快速战斗开始。");
+    if(fastBattleSideDefeated(state))finishFastBattle(state);
+  }
+  function fastBattleSideDefeated(state){
+    // Defeat has no RS reward packet. Read the terminal BC even when the
+    // entire fight fits in one HTTP batch and control never reports active.
+    // Do not load sprites or run animation/command code in this quiet path.
+    const turn=String(state.lastTurnPacket||"").split("|");
+    if(turn[0]!=="BP"||!/^[0-9a-f]+$/i.test(turn[1]||""))return false;
+    const mine=parseInt(turn[1],16);
+    if(mine<0||mine>=20||mine%10>=5)return false;
+    const parts=String(state.lastRosterPacket||"").split("|");
+    if(parts[0]==="BC")parts.shift();
+    parts.shift();if(parts[parts.length-1]==="")parts.pop();
+    const width=parts.length&&parts.length%13===0?13:parts.length&&parts.length%8===0?8:0;
+    if(!width||parts.length/width>20)return false;
+    let sawSelf=false,standing=false;const seen=new Set();
+    for(let offset=0;offset<parts.length;offset+=width){
+      if(![0,5,7].every(index=>/^[0-9a-f]+$/i.test(parts[offset+index]||"")))return false;
+      const id=parseInt(parts[offset],16),hp=parseInt(parts[offset+5],16),flags=parseInt(parts[offset+7],16);
+      if(id>=20||seen.has(id))return false;seen.add(id);
+      if(id===mine)sawSelf=true;
+      if(id%10<5&&Math.floor(id/10)===Math.floor(mine/10)&&hp>0&&!(flags&2))standing=true;
+    }
+    // A surviving pet does not keep its defeated owner's side in combat.
+    return sawSelf&&!standing;
+  }
+  function receiveFastBattleStatus(text){
+    const state=app.battleState;
+    if(!state?.fastBattle)return false;
+    if(app.battle){
+      state.lastRosterPacket=String(text||"");
+      if(fastBattleSideDefeated(state))finishFastBattle(state);
+    }
+    return true;
   }
   function finishFastBattle(state,result=null){
     if(!state||app.battleState!==state)return;
@@ -9942,10 +9976,10 @@
     if(!state?.fastBattle)return false;
     const parts=String(command||"").split("|"),marker=parts[0];
     if(marker==="BU")finishFastBattle(state);
-    else if(app.battle&&marker==="BC")state.lastRosterPacket=command;
+    else if(app.battle&&marker==="BC")receiveFastBattleStatus(command);
     else if(app.battle&&marker==="BP"){
       const values=parts.slice(1).filter(Boolean);
-      if(values.length===3&&values.every(v=>/^[0-9a-f]+$/i.test(v))&&parseInt(values[0],16)<=20){state.lastTurnPacket=command;state.fastAwaitingTurn=false;}
+      if(values.length===3&&values.every(v=>/^[0-9a-f]+$/i.test(v))&&parseInt(values[0],16)<=20){state.lastTurnPacket=command;state.fastAwaitingTurn=false;if(fastBattleSideDefeated(state))finishFastBattle(state);}
       else state.fastAwaitingTurn=true;
     }else if(app.battle&&marker==="BA")state.lastAnimationPacket=command;
     else if(app.battle)state.fastAwaitingTurn=true;
@@ -14245,8 +14279,8 @@
     },30000);
   }
   function receiveBattleStatus(text){
+    if(receiveFastBattleStatus(text))return;
     if(app.battle&&app.battleState)app.battleState.lastRosterPacket=String(text||"");
-    if(app.battleState?.fastBattle)return;
     if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket("BC",text))return;
     /* lssproto_BC_recv delivers the participant payload as the only field of
        a BC envelope (the function name is not repeated in the field).  The

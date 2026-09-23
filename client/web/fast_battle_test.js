@@ -11,7 +11,7 @@ function fixture(){
   decimal:(s,f=0)=>Number.isFinite(parseInt(s,10))?parseInt(s,10):f,battleBase62:s=>{const alphabet='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';let n=0;for(const ch of String(s))n=n*62+alphabet.indexOf(ch);return n;}};
  for(const name of ['clearBattleChoiceTimer','battleCancelPendingUi','battleCancelPendingDamage','battleClearCommandPending','cancelBattleMenuMotionFrame','cancelSceneTransition','applyScreenVisibility','restoreMapMusic','closeBattlePopup','clearPendingBattlePackets','renderWorld','scheduleWorldAnimation'])c[name]=(...args)=>calls.push([name,...args]);
  vm.createContext(c);
- for(const name of ['fastBattleEnabled','stopFastBattlePresentation','beginFastBattle','finishFastBattle','syncFastBattlePresentation','receiveFastBattlePacket','parseBattleResult','openBattleResult','receiveBattleStatus','receiveBattlePacket','renderBattle','renderBattleWorld'])vm.runInContext(fn(name),c);
+ for(const name of ['fastBattleEnabled','stopFastBattlePresentation','beginFastBattle','finishFastBattle','fastBattleSideDefeated','receiveFastBattleStatus','syncFastBattlePresentation','receiveFastBattlePacket','parseBattleResult','openBattleResult','receiveBattleStatus','receiveBattlePacket','renderBattle','renderBattleWorld'])vm.runInContext(fn(name),c);
  return {c,app,control,chats,calls};
 }
 test('fast battle is opt-in and only active under a running battle owner',()=>{
@@ -52,4 +52,48 @@ test('switching off during a movie waits for a fresh turn instead of reusing old
  const f=fixture();f.c.beginFastBattle(f.app.battleState);f.c.receiveBattlePacket('BP|0|0|A');f.c.receiveBattlePacket('BH|r0|FF');
  const replay=[];f.c.enterBattle=()=>{f.app.battleState={};};f.c.receiveBattlePacket=p=>replay.push(p);f.app.systemSettings.fastBattle=false;
  f.c.syncFastBattlePresentation();assert.deepEqual(replay,[]);
+});
+
+function roster(rows,width=13){
+ return '0|'+rows.map(([id,hp,flags])=>[id.toString(16),'actor','','1965a','8',hp.toString(16),'4d',flags.toString(16),...(width===13?['1','ride','7','49','81']:[])].join('|')).join('|')+'|';
+}
+test('defeat in one batch exits without ever observing active control, RS or BU',()=>{
+ for(const width of [8,13])for(const envelope of ['BC','B'])for(const rosterFirst of [false,true]){
+  const f=fixture();f.control.automationState.in_battle=false;f.c.beginFastBattle(f.app.battleState);
+  f.c.deferBattleResourcePacket=()=>assert.fail('defeat must not load graphics');
+  const terminal=roster([[0,0,6],[5,36,0],[15,0,2],[16,99,0]],width);
+  const receive=()=>envelope==='BC'?f.c.receiveBattleStatus(terminal):f.c.receiveBattlePacket('BC|'+terminal);
+  if(rosterFirst){receive();assert.equal(f.app.battle,true);}
+  f.c.receiveBattlePacket('BP|0|2|64');if(!rosterFirst)receive();
+  assert.equal(f.app.battleState.fastSawActive,false);
+  assert.equal(f.app.phase,'world');assert.equal(f.app.battle,false);
+  assert.equal(f.chats.filter(x=>x==='战斗结束。').length,1);
+  receive();f.c.receiveBattlePacket('BU');f.c.syncFastBattlePresentation();
+  assert.equal(f.chats.filter(x=>x==='战斗结束。').length,1,'duplicate terminal packets settle once');
+ }
+});
+test('stale idle control and a surviving teammate do not end the new battle',()=>{
+ const f=fixture();f.control.automationState.in_battle=false;f.c.beginFastBattle(f.app.battleState);
+ f.c.receiveBattlePacket('BP|A|2|64');
+ f.c.receiveBattleStatus(roster([[10,0,6],[11,20,4],[15,36,0],[0,99,4]]));
+ f.c.syncFastBattlePresentation();assert.equal(f.app.battle,true,'another player on my side is alive');
+ f.c.receiveBattleStatus(roster([[10,0,6],[11,0,6],[15,36,0],[0,99,4]]));
+ assert.equal(f.app.battle,false,'side one defeat ignores living pet and enemy');
+ // A fresh EN creates a fresh state; the previous finished flag cannot hide it.
+ f.app.battle=true;f.app.phase='battle';f.app.battleState={fieldNo:1,type:1};f.c.beginFastBattle(f.app.battleState);
+ f.c.receiveBattlePacket('BP|0|0|64');f.c.receiveBattleStatus(roster([[0,50,4],[10,99,4]]));
+ f.c.syncFastBattlePresentation();assert.equal(f.app.battle,true);
+});
+test('empty, truncated, malformed and missing-owner rosters cannot prove defeat',()=>{
+ const f=fixture();f.control.automationState.in_battle=false;f.c.beginFastBattle(f.app.battleState);f.c.receiveBattlePacket('BP|0|0|64');
+ for(const data of ['', '0|',roster([[0,0,6]]).slice(0,-4),roster([[0,0,6]]).replace('|0|4d|','|invalid|4d|'),roster([[5,0,2],[10,99,4]]),roster([[0,0,6],[0,0,6]])]){
+  f.c.receiveBattleStatus(data);assert.equal(f.app.battle,true,data);
+ }
+});
+
+test('enabling fast mode after terminal roster was received also settles defeat',()=>{
+ const f=fixture();f.control.automationState.in_battle=false;
+ f.app.battleState.lastTurnPacket='BP|0|2|64';
+ f.app.battleState.lastRosterPacket=roster([[0,0,6],[5,36,0],[10,99,4]]);
+ f.c.beginFastBattle(f.app.battleState);assert.equal(f.app.battle,false);assert.equal(f.app.phase,'world');
 });
