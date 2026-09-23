@@ -359,7 +359,7 @@ figcaption { font-size: 12px; color: var(--muted); margin-top: 8px; }
 .map-tools strong { margin-right: auto; }
 .map-tools button { padding: 4px 12px; }
 .map-tools a { font-size: 12px; }
-.map-viewport { height: min(65vh, 700px); overflow: auto; background: #f4e5c1; cursor: grab; }
+.map-viewport { height: min(65vh, 700px); overflow: auto; overscroll-behavior: contain; background: #f4e5c1; cursor: grab; }
 .map-viewport:active { cursor: grabbing; }
 .map-stage { position: relative; width: 100%; margin: 0 auto; }
 .map-image { display: block; width: 100%; height: auto; user-select: none; }
@@ -369,3 +369,13 @@ figcaption { font-size: 12px; color: var(--muted); margin-top: 8px; }
 .hide-markers .map-pin { display: none; }
 .map-help { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--muted); }
 @media (max-width: 850px) { nav .category-heading { align-self: center; margin: 0 8px; white-space: nowrap; } .map-tools strong { width: 100%; } .map-viewport { height: 48vh; } }
+
+.map-viewer:fullscreen, .map-viewer.map-fullscreen {
+  display: flex; flex-direction: column; width: 100%; height: 100%;
+  margin: 0; border: 0; border-radius: 0; background: var(--paper);
+}
+.map-viewer:fullscreen .map-viewport, .map-fullscreen .map-viewport { flex: 1; height: auto; min-height: 0; }
+.map-viewer:fullscreen .map-tools, .map-fullscreen .map-tools,
+.map-viewer:fullscreen .map-help, .map-fullscreen .map-help { flex-shrink: 0; }
+dialog.map-dialog-fullscreen { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: hidden; }
+.map-viewer.map-fullscreen { position: fixed; inset: 0; z-index: 2; }

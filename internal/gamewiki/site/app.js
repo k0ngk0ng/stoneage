@@ -8,6 +8,7 @@ const el = (tag, text, cls) => {
 };
 let sequence = 0,
   detailSequence = 0,
+  cleanupMedia,
   controller,
   labels = {};
 function state() {
@@ -121,6 +122,8 @@ async function render() {
   if (s.entry) openDetail(s.entry);
   else {
     detailSequence++;
+    cleanupMedia?.();
+    cleanupMedia = null;
     $("detail").close();
   }
   try {
@@ -268,14 +271,68 @@ function showMedia(entry, article) {
     if (!picture) return;
     let zoom = 1;
     const zoomText = el("span", "100%");
-    function resize(value) {
+    stage.style.aspectRatio = map.width + " / " + map.height;
+    function resize(value, anchor) {
+      const frame = viewport.getBoundingClientRect(), before = stage.getBoundingClientRect();
+      const x = anchor?.x ?? frame.left + viewport.clientWidth / 2;
+      const y = anchor?.y ?? frame.top + viewport.clientHeight / 2;
+      const u = before.width ? (x - before.left) / before.width : 0.5;
+      const v = before.height ? (y - before.top) / before.height : 0.5;
       zoom = Math.max(1, Math.min(6, value));
-      const fit = Math.min(1, (viewport.clientHeight * map.width) / (Math.max(1, viewport.clientWidth) * map.height));
-      stage.style.width = (Math.max(0.01, fit) * zoom * 100) + "%";
+      const fit = Math.min(viewport.clientWidth, viewport.clientHeight * map.width / map.height);
+      stage.style.width = Math.max(1, fit * zoom) + "px";
       zoomText.textContent = Math.round(zoom * 100) + "%";
+      const after = stage.getBoundingClientRect();
+      viewport.scrollLeft += after.left + u * after.width - x;
+      viewport.scrollTop += after.top + v * after.height - y;
       if (zoom === 1) { viewport.scrollLeft = 0; viewport.scrollTop = 0; }
     }
-    toolbar.append(el("strong", entry.name + " · 全图"), btn("−", () => resize(zoom / 1.5)), zoomText, btn("＋", () => resize(zoom * 1.5)), btn("适应窗口", () => resize(1)));
+    const smaller = btn("−", () => resize(zoom / 1.5));
+    const larger = btn("＋", () => resize(zoom * 1.5));
+    smaller.setAttribute("aria-label", "缩小地图");
+    larger.setAttribute("aria-label", "放大地图");
+    toolbar.append(el("strong", entry.name + " · 全图"), smaller, zoomText, larger, btn("适应窗口", () => resize(1)));
+    viewport.addEventListener("wheel", event => {
+      event.preventDefault();
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+      resize(zoom * Math.exp(-Math.max(-120, Math.min(120, delta)) * 0.002), {x:event.clientX, y:event.clientY});
+    }, {passive:false});
+    const dialog = $("detail");
+    let fallbackFullscreen = false, disposed = false;
+    const syncFullscreen = () => {
+      fullscreen.textContent = document.fullscreenElement === section || fallbackFullscreen ? "退出全屏" : "全屏查看";
+      fullscreen.setAttribute("aria-pressed", String(document.fullscreenElement === section || fallbackFullscreen));
+    };
+    const setFallback = value => {
+      fallbackFullscreen = value;
+      section.classList.toggle("map-fullscreen", value);
+      dialog.classList.toggle("map-dialog-fullscreen", value);
+      syncFullscreen();
+    };
+    const fullscreen = btn("全屏查看", async () => {
+      if (document.fullscreenElement === section) {
+        await document.exitFullscreen();
+      } else if (fallbackFullscreen) {
+        setFallback(false);
+      } else {
+        try {
+          if (!section.requestFullscreen) throw new Error("Fullscreen unavailable");
+          await section.requestFullscreen();
+        } catch {
+          if (!disposed) setFallback(true);
+        }
+      }
+    });
+    fullscreen.setAttribute("aria-pressed", "false");
+    toolbar.append(fullscreen);
+    section.addEventListener("fullscreenchange", syncFullscreen);
+    const cancelFullscreen = event => {
+      if (!fallbackFullscreen) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setFallback(false);
+    };
+    dialog.addEventListener("cancel", cancelFullscreen, true);
     const toggle = btn("隐藏标记", () => { stage.classList.toggle("hide-markers"); toggle.textContent = stage.classList.contains("hide-markers") ? "显示标记" : "隐藏标记"; });
     toolbar.append(toggle);
     const original = el("a", "查看原图 ↗"); original.href = mediaURL(map.path); original.target = "_blank"; original.rel = "noopener noreferrer"; toolbar.append(original);
@@ -286,14 +343,23 @@ function showMedia(entry, article) {
       pin.style.left = (marker.x * 100) + "%"; pin.style.top = (marker.y * 100) + "%";
       pin.title = marker.name; pin.setAttribute("aria-label", marker.name); stage.append(pin);
     }
-    viewport.append(stage); section.append(toolbar,viewport,el("p", "拖动查看 · ＋ / − 缩放 · 蓝色为 NPC，点击橙色入口查看对应地图", "map-help"));
+    viewport.append(stage); section.append(toolbar,viewport,el("p", "滚轮缩放 · 拖动查看 · 蓝色为 NPC，点击橙色入口查看对应地图", "map-help"));
     let drag;
-    viewport.onpointerdown = (event) => { if (event.target.closest("button") || event.pointerType === "touch") return; drag = {x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop}; viewport.setPointerCapture(event.pointerId); };
+    viewport.onpointerdown = (event) => { if (event.button !== 0 || event.target.closest("button") || event.pointerType === "touch") return; event.preventDefault(); drag = {x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop}; viewport.setPointerCapture(event.pointerId); };
     viewport.onpointermove = (event) => { if (!drag)return; viewport.scrollLeft=drag.left+drag.x-event.clientX;viewport.scrollTop=drag.top+drag.y-event.clientY; };
-    viewport.onpointerup = viewport.onpointercancel = () => { drag=null; };
+    viewport.onpointerup = viewport.onpointercancel = viewport.onlostpointercapture = () => { drag=null; };
     picture.draggable = false;
     article.append(section);
-    requestAnimationFrame(() => resize(1));
+    const observer = new ResizeObserver(() => resize(zoom));
+    observer.observe(viewport);
+    cleanupMedia = () => {
+      disposed = true;
+      observer.disconnect();
+      dialog.removeEventListener("cancel", cancelFullscreen, true);
+      if (document.fullscreenElement === section) document.exitFullscreen().catch(() => {});
+      setFallback(false);
+    };
+    requestAnimationFrame(() => { if (!disposed) resize(1); });
     return;
   }
   if (!entry.images?.length) return;
@@ -306,6 +372,8 @@ function showMedia(entry, article) {
 }
 
 async function openDetail(id) {
+  cleanupMedia?.();
+  cleanupMedia = null;
   const seq = ++detailSequence;
   $("article").replaceChildren(el("p", "正在读取详情…"));
   if (!$("detail").open) $("detail").showModal();

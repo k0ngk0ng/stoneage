@@ -6,6 +6,8 @@ class Element {
   constructor(tag) {
     this.tag = tag;
     this.style = {};
+    this.scrollLeft = this.scrollTop = 0;
+    this.classList = {toggle() {}};
     this.clientWidth = 800;
     this.clientHeight = 400;
     this.children = [];
@@ -24,6 +26,10 @@ class Element {
     this.attributes[k] = v;
   }
   addEventListener() {}
+  getBoundingClientRect() {
+    const width = parseFloat(this.style.width) || this.clientWidth;
+    return {left:0, top:0, width, height:this.style.aspectRatio ? width : this.clientHeight};
+  }
   showModal() {
     this.open = true;
   }
@@ -60,6 +66,7 @@ function setup() {
       }
     },
     requestAnimationFrame: fn => fn(),
+    ResizeObserver: class { observe() {} disconnect() {} },
     console,
   });
   vm.runInContext(fs.readFileSync(__dirname + "/site/app.js", "utf8"), ctx);
@@ -160,10 +167,10 @@ test("map initially fits both viewport dimensions and preserves bounded zoom", (
   vm.runInContext('showMedia({name:"测试地图",map:{path:"wiki/maps/1-abcdef1234567890.webp",width:800,height:800,markers:[]}},$("article"))',ctx);
   const viewer=nodes.get('article').children[0];
   const toolbar=viewer.children[0],viewport=viewer.children[1],stage=viewport.children[0];
-  assert.equal(stage.style.width,'50%');
+  assert.equal(stage.style.width,'400px');
   toolbar.children[3].onclick();
-  assert.equal(stage.style.width,'75%');
+  assert.equal(stage.style.width,'600px');
   toolbar.children[4].onclick();
-  assert.equal(stage.style.width,'50%');
+  assert.equal(stage.style.width,'400px');
   assert.equal(viewport.scrollTop,0);
 });
