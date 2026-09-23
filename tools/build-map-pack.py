@@ -12,6 +12,7 @@ import shutil
 import struct
 
 MAGIC = b"SAMAP001"
+SKY_BACKGROUNDS = {30689:40510,30691:40510,30692:40510,30693:40510,30694:40510,30695:40510,5581:40511,104:40511}
 
 
 def build(assets, maps, output, floors, revision, publication=None):
@@ -41,9 +42,16 @@ def build(assets, maps, output, floors, revision, publication=None):
                 raise ValueError(f"invalid map {source.name}")
             layers = min(2, (len(data) - 8) // (count * 2))
             values = {value[0] for value in struct.iter_unpack("<H", data[8:8 + count * layers * 2])}
+            if int(floor) in SKY_BACKGROUNDS:
+                values.add(SKY_BACKGROUNDS[int(floor)])
             for value in (v for v in values if v > 99):
                 key = str(value)
-                info = manifest["bitmaps"].get(str(aliases.get(key, key))) or manifest["bitmaps"].get(key)
+                info = manifest["bitmaps"].get(str(aliases.get(key, key)))
+                if info and info.get("bmp_number") != value:
+                    info = None
+                if not info:
+                    direct = manifest["bitmaps"].get(key)
+                    info = direct if direct and direct.get("bmp_number") == value else None
                 if not info:
                     missing.add(value)
                     continue

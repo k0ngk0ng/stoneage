@@ -5670,6 +5670,8 @@
       setMapLoading(true,assetState.fieldBootstrapSpritesFailed?(assetState.spritesFailed?"人物资源加载失败，请点击重试":"正在读取兼容人物资源…"):"正在准备首屏人物…");
       return;
     }
+    const sky=dynamicReady?skyBackground(map):null;
+    if(sky&&!sky.ready){setMapLoading(true,sky.image?._assetFailed?"天空背景加载失败，请点击重试":"正在读取天空背景…");return;}
     const actorFrames=dynamicReady?fieldBootstrapFrameReadiness():{ready:true,total:0,pending:0};
     if(dynamicReady&&!actorFrames.ready){
       setMapLoading(true,`正在解码首屏人物（${actorFrames.total-actorFrames.pending}/${actorFrames.total}）…`);
@@ -6205,7 +6207,7 @@
       const x=target[0]+dx*ahead-dy*side,y=target[1]+dy*ahead+dx*side;
       if(x<0||y<0||x>=data.width||y>=data.height)continue;
       const index=y*data.width+x;
-      for(const value of [data.tile[index],data.parts[index]]){const info=resolveBitmapInfo(value);if(info?.file&&!assetState.images.has(info.file))urls.add(assetURL(info.file));}
+      for(const value of [data.tile[index],data.parts[index]]){const info=resolveMapBitmapInfo(value);if(info?.file&&!assetState.images.has(info.file))urls.add(assetURL(info.file));}
     }
     if(urls.size)postAssetWorker({type:"prefetch-assets",urls:[...urls].slice(0,16)});
   }
@@ -6735,6 +6737,16 @@
       if(Number.isFinite(decoded)&&Math.abs(decoded)<2147483648)keys.push(String(decoded));
     }
     return [...new Set(keys)];
+  }
+  // Map DAT values are decimal logical graphic IDs, never physical sprite frames.
+  function resolveMapBitmapInfo(value){
+    const key=String(Number(value)),manifest=assetState.manifest;
+    if(!manifest||!Number.isInteger(Number(value))||Number(value)<=99)return null;
+    const alias=manifest.bitmap_aliases?.[key];
+    const info=manifest.bitmaps?.[String(alias??key)];
+    if(info&&Number(info.bmp_number)===Number(value))return info;
+    const direct=manifest.bitmaps?.[key];
+    return direct&&Number(direct.bmp_number)===Number(value)?direct:null;
   }
   function resolveBitmapInfo(value){
     const manifest=assetState.manifest;if(!manifest)return null;const aliases=manifest.bitmap_aliases||{};
@@ -17738,7 +17750,7 @@
     if(!window.StoneAgeWorldResources?.MapLayers)return null;
     if(!incrementalMapLayers)incrementalMapLayers=new window.StoneAgeWorldResources.MapLayers({
       now:()=>performance.now(),enqueue:fn=>window.setTimeout(fn,0),focus:()=>app.position,
-      resolve:resolveBitmapInfo,pixel:mapPixel,image:file=>mapPaletteImage(file,loadAsset(file,{map:true})),ready:mapImageReady,
+      resolve:resolveMapBitmapInfo,pixel:mapPixel,image:file=>mapPaletteImage(file,loadAsset(file,{map:true})),ready:mapImageReady,
       validImage:record=>mapPaletteImage(record.info.file,assetState.images.get(record.info.file))===record.image,
       canvas:(width,height)=>{const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;return canvas;},draw:drawBitmapAt,
       changed:cache=>{if(app.mapLayerCache!==cache)return;if(cache.ready)app.mapLayerFallback=null;renderMapLoadingProgress();scheduleAssetRefresh(true);},
@@ -17786,7 +17798,7 @@
          1..19 are reserved/empty cells; resolving them as bitmaps paints
          false terrain along water/shore edges and keeps the loading curtain
          waiting for assets that should never be requested. */
-      if(value<=99)return;const info=resolveBitmapInfo(value);
+      if(value<=99)return;const info=resolveMapBitmapInfo(value);
       /* The DAT layer uses a few reserved/transparent indices (notably 1/2)
          which intentionally have no ADRN/bitmap entry.  They are empty cells,
          not failed downloads; treating them as missing would keep NOW LOADING
@@ -17851,7 +17863,7 @@
   function drawMapLayer(ctx,map,layer,center){
     if(!Array.isArray(layer)||!layer.length||!center)return;
     const width=Math.max(1,Number(map.width)||1),height=Math.max(1,Number(map.height)||1),cells=[];
-    const drawCell=(row,column)=>{if(row<0||row>=height||column<0||column>=width)return;const value=Number(layer[row*width+column])||0;if(value<=99)return;const info=resolveBitmapInfo(value);if(!info?.file)return;const image=loadAsset(info.file,{map:true});if(!image)return;const x=Number(map.x1||0)+column,y=Number(map.y1||0)+row,anchor=mapPixel(x,y);if(!anchor)return;const point=[ctx.canvas.width/2+anchor[0]-center[0],ctx.canvas.height/2+anchor[1]-center[1]];cells.push({image,info,point});};
+    const drawCell=(row,column)=>{if(row<0||row>=height||column<0||column>=width)return;const value=Number(layer[row*width+column])||0;if(value<=99)return;const info=resolveMapBitmapInfo(value);if(!info?.file)return;const image=loadAsset(info.file,{map:true});if(!image)return;const x=Number(map.x1||0)+column,y=Number(map.y1||0)+row,anchor=mapPixel(x,y);if(!anchor)return;const point=[ctx.canvas.width/2+anchor[0]-center[0],ctx.canvas.height/2+anchor[1]-center[1]];cells.push({image,info,point});};
     let ti=height-1,tj=0;while(ti>=0){let row=ti,column=tj;while(row>=0&&column>=0){drawCell(row,column);row--;column--;}if(tj<width-1)tj++;else ti--;}
     for(let index=cells.length-1;index>=0;index--){const cell=cells[index];drawBitmapAt(ctx,cell.image,cell.info,cell.point,1);}
   }
@@ -17885,6 +17897,26 @@
        compositor/GPU layer. */
     ground.style.transform=`translate3d(${x}px,${y}px,0)`;
     ground.style.display="block";
+    return true;
+  }
+  // system/skyisland.cpp: these floors draw a separate scrolling backdrop.
+  // 5581 deliberately has empty DAT layers; it must still wait for this image.
+  function skyBackground(map){
+    const floor=Number(map?.floor);
+    const logical=({30689:40510,30691:40510,30692:40510,30693:40510,30694:40510,30695:40510,5581:40511,104:40511})[floor];
+    if(!logical)return null;
+    const info=resolveMapBitmapInfo(logical),image=info?.file?loadAsset(info.file,{map:true}):null;
+    return {info,image,ready:Boolean(image?.complete&&image.naturalWidth)};
+  }
+  function drawSkyBackground(ctx,map,view,sky){
+    if(!sky?.ready)return false;
+    const image=sky.image,width=image.naturalWidth,height=image.naturalHeight;
+    const fullWidth=Math.max(1,Number(map.fullWidth)||Number(map.width)||1),fullHeight=Math.max(1,Number(map.fullHeight)||Number(map.height)||1);
+    const span=fullWidth+fullHeight,clamp=value=>Math.max(0,Math.min(1,value));
+    // Native camera projects the entire floor onto a 640 x 480 background window.
+    const sw=Math.min(640,width),sh=Math.min(480,height);
+    const x=(width-sw)*clamp((view[0]+view[1])/span),y=(height-sh)*clamp((fullHeight+view[1]-view[0])/span);
+    ctx.drawImage(image,Math.round(x),Math.round(y),sw,sh,0,0,ctx.canvas.width,ctx.canvas.height);
     return true;
   }
   function drawWorldGroundToBuffer(ctx,cache,center){
@@ -18132,6 +18164,8 @@
        blocks seen while walking.  On the first map there is no previous frame
        at all, so leave the front canvas untouched and let the modal loading
        curtain own the entire presentation until a complete cache exists. */
+    const sky=dynamicReady?skyBackground(map):null;
+    if(sky&&!sky.ready){maybeFinishMapLoading();renderWorldOverlay();return;}
     const waitingForDynamicCache=Boolean(dynamicReady&&center&&(!mapLayerCacheUsable(layerCache)&&!mapLayerCacheUsable(app.mapLayerFallback)));
     if(waitingForDynamicCache&&app.mapLoading&&!mapTransitionState.active){
       maybeFinishMapLoading();
@@ -18152,6 +18186,7 @@
       if(node)node.style.display="none";
       hideWorldGround();
       const groundCache=mapLayerCacheUsable(layerCache)?layerCache:(mapLayerCacheUsable(app.mapLayerFallback)?app.mapLayerFallback:null);
+      drawSkyBackground(ctx,map,view,sky);
       if(groundCache)drawWorldGroundToBuffer(ctx,groundCache,center);
       else {ctx.fillStyle="#050606";ctx.fillRect(0,0,canvas.width,canvas.height);}
     }else if(staticReady&&center){

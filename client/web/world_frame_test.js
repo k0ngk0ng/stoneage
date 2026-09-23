@@ -15,7 +15,7 @@ function section(start, end) {
 const source = [
   section("  function walkProgress(", "  function drawBitmapAt("),
   section("  function renderSceneActorsAndParts(", "  /* A large M window"),
-  section("  function drawWorldGroundToBuffer(", "  /* A sliding M window"),
+  section("  function skyBackground(", "  /* A sliding M window"),
   section("  function drawMapStar(", "  function mapEffectAnimationActive("),
   section("  function renderWorld(force=false)", "  function scheduleWorldAnimation("),
 ].join("\n");

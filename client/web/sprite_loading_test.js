@@ -31,7 +31,7 @@ function harness() {
     renderWorld() {context.maybeFinishMapLoading();},
   };
   vm.createContext(context);
-  vm.runInContext(section("  /* Resource index transport. */", "  function loadAssetManifest(") + section("  function setMapLoading(", "  function fieldBootstrapFrameReadiness(") + section("  function loadFieldBootstrapSpriteManifest(", "  function albumStorageKey(") + section("  function maybeFinishMapLoading(", "  function send("), context);
+  vm.runInContext(section("  function skyBackground(", "  function drawWorldGroundToBuffer(") + section("  /* Resource index transport. */", "  function loadAssetManifest(") + section("  function setMapLoading(", "  function fieldBootstrapFrameReadiness(") + section("  function loadFieldBootstrapSpriteManifest(", "  function albumStorageKey(") + section("  function maybeFinishMapLoading(", "  function send("), context);
   return {context, state, calls, timers, recover() {fail = false;}};
 }
 function emptyMapProgressHarness() {

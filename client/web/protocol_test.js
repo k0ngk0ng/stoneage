@@ -5917,7 +5917,7 @@ if(mapCacheKeyStart<0||mapCacheKeyEnd<=mapCacheKeyStart||ensureMapLayerEnd<=ensu
 }
 const mapLayerReadinessSource=script.slice(mapLayerUsableStart,mapLayerUsableEnd);
 const mapPartEnsureHarness=new Function(
-  "app","assetState","document","window","mapPixel","getMap2DContext","resolveBitmapInfo",
+  "app","assetState","document","window","mapPixel","getMap2DContext","resolveMapBitmapInfo",
   "loadAsset","mapPaletteImage","mapImageReady","drawBitmapAt","forgetMapAssetCache",
   "renderWorld","renderMapLoadingProgress","scheduleAssetRefresh","setMapLoading",`
   const MAP_LAYER_ASYNC_RASTER_THRESHOLD=240;

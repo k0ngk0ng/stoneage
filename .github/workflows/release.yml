@@ -54,6 +54,7 @@ jobs:
           node client/web/sprite_loading_test.js
           node client/web/sw_cache_test.js
           node client/web/world_frame_test.js
+          node client/web/sky_background_test.js
           node --test client/web/walking_scheduler_test.js client/web/map_layers_test.js client/web/map_pack_test.js
           PYTHONDONTWRITEBYTECODE=1 python3 tools/build-map-pack_test.py
           PYTHONDONTWRITEBYTECODE=1 python3 tools/asset-cooker_test.py

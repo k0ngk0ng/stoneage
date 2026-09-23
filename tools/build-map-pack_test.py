@@ -13,6 +13,27 @@ spec.loader.exec_module(builder)
 
 
 class MapPackTests(unittest.TestCase):
+    def test_empty_sky_floor_and_wrong_physical_frame(self):
+        with tempfile.TemporaryDirectory(dir="build") as temporary:
+            root = Path(temporary)
+            assets, maps = root / "assets", root / "maps"
+            (assets / "bitmaps").mkdir(parents=True)
+            maps.mkdir()
+            (assets / "bitmaps/sky.png").write_bytes(b"sky")
+            (assets / "manifest.json").write_text(json.dumps({
+                "maps": {"5581": {}}, "bitmap_aliases": {"40511": "242327", "15431": "15431"},
+                "bitmaps": {"242327": {"file": "bitmaps/sky.png", "bmp_number": 40511},
+                            "15431": {"file": "bitmaps/wrong.png", "bmp_number": 0}},
+            }))
+            source = maps / "5581.DAT"
+            source.write_bytes(struct.pack("<ii2H", 1, 1, 0, 0))
+            header = builder.build(assets, maps, root / "sky.samap", [5581], "local-dev")
+            self.assertEqual(header["unmapped_bitmaps"], [])
+            self.assertIn("assets/bitmaps/sky.png", [e["path"] for e in header["entries"]])
+            source.write_bytes(struct.pack("<ii2H", 1, 1, 15431, 0))
+            header = builder.build(assets, maps, root / "wrong.samap", [5581], "local-dev")
+            self.assertEqual(header["unmapped_bitmaps"], [15431])
+
     def test_dependencies_alias_fallback_and_publication_validation(self):
         Path("build").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir="build") as temporary:
@@ -24,7 +45,7 @@ class MapPackTests(unittest.TestCase):
             (assets / "bitmaps/bitmap_1.png").write_bytes(bitmap)
             (assets / "manifest.json").write_text(json.dumps({
                 "maps": {"1000": {}}, "bitmap_aliases": {"26001": "9136"},
-                "bitmaps": {"26001": {"file": "bitmaps/bitmap_1.png"}},
+                "bitmaps": {"26001": {"file": "bitmaps/bitmap_1.png", "bmp_number": 26001}},
             }))
             (maps / "1000.DAT").write_bytes(struct.pack("<ii6H", 2, 1, 26001, 26001, 0, 0, 0, 0))
             (maps / "1000.MAP").write_bytes(struct.pack("<ii2H", 2, 1, 43947, 43947))
