@@ -286,7 +286,7 @@ function showMedia(entry, article) {
       pin.style.left = (marker.x * 100) + "%"; pin.style.top = (marker.y * 100) + "%";
       pin.title = marker.name; pin.setAttribute("aria-label", marker.name); stage.append(pin);
     }
-    viewport.append(stage); section.append(toolbar,viewport,el("p", "拖动查看 · ＋ / − 缩放 · 蓝色为 NPC，橙色为出口", "map-help"));
+    viewport.append(stage); section.append(toolbar,viewport,el("p", "拖动查看 · ＋ / − 缩放 · 蓝色为 NPC，点击橙色入口查看对应地图", "map-help"));
     let drag;
     viewport.onpointerdown = (event) => { if (event.target.closest("button") || event.pointerType === "touch") return; drag = {x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop}; viewport.setPointerCapture(event.pointerId); };
     viewport.onpointermove = (event) => { if (!drag)return; viewport.scrollLeft=drag.left+drag.x-event.clientX;viewport.scrollTop=drag.top+drag.y-event.clientY; };

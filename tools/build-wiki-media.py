@@ -16,6 +16,35 @@ def map_bitmap(number, bitmaps, aliases):
     return None
 
 
+def map_markers(map_key, markers, entries):
+    """Show real local NPCs and one marker per nearby destination entrance."""
+    result, exits = [], []
+    for marker in markers:
+        if marker['kind'] == 'exit':
+            marker = dict(marker, name=entries.get(marker['key'], {}).get('name', marker['name']))
+            exits.append(marker)
+            continue
+        npc = entries.get(marker['key'], {})
+        fields = {f['label']: f['value'] for f in npc.get('fields') or []}
+        if fields.get('功能') == 'Warp':
+            continue  # These invisible gate cells already have destination markers.
+        if not any(link.get('key') == map_key for link in npc.get('links') or []):
+            continue
+        result.append(marker)
+    while exits:
+        group = [exits.pop(0)]
+        for anchor in group:
+            nearby = [m for m in exits if m['key'] == anchor['key'] and
+                      abs(m['x'] - anchor['x']) <= .02 and abs(m['y'] - anchor['y']) <= .02]
+            group.extend(nearby)
+            exits = [m for m in exits if m not in nearby]
+        # Keep the marker on a real entrance cell, not an arbitrary midpoint.
+        x = sum(m['x'] for m in group) / len(group)
+        y = sum(m['y'] for m in group) / len(group)
+        result.append(min(group, key=lambda m: (m['x']-x)**2 + (m['y']-y)**2))
+    return result
+
+
 def build(args):
     from PIL import Image
     root, assets, out = args.data, args.assets, args.output
@@ -142,6 +171,9 @@ def build(args):
         if absent:
             result[k]['map_status'] = '部分地图图块待补全'
         if index%40==0:print('rendered',index+1,'maps',flush=True)
+    for k, media in result.items():
+        if media.get('map'):
+            media['map']['markers'] = map_markers(k, media['map']['markers'], entries)
     enrich_related(result,entries)
     args.manifest.write_text(json.dumps(result,ensure_ascii=False,separators=(',',':'))+'\n')
     print('coverage',Counter(entries[k]['kind'] for k,v in result.items() if v['images']))
