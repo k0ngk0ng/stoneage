@@ -71,6 +71,15 @@ fi
 command="${1:-help}"
 if (( $# )); then shift; fi
 case "$command" in
+  battle-dataset)
+    version="${STONEAGE_VERSION:-$(env_value STONEAGE_VERSION)}"
+    legacy_image="${STONEAGE_LEGACY_IMAGE:-$(env_value STONEAGE_LEGACY_IMAGE)}"
+    [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]] || {
+      echo 'battle-dataset requires an explicit STONEAGE_VERSION release tag' >&2; exit 2;
+    }
+    export STONEAGE_BATTLE_DATASET_IMAGE="${legacy_image:-ghcr.io/k0ngk0ng/stoneage/legacy-runtime}:$version"
+    exec "$project_root/bin/battle-dataset.sh" "$@" ;;
+  battle-export) exec python3 "$project_root/bin/battle-export.py" "$@" ;;
   init) exec "$project_root/bin/deploy.sh" --init "$@" ;;
   check) exec "$project_root/bin/deploy.sh" --check "$@" ;;
   # Deployment pulls while services stay online, then replaces containers.
@@ -95,6 +104,6 @@ case "$command" in
     fi
     exit 0
     ;;
-  help|-h|--help) echo 'Usage: bin/stoneage {init|check|login|pull|deploy|status|logs|stop|sync-assets|clean} [options]' ;;
+  help|-h|--help) echo 'Usage: bin/stoneage {init|check|login|pull|deploy|status|logs|stop|sync-assets|clean|battle-dataset|battle-export} [options]' ;;
   *) echo "Unknown command: $command" >&2; exit 2 ;;
 esac

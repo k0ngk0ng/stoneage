@@ -14,8 +14,14 @@ COPY scripts/modernize-character-file-read.py \
      scripts/redact-legacy-password-logs.py /
 
 RUN sh /modern/build.sh
+COPY config/gmsv/setup.cf.example /battle-smoke.cf
+COPY bin/battle-export.py /battle-export.py
+# Test the actual compiled engine before an image can be published.
+RUN sh /modern/tests/run-battle-dataset-smoke.sh
 
 FROM alpine:3.22 AS legacy-runtime
+ARG RELEASE_VERSION=dev
+ENV STONEAGE_RELEASE_VERSION=$RELEASE_VERSION
 
 # Use local time consistently for server announcements and runtime logs.
 ENV TZ=Asia/Shanghai
@@ -35,6 +41,8 @@ COPY --from=build /src/saac/badpetstring.txt /opt/stoneage/defaults/saac/badpets
 COPY server/legacy/modern/runtime-entrypoint.sh /usr/local/bin/stoneage-runtime
 COPY server/legacy/modern/run-gmsv.sh /opt/stoneage/bin/run-gmsv.sh
 COPY server/legacy/modern/run-saac.sh /opt/stoneage/bin/run-saac.sh
+COPY server/legacy/modern/prepare-battle-rules.sh /opt/stoneage/bin/prepare-battle-rules.sh
+COPY server/legacy/modern/run-battle-dataset.sh /opt/stoneage/bin/run-battle-dataset.sh
 
 RUN chmod 0755 /usr/local/bin/stoneage-runtime /opt/stoneage/bin/*.sh \
     /opt/stoneage/defaults/gmsv/gmsvjt.exe /opt/stoneage/defaults/saac/saacjt.exe

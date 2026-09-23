@@ -378,6 +378,12 @@ if [[ -n "$cdn_base" ]]; then
     fi
 fi
 
+# Battle datasets contain private player observations. Create this mount with
+# private permissions even when upgrading an older .env without the new key.
+battle_record_root="${STONEAGE_BATTLE_RECORD_ROOT:-$(env_value STONEAGE_BATTLE_RECORD_ROOT || true)}"
+battle_record_root="$(resolve_host_path "${battle_record_root:-./data/battle-records}")"
+install -d -m 700 "$battle_record_root"
+
 # Bind mounts are created by Docker as root when absent.  Create them here so
 # the operator can back them up and so a typo in a relative path is visible in
 # the host checkout before containers start.

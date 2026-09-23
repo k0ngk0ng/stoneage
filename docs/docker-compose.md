@@ -321,3 +321,10 @@ disabled = false
 ```
 
 `--web-only` 校验本地 JSON 与已发布清单一致，只新增 `web/<hash>/`、`indexes/` 和可选 `packs/<资源版本>/` 对象，不重发图片、不改资源版本。普通全量 `sync-assets` 也会发布脚本和压缩索引。CDN 须透传这些对象的 `Cache-Control: public, max-age=31536000, immutable`，允许跨域 GET/HEAD，并正确返回 JS MIME 类型。gzip 对象是 `application/gzip`，不设置 `Content-Encoding`；浏览器解压后验证大小和 SHA-256，沿用既有本地索引缓存。缓存命中不下载；不支持解压 API 的旧浏览器使用 CDN 原始 JSON。
+# 战斗训练数据
+
+GMSV 将 PVE/PVP 结构化轨迹保存在独立宿主机目录 `data/battle-records`，可用
+`STONEAGE_BATTLE_RECORD_ROOT` 修改路径。发布不会覆盖该目录。
+`bin/stoneage battle-dataset` 可在无网络、无真实角色挂载的独立容器中批量生成同点数 1V1；
+`bin/stoneage battle-export` 导出加点胜负或逐回合训练样本。操作、数据格式及适用范围见
+随部署包提供的 `docs/battle-training.md`。

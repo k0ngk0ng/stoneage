@@ -1,0 +1,235 @@
+--- a/battle/battle.c
++++ b/battle/battle.c
+@@ -1,4 +1,5 @@
+ #include "version.h"
++#include "stoneage_battle_record.h"
+ #include<string.h>
+ #include<stdlib.h>
+ #include <time.h>
+@@ -708,6 +709,7 @@
+     memset( &BattleArray[i], 0 , sizeof( BATTLE ));
+ 	}
+ 	print("分配 %4.2f MB 空间...", ((float)sizeof( Char )*BATTLE_battlenum)/1024.0/1024.0);
++  StoneAge_BattleRecordInit();
+   return TRUE;
+ 
+ }
+@@ -809,6 +811,7 @@
+ 	}
+ 
+ 	pBattle = &BattleArray[battleindex];
++	StoneAge_BattleRecordEnd(battleindex, 0);
+ 	pBattle->use = FALSE;
+ 	pBattle->mode = BATTLE_MODE_NONE;
+ 	BATTLE_DeleteItem( battleindex );
+@@ -1115,6 +1118,7 @@
+ 		for( i = 0; i < BATTLE_ENTRY_MAX; i ++ ){
+ 			if( pEntry[i].charaindex != charaindex )
+ 				continue;
++			StoneAge_BattleRecordExit(battleindex, charaindex, "participant_left");
+ 			pEntry[i].charaindex = -1;
+ 			pEntry[i].escape = 0;
+ 			CHAR_setWorkInt( charaindex, CHAR_WORKBATTLEMODE, BATTLE_CHARMODE_FINAL );
+@@ -2766,6 +2770,7 @@
+ 	if( BATTLE_CHECKINDEX( battleindex ) == FALSE )return BATTLE_ERR_BATTLEINDEX;
+ 	pBattle = &BattleArray[battleindex];
+ 	pBattle->mode = BATTLE_MODE_BATTLE;
++	StoneAge_BattleRecordBegin(battleindex);
+ 	iRet = BATTLE_SurpriseCheck( battleindex );
+ 	if( iRet == 0 ){
+ 	}else
+@@ -2848,6 +2853,7 @@
+ 					CHAR_setWorkInt(charaindex, CHAR_WORKFMPKFLAG, -1);
+ 					CHAR_setWorkInt( charaindex, CHAR_WORKBATTLEMODE, BATTLE_CHARMODE_C_OK );
+ 					CHAR_setWorkInt( charaindex, CHAR_WORKBATTLECOM1, BATTLE_COM_COMPELESCAPE );
++					StoneAge_BattleRecordExit(battleindex, charaindex, "timeout");
+ 					BATTLE_Exit( charaindex, battleindex );
+ 					lssproto_B_send( getfdFromCharaIndex( charaindex ), "BU" );
+ //					CONNECT_setCloseRequest( getfdFromCharaIndex( charaindex) , 1 );
+@@ -3341,6 +3347,7 @@
+ {
+ 
+ 	if( BATTLE_CHECKINDEX( battleindex ) == FALSE )return BATTLE_ERR_BATTLEINDEX;
++	StoneAge_BattleRecordEnd(battleindex, 1);
+ 	BattleArray[battleindex].mode = BATTLE_MODE_FINISH;
+ 	return 0;
+ }
+@@ -3737,6 +3744,7 @@
+ 			}
+ 			if( CHAR_getWorkInt( charaindex, CHAR_WORKBATTLEMODE )
+ 				== BATTLE_CHARMODE_C_WAIT ){
++				StoneAge_BattleRecordExit(battleindex, charaindex, "timeout");
+ 				BATTLE_Exit( charaindex, battleindex );
+ 				CHAR_DischargePartyNoMsg( charaindex );
+ 				CHAR_talkToCli( charaindex, -1,
+@@ -3842,7 +3850,9 @@
+ 	pBattle->turn ++;//自己回合数增加
+ 	BATTLE_ai_all( battleindex, 0, 0);
+ 	BATTLE_ai_all( battleindex, 1, 0);
+-	BATTLE_Battling( battleindex );//处理战斗
++	StoneAge_BattleRecordTurn(battleindex, 0);
++	BATTLE_Battling( battleindex );
++	StoneAge_BattleRecordTurn(battleindex, 1);//处理战斗
+ 	pBattle->Side[0].flg &= ~BSIDE_FLG_SURPRISE;
+ 	pBattle->Side[1].flg &= ~BSIDE_FLG_SURPRISE;
+ 	if( BATTLE_OnlyRescue( battleindex, 0, &OnlyRescue[0] ) == 0 ){
+@@ -6234,6 +6244,7 @@
+ 			CHAR_setWorkInt( charaindex, CHAR_WORKQUICK, CHAR_getWorkInt( charaindex, CHAR_WORKFIXDEX)*0.8);//敏降20%
+ 		}
+ #endif
++		StoneAge_BattleRecordExecuting(battleindex, attackNo, COM);
+ 		switch( COM ){//处理攻击
+ 		case BATTLE_COM_S_CHARGE_OK:
+ 		case BATTLE_COM_S_POWERBALANCE:
+--- a/battle/battle_command.c
++++ b/battle/battle_command.c
+@@ -1,4 +1,5 @@
+ #include "version.h"
++#include "stoneage_battle_record.h"
+ #include<string.h>
+ #include<stdlib.h>
+ #include"char.h"
+@@ -46,11 +47,30 @@
+ #endif
+ 
+ 
+-void BattleCommandDispach( int fd,	char *command )
++static void StoneAge_NativeBattleDispatch(int fd, int charaindex, char *command);
++void BattleCommandDispach(int fd, char *command)
++{
++    static int depth;
++    int character = CONNECT_getCharaindex(fd);
++    unsigned long request = StoneAge_BattleRecordRequest(character, command, depth);
++    depth++;
++    StoneAge_NativeBattleDispatch(fd, character, command);
++    depth--;
++    StoneAge_BattleRecordDispatch(character, request);
++}
++
++void StoneAge_BattleDatasetCommand(int character, char *command)
++{
++    unsigned long request = StoneAge_BattleRecordRequest(character, command, 0);
++    StoneAge_NativeBattleDispatch(-1, character, command);
++    StoneAge_BattleRecordDispatch(character, request);
++}
++
++static void StoneAge_NativeBattleDispatch(int fd, int charaindex, char *command)
+ {
+ 	int endFlg = 0, battleindex;
+ 	int EscapeFree = BATTLE_FLG_FREEDP;
+-	int charaindex = CONNECT_getCharaindex(fd);
++
+ 	char szBuffer[256]="";
+ #ifdef _FIXWOLF	 // Syu ADD 修正狼人变身Bug
+ 	int i , j , pindex;
+@@ -97,7 +117,8 @@
+ 	if( strncmp( command, "E", 1 ) == 0 ){
+ 
+ 		if( checkErrorStatus( charaindex) ) {
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -119,7 +140,8 @@
+ 		}
+ 
+ 		if( checkErrorStatus( charaindex) )	{
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -164,7 +186,8 @@
+ 	if( strncmp( command, "G", 1 ) == 0 ){
+ 
+ 		if( checkErrorStatus( charaindex) )	{
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -196,7 +219,8 @@
+ 		int iNum = -1;
+ 
+ 		if( checkErrorStatus( charaindex) )	{
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -224,7 +248,8 @@
+ 		int iNum = -1;
+ 
+ 		if( checkErrorStatus( charaindex) )	{
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -336,7 +361,8 @@
+         int itemindex=-1;
+ 
+ 		if( checkErrorStatus( charaindex) )	{
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -391,7 +417,8 @@
+ 		int valid = 0, itemindex = -1;
+ 
+ 		if( checkErrorStatus( charaindex) )	{
+-			BattleCommandDispach( fd, "N");
++			if (fd < 0) StoneAge_BattleDatasetCommand(charaindex, "N");
++            else BattleCommandDispach( fd, "N");
+ 			return;
+ 		}
+ 
+@@ -849,6 +876,7 @@
+ 				i + SIDE_OFFSET * j,
+ 				flg, CHAR_getInt( charaindex, CHAR_MP )
+ 			);
++			StoneAge_BattleRecordObservation(battleindex, charaindex, szBp, szAllBattleString);
+ 			BATTLE_CommandSend( charaindex, szBp );
+ 			BATTLE_CommandSend( charaindex, szAllBattleString );
+ 		}
+--- a/battle/battle_event.c
++++ b/battle/battle_event.c
+@@ -1,4 +1,5 @@
+ #include "version.h"
++#include "stoneage_battle_record.h"
+ #include <string.h>
+ #include <math.h>
+ #include "char.h"
+@@ -3611,6 +3612,7 @@
+ 		}
+ 		CHAR_setWorkInt( attackindex, CHAR_WORKBATTLEMODE, BATTLE_CHARMODE_FINAL );
+ 		CHAR_DischargePartyNoMsg( attackindex );
++		StoneAge_BattleRecordExit(battleindex, attackindex, "escape");
+ 		BATTLE_Exit( attackindex, battleindex );
+ 	}else{
+ 		//if( getBattleDebugMsg( ) != 0 ){
+--- a/main.c
++++ b/main.c
+@@ -1,4 +1,5 @@
+ #include "version.h"
++#include "stoneage_battle_dataset.h"
+ #include <stdio.h>
+ #include <time.h>
+ #include <string.h>
+@@ -37,6 +38,8 @@
+ int main( int argc , char** argv, char** env )
+ {
+     /*  午曰丐尹内凛棉毛涩烂仄化云仁    */
++    if (argc > 1 && strcmp(argv[1], "--battle-dataset") == 0)
++        return StoneAge_BattleDatasetMain(argc, argv);
+     setNewTime();
+ /*
+     if ( argc > 1 && 0==strcmp(argv[1],"-v"))

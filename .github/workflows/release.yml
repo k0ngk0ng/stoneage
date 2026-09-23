@@ -87,6 +87,7 @@ jobs:
           python3 server/legacy/modern/tests/test-character-identity.py
           python3 server/legacy/modern/tests/test-chat-identity.py
           python3 server/legacy/modern/tests/test-person-identity.py
+          python3 server/legacy/modern/tests/test-battle-records.py
           STONEAGE_NATIVE_PERSON_FIXTURE="$PWD/build/ai/person-identity/native-fixture.json" go test -mod=readonly ./internal/aigame -run '^TestNativePersonIdentityFixture$'
       - name: Verify production deployment tools
         run: |

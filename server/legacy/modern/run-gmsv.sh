@@ -45,4 +45,12 @@ else
 fi
 
 cd "$game_root/gmsv"
+if [ -n "${STONEAGE_BATTLE_RECORD_DIR:-}" ]; then
+    if STONEAGE_BATTLE_RULESET_ID="$(/opt/stoneage/bin/prepare-battle-rules.sh "$config_file")"; then
+        export STONEAGE_BATTLE_RULESET_ID
+    else
+        echo "Battle recorder: rule archive failed; recording disabled for this process" >&2
+        unset STONEAGE_BATTLE_RECORD_DIR
+    fi
+fi
 exec ./gmsvjt.exe -f "$config_file" >"$log_root/gmsv.log" 2>&1

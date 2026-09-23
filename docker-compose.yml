@@ -66,6 +66,8 @@ services:
       STONEAGE_SAAC_PORT: 9300
       STONEAGE_AI_FUNDING_POLICY_DIR: /run/stoneage/ai-funding/policies
       STONEAGE_AI_FUNDING_LEDGER: /run/stoneage/ai-funding/ledger.log
+      STONEAGE_BATTLE_RECORD_DIR: /var/lib/stoneage/battle-records
+      STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES: ${STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES:-1073741824}
     volumes:
       - ${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}:/game/gmsv
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv:ro
@@ -74,6 +76,7 @@ services:
       # data explicitly without sharing the GMSV binary/static tree.
       - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
       - ai-funding:/run/stoneage/ai-funding
+      - ${STONEAGE_BATTLE_RECORD_ROOT:-./data/battle-records}:/var/lib/stoneage/battle-records
     command: ["/opt/stoneage/bin/run-gmsv.sh"]
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9065"]
