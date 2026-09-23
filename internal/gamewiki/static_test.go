@@ -56,6 +56,12 @@ func TestStaticSnapshotCoverage(t *testing.T) {
 			t.Fatal("missing detail", row[0])
 		}
 		if entry.Kind == "map" {
+			if entry.Key == "map:5581" && (entry.Map == nil || entry.Map.Width != 1604 || entry.Map.Height != 1204 || entry.MapStatus != "") {
+				t.Fatal("sky map must use its original backdrop instead of a blank tile canvas")
+			}
+			if strings.HasPrefix(entry.Key, "map:3002") && entry.Key >= "map:30022" && entry.Key <= "map:30026" && (entry.Map == nil || entry.MapStatus != "") {
+				t.Fatal("crystal cavern graphics missing", entry.Key)
+			}
 			if entry.Key == "map:100" && entry.Name != "北岛 · 萨伊那斯" || entry.Key == "map:200" && entry.Name != "南岛 · 加鲁卡" {
 				t.Fatal("island label missing", entry.Key, entry.Name)
 			}

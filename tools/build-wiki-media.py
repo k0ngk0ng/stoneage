@@ -7,6 +7,12 @@ import argparse, gzip, hashlib, json, re, struct
 from collections import Counter
 from pathlib import Path
 
+# Original client system/skyisland.cpp, SkyIslandSetNo: these maps use a
+# separate parallax backdrop even when every ordinary ground cell is empty.
+SKY_BACKGROUNDS = {5581: 40511, 104: 40511,
+                   30689: 40510, 30691: 40510, 30692: 40510,
+                   30693: 40510, 30694: 40510, 30695: 40510}
+
 
 def map_bitmap(number, bitmaps, aliases):
     """Map cells are logical art IDs, never physical animation frame IDs."""
@@ -46,7 +52,7 @@ def map_markers(map_key, markers, entries):
 
 
 def build(args):
-    from PIL import Image
+    from PIL import Image, ImageOps
     root, assets, out = args.data, args.assets, args.output
     out.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((assets/'manifest.json').read_text())
@@ -107,14 +113,18 @@ def build(args):
             return info if info and (assets/info['file']).is_file() else None
         absent = {number for number in set(layers) if number>99 and not tile_info(number)}
         missing.update(absent)
+        backdrop_number = SKY_BACKGROUNDS.get(int(k.split(':')[1]))
+        backdrop = tile_info(backdrop_number) if backdrop_number else None
+        if backdrop_number and not backdrop:
+            missing.update([backdrop_number])
         # Never retain a cached blank image or a preview made from fallback frames.
-        if not any(number > 99 for number in layers):
+        if not backdrop and not any(number > 99 for number in layers):
             result[k] = {'images': [], 'map_status': '地图图片待补全'}
             continue
         if absent and not any(tile_info(number) for number in set(layers[:cells]) if number>99):
             result[k] = {'images': [], 'map_status': '地图图片校正中'}
             continue
-        if not absent and k in reusable and reusable[k].get('map') and int(k.split(':')[1]) not in rebuild:
+        if not absent and not backdrop_number and k in reusable and reusable[k].get('map') and int(k.split(':')[1]) not in rebuild:
             result[k] = reusable[k]
             continue
         # Maximum RGBA canvas is 4096 x 4096, regardless of island dimensions.
@@ -143,7 +153,18 @@ def build(args):
         bounds=canvas.getbbox() or (0,0,*size)
         left,top,right,bottom=bounds
         canvas=canvas.crop(bounds)
-        background=Image.new('RGBA',canvas.size,(244,229,193,255));background.alpha_composite(canvas);canvas=background
+        if backdrop:
+            with Image.open(assets/backdrop['file']) as im:
+                if not any(number > 99 for number in layers):
+                    # A sky-only map is its original backdrop, not an empty
+                    # isometric diamond scaled up to thousands of pixels.
+                    canvas = im.convert('RGBA')
+                else:
+                    background = ImageOps.fit(im.convert('RGBA'), canvas.size, method=Image.Resampling.LANCZOS)
+                    background.alpha_composite(canvas)
+                    canvas = background
+        else:
+            background=Image.new('RGBA',canvas.size,(244,229,193,255));background.alpha_composite(canvas);canvas=background
         size=canvas.size
         def point(x,y):return ((ox+(x+y)*32)*scale-left)/size[0],((oy+(y-x)*24)*scale-top)/size[1]
         floor=k.split(':')[1]
