@@ -69,13 +69,14 @@ type MapMedia struct {
 }
 type Entry struct {
 	Summary
-	Images  []MediaImage `json:"images,omitempty"`
-	Map     *MapMedia    `json:"map,omitempty"`
-	Fields  []Field      `json:"fields"`
-	Tables  []Table      `json:"tables"`
-	Notes   []string     `json:"notes"`
-	Links   []Link       `json:"links"`
-	Sources []string     `json:"sources"`
+	Images    []MediaImage `json:"images,omitempty"`
+	Map       *MapMedia    `json:"map,omitempty"`
+	MapStatus string       `json:"map_status,omitempty"`
+	Fields    []Field      `json:"fields"`
+	Tables    []Table      `json:"tables"`
+	Notes     []string     `json:"notes"`
+	Links     []Link       `json:"links"`
+	Sources   []string     `json:"sources"`
 }
 type Catalog struct {
 	Entries  map[string]*Entry
@@ -301,6 +302,12 @@ func (b *builder) loadMaps(ctx context.Context) error {
 		}
 		id := int(binary.BigEndian.Uint16(h[6:8]))
 		name := strings.Split(decode([]byte(strings.SplitN(string(h[8:40]), "\x00", 2)[0])), "|")[0]
+		switch id {
+		case 100:
+			name = "北岛 · 萨伊那斯"
+		case 200:
+			name = "南岛 · 加鲁卡"
+		}
 		rel, _ := filepath.Rel(b.k.DataDir, path)
 		if old := b.maps[id]; old != nil {
 			old.Notes = append(old.Notes, "相同地图编号有多个文件，名称/尺寸可能存在版本差异")

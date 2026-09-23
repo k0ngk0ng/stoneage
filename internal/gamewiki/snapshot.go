@@ -76,8 +76,9 @@ func BuildSnapshotWithMedia(ctx context.Context, root, output, mediaPath string)
 			return err
 		}
 		var media map[string]struct {
-			Images []MediaImage `json:"images"`
-			Map    *MapMedia    `json:"map"`
+			Images    []MediaImage `json:"images"`
+			Map       *MapMedia    `json:"map"`
+			MapStatus string       `json:"map_status"`
 		}
 		if err := json.Unmarshal(raw, &media); err != nil {
 			return err
@@ -86,6 +87,7 @@ func BuildSnapshotWithMedia(ctx context.Context, root, output, mediaPath string)
 			if entry := c.Entries[key]; entry != nil {
 				entry.Images = m.Images
 				entry.Map = m.Map
+				entry.MapStatus = m.MapStatus
 			}
 		}
 	}

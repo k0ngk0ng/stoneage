@@ -55,8 +55,17 @@ func TestStaticSnapshotCoverage(t *testing.T) {
 		if !ok || entry.Name != row[2] {
 			t.Fatal("missing detail", row[0])
 		}
-		if entry.Kind == "map" && (entry.Map == nil || !strings.HasPrefix(entry.Map.Path, "wiki/maps/") || entry.Map.Width > 4096 || entry.Map.Height > 4096) {
-			t.Fatal("missing or unbounded map", entry.Key)
+		if entry.Kind == "map" {
+			if entry.Key == "map:100" && entry.Name != "北岛 · 萨伊那斯" || entry.Key == "map:200" && entry.Name != "南岛 · 加鲁卡" {
+				t.Fatal("island label missing", entry.Key, entry.Name)
+			}
+			if entry.Map == nil {
+				if entry.MapStatus == "" || len(entry.Images) != 0 {
+					t.Fatal("unavailable map must explain missing image without a stale thumbnail", entry.Key)
+				}
+			} else if !strings.HasPrefix(entry.Map.Path, "wiki/maps/") || entry.Map.Width > 4096 || entry.Map.Height > 4096 {
+				t.Fatal("invalid or unbounded map", entry.Key)
+			}
 		}
 		if entry.Kind == "pet" || entry.Kind == "equipment" || entry.Kind == "item" || entry.Kind == "npc" || entry.Kind == "battle_npc" || entry.Kind == "quest" || (entry.Kind == "encounter" && len(entry.Links) > 0) {
 			if len(entry.Images) == 0 {

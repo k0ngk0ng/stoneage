@@ -260,6 +260,7 @@ function mediaImage(path, caption, cls) {
   return img;
 }
 function showMedia(entry, article) {
+  if (entry.map_status) article.append(el("p", entry.map_status, "map-help"));
   if (entry.map) {
     const map = entry.map, section = el("section", null, "map-viewer");
     const toolbar = el("div", null, "map-tools"), viewport = el("div", null, "map-viewport"), stage = el("div", null, "map-stage");

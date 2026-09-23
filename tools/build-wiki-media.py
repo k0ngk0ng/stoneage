@@ -6,10 +6,18 @@ No native game data or rendering is needed on the production host.
 import argparse, gzip, hashlib, json, re, struct
 from collections import Counter
 from pathlib import Path
-from PIL import Image
+
+
+def map_bitmap(number, bitmaps, aliases):
+    """Map cells are logical art IDs, never physical animation frame IDs."""
+    info = bitmaps.get(str(aliases.get(str(number), number)))
+    if info and info.get('bmp_number') == number:
+        return info
+    return None
 
 
 def build(args):
+    from PIL import Image
     root, assets, out = args.data, args.assets, args.output
     out.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((assets/'manifest.json').read_text())
@@ -65,9 +73,19 @@ def build(args):
         if raw[:6]!=b'LS2MAP':raise ValueError(source)
         w,h=struct.unpack_from('>HH',raw,40);cells=w*h
         layers=struct.unpack_from('>'+str(cells*2)+'H',raw,44)
-        missing.update(number for number in set(layers) if number>99 and
-                       (not bitmap(number) or not (assets/bitmap(number)['file']).is_file()))
-        if k in reusable and reusable[k].get('map') and int(k.split(':')[1]) not in rebuild:
+        def tile_info(number):
+            info = map_bitmap(number, bitmaps, aliases)
+            return info if info and (assets/info['file']).is_file() else None
+        absent = {number for number in set(layers) if number>99 and not tile_info(number)}
+        missing.update(absent)
+        # Never retain a cached blank image or a preview made from fallback frames.
+        if not any(number > 99 for number in layers):
+            result[k] = {'images': [], 'map_status': '地图图片待补全'}
+            continue
+        if absent and not any(tile_info(number) for number in set(layers[:cells]) if number>99):
+            result[k] = {'images': [], 'map_status': '地图图片校正中'}
+            continue
+        if not absent and k in reusable and reusable[k].get('map') and int(k.split(':')[1]) not in rebuild:
             result[k] = reusable[k]
             continue
         # Maximum RGBA canvas is 4096 x 4096, regardless of island dimensions.
@@ -83,7 +101,7 @@ def build(args):
                     y=x+delta;number=layers[layer*cells+y*w+x]
                     if number<=99:continue
                     if number not in cache:
-                        info=bitmap(number)
+                        info=tile_info(number)
                         if not info or not (assets/info['file']).is_file():cache[number]=None
                         else:
                             with Image.open(assets/info['file']) as im:
@@ -121,6 +139,8 @@ def build(args):
                     x,y=map(int,pos.groups())
                     if 0<=x<w and 0<=y<h:markers.append({'key':'map:'+dest[1],'name':row[1].split(' [')[0],'x':point(x,y)[0],'y':point(x,y)[1],'kind':'exit'})
         result[k]={'images':[{'path':'wiki/maps/thumb-'+name,'caption':e['name']}],'map':{'path':'wiki/maps/'+name,'width':size[0],'height':size[1],'markers':markers}}
+        if absent:
+            result[k]['map_status'] = '部分地图图块待补全'
         if index%40==0:print('rendered',index+1,'maps',flush=True)
     enrich_related(result,entries)
     args.manifest.write_text(json.dumps(result,ensure_ascii=False,separators=(',',':'))+'\n')
@@ -138,7 +158,7 @@ def enrich_related(result,entries):
     quest_maps.update({'n3': 3300, 'n12': 21001, 'n5': 21001, 'n13': 2000, 'z2': 11201, 'sa25_03': 2000, 'n1': 3100, 'n7': 3305, 'faq01': 2008, 'b6': 1400, 'sa25_04': 30619, 'news_01': 1000, 'b8': 10701, 'j3': 30600, 'wt03-food-A': 3000, 'wt03-food-B': 3000, 'wt03-food-C': 3000, 'wt03-food-D': 3000, 'wt03-food-E': 3000, 'wt03-food-F': 3000})
     for quest,floor in quest_maps.items():
         key='quest:'+quest;mapkey='map:'+str(floor)
-        if key in result and not result[key]['images'] and mapkey in result:
+        if key in result and not result[key]['images'] and result.get(mapkey,{}).get('images'):
             image=dict(result[mapkey]['images'][0]);image['caption']='任务地点：'+entries[mapkey]['name'];result[key]['images']=[image]
     for key,entry in entries.items():
         if result[key]['images']:continue
