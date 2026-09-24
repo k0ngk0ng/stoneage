@@ -2,19 +2,9 @@
 
 服务包含 SAAC、GMSV、网关、Web 客户端、管理后台及服务控制器。需要 Linux amd64、Docker Engine 和 Compose v2+。服务器只拉取 GitHub 构建的镜像，不需要源码、Git、Go 或编译工具。
 
-AI 玩家资金策略使用 Compose 的私有 `ai-funding` 卷。管理端将启用的策略写入该卷，
-GMSV 从 `/run/stoneage/ai-funding/policies` 读取同一数据并把扣费账本写入该卷；
-该卷不会挂载到 Codex AI runtime。删除或停用策略后，服务端下一次扣费检查即恢复
-普通玩家的实际石币校验。
-
-AI 运行时随发布流程单独构建为 `ai-runtime` 镜像，支持 Linux amd64 和 arm64，
-内置固定版本的官方 Codex CLI `0.154.0`、`stoneage-game-mcp` 和仓库 Skills。
-`control-plane` 与 `legacy-runtime` 的职责和默认 Compose 服务保持不变；其中
-`legacy-runtime` 仍只有 amd64 版本。默认 Compose 不加载 AI overlay，也不会给
-`admin` 增加 Docker 权限；启用容器模式时，`bin/stoneage` 会自动加载随部署包提供的
-`docker-compose.ai.yml`。
-
-启用容器模式前，在 `.env` 中设置 `STONEAGE_AI_CONTAINER_MODE=true`，并依次执行：
+`legacy-runtime` 只有 amd64 版本。三项面向人类玩家的自动化功能使用
+`docker-compose.ai.yml` 中的 Web 数据挂载和持久卷；该 overlay 不启动 AI 玩家容器。
+需要启用时，在 `.env` 中设置 `STONEAGE_AI_CONTAINER_MODE=true`，并依次执行：
 
 ```bash
 ./bin/stoneage check
@@ -22,27 +12,8 @@ AI 运行时随发布流程单独构建为 `ai-runtime` 镜像，支持 Linux am
 ./bin/stoneage deploy --no-image-update
 ```
 
-`STONEAGE_AI_RUNTIME_IMAGE` 是完整的镜像引用，默认带有当前
-`STONEAGE_VERSION` 标签；也可以填写已发布镜像的 `@sha256:...` 摘要。`check` 会拒绝
-漂移到其他 tag 的引用，`pull` 先拉取该固定 AI 镜像，broker 启动 profile 容器时始终
-使用 `--pull never`。未启用容器模式时，以上 overlay 不会被加载。
-
-容器模式的 AI 服务使用独立的非 root 运行身份，并为每个 profile 分配唯一 named
-volume，统一挂载到 `/var/lib/stoneage-ai`。broker 通过固定入口
-`/usr/local/bin/stoneage-ai-runner -profile <profile-id>` 启动一次执行，随后在 stdin
-写入一份 JSON 请求；镜像环境中的 `STONEAGE_AI_CODEX_BINARY`、
-`STONEAGE_AI_MCP_BINARY`、`STONEAGE_AI_GIT_BINARY`、`STONEAGE_AI_SKILL_ROOT` 和
-`STONEAGE_AI_STATE_ROOT` 是固定路径。不要设置或挂载镜像级 `CODEX_HOME`，runner
-会在该 profile 卷内生成隔离的 Codex home、workspace、状态和能力令牌文件。
-admin 进程只在容器模式 overlay 中挂载 `/var/run/docker.sock`；模型子容器不挂载
-Docker socket、admin/auth 数据库、operator socket、GMSV/SAAC 存档或资金策略目录，
-只接入固定的 backend 网络和该 profile 的 named volume。AI game session 连接
-`gateway:9065` 的 named LSSPROTO 入口；容器内 MCP 访问 admin 的私有
-`http://admin:8081/v1/game`，该端口不发布到宿主机。地图和知识读取现有
-`/game/gmsv/data` 的只读挂载，资金策略卷仍与 GMSV 使用同一个 `ai-funding` 卷。
-Web automation 的启动参数由 overlay 注入并与 admin 共用持久化 automation/receipt
-卷。项目生成的 Codex 配置保留 `approval_policy = "never"` 与
-`sandbox_mode = "danger-full-access"`；这不会改变 admin/web/operator 的权限边界。
+未启用时，以上 overlay 不会被加载。启用后，Web 使用现有
+`/game/gmsv/data` 的只读挂载及独立的 automation/receipt 持久卷。
 
 ## 1. 安装部署包
 

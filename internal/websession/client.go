@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
-	"github.com/k0ngk0ng/stoneage/internal/aiprovision"
 )
 
 const (
@@ -38,12 +37,6 @@ type Client struct {
 	control     *http.Client
 	controlBase *url.URL
 	pollTimeout time.Duration
-}
-
-// Connector adapts Client to aiprovision.SessionConnector. It intentionally
-// lives in this package so aiprovision does not depend on the Web transport.
-type Connector struct {
-	client *Client
 }
 
 // New constructs the Web client and private Unix transport. The production
@@ -83,15 +76,6 @@ func (client *Client) requiresControl() error {
 	return nil
 }
 
-// NewConnector is the composition entry point used by cmd/stoneage-admin.
-func NewConnector(config Config) (*Connector, error) {
-	client, err := New(config)
-	if err != nil {
-		return nil, err
-	}
-	return &Connector{client: client}, nil
-}
-
 func (client *Client) Close() error {
 	if client == nil {
 		return nil
@@ -105,51 +89,6 @@ func (client *Client) Close() error {
 		}
 	}
 	return nil
-}
-
-// Close releases idle public and private HTTP connections owned by the
-// connector. Active game sessions are closed by their individual leases.
-func (connector *Connector) Close() error {
-	if connector == nil || connector.client == nil {
-		return nil
-	}
-	return connector.client.Close()
-}
-
-// Login opens a normal Web session, performs the named-protocol login, and
-// returns a session which attaches to the Web agent lease after CharLogin.
-// Password bytes are consumed by aigame.Authenticate and are not retained.
-func (connector *Connector) Login(ctx context.Context, config aigame.Config, credentials aigame.Credentials) (aiprovision.HeadlessSession, error) {
-	if connector == nil || connector.client == nil {
-		return nil, ErrInvalidConfig
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	address := strings.TrimSpace(config.Address)
-	if connector.client.serverID != "" {
-		address = connector.client.serverID
-	}
-	if address == "" {
-		return nil, fmt.Errorf("%w: server ID is required", ErrInvalidConfig)
-	}
-	config.Address = address
-	dialDone := traceStage(ctx, "create_web_session")
-	connection, err := connector.client.Dial(ctx, address)
-	dialDone(err)
-	if err != nil {
-		return nil, err
-	}
-	protocol := aigame.NewSession(connection, config)
-	loginDone := traceStage(ctx, "authenticate_game")
-	loginErr := protocol.Authenticate(ctx, credentials)
-	loginDone(loginErr)
-	if err := loginErr; err != nil {
-		_ = protocol.Close()
-		return nil, err
-	}
-	session := newSession(connector.client, protocol, connection.(*httpConn), address)
-	return session, nil
 }
 
 // Dial creates the browser-compatible HTTP net.Conn used by the native
@@ -817,6 +756,3 @@ func identityFromSnapshot(snapshot aigame.Snapshot, serverID string) (Identity, 
 	}
 	return identity, nil
 }
-
-var _ aiprovision.SessionConnector = (*Connector)(nil)
-var _ aiprovision.HeadlessSession = (*Session)(nil)

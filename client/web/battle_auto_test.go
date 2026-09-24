@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -19,6 +20,28 @@ import (
 // without a live pet row needs exactly one command per turn, which is what
 // makes the turn assertions below unambiguous.
 const webBattleRoster = "BC|0|0|AutomationHero||100|1|23|23|4|0||0|0|0|A|Enemy||100|1|10|10|0|0||0|0|0"
+
+func battleSessionFixture(t *testing.T) (*Handler, *tcpSession, net.Conn) {
+	t.Helper()
+	h, err := NewHandler(DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, right := net.Pipe()
+	s := newTCPSession("battle-auto", left, 64*1024)
+	s.serverID = "line-a"
+	seedWebAutomationState(t, s, 10, 100)
+	s.applyAuthoritativePacket(webServerPacket(t, 6, "CharList", "successful", `AutomationHero|0\z0\z1\z10\z100\z20\z30\z4\z0\z50\z50\z50\z50\z0\zAutomationHero\zhome`))
+	s.applyAuthoritativePacket(webServerPacket(t, 7, "CharLogin", "successful", ""))
+	if err := h.sessions.add(s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.observeAuthoritative(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { h.Close(); right.Close() })
+	return h, s, right
+}
 
 // webServerIntPacket mirrors webServerPacket for functions whose fields are
 // integers rather than strings.
@@ -125,7 +148,7 @@ func decodeControlSnapshot(t *testing.T, response *httptest.ResponseRecorder) co
 }
 
 func TestWebBattleAutoAnswersTurnsUntilTakeover(t *testing.T) {
-	handler, session, peer, _ := agentSessionFixture(t)
+	handler, session, peer := battleSessionFixture(t)
 	seedWebBattle(t, session)
 
 	response := postBattleAuto(t, handler, session.id, "battle-auto", `{"generation":1}`)
@@ -172,7 +195,7 @@ func TestWebBattleAutoAnswersTurnsUntilTakeover(t *testing.T) {
 }
 
 func TestWebBattleAutoRejectsInvalidRequests(t *testing.T) {
-	handler, session, peer, _ := agentSessionFixture(t)
+	handler, session, peer := battleSessionFixture(t)
 	seedWebBattle(t, session)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/sessions/"+session.id+"/battle-auto", nil)

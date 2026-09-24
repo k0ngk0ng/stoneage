@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
         assert 'ALIBABA_CLOUD_ACCESS_KEY_ID=\n' in env_example
         assert 'ALIBABA_CLOUD_ACCESS_KEY_SECRET=\n' in env_example
         assert 'STONEAGE_AI_CONTAINER_MODE=false\n' in env_example
-        assert 'STONEAGE_AI_RUNTIME_IMAGE=ghcr.io/k0ngk0ng/stoneage/ai-runtime:v0.1.14\n' in env_example
+        assert 'STONEAGE_AI_RUNTIME_IMAGE=' not in env_example
         assert 'STONEAGE_ADMIN_PASSWORD=replace-with-a-long-random-password' in env_example
         assert 'STONEAGE_ADMIN_PASSWORD=admin' not in env_example
         compose = member_text('docker-compose.yml')
@@ -100,24 +100,17 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
         assert '${STONEAGE_WEB_CONFIG_FILE:-./config/web/web.toml}:/etc/stoneage/web.toml:ro' in compose
         assert '${STONEAGE_GATEWAY_CONFIG_FILE:-./config/gateway/gateway.toml}:/etc/stoneage/gateway.toml:ro' in compose
         assert '  assets-sync:\n    platform: linux/amd64\n' in compose
-        assert 'profiles: ["ai-container"]' in ai_compose
-        assert 'STONEAGE_AI_RUNTIME_IMAGE:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:' in ai_compose
-        assert '-v0.1.14}}' in ai_compose
-        assert 'STONEAGE_AI_WEB_BASE_URL: ${STONEAGE_AI_WEB_BASE_URL:-http://web:8088}' in ai_compose
-        assert 'STONEAGE_AI_WEB_PUBLIC_URL: ${STONEAGE_AI_WEB_PUBLIC_URL:-}' in ai_compose
-        assert 'STONEAGE_AI_WEB_SERVER_ID: ${STONEAGE_AI_WEB_SERVER_ID:-line-1}' in ai_compose
-        assert 'STONEAGE_AI_WEB_AGENT_SOCKET: /run/stoneage-web/agent.sock' in ai_compose
-        assert 'STONEAGE_AI_CONTAINER_GATEWAY_URL: http://web:8088/v1/game' in ai_compose
-        assert 'STONEAGE_WEB_AGENT_SOCKET: /run/stoneage-web/agent.sock' in ai_compose
-        assert 'STONEAGE_WEB_AGENT_GAME_UPSTREAM: http://admin:8081/v1/game' in ai_compose
-        assert 'STONEAGE_WEB_AGENT_WORKER_UPSTREAM: http://admin:8080' in ai_compose
-        assert 'STONEAGE_AI_BROKER_DB: /var/lib/stoneage-ai/runtime/broker/broker.db' in ai_compose
-        assert 'STONEAGE_AI_GATEWAY_LISTEN: 0.0.0.0:8081' in ai_compose
+        assert 'ai-runtime' not in ai_compose
+        assert 'STONEAGE_WEB_AGENT_' not in ai_compose
+        assert 'STONEAGE_AI_AUTOMATION_DB: /var/lib/stoneage-ai/automation/automation.db' in ai_compose
+        assert 'STONEAGE_AI_RECEIPT_DB: /var/lib/stoneage-ai/receipts/receipts.db' in ai_compose
         assert 'STONEAGE_AI_KNOWLEDGE_DATA_DIR: /game/gmsv/data' in ai_compose
         assert 'STONEAGE_AI_MAP_DATA_DIR: /game/gmsv/data' in ai_compose
         assert '${STONEAGE_GMSV_DATA_ROOT:-./data/gmsv}/data:/game/gmsv/data:ro' in ai_compose
-        assert '      - /var/run/docker.sock:/var/run/docker.sock' in ai_compose
+        assert '/var/run/docker.sock' not in ai_compose
         assert 'ai-funding:' not in ai_compose
+        assert '-ai-funding-dir' not in compose
+        assert 'STONEAGE_AI_FUNDING_' not in compose
         archive.extractall(stage / 'host', filter='data')
     host = stage / 'host'
     entry = host / 'bin/stoneage'
@@ -169,9 +162,7 @@ esac
     assert 'assets-sync' not in calls
     assert '-dry-run' in (stage / 'uploads').read_text()
 
-    # Container AI is an explicit overlay. It requires the existing GMSV data
-    # tree, grants the socket only to admin, and pre-pulls the profile-only AI
-    # image target without starting that target as a long-lived service.
+    # The optional overlay retains the existing human-facing automation data.
     ai_data = host / 'data/gmsv/data'
     ai_data.mkdir(parents=True)
     env_file = host / '.env'
@@ -180,8 +171,7 @@ esac
     assert empty_ai_check.returncode != 0
     assert 'exp.txt' in empty_ai_check.stderr
 
-    # The AI runtime's knowledge and navigation loaders need the complete
-    # server-owned data set.  A nearly complete tree must fail closed too.
+    # Knowledge and navigation loaders need the complete server-owned data set.
     ai_required_files = (
         'exp.txt',
         'encount.txt',
@@ -201,13 +191,12 @@ esac
 
     (ai_data / ai_required_files[-1]).write_text('fixture\n')
     ai_check = subprocess.run([str(entry), 'check'], env=env, check=True, capture_output=True, text=True)
-    assert 'AI container image:' in ai_check.stdout
-    assert 'AI container network: stoneage-backend' in ai_check.stdout
+    assert 'ai-runtime' not in ai_check.stdout
     (stage / 'calls').write_text('')
     subprocess.run([str(entry), 'pull'], env=env, check=True, capture_output=True)
     ai_calls = (stage / 'calls').read_text()
     assert '-f ' + str(host / 'docker-compose.ai.yml') in ai_calls
-    assert '--profile ai-container pull ai-runtime-image' in ai_calls
+    assert 'ai-runtime-image' not in ai_calls
 
     dockerfile = (root / 'deploy/linux/Dockerfile').read_text()
     assert 'FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-source' in dockerfile
@@ -215,9 +204,9 @@ esac
     assert 'ARG TARGETOS' in dockerfile and 'ARG TARGETARCH' in dockerfile
     assert 'GOOS="$TARGETOS" GOARCH="$TARGETARCH"' in dockerfile
     assert 'FROM go-source AS build-control' in dockerfile
-    assert 'FROM go-source AS build-ai' in dockerfile
+    assert 'FROM go-source AS build-ai' not in dockerfile
     assert 'COPY --from=build-control' in dockerfile
-    assert 'COPY --from=build-ai' in dockerfile
+    assert 'COPY --from=build-ai' not in dockerfile
     assert not any(
         line.lstrip().startswith('COPY') and 'client/web/assets/original' in line
         for line in dockerfile.splitlines()

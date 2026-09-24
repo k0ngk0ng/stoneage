@@ -523,8 +523,8 @@ pre-write revision churn without inventing a response; event-stream shutdown
 waits for active senders after waking them through `done`. Concurrent close,
 blocked publication, and late publication tests cover the shutdown fix.
 
-Task stocking was subsequently added and live-verified as described in
-`ai-for-stoneage.md`; live verification of the full quest journey remains unfinished.
+Task stocking was subsequently added and live-verified; live verification of
+the full quest journey remains unfinished.
 The full gift exchange is still unverified. Catalog configuration is optional;
 no production deployment or image build was performed for this change.
 

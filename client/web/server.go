@@ -135,23 +135,16 @@ type Config struct {
 	ListenAddress   string
 	TCPUpstream     string
 	GatewayAPIURL   string
-	// AgentSocketPath is a private Unix socket used by the AI runtime to
-	// attach to a live browser session. AgentGameUpstream and
-	// AgentWorkerUpstream are fixed internal HTTP destinations for the small
-	// public AI frontdoor; request URLs never select either destination.
-	AgentSocketPath     string
-	AgentGameUpstream   string
-	AgentWorkerUpstream string
-	AssetsDirectory     string
-	MapDirectory        string
-	AudioDirectory      string
-	NPCDirectory        string
-	PacketLimit         int
-	MaxSessions         int
-	PollTimeout         time.Duration
-	IdleTimeout         time.Duration
-	DialTimeout         time.Duration
-	AllowedOrigin       string
+	AssetsDirectory string
+	MapDirectory    string
+	AudioDirectory  string
+	NPCDirectory    string
+	PacketLimit     int
+	MaxSessions     int
+	PollTimeout     time.Duration
+	IdleTimeout     time.Duration
+	DialTimeout     time.Duration
+	AllowedOrigin   string
 	// CDNBaseURL is the public static root which contains assets/, maps/ and
 	// audio/.  It changes only browser static-resource URLs; the account, NPC
 	// and game-session APIs always remain on this process.
@@ -224,15 +217,6 @@ func applyEnvironmentConfig(cfg Config) Config {
 	}
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_GATEWAY_API_URL")); value != "" {
 		cfg.GatewayAPIURL = value
-	}
-	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_AGENT_SOCKET")); value != "" {
-		cfg.AgentSocketPath = value
-	}
-	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_AGENT_GAME_UPSTREAM")); value != "" {
-		cfg.AgentGameUpstream = value
-	}
-	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_AGENT_WORKER_UPSTREAM")); value != "" {
-		cfg.AgentWorkerUpstream = value
 	}
 	if value := strings.TrimSpace(os.Getenv("STONEAGE_WEB_ASSETS")); value != "" {
 		cfg.AssetsDirectory = value
@@ -1161,9 +1145,6 @@ func (store *sessionStore) closeAll() {
 type Handler struct {
 	wiki               *gamewiki.Handler
 	publicAssetBaseURL string
-	agentMu            sync.Mutex
-	agentLeases        map[string]*webAgentLease
-	agentFrontdoor     *webAgentFrontdoor
 	trustedProxies     []netip.Prefix
 	config             Config
 	sessions           *sessionStore
@@ -1525,10 +1506,6 @@ func NewHandler(config Config) (*Handler, error) {
 			return nil, fmt.Errorf("invalid TCP upstream %q: %w", config.TCPUpstream, err)
 		}
 	}
-	agentFrontdoor, err := newWebAgentFrontdoor(config.AgentGameUpstream, config.AgentWorkerUpstream)
-	if err != nil {
-		return nil, err
-	}
 	if config.PacketLimit <= 0 || config.PacketLimit > 64*1024*1024 {
 		return nil, fmt.Errorf("packet limit must be between 1 and 67108864 bytes")
 	}
@@ -1569,7 +1546,7 @@ func NewHandler(config Config) (*Handler, error) {
 		config.Automation = automation
 		config.AutomationClose = closeAutomation
 	}
-	handler := &Handler{publicAssetBaseURL: publicAssetBaseURL, trustedProxies: trustedProxies, config: config, agentFrontdoor: agentFrontdoor, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata), automation: config.Automation, automationClose: config.AutomationClose}
+	handler := &Handler{publicAssetBaseURL: publicAssetBaseURL, trustedProxies: trustedProxies, config: config, sessions: newSessionStore(config.MaxSessions), page: pageWithReleaseVersion(pageWithCDNBase(page, publicAssetBaseURL), releaseVersion), stop: make(chan struct{}), npcData: make(map[int][]npcMetadata), automation: config.Automation, automationClose: config.AutomationClose}
 	if strings.TrimSpace(config.AssetsDirectory) != "" {
 		assetsDirectory := strings.TrimSpace(config.AssetsDirectory)
 		/* ``go run ./client/web`` is normally launched from the repository
@@ -1681,10 +1658,6 @@ func (handler *Handler) Close() {
 func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if request.URL.Path == "/wiki" || strings.HasPrefix(request.URL.Path, "/wiki/") {
 		handler.wiki.ServeHTTP(response, request)
-		return
-	}
-	if handler.agentFrontdoor != nil && handler.agentFrontdoor.owns(request.URL.Path) {
-		handler.agentFrontdoor.ServeHTTP(response, request)
 		return
 	}
 	handler.setHeaders(response, request)
@@ -2850,13 +2823,6 @@ func run() error {
 	}
 	defer handler.Close()
 	config = handler.config
-	agentListener, err := handler.StartAgentListener(config.AgentSocketPath)
-	if err != nil {
-		return err
-	}
-	if agentListener != nil {
-		defer agentListener.Close()
-	}
 	server := &http.Server{
 		Addr:              config.ListenAddress,
 		Handler:           handler,

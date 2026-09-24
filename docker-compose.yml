@@ -64,8 +64,6 @@ services:
       STONEAGE_GMSV_TRUSTED_GATEWAY_HOST: gateway
       STONEAGE_SAAC_HOST: saac
       STONEAGE_SAAC_PORT: 9300
-      STONEAGE_AI_FUNDING_POLICY_DIR: /run/stoneage/ai-funding/policies
-      STONEAGE_AI_FUNDING_LEDGER: /run/stoneage/ai-funding/ledger.log
       STONEAGE_BATTLE_RECORD_DIR: /var/lib/stoneage/battle-records
       STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES: ${STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES:-1073741824}
     volumes:
@@ -75,7 +73,6 @@ services:
       # The legacy crash-recovery path is ../saac/char. Mount the shared SAAC
       # data explicitly without sharing the GMSV binary/static tree.
       - ${STONEAGE_SAAC_DATA_ROOT:-./data/saac}:/game/saac
-      - ai-funding:/run/stoneage/ai-funding
       - ${STONEAGE_BATTLE_RECORD_ROOT:-./data/battle-records}:/var/lib/stoneage/battle-records
     command: ["/opt/stoneage/bin/run-gmsv.sh"]
     healthcheck:
@@ -320,8 +317,6 @@ services:
       - /run/stoneage/operator.sock
       - -player-admin-root
       - /run/stoneage-player-admin
-      - -ai-funding-dir
-      - /run/stoneage-ai-funding/policies
     environment:
       STONEAGE_ADMIN_USER: ${STONEAGE_ADMIN_USER:-}
       STONEAGE_ADMIN_PASSWORD: ${STONEAGE_ADMIN_PASSWORD:-}
@@ -335,9 +330,6 @@ services:
       - ${STONEAGE_GMSV_CONFIG_DIR:-./config/gmsv}:/etc/stoneage/gmsv
       - ${STONEAGE_SAAC_CONFIG_DIR:-./config/saac}:/etc/stoneage/saac
       - operator-run:/run/stoneage:ro
-      # AI funding policies are written by admin and read by GMSV. The
-      # Codex runtime never mounts this volume.
-      - ai-funding:/run/stoneage-ai-funding
       # operator-run is read-only above, so keep this queue volume at a
       # sibling path instead of nesting a mount below the read-only volume.
       - player-admin:/run/stoneage-player-admin
@@ -359,8 +351,6 @@ volumes:
     name: ${STONEAGE_OPERATOR_RUN_VOLUME:-stoneage-operator-run}
   operator-state:
     name: ${STONEAGE_OPERATOR_STATE_VOLUME:-stoneage-operator-state}
-  ai-funding:
-    name: ${STONEAGE_AI_FUNDING_VOLUME:-stoneage-ai-funding}
 
 # File-backed Compose secrets keep object-storage credentials out of the rendered service
 # environment and out of the web/admin containers. deploy.sh creates empty

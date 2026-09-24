@@ -147,6 +147,33 @@ func newAdminTestServer(t *testing.T) (*auth.Store, *fakeOperator, *httptest.Ser
 	return store, operator, server
 }
 
+func TestRemovedAIRoutesReturnNotFound(t *testing.T) {
+	_, _, server := newAdminTestServer(t)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	login, err := client.PostForm(server.URL+"/login", url.Values{"username": {"admin"}, "password": {"secret123"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	login.Body.Close()
+	if login.StatusCode != http.StatusSeeOther {
+		t.Fatalf("login status = %d", login.StatusCode)
+	}
+	for _, path := range []string{"/ai/profiles", "/api/ai/profiles", "/api/ai/worker/connect", "/ai/models", "/api/ai/models", "/static/ai.js"} {
+		response, err := client.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Errorf("%s status = %d, want 404", path, response.StatusCode)
+		}
+	}
+}
+
 func TestAdminLoginAccountAndCSRF(t *testing.T) {
 	store, _, server := newAdminTestServer(t)
 	staticResponse, err := http.Get(server.URL + "/static/app.js")

@@ -9,8 +9,8 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/aileveling"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
-	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 	"github.com/k0ngk0ng/stoneage/internal/automation"
+	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 )
 
 type buildGame struct {
@@ -32,7 +32,7 @@ func buildFixture(t *testing.T) (*GameBackend, *buildGame, *LevelingCharacterBui
 	g := &buildGame{fakeGame: f}
 	b.Session = g
 	b.OwnStateRefresh = &OwnStateRefresher{}
-	b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Strength: 1, Dexterity: 1}, ReservePoints: 1}
+	b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Strength: 1, Dexterity: 1}, ReservePoints: 1}
 	p := &g.snapshot.Player
 	p.Vital, p.Strength, p.Toughness, p.Dexterity = 5, 5, 5, 5
 	p.StatPointsKnown, p.UnspentStatPoints, p.Level, p.MaxHP = true, 3, 5, 10
@@ -106,7 +106,7 @@ func TestLevelingCharacterBuildRejectsOldUnknownReceipt(t *testing.T) {
 
 func TestLevelingCharacterBuildOwnsAllocationsDuringActiveTask(t *testing.T) {
 	b, g, prep := buildFixture(t)
-	b.Tasks = &factoryTestTasks{receipts: []aimcp.TaskReceipt{{Handle: "leveling", Status: aimcp.ReceiptRunning}}}
+	b.Tasks = activeTaskStub{}
 	ctx := context.Background()
 	if _, err := b.GameAction(ctx, b.Binding, aimcp.TypedAction{Kind: "allocate-stat", Index: 1, ExpectedRevision: g.snapshot.Revision}); err == nil || len(g.actions) != 0 {
 		t.Fatal("MCP point allocation interfered with active task")
@@ -133,14 +133,14 @@ func TestGameplayLevelTargetWaitsForConfiguredBuild(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			profile := airuntime.Profile{Goal: airuntime.Goal{CharacterBuild: b.CharacterBuild.Clone()}}
-			value, err := builder(context.Background(), BackendInput{Profile: profile, Binding: b.Binding, Gate: b.Gate, Session: g, Knowledge: &aiknowledge.Knowledge{Digest: "data"}, Receipts: b.Receipts, Lease: context.Background()})
+			policy := b.CharacterBuild.Clone()
+			value, err := builder(context.Background(), BackendInput{CharacterBuild: policy, Binding: b.Binding, Gate: b.Gate, Session: g, Knowledge: &aiknowledge.Knowledge{Digest: "data"}, Receipts: b.Receipts, Lease: context.Background()})
 			if err != nil {
 				t.Fatal(err)
 			}
 			backend := value.(*GameBackend)
 			defer backend.Close()
-			profile.Goal.CharacterBuild.ReservePoints = 99
+			policy.ReservePoints = 99
 			if backend.CharacterBuild.ReservePoints != 1 {
 				t.Fatal("policy was not cloned for the session")
 			}
@@ -166,14 +166,20 @@ func TestGameplayLevelTargetWaitsForConfiguredBuild(t *testing.T) {
 	}
 }
 
-func TestGoalReachedWaitsForBuildSettlement(t *testing.T) {
-	goal := airuntime.Goal{TargetLevel: 5, StopWhenCompleted: true, CharacterBuild: &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Vital: 1}}}
-	o := aimcp.Observation{Connected: true, Ready: true, Character: aimcp.Entity{Level: 5}, Flags: map[string]bool{"build:configured": true}}
-	if goalReached(o, goal) {
-		t.Fatal("supervisor would finish before configured build")
-	}
-	o.Flags["build:settled"] = true
-	if !goalReached(o, goal) {
-		t.Fatal("settled build blocked reached target")
-	}
+type activeTaskStub struct{}
+
+func (activeTaskStub) StartTask(context.Context, aimcp.TaskRequest) (aimcp.TaskReceipt, error) {
+	return aimcp.TaskReceipt{}, nil
+}
+func (activeTaskStub) StartLeveling(context.Context, aimcp.LevelingRequest) (aimcp.TaskReceipt, error) {
+	return aimcp.TaskReceipt{}, nil
+}
+func (activeTaskStub) Status(context.Context, string) (aimcp.TaskReceipt, error) {
+	return aimcp.TaskReceipt{}, nil
+}
+func (activeTaskStub) Cancel(context.Context, aimcp.CancelRequest) (aimcp.TaskReceipt, error) {
+	return aimcp.TaskReceipt{}, nil
+}
+func (activeTaskStub) Active(context.Context) ([]aimcp.TaskReceipt, error) {
+	return []aimcp.TaskReceipt{{Handle: "leveling", Status: aimcp.ReceiptRunning}}, nil
 }

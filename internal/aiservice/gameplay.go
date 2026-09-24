@@ -9,7 +9,6 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
 	"github.com/k0ngk0ng/stoneage/internal/aiplanner"
 	"github.com/k0ngk0ng/stoneage/internal/automation"
-	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 )
 
 // GameplayConfig supplies the shared durable plan store and reviewed game
@@ -81,23 +80,8 @@ func NewGameplayBuilder(config GameplayConfig) (BackendBuilder, error) {
 			}
 		}
 		owner := in.Gate.State().Mode
-		// Agent profiles predate the explicit backend input and retain their
-		// persisted build as a compatibility fallback. Ordinary Web leveling
-		// only accepts the server-selected explicit policy, so a profile value
-		// can never silently enable character allocation there.
-		var characterBuild *characterbuild.Policy
-		switch owner {
-		case aicontrol.Leveling:
-			characterBuild = in.CharacterBuild
-		case aicontrol.Agent:
-			characterBuild = in.CharacterBuild
-			if characterBuild == nil {
-				characterBuild = in.Profile.Goal.CharacterBuild
-			}
-		}
+		characterBuild := in.CharacterBuild
 		backend := &GameBackend{Binding: in.Binding, Gate: in.Gate, Owner: owner, Session: in.Session, Funding: in.Funding, Knowledge: in.Knowledge, Receipts: in.Receipts}
-		backend.Schedules = in.ScheduleStore
-		backend.AgentNotes = in.MemoryStore
 		if err := characterBuild.Validate(); err != nil {
 			return nil, err
 		}
@@ -157,7 +141,7 @@ func (s SkillSet) Execute(ctx context.Context, a automation.Action) error {
 }
 
 func (b *GameBackend) Close() {
-	if b == nil || isNilRuntimeValue(b.Tasks) {
+	if b == nil || b.Tasks == nil {
 		return
 	}
 	if tasks, ok := b.Tasks.(interface{ Close() }); ok {

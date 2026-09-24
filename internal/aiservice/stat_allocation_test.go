@@ -6,7 +6,7 @@ import (
 
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
-	"github.com/k0ngk0ng/stoneage/internal/airuntime"
+	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 )
 
 func TestStatPointsProjectionAndSingleSubmissionReceipt(t *testing.T) {
@@ -30,7 +30,7 @@ func TestStatPointsProjectionAndSingleSubmissionReceipt(t *testing.T) {
 	}
 	game.snapshot.Player.UnspentStatPoints = 2
 	game.snapshot.Player.Strength, game.snapshot.Player.Toughness, game.snapshot.Player.Dexterity = 5, 5, 5
-	b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Vital: 1}}
+	b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Vital: 1}}
 	a := aimcp.TypedAction{Kind: "allocate-stat", Index: 0, ExpectedRevision: game.snapshot.Revision}
 	first, err := b.GameAction(context.Background(), b.Binding, a)
 	if err != nil || first.Status != aimcp.ReceiptUnknown {
@@ -44,7 +44,7 @@ func TestStatPointsProjectionAndSingleSubmissionReceipt(t *testing.T) {
 
 func TestConfiguredBuildSinglePointConfirmationAndReserve(t *testing.T) {
 	b, game := gameFixture(t)
-	b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Strength: 1, Dexterity: 1}, ReservePoints: 1}
+	b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Strength: 1, Dexterity: 1}, ReservePoints: 1}
 	p := &game.snapshot.Player
 	p.Vital, p.Strength, p.Toughness, p.Dexterity = 5, 5, 5, 5
 	p.StatPointsKnown, p.UnspentStatPoints = true, 2
@@ -93,7 +93,7 @@ func TestConfiguredBuildSinglePointConfirmationAndReserve(t *testing.T) {
 
 func TestAllocationDoesNotReconcileAfterBackendRecreation(t *testing.T) {
 	b, game := gameFixture(t)
-	b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Vital: 1}}
+	b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Vital: 1}}
 	p := &game.snapshot.Player
 	p.Vital, p.Strength, p.Toughness, p.Dexterity = 5, 5, 5, 5
 	p.StatPointsKnown, p.UnspentStatPoints = true, 3
@@ -132,7 +132,7 @@ func TestUnconfiguredBuildLeavesPointsUnspent(t *testing.T) {
 
 func TestAllocationReusedBackendDoesNotConfirmPriorGeneration(t *testing.T) {
 	b, game := gameFixture(t)
-	b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Vital: 1}}
+	b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Vital: 1}}
 	p := &game.snapshot.Player
 	p.Vital, p.Strength, p.Toughness, p.Dexterity = 5, 5, 5, 5
 	p.StatPointsKnown, p.UnspentStatPoints = true, 3
@@ -161,7 +161,7 @@ func TestAllocationReusedBackendDoesNotConfirmPriorGeneration(t *testing.T) {
 
 func TestAllocationBlockedByLongUnknownHistory(t *testing.T) {
 	b, game := gameFixture(t)
-	b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Vital: 1}}
+	b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Vital: 1}}
 	p := &game.snapshot.Player
 	p.Vital, p.Strength, p.Toughness, p.Dexterity = 5, 5, 5, 5
 	p.StatPointsKnown, p.UnspentStatPoints = true, 3

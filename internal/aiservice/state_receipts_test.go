@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
-	"github.com/k0ngk0ng/stoneage/internal/airuntime"
+	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 )
 
 func TestCommunicationUnknownDoesNotBlockIndependentStatAllocation(t *testing.T) {
@@ -19,7 +19,7 @@ func TestCommunicationUnknownDoesNotBlockIndependentStatAllocation(t *testing.T)
 		t.Run(test.kind+"-"+test.command, func(t *testing.T) {
 			ctx := context.Background()
 			b, game := gameFixture(t)
-			b.CharacterBuild = &airuntime.CharacterBuild{Weights: airuntime.AttributeWeights{Vital: 1}}
+			b.CharacterBuild = &characterbuild.Policy{Weights: characterbuild.Weights{Vital: 1}}
 			game.snapshot.Player.StatPointsKnown = true
 			game.snapshot.Player.UnspentStatPoints = 3
 			game.snapshot.Player.Vital, game.snapshot.Player.Strength = 5, 5

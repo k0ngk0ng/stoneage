@@ -12,30 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
-)
-
-const (
-	// ProtocolVersion is the MCP wire version implemented by this minimal
-	// stdio server.  It is intentionally kept stable until the server adds a
-	// capability which requires negotiating a newer protocol.
-	ProtocolVersion = "2024-11-05"
-	ServerName      = "stoneage-game-mcp"
-	ServerVersion   = "0.1.0"
 )
 
 var (
-	ErrInvalidRequest = errors.New("invalid MCP request")
 	ErrInvalidParams  = errors.New("invalid MCP tool parameters")
-	ErrNotInitialized = errors.New("MCP session is not initialized")
-	ErrAlreadyStarted = errors.New("MCP session is already initialized")
-	ErrUnknownTool    = errors.New("unknown MCP tool")
 	ErrInvalidBinding = errors.New("invalid game character binding")
 	ErrInvalidReceipt = errors.New("invalid game operation receipt")
-	ErrSkillNotFound  = errors.New("skill is not in the fixed catalog")
-	ErrSkillIntegrity = errors.New("skill integrity verification failed")
-	ErrSkillConflict  = errors.New("installed skill conflicts with the catalog")
-	ErrSkillPath      = errors.New("invalid skill path")
 	ErrBackend        = errors.New("game backend unavailable")
 )
 
@@ -83,21 +65,6 @@ type Backend interface {
 	GameAction(context.Context, Binding, TypedAction) (ActionReceipt, error)
 }
 
-// ScheduleBackend is an optional extension implemented by a server-owned
-// backend when the bound AI player may create durable wake-ups. It is kept
-// separate from Backend so older game adapters remain source compatible and
-// cannot accidentally gain a scheduling capability they do not implement.
-// Schedule completion is performed by the trusted runtime after delivery;
-// the MCP model only creates, lists and cancels its own profile's entries.
-type ScheduleBackend interface {
-	CreateSchedule(context.Context, Binding, ScheduleRequest) (Schedule, error)
-	ListSchedules(context.Context, Binding, ScheduleListRequest) (ScheduleList, error)
-	CancelSchedule(context.Context, Binding, ScheduleCancelRequest) (Schedule, error)
-}
-
-// UnavailableBackend is useful for a process that is started before its game
-// session is attached.  It keeps the MCP protocol available while ensuring
-// that no request can silently mutate a game.
 type UnavailableBackend struct{}
 
 func (UnavailableBackend) unavailable() error { return ErrBackend }
@@ -371,128 +338,6 @@ type CancelRequest struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// ScheduleRequest contains only a bounded reminder/activity prompt. RunAt is
-// an RFC3339 timestamp; DelaySeconds is a convenience for relative timers.
-// The server resolves the latter using its trusted clock. No game operation,
-// account selector or credential can be embedded in a schedule.
-type ScheduleRequest struct {
-	Kind           string `json:"kind"`
-	Title          string `json:"title,omitempty"`
-	Prompt         string `json:"prompt"`
-	RunAt          string `json:"run_at,omitempty"`
-	DelaySeconds   int64  `json:"delay_seconds,omitempty"`
-	RepeatSeconds  int64  `json:"repeat_seconds,omitempty"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"`
-}
-
-type ScheduleListRequest struct {
-	Status string `json:"status,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
-}
-
-type ScheduleCancelRequest struct {
-	ScheduleID string `json:"schedule_id"`
-	Reason     string `json:"reason,omitempty"`
-}
-
-// Schedule is the credential-free MCP projection of an AI runtime schedule.
-// Claim and profile internals are deliberately absent from this type.
-type Schedule struct {
-	ID            string          `json:"id"`
-	Kind          string          `json:"kind"`
-	Title         string          `json:"title,omitempty"`
-	Prompt        string          `json:"prompt"`
-	RunAt         string          `json:"run_at"`
-	RepeatSeconds int64           `json:"repeat_seconds,omitempty"`
-	Status        string          `json:"status"`
-	Occurrences   int             `json:"occurrences"`
-	LastOutcome   json.RawMessage `json:"last_outcome,omitempty"`
-}
-
-type ScheduleList struct {
-	Schedules []Schedule `json:"schedules"`
-}
-
-const (
-	maxScheduleKindBytes           = 64
-	maxScheduleTitleBytes          = 160
-	maxSchedulePromptBytes         = 8 * 1024
-	maxScheduleIdempotencyKeyBytes = 128
-	maxScheduleHorizonSeconds      = 365 * 24 * 60 * 60
-)
-
-func validateScheduleRequest(request ScheduleRequest) error {
-	if !validText(request.Kind, maxScheduleKindBytes) || strings.TrimSpace(request.Kind) == "" {
-		return ErrInvalidParams
-	}
-	if !validText(request.Title, maxScheduleTitleBytes) || !validText(request.Prompt, maxSchedulePromptBytes) || strings.TrimSpace(request.Prompt) == "" {
-		return ErrInvalidParams
-	}
-	if request.RunAt != "" {
-		if _, err := time.Parse(time.RFC3339Nano, request.RunAt); err != nil {
-			return ErrInvalidParams
-		}
-	}
-	if request.RunAt == "" && (request.DelaySeconds < 1 || request.DelaySeconds > maxScheduleHorizonSeconds) {
-		return ErrInvalidParams
-	}
-	if request.RunAt != "" && request.DelaySeconds != 0 {
-		return ErrInvalidParams
-	}
-	if request.RepeatSeconds < 0 || (request.RepeatSeconds > 0 && request.RepeatSeconds < 60) || request.RepeatSeconds > maxScheduleHorizonSeconds {
-		return ErrInvalidParams
-	}
-	if len([]byte(request.IdempotencyKey)) > maxScheduleIdempotencyKeyBytes || !validText(request.IdempotencyKey, maxScheduleIdempotencyKeyBytes) {
-		return ErrInvalidParams
-	}
-	return nil
-}
-
-func validateScheduleListRequest(request ScheduleListRequest) error {
-	switch request.Status {
-	case "", "pending", "delivering", "delivered", "cancelled":
-	default:
-		return ErrInvalidParams
-	}
-	if request.Limit == 0 {
-		request.Limit = 50
-	}
-	if request.Limit < 1 || request.Limit > 100 {
-		return ErrInvalidParams
-	}
-	return nil
-}
-
-func validateScheduleCancelRequest(request ScheduleCancelRequest) error {
-	if err := validateHandle(request.ScheduleID); err != nil {
-		return ErrInvalidParams
-	}
-	if !validText(request.Reason, maxTextBytes) {
-		return ErrInvalidParams
-	}
-	return nil
-}
-
-func validateSchedule(schedule Schedule) error {
-	if err := validateHandle(schedule.ID); err != nil || !validText(schedule.Kind, maxScheduleKindBytes) ||
-		!validText(schedule.Title, maxScheduleTitleBytes) || !validText(schedule.Prompt, maxSchedulePromptBytes) ||
-		len([]byte(schedule.RunAt)) > 64 {
-		return ErrInvalidParams
-	}
-	switch schedule.Status {
-	case "pending", "delivering", "delivered", "cancelled":
-	default:
-		return ErrInvalidParams
-	}
-	if schedule.RepeatSeconds < 0 || schedule.RepeatSeconds > maxScheduleHorizonSeconds || schedule.Occurrences < 0 {
-		return ErrInvalidParams
-	}
-	if schedule.LastOutcome != nil && (len(schedule.LastOutcome) > maxSchedulePromptBytes || !json.Valid(schedule.LastOutcome)) {
-		return ErrInvalidParams
-	}
-	return nil
-}
-
 const (
 	ReceiptPending   = "pending"
 	ReceiptRunning   = "running"
@@ -502,9 +347,6 @@ const (
 	ReceiptUnknown   = "unknown"
 )
 
-// TaskReceipt is a server-backed handle.  A pending/running receipt must be
-// polled with game_task_status; callers must not infer success from model text.
-// Confirmed results are expected to contain compact server evidence.
 type TaskReceipt struct {
 	Handle   string          `json:"handle"`
 	Status   string          `json:"status"`

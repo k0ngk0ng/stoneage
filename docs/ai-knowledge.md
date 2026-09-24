@@ -74,10 +74,10 @@ Dependencies must have completion state that can be observed after reconnect;
 connection-local `window_submitted` completion is rejected for dependencies.
 Task definition fingerprints include the dependency declarations.
 
-The native Codex quest Skill orchestrates prerequisite tasks using the same
-`game_start_task` and `game_task_status` tools. Each task retains its own handle,
-budget and checkpoint; no prerequisite actions or charges are hidden inside
-the requested task's plan. Quote and authorize chain costs across its nodes.
+Prerequisite tasks can be started through the human-facing automation controls.
+Each task retains its own handle, budget and checkpoint; no prerequisite actions
+or charges are hidden inside the requested task's plan. Quote and authorize
+chain costs across its nodes.
 Existing receipts do not replace a fresh completion observation. Task startup
 rechecks all entry conditions after preflight, including dependency completion.
 The two embedded quests remain unverified and have no invented dependencies.

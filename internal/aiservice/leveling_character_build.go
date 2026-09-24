@@ -10,7 +10,7 @@ import (
 
 // LevelingCharacterBuild applies the immutable administrator-selected build
 // between acknowledged leveling actions. It uses the same durable single-point
-// receipts as Codex; it does not choose goals, change policy or run a model.
+// receipts as other game operations; it does not choose goals or change policy.
 type LevelingCharacterBuild struct {
 	Backend *GameBackend
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
-	"github.com/k0ngk0ng/stoneage/internal/airuntime"
 	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 )
 
@@ -80,95 +79,10 @@ type GameBackend struct {
 	Knowledge       *aiknowledge.Knowledge
 	Tasks           TaskController
 	Receipts        *ReceiptStore
-	Schedules       *airuntime.Store
-	AgentNotes      *airuntime.Store
 	OwnStateRefresh *OwnStateRefresher
 	CharacterBuild  *characterbuild.Policy
 	statMu          sync.Mutex
 	statAllocations map[string]statAllocationEvidence
-}
-
-// CreateSchedule persists a bounded wake-up for this exact AI profile. The
-// capability is checked with the same owner/generation fence as game reads;
-// schedule creation cannot be used after human takeover or session revoke.
-func (b *GameBackend) CreateSchedule(ctx context.Context, binding aimcp.Binding, request aimcp.ScheduleRequest) (aimcp.Schedule, error) {
-	if err := b.check(binding); err != nil {
-		return aimcp.Schedule{}, err
-	}
-	if b.Schedules == nil || strings.TrimSpace(binding.ProfileID) == "" {
-		return aimcp.Schedule{}, aimcp.ErrBackend
-	}
-	input, err := scheduleInput(request)
-	if err != nil {
-		return aimcp.Schedule{}, err
-	}
-	schedule, err := b.Schedules.CreateSchedule(ctx, binding.ProfileID, input)
-	if err != nil {
-		return aimcp.Schedule{}, err
-	}
-	return projectSchedule(schedule), nil
-}
-
-func (b *GameBackend) ListSchedules(ctx context.Context, binding aimcp.Binding, request aimcp.ScheduleListRequest) (aimcp.ScheduleList, error) {
-	if err := b.check(binding); err != nil {
-		return aimcp.ScheduleList{}, err
-	}
-	if b.Schedules == nil || strings.TrimSpace(binding.ProfileID) == "" {
-		return aimcp.ScheduleList{}, aimcp.ErrBackend
-	}
-	schedules, err := b.Schedules.ListSchedules(ctx, binding.ProfileID, request.Limit)
-	if err != nil {
-		return aimcp.ScheduleList{}, err
-	}
-	result := aimcp.ScheduleList{Schedules: make([]aimcp.Schedule, 0, len(schedules))}
-	for _, schedule := range schedules {
-		if request.Status != "" && string(schedule.Status) != request.Status {
-			continue
-		}
-		result.Schedules = append(result.Schedules, projectSchedule(schedule))
-	}
-	return result, nil
-}
-
-func (b *GameBackend) CancelSchedule(ctx context.Context, binding aimcp.Binding, request aimcp.ScheduleCancelRequest) (aimcp.Schedule, error) {
-	if err := b.check(binding); err != nil {
-		return aimcp.Schedule{}, err
-	}
-	if b.Schedules == nil || strings.TrimSpace(binding.ProfileID) == "" {
-		return aimcp.Schedule{}, aimcp.ErrBackend
-	}
-	schedule, err := b.Schedules.CancelSchedule(ctx, binding.ProfileID, request.ScheduleID, request.Reason)
-	if err != nil {
-		return aimcp.Schedule{}, err
-	}
-	return projectSchedule(schedule), nil
-}
-
-func scheduleInput(request aimcp.ScheduleRequest) (airuntime.ScheduleInput, error) {
-	input := airuntime.ScheduleInput{Kind: request.Kind, Title: request.Title, Prompt: request.Prompt,
-		DelaySeconds: request.DelaySeconds, RepeatSeconds: request.RepeatSeconds,
-		IdempotencyKey: request.IdempotencyKey}
-	if strings.TrimSpace(request.RunAt) != "" {
-		runAt, err := time.Parse(time.RFC3339Nano, request.RunAt)
-		if err != nil {
-			return airuntime.ScheduleInput{}, aimcp.ErrInvalidParams
-		}
-		input.RunAt = runAt
-	}
-	return input, nil
-}
-
-func projectSchedule(schedule airuntime.Schedule) aimcp.Schedule {
-	return aimcp.Schedule{ID: schedule.ID, Kind: schedule.Kind, Title: schedule.Title, Prompt: schedule.Prompt,
-		RunAt: schedule.RunAt.UTC().Format(time.RFC3339Nano), RepeatSeconds: int64(schedule.RepeatInterval / time.Second),
-		Status: string(schedule.Status), Occurrences: schedule.Occurrences, LastOutcome: cloneRawJSON(schedule.LastOutcome)}
-}
-
-func cloneRawJSON(raw json.RawMessage) json.RawMessage {
-	if raw == nil {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
 }
 
 // dispatchGameAction serializes one game action with the ownership gate. Most

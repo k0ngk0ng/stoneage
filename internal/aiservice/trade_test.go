@@ -27,17 +27,3 @@ func TestTradeProjectionSeparatesSubmissionAndServerObservation(t *testing.T) {
 		t.Fatal("projection aliases session state")
 	}
 }
-
-func TestTradeProgressIgnoresOwnSubmission(t *testing.T) {
-	o := aimcp.Observation{Trade: &aimcp.TradeState{Active: true, PeerName: "peer"}}
-	key := progressKey(o)
-	o.Trade.OwnLockSubmitted = true
-	o.Trade.OwnOffers[0] = aimcp.TradeOffer{Kind: "gold", Amount: 100, Submitted: true}
-	if progressKey(o) != key {
-		t.Fatal("submission counted as server progress")
-	}
-	o.Trade.PeerLocked = true
-	if progressKey(o) == key {
-		t.Fatal("peer confirmation did not count as progress")
-	}
-}

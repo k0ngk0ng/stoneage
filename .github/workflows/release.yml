@@ -66,13 +66,6 @@ jobs:
           node internal/admin/audit_test.js
           node internal/admin/players_test.js
           node internal/admin/gifts_test.js
-          node internal/admin/ai_test.js
-          node internal/admin/ai_model_connection_test.js
-          node internal/admin/ai_audit_test.js
-          node internal/admin/ai_recovery_test.js
-          node internal/admin/ai_initial_test.js
-          node internal/admin/ai_profile_view_race_test.js
-          node internal/admin/ai_initial_recovery_test.js
           python3 server/legacy/modern/tests/test-saac-admin-bridge.py
           python3 server/legacy/modern/tests/test-gmsv-admin-guards.py
           python3 server/legacy/modern/tests/test-gmsv-admin-save-identity.py
@@ -171,10 +164,6 @@ jobs:
             file: deploy/linux/Dockerfile
             target: control-plane
             platforms: linux/amd64,linux/arm64
-          - image: ai-runtime
-            file: deploy/linux/Dockerfile
-            target: ai-runtime
-            platforms: linux/amd64,linux/arm64
           - image: legacy-runtime
             file: deploy/linux/legacy-runtime.Dockerfile
             target: legacy-runtime
@@ -207,7 +196,6 @@ jobs:
           platforms: ${{ matrix.platforms }}
           build-args: |
             RELEASE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
-            CODEX_CLI_VERSION=0.154.0
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
           provenance: true
@@ -273,8 +261,8 @@ jobs:
       - name: Assemble image digests and checksums
         working-directory: dist
         run: |
-          cat digest-control-plane digest-ai-runtime digest-legacy-runtime > IMAGE-DIGESTS
-          rm digest-control-plane digest-ai-runtime digest-legacy-runtime
+          cat digest-control-plane digest-legacy-runtime > IMAGE-DIGESTS
+          rm digest-control-plane digest-legacy-runtime
           sha256sum ./* > SHA256SUMS
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

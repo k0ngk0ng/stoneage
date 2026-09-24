@@ -47,26 +47,9 @@ case "$ai_mode_lower" in
 esac
 compose_args=(--project-directory "$project_root" --env-file "$env_file" -f "$compose_file")
 if (( ai_container )); then
-  [[ -f "$ai_compose_file" ]] || { echo "AI Compose overlay not found: $ai_compose_file" >&2; exit 1; }
+  [[ -f "$ai_compose_file" ]] || { echo "Automation Compose overlay not found: $ai_compose_file" >&2; exit 1; }
   compose_args+=( -f "$ai_compose_file" )
-  ai_version="$(env_value STONEAGE_VERSION)"
-  ai_version="${ai_version:-v0.1.16}"
-  ai_runtime_image="${STONEAGE_AI_RUNTIME_IMAGE:-$(env_value STONEAGE_AI_RUNTIME_IMAGE)}"
-  ai_runtime_image="${ai_runtime_image:-ghcr.io/k0ngk0ng/stoneage/ai-runtime:$ai_version}"
-  ai_release_tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$'
-  if [[ ! "$ai_version" =~ $ai_release_tag_re ]]; then
-    echo "STONEAGE_VERSION must be an explicit release tag when AI container mode is enabled (got: $ai_version)" >&2
-    exit 2
-  fi
-  if [[ "$ai_runtime_image" == *@sha256:* ]]; then
-    [[ "$ai_runtime_image" =~ ^[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-fA-F]{64}$ ]] || {
-      echo "STONEAGE_AI_RUNTIME_IMAGE must be a valid sha256 image reference" >&2
-      exit 2
-    }
-  elif [[ ! "$ai_runtime_image" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ || "$ai_runtime_image" != *":$ai_version" ]]; then
-    echo "STONEAGE_AI_RUNTIME_IMAGE must be tagged with STONEAGE_VERSION ($ai_version) or pinned by sha256 digest" >&2
-    exit 2
-  fi
+
 fi
 command="${1:-help}"
 if (( $# )); then shift; fi
@@ -96,12 +79,6 @@ case "$command" in
       stoneage_registry_login
     fi
     "$docker_bin" compose "${compose_args[@]}" "$action" "$@"
-    if [[ "$action" == pull && "$ai_container" == 1 ]]; then
-      # ai-runtime-image is a profile-only pull target. The broker itself
-      # always uses --pull never and is never represented by a long-lived
-      # Compose service.
-      exec "$docker_bin" compose "${compose_args[@]}" --profile ai-container pull ai-runtime-image
-    fi
     exit 0
     ;;
   help|-h|--help) echo 'Usage: bin/stoneage {init|check|login|pull|deploy|status|logs|stop|sync-assets|clean|battle-dataset|battle-export} [options]' ;;

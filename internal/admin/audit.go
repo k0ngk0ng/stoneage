@@ -131,11 +131,6 @@ func auditEventName(event string) string {
 		"server_notification_failed":        "发送服务器通知失败",
 		"assets_sync_started":               "开始同步资源",
 		"assets_sync_failed":                "资源同步失败",
-		"ai_model_created":                  "创建 AI 模型",
-		"ai_model_updated":                  "修改 AI 模型",
-		"ai_model_deleted":                  "删除 AI 模型",
-		"ai_model_test_succeeded":           "AI 模型测试成功",
-		"ai_model_test_failed":              "AI 模型测试失败",
 		"ai_profile_created":                "创建 AI 玩家",
 		"ai_profile_updated":                "修改 AI 玩家",
 		"ai_profile_deleted":                "删除 AI 玩家",
@@ -180,9 +175,6 @@ func auditTarget(event string, detail map[string]any) string {
 	}
 	if value := auditString(detail, "profile_id"); value != "" {
 		return "AI 玩家 " + value
-	}
-	if value := auditString(detail, "model_config_id"); value != "" {
-		return "AI 模型 " + value
 	}
 	if value := auditInt(detail, "package_id"); value != "" {
 		return "礼包 #" + value
@@ -342,16 +334,6 @@ func playerAuditSummary(event string, detail map[string]any, raw string, isObjec
 }
 
 func aiAuditSummary(event string, detail map[string]any, raw string, isObject bool) string {
-	if event == "ai_model_test_succeeded" {
-		return "模型连接和 Responses API 调用成功"
-	}
-	if event == "ai_model_test_failed" {
-		code := auditString(detail, "code")
-		if code != "" {
-			return "模型测试失败（" + code + "）"
-		}
-		return "模型测试失败"
-	}
 	if event == "ai_unknown_review_failed" {
 		return "未知回合核查未完成，玩家保持停止"
 	}

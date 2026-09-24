@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
-	"github.com/k0ngk0ng/stoneage/internal/aiprovision"
 )
 
 // Only fixed classifications are logged. Network errors can contain URLs,
@@ -46,7 +45,7 @@ func diagnosticCode(err error) string {
 
 func traceStage(ctx context.Context, stage string) func(error) {
 	started := time.Now()
-	profile := aiprovision.DiagnosticProfileID(ctx)
+	profile := ""
 	log.Printf("event=ai_web_stage_started profile=%q stage=%s", profile, stage)
 	return func(err error) {
 		outcome := "completed"
