@@ -275,6 +275,7 @@ func run(arguments []string) error {
 	assetsRoot := flags.String("assets", "", "sprite asset directory (defaults to static.assets_directory)")
 	clientRoot := flags.String("client-data", "/game/client", "2.5 client root containing map/ and data/{auto.dat,bgm,se}")
 	webOnly := flags.Bool("web-only", false, "publish CDN runtime and compressed indexes without changing core assets")
+	resourcePacks := flags.String("resource-packs", "", "directory with a complete game resource ZIP and catalog; supplements current publication")
 	mapPacks := flags.String("map-packs", "", "directory with matching map packs for CDN publication")
 	dryRun := flags.Bool("dry-run", false, "list the upload plan without writing object-storage objects")
 	workers := flags.Int("workers", envPositiveInt("STONEAGE_ASSET_SYNC_WORKERS", 8), "parallel object-storage uploads")
@@ -349,6 +350,16 @@ func run(arguments []string) error {
 	assetDirectory := strings.TrimSpace(*assetsRoot)
 	if assetDirectory == "" {
 		assetDirectory = strings.TrimSpace(disk.Static.AssetsDirectory)
+	}
+	if *resourcePacks != "" {
+		if *dryRun || *webOnly || *mapPacks != "" {
+			return errors.New("-resource-packs is a standalone publication mode")
+		}
+		store, err := newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
+		if err != nil {
+			return err
+		}
+		return publishResourcePacks(store, prefix, *resourcePacks)
 	}
 	if *webOnly {
 		if *dryRun {

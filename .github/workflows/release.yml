@@ -31,7 +31,7 @@ jobs:
         run: |
           go test ./...
           go vet ./...
-          node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js
+          node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js internal/gamewiki/resources_test.js
           node client/web/battle_target_async_test.js
           node client/web/battle_target_rules_test.js
           node client/web/battle_result_test.js
@@ -57,6 +57,7 @@ jobs:
           node client/web/sky_background_test.js
           node --test client/web/walking_scheduler_test.js client/web/map_layers_test.js client/web/map_pack_test.js
           PYTHONDONTWRITEBYTECODE=1 python3 tools/build-map-pack_test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/build-resource-pack_test.py
           PYTHONDONTWRITEBYTECODE=1 python3 tools/asset-cooker_test.py
           PYTHONDONTWRITEBYTECODE=1 python3 tools/build-wiki-media_test.py
           node client/web/ai_observation_test.js

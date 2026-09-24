@@ -4,11 +4,11 @@ const pack=require("./runtimeassets/map-pack.js");
 function harness(){
   const stores=new Map(),requests=new Map();let seq=0;
   const scope={location:{href:"https://cdn.example/game/web/test/resource-worker.js"},crypto:webcrypto,Blob,Response,TextDecoder,Uint16Array,DataView,URL,Map,Set,ArrayBuffer,console,
-    caches:{async open(name){if(!stores.has(name))stores.set(name,new Map());const rows=stores.get(name);return {async match(key){return rows.get(key)?.clone();},async put(key,value){rows.set(key,value.clone());}};}},
+    caches:{async keys(){return [...stores.keys()];},async open(name){if(!stores.has(name))stores.set(name,new Map());const rows=stores.get(name);return {async match(key){return rows.get(key)?.clone();},async put(key,value){rows.set(key,value.clone());}};}},
     fetch(){throw new Error("import must not download resources");},
     postMessage(message){const task=requests.get(message.id);if(message.progress){task.progress?.(message.progress,message.id);return;}requests.delete(message.id);message.error?task.reject(new Error(message.error)):task.resolve(message.result);},
   };
-  scope.self=scope;scope.importScripts=()=>vm.runInContext(fs.readFileSync(__dirname+"/runtimeassets/map-pack.js","utf8"),context);
+  scope.self=scope;scope.importScripts=(...urls)=>urls.forEach(url=>vm.runInContext(fs.readFileSync(__dirname+"/runtimeassets/"+new URL(url).pathname.split("/").pop(),"utf8"),context));
   const context=vm.createContext(scope);vm.runInContext(fs.readFileSync(__dirname+"/runtimeassets/resource-worker.js","utf8"),context);
   return {stores,cancel:id=>scope.onmessage({data:{id,type:"cancel"}}),run(type,args,progress){const id=++seq;return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject,progress});scope.onmessage({data:{id,type,args}});});}};
 }
@@ -58,4 +58,41 @@ test("image downloads stay bounded and duplicate completion cannot release twice
   for(let i=0;i<40;i++)scope.window.StoneAgeResources.enqueueImage(done=>{active++;started++;peak=Math.max(peak,active);releases.push(()=>{active--;done();done();});});
   assert.equal(started,6);while(releases.length)releases.shift()();
   assert.equal(started,40);assert.equal(active,0);assert.equal(peak,6);
+});
+
+async function zipFixture(options={}){
+  const items=[['assets/manifest.json',new TextEncoder().encode('{"sprites":{}}')],['assets/sprites/pet.png',new Uint8Array([1,2,3])],['audio/bgm/1.wav',new Uint8Array([4,5,6])],['maps/1000.DAT',new Uint8Array([7,8])]];
+  let offset=0;const entries=[];
+  for(const [path,data] of items){entries.push({path,size:data.length,offset,sha256:await pack.sha256(data)});offset+=30+path.length+data.length;}
+  const header={format:2,revision:'test-0001',bytes:items.reduce((n,[,d])=>n+d.length,0),entries};
+  options.change?.(header);
+  const files=[['stoneage-resources.json',new TextEncoder().encode(JSON.stringify(header))],...items],chunks=[],central=[];let position=0;
+  for(const [name,data] of files){
+    const record=new Uint8Array(30+name.length),v=new DataView(record.buffer);v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint32(18,data.length,true);v.setUint32(22,data.length,true);v.setUint16(26,name.length,true);record.set(new TextEncoder().encode(name),30);
+    const c=new Uint8Array(46+name.length),cv=new DataView(c.buffer);cv.setUint32(0,0x02014b50,true);cv.setUint32(20,data.length,true);cv.setUint32(24,data.length,true);cv.setUint16(28,name.length,true);cv.setUint32(42,position,true);c.set(new TextEncoder().encode(name),46);central.push(c);chunks.push(record,data);position+=record.length+data.length;
+  }
+  const end=new Uint8Array(22),v=new DataView(end.buffer);v.setUint32(0,0x06054b50,true);v.setUint16(8,files.length,true);v.setUint16(10,files.length,true);v.setUint32(12,central.reduce((n,c)=>n+c.length,0),true);v.setUint32(16,position,true);
+  return {file:new Blob([...chunks,...central,end]),header};
+}
+test('ZIP imports images, maps, indexes and audio at the fixed CDN URLs and resumes',async()=>{
+  const h=harness(),{file}=await zipFixture(),args={file,revision:'test-0001',roots:{assets:'https://cdn.example/game/assets/',maps:'https://cdn.example/game/maps/',audio:'https://cdn.example/game/audio/'}};
+  const cancelled=await h.run('import',args,(p,id)=>{if(p.completed===1)h.cancel(id);});assert(cancelled.cancelled);
+  const result=await h.run('import',args);assert.equal(result.completed,4);assert.equal(result.reused,1);
+  const rows=h.stores.get('stoneage-static-v1-test-0001');assert.equal(rows.get(args.roots.audio+'bgm/1.wav').headers.get('Content-Type'),'audio/wav');
+  assert.equal(rows.get(args.roots.assets+'manifest.json').headers.get('X-Stoneage-Resource-Revision'),'test-0001');
+  const next=harness();next.stores.set('stoneage-static-v1-previous',rows);
+  assert.equal((await next.run('import',args)).reused,4);
+  assert.equal(next.stores.get('stoneage-static-v1-test-0001').size,4);
+});
+test('ZIP rejects stale versions, unsafe paths, truncation and damaged content',async()=>{
+  const h=harness(),{file}=await zipFixture(),args={file,revision:'test-0001',roots:{assets:'https://cdn.example/assets/',maps:'https://cdn.example/maps/',audio:'https://cdn.example/audio/'}};
+  await assert.rejects(h.run('inspect',{file,revision:'test-0002'}),/版本/);
+  await assert.rejects(h.run('inspect',{file:file.slice(0,-1),revision:args.revision}),/目录/);
+  const unsafe=await zipFixture({change:header=>header.entries[0].path='assets/../secret'});
+  await assert.rejects(h.run('import',{...args,file:unsafe.file}),/路径/);assert.equal(h.stores.size,0);
+  const reader=require('./runtimeassets/resource-pack.js');const decoded=await reader.read(file,args.revision);
+  const data=new Uint8Array(await file.arrayBuffer());const entry=decoded.header.entries[1];data[decoded.start+entry.offset+30+entry.path.length]^=1;
+  await assert.rejects(h.run('import',{...args,file:new Blob([data])}),/校验失败/);
+  const duplicate=await zipFixture({change:header=>header.entries[1].path=header.entries[0].path});
+  await assert.rejects(h.run('inspect',{file:duplicate.file,revision:args.revision}),/路径/);
 });

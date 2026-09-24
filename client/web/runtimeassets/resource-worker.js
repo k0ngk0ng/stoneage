@@ -1,5 +1,10 @@
 "use strict";
-importScripts(new URL("map-pack.js",self.STONEAGE_RUNTIME_ROOT||self.location.href).href);
+importScripts(...["map-pack.js","resource-pack.js"].map(name=>new URL(name,self.STONEAGE_RUNTIME_ROOT||self.location.href).href));
+async function readPack(file,revision){
+  const magic=new TextDecoder().decode(await file.slice(0,8).arrayBuffer());
+  if(magic==="SAMAP001"){const pack=await StoneAgeMapPack.read(file,revision);pack.data=entry=>file.slice(pack.start+entry.offset,pack.start+entry.offset+entry.size).arrayBuffer();return pack;}
+  return StoneAgeResourcePack.read(file,revision);
+}
 let importing=null;
 const cancelled=new Set();
 const indexes=new Map();
@@ -26,27 +31,35 @@ function decodeDAT(buffer,floor,source){
   return {floor,width,height,tile,parts,event,source};
 }
 async function importPack(id,args){
-  if(importing!==null)throw new Error("已有地图包正在导入");
+  if(importing!==null)throw new Error("已有资源包正在导入");
   importing=id;
   try{
-    const pack=await StoneAgeMapPack.read(args.file,args.revision);
+    const pack=await readPack(args.file,args.revision);
     const cache=await caches.open(`stoneage-static-v1-${args.revision}`);
-    let bytes=0,completed=0,reused=0;
+    const oldCaches=await Promise.all((await caches.keys()).filter(name=>name.startsWith("stoneage-static-v1-")&&name!==`stoneage-static-v1-${args.revision}`).map(name=>caches.open(name)));
+    let bytes=0,completed=0,reused=0,lastProgress=0;
     postMessage({id,progress:{bytes,total:pack.header.bytes,completed,count:pack.header.entries.length,reused}});
     for(const entry of pack.header.entries){
       if(cancelled.has(id))return {cancelled:true,completed,reused};
-      const url=StoneAgeMapPack.entryURL(entry.path,args.roots),existing=await cache.match(url);
-      // Validate existing bytes too: normal network responses do not carry a
-      // digest. A completed entry doubles as the durable resume checkpoint.
-      if(existing?.ok&&await StoneAgeMapPack.sha256(await existing.arrayBuffer())===entry.sha256){reused++;}
-      else{
-        const data=await args.file.slice(pack.start+entry.offset,pack.start+entry.offset+entry.size).arrayBuffer();
-        if(await StoneAgeMapPack.sha256(data)!==entry.sha256)throw new Error(`地图包校验失败：${entry.path}`);
-        if(cancelled.has(id))return {cancelled:true,completed,reused};
-        await cache.put(url,new Response(data,{headers:{"Content-Type":entry.path.endsWith(".png")?"image/png":"application/octet-stream","Content-Length":String(entry.size)}}));
+      const url=StoneAgeResourcePack.entryURL(entry.path,args.roots);
+      let data=null,hitCurrent=false;
+      for(const candidate of [cache,...oldCaches]){
+        const existing=await candidate.match(url);
+        if(existing?.ok){
+          const buffer=await existing.arrayBuffer();
+          if(buffer.byteLength===entry.size&&await StoneAgeMapPack.sha256(buffer)===entry.sha256){data=buffer;hitCurrent=candidate===cache;reused++;break;}
+        }
       }
+      if(!data){
+        data=await pack.data(entry);
+        if(await StoneAgeMapPack.sha256(data)!==entry.sha256)throw new Error(`资源包校验失败：${entry.path}`);
+      }
+      if(cancelled.has(id))return {cancelled:true,completed,reused};
+      if(!hitCurrent)await cache.put(url,new Response(data,{headers:{"Content-Type":StoneAgeResourcePack.contentType(entry.path),"Content-Length":String(entry.size),"X-Stoneage-Resource-Revision":args.revision}}));
       bytes+=entry.size;completed++;
-      postMessage({id,progress:{bytes,total:pack.header.bytes,completed,count:pack.header.entries.length,reused}});
+      if(Date.now()-lastProgress>=100||completed===pack.header.entries.length){
+        postMessage({id,progress:{bytes,total:pack.header.bytes,completed,count:pack.header.entries.length,reused}});lastProgress=Date.now();
+      }
     }
     return {completed,reused,bytes};
   }finally{cancelled.delete(id);importing=null;}
@@ -56,7 +69,7 @@ self.onmessage=async event=>{
   if(type==="cancel"){if(importing===id)cancelled.add(id);return;}
   try{
     if(type==="inspect"){
-      const {header}=await StoneAgeMapPack.read(args.file,args.revision);
+      const {header}=await readPack(args.file,args.revision);
       postMessage({id,result:{bytes:header.bytes,floors:header.floors?.length||0,count:header.entries.length}});
     }else if(type==="dat"){
       const data=decodeDAT(args.buffer,args.floor,args.source);

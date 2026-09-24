@@ -283,7 +283,9 @@ disabled = false
 
 ```sh
 ./bin/stoneage sync-assets --web-only
-# 如同时发布地图包，改用：
+# 独立上传完整游戏资源 ZIP 和百科下载目录：
+./bin/stoneage sync-assets --resource-packs /path/to/resource-packs
+# 如同时发布旧格式地图包，改用：
 ./bin/stoneage sync-assets --web-only --map-packs /path/to/map-packs
 ./bin/stoneage check
 ./bin/stoneage pull

@@ -67,6 +67,10 @@ function harness(settings = {}) {
 }
 async function flush(h) {for(let i = 0; i < 20; i++) await Promise.resolve();await Promise.all(h.writes);}
 (async () => {
+  const imported=harness({compressed:true});
+  imported.stored.set("https://game.example/assets/manifest.json",new Response(imported.data,{headers:{"X-Stoneage-Resource-Revision":"resources-0001"}}));
+  assert.deepEqual(Buffer.from(await(await imported.context.fetchAssetIndex("/assets/manifest.json")).arrayBuffer()),imported.data);
+  assert.equal(imported.calls.length,0,"ZIP-imported index must bypass compressed CDN download");
   const compressed=harness({compressed:true});
   assert.deepEqual(Buffer.from(await(await compressed.context.fetchAssetIndex("/assets/manifest.json")).arrayBuffer()),compressed.data);
   await flush(compressed);

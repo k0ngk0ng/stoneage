@@ -1,7 +1,6 @@
 (function(){
   "use strict";
   const runtimeRoot=new URL(".",document.currentScript?.src||location.href).href;
-  const staticRoot=new URL(runtimeRoot.includes("/web/")?"../../":"./",runtimeRoot).href;
   let worker=null,nextID=1;
   const pending=new Map();
   const imageQueue=[];let activeImages=0;
@@ -60,19 +59,11 @@
     if(dialog){dialog.showModal();return;}
     const node=document.createElement("dialog");dialog=node;
     node.style.cssText="width:min(440px,85vw);max-height:85vh;overflow:auto;padding:20px;background:#fff6de;color:#352514;border:2px solid #765938;border-radius:8px;font:15px/1.6 sans-serif";
-    node.innerHTML='<h2 style="margin:0 0 10px">导入地图包</h2><p>提前保存地图和贴图，减少行走时下载等待。取消后重新选择同一个包可以继续。</p><input type="file" accept=".samap" aria-label="选择地图包"><p data-size></p><progress style="width:100%" max="1" value="0"></progress><p role="status" aria-live="polite">请选择与当前资源版本一致的地图包。</p><div style="display:flex;gap:12px"><button data-start disabled>开始导入</button><button data-cancel disabled>取消导入</button><button data-close>关闭</button></div>';
+    node.innerHTML='<h2 style="margin:0 0 10px">导入资源</h2><p>提前保存地图、人物、宠物、骑乘、界面、音乐和音效，减少游玩时下载等待。取消后重新选择同一个包可以继续。</p><input type="file" accept=".zip,.samap" aria-label="选择资源包"><p data-size></p><progress style="width:100%" max="1" value="0"></progress><p role="status" aria-live="polite">请选择与当前资源版本一致的资源包。</p><div style="display:flex;gap:12px"><button data-start disabled>开始导入</button><button data-cancel disabled>取消导入</button><button data-close>关闭</button></div>';
     document.body.append(node);node.showModal();
-    const downloads=document.createElement("p");downloads.textContent="正在查询地图包下载…";
-    node.querySelector("input").before(downloads);
-    Promise.all([config(),fetch(new URL("map-packs.json",runtimeRoot)).then(response=>{if(!response.ok)throw new Error("目录不可用");return response.json();})]).then(([ready,catalog])=>{
-      downloads.replaceChildren();
-      if(catalog.revision!==ready.revision){downloads.textContent="当前环境暂无匹配下载包，可选择本地文件。";return;}
-      for(const entry of catalog.packages||[]){
-        const url=new URL(entry.path,staticRoot);if(!url.href.startsWith(staticRoot+"packs/"))continue;
-        const link=document.createElement("a");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";link.style.display="block";
-        link.textContent=`下载${entry.name} · ${entry.floors} 张 · ${mb(entry.bytes)}`;downloads.append(link);
-      }
-    }).catch(()=>{downloads.textContent="暂时无法获取下载目录，可选择已有地图包。";});
+    const downloads=document.createElement("p"),link=document.createElement("a");
+    link.href="/wiki/resources";link.target="_blank";link.rel="noopener noreferrer";link.textContent="到百科下载游戏资源 ZIP";
+    downloads.append(link);node.querySelector("input").before(downloads);
     const input=node.querySelector("input"),status=node.querySelector('[role="status"]'),size=node.querySelector("[data-size]"),start=node.querySelector("[data-start]"),cancel=node.querySelector("[data-cancel]"),close=node.querySelector("[data-close]"),progress=node.querySelector("progress");
     let task=null,selected=null,version=null,selection=0;
     input.onchange=async()=>{
@@ -84,8 +75,8 @@
         const pack=await run("inspect",{file,revision:ready.revision});
         const estimate=await navigator.storage?.estimate?.();
         if(generation!==selection)return;
-        size.textContent=`地图 ${pack.floors} 张 · 文件 ${pack.count} 个 · ${mb(pack.bytes)}${estimate?.quota?` · 可用空间约 ${mb(Math.max(0,estimate.quota-estimate.usage))}`:""}`;
-        selected=file;start.disabled=false;status.textContent="已识别地图包。已导入的文件会校验后跳过。";
+        size.textContent=`文件 ${pack.count} 个 · ${mb(pack.bytes)}${estimate?.quota?` · 可用空间约 ${mb(Math.max(0,estimate.quota-estimate.usage))}`:""}`;
+        selected=file;start.disabled=false;status.textContent="已识别资源包。已导入的文件会校验后跳过。";
       }catch(error){if(generation===selection)status.textContent=error.message;}
     };
     start.onclick=async()=>{
@@ -99,7 +90,7 @@
           progress.value=p.bytes/p.total;status.textContent=`${p.completed}/${p.count} · ${mb(p.bytes)}/${mb(p.total)} · 复用 ${p.reused} 个`;
         });
         const result=await task;
-        status.textContent=result.cancelled?`已取消，保留 ${result.completed} 个已完成文件，可重新选择地图包继续。`:`导入完成，共 ${result.completed} 个文件（复用 ${result.reused} 个）。地图资源已可从本地读取。`;
+        status.textContent=result.cancelled?`已取消，保留 ${result.completed} 个已完成文件，可重新选择资源包继续。`:`导入完成，共 ${result.completed} 个文件（复用 ${result.reused} 个）。游戏资源已可从本地读取。`;
       }catch(error){status.textContent=`导入未完成：${error.message}。已完成文件已保留，可重试。`;}
       finally{task=null;input.disabled=false;start.disabled=false;cancel.disabled=true;close.disabled=false;}
     };

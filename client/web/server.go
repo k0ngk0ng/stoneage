@@ -1728,7 +1728,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		}
 		return
 	}
-	if request.URL.Path == "/world-resources.js" || request.URL.Path == "/map-pack.js" || request.URL.Path == "/resource-worker.js" || request.URL.Path == "/resource-client.js" || request.URL.Path == "/map-packs.json" {
+	if request.URL.Path == "/world-resources.js" || request.URL.Path == "/map-pack.js" || request.URL.Path == "/resource-pack.js" || request.URL.Path == "/resource-worker.js" || request.URL.Path == "/resource-client.js" || request.URL.Path == "/map-packs.json" {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 			return

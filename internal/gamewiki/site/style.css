@@ -379,3 +379,8 @@ figcaption { font-size: 12px; color: var(--muted); margin-top: 8px; }
 .map-viewer:fullscreen .map-help, .map-fullscreen .map-help { flex-shrink: 0; }
 dialog.map-dialog-fullscreen { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: hidden; }
 .map-viewer.map-fullscreen { position: fixed; inset: 0; z-index: 2; }
+
+.resource-downloads { max-width: 920px; margin: 0 auto; padding: 32px 5%; }
+.resource-downloads section { margin-bottom: 32px; }
+.resource-downloads #resource-download { padding: 24px; background: #fff5d9; border: 1px solid var(--line); border-radius: 12px; }
+.resource-download-link { display: inline-block; padding: 12px 20px; border-radius: 8px; background: var(--accent); color: white; font-weight: 600; }

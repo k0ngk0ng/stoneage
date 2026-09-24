@@ -24,6 +24,7 @@ required; set STONEAGE_ASSET_SYNC_BIN to override its path.
 
 Options:
   --web-only      Publish CDN modules and compressed indexes only.
+  --resource-packs DIR Publish complete game resource ZIP and download catalog.
   --map-packs DIR Publish matching map packages (with --web-only).
   --dry-run       Validate the source trees and print the object count only.
   --workers N     Number of parallel uploads (1..64; default from .env/8).
@@ -39,6 +40,9 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --web-only) web_args+=(-web-only) ;;
+        --resource-packs)
+            [[ $# -ge 2 ]] || { echo "--resource-packs requires a directory" >&2; exit 2; }
+            web_args+=(-resource-packs "$2"); shift ;;
         --map-packs)
             [[ $# -ge 2 ]] || { echo "--map-packs requires a directory" >&2; exit 2; }
             web_args+=(-map-packs "$2"); shift ;;

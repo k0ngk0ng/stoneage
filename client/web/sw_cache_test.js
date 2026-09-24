@@ -472,6 +472,12 @@ async function assertAssetErrorsReportHttpAndNetworkFailures() {
   await assertPreviousCacheMigrationIsBackgrounded();
   await assertAssetErrorsReportHttpAndNetworkFailures();
 
+  const imported = harness();
+  await imported.sendMessage({type:"set-asset-version",revision:"imported-0001"});
+  const importedURL="https://game.test/assets/manifest.json";
+  imported.seedResponse(importedURL,new Response('{"imported":true}',{headers:{"X-Stoneage-Resource-Revision":"imported-0001"}}),`${CACHE_PREFIX}imported-0001`);
+  assert.equal(await (await imported.dispatch(importedURL)).text(),'{"imported":true}');
+  assert.equal(imported.stats().fetchCalls,0,"verified imported index must not redownload");
   const opaqueURL = "https://game.test/assets/prefetched.png";
   {
     let active=0,peak=0;const gates=[];

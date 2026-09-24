@@ -468,7 +468,15 @@ async function removeOldCaches() {
 }
 
 async function networkFirst(request, clientId, waitUntil) {
+  // Imported indexes have been verified against this exact publication.
+  // Reuse them until the revision changes; markers still revalidate online.
   await ensureStoredState();
+  if(isIndexRequest(new URL(request.url))){
+    try{
+      const cache=await caches.open(cacheName()),hit=await cacheMatchBestEffort(cache,request);
+      if(hit?.headers.get("X-Stoneage-Resource-Revision")===activeRevision)return hit;
+    }catch(_) { /* Network fallback remains available when storage fails. */ }
+  }
   return coalescedResponse(request, "network-first", async () => {
     let cache = null;
     try { cache = await caches.open(cacheName()); } catch (_) { /* network remains usable */ }

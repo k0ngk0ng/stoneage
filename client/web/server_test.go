@@ -823,7 +823,7 @@ func TestHandlerServesResourceWorkerModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handler.Close()
-	for _, path := range []string{"/world-resources.js", "/map-pack.js", "/resource-worker.js", "/resource-client.js", "/map-packs.json"} {
+	for _, path := range []string{"/world-resources.js", "/map-pack.js", "/resource-pack.js", "/resource-worker.js", "/resource-client.js", "/map-packs.json"} {
 		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(method, path, nil))

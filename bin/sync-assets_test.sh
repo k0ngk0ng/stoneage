@@ -98,6 +98,12 @@ assert_file_not_contains "$test_root/normal.stdout" "native-access"
 [[ ! -e "$MOCK_DOCKER_CALLED" ]] || fail "Docker was invoked"
 assert_file_contains "$test_root/normal.stdout" "Client assets published."
 
+"$repo_root/bin/sync-assets.sh" --resource-packs "$test_root/packs" >"$test_root/packs.stdout" 2>"$test_root/packs.stderr"
+assert_arg "-resource-packs"
+assert_arg "$test_root/packs"
+assert_file_not_contains "$MOCK_ARGS_FILE" "native-access"
+[[ ! -e "$MOCK_DOCKER_CALLED" ]] || fail "Docker was invoked for resource pack upload"
+
 : >"$MOCK_ARGS_FILE"
 "$repo_root/bin/sync-assets.sh" --dry-run >"$test_root/dry.stdout" 2>"$test_root/dry.stderr"
 assert_arg "-dry-run"

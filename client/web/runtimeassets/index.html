@@ -6352,6 +6352,16 @@
       cache=cached?.store||null;
       if(cached?.hit){cached.hit._assetFromCache=true;return cached.hit;}
     }
+    // A ZIP import already populated the static cache with the exact current
+    // index. Check it before requesting a compressed copy from the CDN.
+    if(revision){
+      try{
+        const store=await window.caches.open(`stoneage-static-v1-${revision}`);
+        const importedURL=new URL(url);importedURL.searchParams.delete("v");
+        const hit=await store.match(importedURL.href);
+        if(hit?.headers.get("X-Stoneage-Resource-Revision")===revision){hit._assetFromCache=true;return hit;}
+      }catch(_) { /* Cache failures retain the usual network fallback. */ }
+    }
     const compressed=await fetchCompressedIndex(url,revision,options);
     if(compressed){
       if(cache){
@@ -8448,10 +8458,10 @@
       add("    音效设定    ",()=>{app.systemPage="se";renderSystem();},120);
       add("    画面设定    ",()=>{app.systemPage="display";renderSystem();},160);
       add("    游戏速度    ",()=>{app.systemPage="game-speed";renderSystem();},200);
-      add("    导入地图包    ",()=>window.StoneAgeResources.openPack(async()=>{
+      add("    导入资源    ",()=>window.StoneAgeResources.openPack(async()=>{
         const version=await assetVersionPromise;
         const controlled=await assetWorkerReadyPromise;
-        return {revision:version?.revision||"",controlled,roots:{assets:ASSET_RESOURCE_ROOT.href,maps:STATIC_RESOURCE_ROOTS[1].href}};
+        return {revision:version?.revision||"",controlled,roots:{assets:ASSET_RESOURCE_ROOT.href,maps:STATIC_RESOURCE_ROOTS[1].href,audio:STATIC_RESOURCE_ROOTS[2].href}};
       }),240);
       const close=systemChoice("    关    闭    ",closeGameplayOverlay,280);list.append(close);
       return;
