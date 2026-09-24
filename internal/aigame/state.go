@@ -1333,6 +1333,9 @@ func (state *gameState) applyBattlePacket(value string) {
 		return
 	}
 	switch marker {
+	case "BVS":
+		// Optional battle display values do not start a movie or change command readiness.
+		return
 	case "BC":
 		state.applyBattleRoster(value)
 	case "BP":

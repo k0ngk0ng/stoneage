@@ -552,6 +552,10 @@ BOOL BATTLE_CommandSend( int charaindex, char *pszCommand )
 }
 
 
+/* Optional display snapshot paired with szAllBattleString. The legacy BC
+ * layout stays unchanged for automation and older clients. */
+static char szAllBattleVitals[2048];
+
 BOOL BATTLE_MakeCharaString(
 	int battleindex,
 	char *pszCommand,
@@ -565,6 +569,7 @@ BOOL BATTLE_MakeCharaString(
 	char szEscapePetName[128];
 	int rideflg = 0, petindex = -1, petlevel, pethp, petmaxhp;
 	if( BATTLE_CHECKINDEX( battleindex ) == FALSE )return FALSE;
+	strcpy( szAllBattleVitals, "BVS|" );
 	pszTop = pszCommand;
 	pszLast = pszCommand+size-1;
 #if 1
@@ -700,6 +705,15 @@ BOOL BATTLE_MakeCharaString(
 				petmaxhp
 			);
 			STRCPY_TAIL( pszTop, pszLast, szBuffer );
+			/* Only characters have usable MP in the 2.5 battle UI. */
+			if( flg & BC_FLG_PLAYER ){
+				char vital[80];
+				snprintf( vital, sizeof(vital), "%X|%X|%X|", pEntry[i].bid,
+					max( CHAR_getInt( charaindex, CHAR_MP ), 0 ),
+					max( CHAR_getWorkInt( charaindex, CHAR_WORKMAXMP ), 0 ) );
+				if( strlen(szAllBattleVitals)+strlen(vital)<sizeof(szAllBattleVitals) )
+					strcat( szAllBattleVitals, vital );
+			}
 			if( pszTop >= pszLast )return FALSE;// ÒëÒüÐ×ÈÕÁÃ  
 		}
 	}
@@ -740,6 +754,7 @@ void BATTLE_BpSendToWatch(
 		BATTLE_CommandSend( charaindex, szBp );
 		// òå¹»ËåÉ§Ê÷  ËªÔÂ
 		BATTLE_CommandSend( charaindex, pszBcString );
+		BATTLE_CommandSend( charaindex, szAllBattleVitals );
 	}
 	// ÎìÑ¨¼þÓñ½÷ÇÐ³ß
 	pBattle->mode = BATTLE_MODE_WATCHPRE;
@@ -851,6 +866,7 @@ void BATTLE_CharSendAll( int battleindex )
 			);
 			BATTLE_CommandSend( charaindex, szBp );
 			BATTLE_CommandSend( charaindex, szAllBattleString );
+			BATTLE_CommandSend( charaindex, szAllBattleVitals );
 		}
 	}
 	pBattle = BattleArray[battleindex].pNext;

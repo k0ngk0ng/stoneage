@@ -404,9 +404,17 @@ func TestBattleCommandReadinessFollowsBPBCMovieOrdering(t *testing.T) {
 	if !state.snapshot.Battle.CommandReady || len(state.snapshot.Battle.Participants) != 1 {
 		t.Fatalf("BC did not release command: %+v", state.snapshot.Battle)
 	}
+	applyEventLocked(&state, stringEvent("B", "BVS|0|10|64|"))
+	if !state.snapshot.Battle.CommandReady || state.snapshot.Battle.Movie {
+		t.Fatal("display snapshot incorrectly changed battle readiness")
+	}
 	applyEventLocked(&state, stringEvent("B", "BA|1|2"))
 	if !state.snapshot.Battle.CommandReady {
 		t.Fatal("BA incorrectly locked command")
+	}
+	applyEventLocked(&state, stringEvent("B", "BV|0|1|"))
+	if !state.snapshot.Battle.Movie {
+		t.Fatal("legacy attribute-change movie must remain a movie")
 	}
 	applyEventLocked(&state, stringEvent("B", "H|0"))
 	if state.snapshot.Battle.CommandReady {

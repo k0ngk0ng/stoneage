@@ -553,6 +553,7 @@
        fixed back-buffer.  Keep that raster surface at the native logical
        size; the outer battle viewport is the only scaled element. */
     #battle-map-canvas { position:absolute; left:0; top:0; z-index:0; display:none; width:640px; height:480px; image-rendering:pixelated; pointer-events:none; background:#211810; }
+    #battle-inspection { position:absolute;left:12px;right:12px;bottom:64px;z-index:12;padding:6px 10px;pointer-events:none;color:#ffe8ac;background:#251c12e8;border:1px solid #9a8154;border-radius:3px;font:12px/18px Tahoma,"Microsoft YaHei",sans-serif;text-align:center; }
     #battle-actors-layer { position:absolute; inset:0; z-index:1; width:640px; height:480px; pointer-events:none; }
     /* Target selection is a separate top layer, above actor depth sorting and
        the command bitmap.  Only its temporary buttons accept input; the rest
@@ -1735,7 +1736,7 @@
      so MyChatBuffer.color is never reduced to a browser-only four-colour
      approximation. */
   const CHAT_FONT_COLORS=Object.freeze(["#ffffff","#00ffff","#ff00ff","#0000ff","#ffff00","#00ff00","#ff0000","#a0a0a4","#a6caf0","#c0dcc0"]);
-  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false,battleAnimationSpeed:1}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
+  const app={transport:null, polling:false, messageID:1, eventSeq:1, account:"", password:"", charListLockRetryCount:0, selectedServer:"local-line", character:"", characterSlot:-1, characterFace:0, phase:"login", logoutPending:"", floor:-1, position:[0,0], serverPosition:[0,0], serverPositionVersion:0, serverPositionReceivedAt:0, direction:0, map:null, mapDimensionsByFloor:new Map(), mapPaletteName:"", mapPaletteNo:-1, mapDrawTimeAnime:true, mapPaletteLoading:false, mapPaletteFailed:false, mapLoading:false, mapLoadingStartedAt:0, autoMapData:null, autoMapFloor:-1, autoMapLoading:null, actors:new Map(), npcMetadataFloor:-1, npcMetadataLoading:false, npcMetadataRequest:0, playerActorId:null, partyLeader:null, battle:false, battleCursorY:240, battleTarget:10, battlePopup:null, battleFailureNoticeUntil:0, chat:[], chatRegistry:[], chatInputHistory:[], chatInputHistoryIndex:-1, chatInputHistoryDraft:"", wire:[], events:[], taskLog:[], helpPage:0, activeMapEvent:null, pendingTalk:null, talkTargetId:null, talkTargetSelectedAt:0, talkConversation:null, pendingMove:false, pendingMoveAt:0, pendingMoveFrom:null, pendingMoveTarget:null, moveTarget:null, moveQueue:[], moveSentSteps:0, moveWirePending:false, moveWireTarget:null, moveWireRoute:"", moveWireTimer:0, movePredictionActive:false, movePredictionTrail:[], movePredictionStartedAt:0, movePredictionServerVersion:0, movePredictionSyncRequested:false, movePredictionSyncAttempts:0, pointerMoveHeld:false, pointerMovePointerId:null, pointerMoveTile:null, pointerMoveInitialTile:null, pointerMoveInitialClientX:NaN, pointerMoveInitialClientY:NaN, pointerMoveDragged:false, pointerMoveLastAt:0, pointerMoveStartedAt:0, pointerLookTargetId:null, pointerLookPointerId:null, _moveFinalizeTimer:0, _worldAnimationTimer:0, _worldAnimationFrame:0, worldBackBuffer:null, fieldTimeFrame:-1, fieldTimeFrameNext:-1, fieldTimeOffset:0, fieldTimeHour:0, fieldTimeCompositeKey:"", serverTime:null, serverTimeReceivedAt:0, serverTimeReceivedWallClock:0, cursor:{x:320,y:240,visible:true,tile:null,updatedAt:0}, cursorClientX:NaN, cursorClientY:NaN, cursorScreenX:NaN, cursorScreenY:NaN, cursorPointerType:"", cursorTouchLike:false, inventory:[], inventoryPage:"items", inventoryDropGold:0, inventoryDrag:null, inventoryGoldHoldTimer:0, inventoryGoldHoldInc:0, inventoryGoldHoldTicks:0, inventoryGoldHoldButton:null, inventoryTargetPanel:false, inventoryHoveredItem:-1, contacts:[], selectedContact:-1, mails:[], mailHistory:new Map(), mailCompose:{open:false,page:0,recipients:new Set(),text:""}, pets:[], petSlots:Array.from({length:5},()=>null), petSkills:Array.from({length:5},()=>[]), petMenuPage:"list", petDetailIndex:0, petMailNo:-1, petSkillHover:-1, skills:[], party:Array.from({length:5},()=>null), magic:[], titles:[], album:[], albumPage:0, selectedAlbum:-1, albumCatalogReady:false, effects:[], status:{}, pc:{}, serverState:{}, windows:[], activeWindow:null, shopSession:null, localDialog:null, trade:null, systemPage:"menu", systemSettings:{chatLines:20,chatColor:0,bgm:true,se:true,bgmVolumeLevel:15,bgmPitch:0,bgmPitchByTrack:Array.from({length:16},()=>0),seVolumeLevel:15,seStereo:true,soundMuted:false,traditional:false,peopleVisible:true,experienceVisible:true,rightAttack:false,battleHpVisible:true,battleMpVisible:true,battleAnimationSpeed:1}, music:{mode:"title",mapTone:null,mapBgmNo:-1,currentBgmNo:-1,currentIntentNo:2,rememberedMapTone:null,rememberedMapToneIdentity:"",rememberedMapToneLoading:null}, selectedItem:-1, selectedMagic:-1, selectedPet:-1, battleCommands:[], pendingBattlePackets:[], pendingBattlePacketTimer:0, battleState:{field:0,fieldNo:0,fieldAtt:0,type:0,myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,pendingBattleControls:[],animations:[],effects:[],motions:[],projectiles:[],deathStartedAt:new Map(),damageLedger:[],animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,flashUntil:0,movieActive:false,movieDone:false,commandLocked:false,petCommandLocked:false,playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,petChoiceLocked:false,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,battlePacketSeq:0,battleRosterSeq:0,battleBpSeq:0,awaitingBattleRoster:false,lastPlayerActionKind:"",lastPlayerActionCommand:"",defaultAttackTurnKey:null}, serverInfo:{}};
   function battleAnimationSpeedValue(value){
     const number=Number(value);
     return BATTLE_ANIMATION_SPEED_OPTIONS.includes(number)?number:1;
@@ -1756,7 +1757,7 @@
      original client keeps them in its own save data; the browser keeps them
      here, beside the animation-speed and display-mode keys. */
   const SYSTEM_SETTINGS_KEY="stoneage:web:system-settings:v1";
-  const SYSTEM_SETTINGS_FIELDS=Object.freeze(["chatLines","chatColor","chatRange","bgm","se","soundMuted","bgmVolumeLevel","bgmTempo","seVolumeLevel","seStereo","traditional","peopleVisible","experienceVisible","rightAttack","bgmPitch","bgmPitchByTrack"]);
+  const SYSTEM_SETTINGS_FIELDS=Object.freeze(["chatLines","chatColor","chatRange","bgm","se","soundMuted","bgmVolumeLevel","bgmTempo","seVolumeLevel","seStereo","traditional","peopleVisible","experienceVisible","rightAttack","battleHpVisible","battleMpVisible","bgmPitch","bgmPitchByTrack"]);
   function systemSettingsStorage(){try{return globalThis.localStorage||null;}catch(_){return null;}}
   function loadSystemSettings(storage=systemSettingsStorage()){
     if(!storage||!app.systemSettings)return;
@@ -2952,17 +2953,18 @@
        from MENU.CPP.  Only the compact root is pinned to (4,4); logout and
        all setting pages are centred in the 640x480 back buffer.  Treating
        their origins as root-relative put every subpage in the upper-left. */
-    /* The web root is expanded to a full 3x8 tile surface so the last menu
+    /* The web root is expanded to a full 3x9 tile surface so the last menu
        row and its close hit box remain inside the native-looking frame.  The
        optional 8.5 _NEW_SYSTEM_MENU is a separate centred 7x8 surface; its
        unsupported SaMenu entries remain intentionally absent from the 2.5
        web client. */
-    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:384px;--system-list-x:32px;--system-list-y:58px}
+    #system-screen.system-page-menu{--legacy-x:4px;--legacy-y:4px;--legacy-w:192px;--legacy-h:432px;--system-list-x:32px;--system-list-y:58px}
     #system-screen.system-page-logout-choice{--legacy-x:224px;--legacy-y:144px;--legacy-w:192px;--legacy-h:192px;--system-list-x:262px;--system-list-y:200px}
     #system-screen.system-page-logout-record,#system-screen.system-page-logout-place{--legacy-x:224px;--legacy-y:168px;--legacy-w:192px;--legacy-h:144px;--system-list-x:262px;--system-list-y:224px}
     #system-screen.system-page-chat{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:104px}
     #system-screen.system-page-bgm{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:112px}
     #system-screen.system-page-se{--legacy-x:192px;--legacy-y:96px;--legacy-w:256px;--legacy-h:288px;--system-list-x:248px;--system-list-y:160px}
+    #system-screen.system-page-status-display,
     #system-screen.system-page-display{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:240px;--system-list-x:248px;--system-list-y:96px}
     #system-screen.system-page-display .system-subpage{width:220px}
     #system-screen.system-page-game-speed{--legacy-x:192px;--legacy-y:48px;--legacy-w:256px;--legacy-h:384px;--system-list-x:248px;--system-list-y:96px}
@@ -3617,7 +3619,7 @@
       titles:{bitmap:9140,x:4,y:4,w:272,h:332,generic:true},
       /* System pages use the native MakeWindowDisp nine-tile surface.  The
        centre bitmap (9140) is not a complete window and must not be
-       stretched over the menu.  The web root reserves a full 3x8 tile
+       stretched over the menu.  The web root reserves a full 3x9 tile
        surface (192x384) so its final row remains inside the frame; in-place
        logout lives in the centred 3x3 choice subpage.  Per-page geometry is
        set by configureSystemWindow(). */
@@ -8310,8 +8312,8 @@
   function systemNotice(text){addChat("系统",text);if(app.phase==="world")setWorldState(text);}
   function configureSystemWindow(page){
     const screen=$("system-screen");if(!screen)return;
-    ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry","system-page-display","system-page-game-speed"].forEach(name=>screen.classList.remove(name));
-    const specs={menu:{x:4,y:4,w:192,h:384,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},display:{x:192,y:48,w:256,h:240,title:0},"game-speed":{x:192,y:48,w:256,h:384,title:0}};
+    ["system-page-menu","system-page-logout-choice","system-page-logout-record","system-page-logout-place","system-page-chat","system-page-bgm","system-page-se","system-page-registry","system-page-display","system-page-game-speed","system-page-status-display"].forEach(name=>screen.classList.remove(name));
+    const specs={"status-display":{x:192,y:48,w:256,h:240,title:0},menu:{x:4,y:4,w:192,h:432,title:9145},"logout-choice":{x:224,y:144,w:192,h:192,title:9146},"logout-record":{x:224,y:168,w:192,h:144,title:9146},"logout-place":{x:224,y:168,w:192,h:144,title:9146},chat:{x:192,y:48,w:256,h:384,title:9148},bgm:{x:192,y:48,w:256,h:384,title:9149},se:{x:192,y:96,w:256,h:288,title:9150},registry:{x:184,y:25,w:272,h:430,title:0},display:{x:192,y:48,w:256,h:240,title:0},"game-speed":{x:192,y:48,w:256,h:384,title:0}};
     const spec=specs[page]||specs.menu;screen.style.setProperty("--legacy-x",`${spec.x}px`);screen.style.setProperty("--legacy-y",`${spec.y}px`);screen.style.setProperty("--legacy-w",`${spec.w}px`);screen.style.setProperty("--legacy-h",`${spec.h}px`);screen.classList.add(`system-page-${page}`);
     const title=screen.querySelector(".legacy-frame-title");if(title){title.style.backgroundImage=spec.title?`url('/assets/bitmaps/bitmap_${spec.title}.png')`:"none";title.style.display=spec.title?"block":"none";}
   }
@@ -8442,7 +8444,7 @@
     const page=app.systemPage||"menu";const settings=app.systemSettings;configureSystemWindow(page);
     $("system-summary").textContent="StoneAge 2.5 系统菜单";
     if(page==="menu"){
-      /* Keep the client-side choices inside the expanded 3x8 (192x384) frame.
+      /* Keep the client-side choices inside the expanded 3x9 (192x432) frame.
          The web-only split between record-point and in-place logout stays
          behind the first row, while unsupported 8.5 SaMenu server extensions
          remain absent. */
@@ -8463,7 +8465,8 @@
         const controlled=await assetWorkerReadyPromise;
         return {revision:version?.revision||"",controlled,roots:{assets:ASSET_RESOURCE_ROOT.href,maps:STATIC_RESOURCE_ROOTS[1].href,audio:STATIC_RESOURCE_ROOTS[2].href}};
       }),240);
-      const close=systemChoice("    关    闭    ",closeGameplayOverlay,280);list.append(close);
+      add("    状态显示    ",()=>{app.systemPage="status-display";renderSystem();},280);
+      const close=systemChoice("    关    闭    ",closeGameplayOverlay,320);list.append(close);
       return;
     }
     if(page==="logout-choice"){
@@ -8525,6 +8528,15 @@
       if(displayMode==="fit")fitChoice.classList.add("selected");
       else crispChoice.classList.add("selected");
       sub.append(fitChoice,crispChoice);
+      systemReturn(sub,136);list.append(sub);return;
+    }
+    if(page==="status-display"){
+      const sub=systemSubpage("状态显示",-8);
+      for(const [index,key,label] of [[0,"battleHpVisible","显示体力条"],[1,"battleMpVisible","显示气力条"]]){
+        const enabled=settings[key]!==false;
+        const choice=systemAction(`${enabled?"☑":"☐"} ${label}`,()=>{settings[key]=!enabled;saveSystemSettings();renderSystem();if(app.battle)renderBattleWorld();},48+index*40);
+        choice.setAttribute("aria-pressed",String(enabled));sub.append(choice);
+      }
       systemReturn(sub,136);list.append(sub);return;
     }
     if(page==="game-speed"){
@@ -8947,10 +8959,59 @@
     const movieGeneration=Number(state.movieGeneration)||0,bpMovieGeneration=state.bpMovieGeneration;
     if(bpMovieGeneration===null||bpMovieGeneration===undefined||Number(bpMovieGeneration)!==movieGeneration)return false;
     const mine=battleSide(state.myNo),theirs=battleSide(item?.battleId);
-    if(mine>=0)return theirs===mine;
+    if(mine>=0)return theirs>=0;
     /* A spectator (BattleMyNo >= 20) submits N in CMD_INPUT, then the
        RECEIVE_MOVIE branch shows all twenty meters while waiting. */
     return Number(state.myNo)>=20&&theirs>=0&&String(state.commandPending?.player||"")==="N";
+  }
+  function applyBattleVitals(state,payload){
+    if(!state||state.result)return;
+    const parts=String(payload||"").split("|");if(parts.shift()!=="BVS")return;
+    if(parts.at(-1)==="")parts.pop();
+    if(parts.length%3||parts.length>60||!parts.every(value=>/^[0-9a-f]{1,8}$/i.test(value)))return;
+    const values=new Map();
+    for(let index=0;index<parts.length;index+=3){
+      const id=battleNumber(parts[index]),mp=battleNumber(parts[index+1]),maxMp=battleNumber(parts[index+2]);
+      if(id>=20||values.has(id))return;
+      values.set(id,{mp,maxMp});
+    }
+    for(const item of state.participants||[]){
+      delete item.mp;delete item.maxMp;
+      if(item.player&&values.has(Number(item.battleId)))Object.assign(item,values.get(Number(item.battleId)));
+    }
+    renderBattleWorld();
+  }
+  function battleVitalValues(item,state=app.battleState){
+    if(!item?.player)return null;
+    if(Number.isFinite(item.mp)&&Number.isFinite(item.maxMp)&&item.maxMp>0)return {mp:Math.max(0,item.mp),maxMp:item.maxMp};
+    if(Number(item.battleId)===Number(state?.myNo)&&Number(app.pc?.maxMp)>0)return {mp:Math.max(0,Number(state.myMp)||0),maxMp:Number(app.pc.maxMp)};
+    return null;
+  }
+  function battleInspectionText(item,state=app.battleState){
+    if(!item)return "";
+    const values=[`${item.name||"未知"} Lv.${Math.max(0,Number(item.level)||0)}`,`体力 ${Math.max(0,Number(item.hp)||0)}/${Math.max(0,Number(item.maxHp)||0)}`],vitals=battleVitalValues(item,state);
+    if(vitals)values.push(`气力 ${vitals.mp}/${vitals.maxMp}`);
+    if(Number(item.rideFlag)===1&&Number(item.petMaxHp)>0)values.push(`骑宠 ${item.petName||""} 体力 ${Math.max(0,Number(item.petHp)||0)}/${Number(item.petMaxHp)}`);
+    return values.join("　");
+  }
+  function renderBattleInspection(){
+    let node=$("battle-inspection");
+    if(!node){node=document.createElement("div");node.id="battle-inspection";node.setAttribute("role","status");battleScreen.append(node);}
+    const state=app.battleState,item=(state?.participants||[]).find(item=>Number(item.battleId)===state.inspectionTarget);
+    const visible=app.battle&&!state.movieActive&&!state.entryPending&&!state.awaitingBattleRoster&&!state.result&&!state.exitPending&&Boolean(item);
+    node.textContent=visible?battleInspectionText(item,state):"";node.classList.toggle("hidden",!visible);
+  }
+  function updateBattleInspection(event){
+    const state=app.battleState;if(!state)return;
+    state.inspectionTarget=null;
+    if(app.battle&&!state.movieActive&&!event.target?.closest?.("#battle-ui,#battle-popup,#battle-target-panel,.advanced-screen")){
+      const nodes=[...document.querySelectorAll("#battle-actors-layer .battle-actor")];
+      for(let index=nodes.length-1;index>=0;index--){
+        const sprite=nodes[index].querySelector(":scope > .battle-sprite"),rect=sprite?.getBoundingClientRect();
+        if(rect&&rect.width>0&&rect.height>0&&event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom){state.inspectionTarget=Number(nodes[index].dataset.battleId);break;}
+      }
+    }
+    renderBattleInspection();
   }
   function battleIsEnemy(item){const mine=battleSide(app.battleState.myNo),side=battleSide(item?.battleId);return side>=0&&mine>=0&&side!==mine;}
   /* SPRDISP.CPP::sort_chr() compares the actor's current v_pos (the foot /
@@ -9992,6 +10053,7 @@
       if(values.length===3&&values.every(v=>/^[0-9a-f]+$/i.test(v))&&parseInt(values[0],16)<=20){state.lastTurnPacket=command;state.fastAwaitingTurn=false;if(fastBattleSideDefeated(state))finishFastBattle(state);}
       else state.fastAwaitingTurn=true;
     }else if(app.battle&&marker==="BA")state.lastAnimationPacket=command;
+    else if(marker==="BVS")return true;
     else if(app.battle)state.fastAwaitingTurn=true;
     return true;
   }
@@ -11024,6 +11086,8 @@
       applyBattleTurnState(state,packet.snapshot);
     }else if(packet.kind==="BC"){
       receiveBattleStatus(packet.payload);
+    }else if(packet.kind==="BVS"){
+      applyBattleVitals(state,packet.payload);
     }else if(packet.kind==="BA"){
       battleApplyAnimationState(state,packet.flags,packet.turn);
     }
@@ -11043,7 +11107,7 @@
     if(current.length)groups.push(current);
     queue.length=0;
     for(const group of groups){
-      const rank={BP:0,BC:1,BA:2};
+      const rank={BP:0,BC:1,BVS:2,BA:3};
       group.sort((left,right)=>(rank[left.kind]??9)-(rank[right.kind]??9)||Number(left.receivedAt||0)-Number(right.receivedAt||0));
       for(const packet of group)applyQueuedBattleControl(state,packet);
       if(!app.battle||app.battleState!==state)break;
@@ -14613,6 +14677,10 @@
     battleNoteCommandPacket(state,marker);
     if(command.startsWith("BC|")){receiveBattleStatus(command);return;}
     switch(marker){
+      case "BVS":
+        if(state.movieActive||battleControlQueue(state).length)queueBattleControl(state,{kind:"BVS",payload:command});
+        else applyBattleVitals(state,command);
+        break;
       case "BC":
         /* The Linux 2.5 gateway normally forwards BC inside a B envelope
            (`B` field value is `BC|...`).  Keep this explicit branch ahead of
@@ -19641,6 +19709,7 @@
          changing CHR_ACT only swaps the frame inside an existing action. */
       let wrapper=state.actorNodes.get(battleNo);
       if(!wrapper){wrapper=document.createElement("div");state.actorNodes.set(battleNo,wrapper);}
+      wrapper.dataset.battleId=String(battleNo);
       const targetHovered=highlightedTargetIds.has(battleNo);
       wrapper.className=`battle-actor${spec.fadeOut||spec.motion.fade?" battle-fade":""}${spec.item?.dead&&!spec.deathPending?" battle-dead":""}${spec.motion.attack?" battle-attacking":""}${spec.motion.hit?" battle-hurt":""}`;
       wrapper.style.left=`${spec.point[0]}px`;wrapper.style.top=`${spec.point[1]}px`;wrapper.style.transform=`translate(${spec.motion.dx}px,${spec.motion.dy}px)`;wrapper.style.opacity=String(spec.motion.opacity);
@@ -19713,22 +19782,20 @@
          carries the PLAYER/pet label; only the 40px green fill is dynamic. */
       let hp=wrapper.querySelector(":scope > .battle-hp:not(.ride)");
       const showHp=Boolean(spec.item&&battleHpMeterVisible(spec.item,state)&&!spec.item.dead&&Number(spec.item.hp)>0&&Number(spec.item.maxHp)>0);
-      if(showHp){
+      const vitals=battleVitalValues(spec.item,state),showHpFill=app.systemSettings.battleHpVisible!==false,showMpFill=app.systemSettings.battleMpVisible!==false&&Boolean(vitals);
+      if(showHp&&(showHpFill||showMpFill)){
         if(!hp){hp=document.createElement("span");wrapper.append(hp);}
-        hp.className=`battle-hp ${isPlayer?"player":isOwnPet?"own-pet":"pet"}`;
+        hp.className=`battle-hp ${spec.item.player?"player":isOwnPet?"own-pet":"pet"}`;
         let fill=hp.querySelector(":scope > i:not(.battle-mp)");if(!fill){fill=document.createElement("i");hp.append(fill);}
-        const pct=Math.max(0,Math.min(1,Number(spec.item.hp)/Number(spec.item.maxHp)));fill.style.width=`${pct*40}px`;
+        const pct=Math.max(0,Math.min(1,Number(spec.item.hp)/Number(spec.item.maxHp)));fill.style.width=`${pct*40}px`;fill.style.display=showHpFill?"":"none";
         let mp=hp.querySelector(":scope > .battle-mp");
-        if(isPlayer){
-          /* HpMeterDisp() paints the current player's MP on the two yellow
-             rows below HP.  Its 2.5 denominator is the literal 100, not the
-             character status window's maxMp value. */
+        if(showMpFill){
           if(!mp){mp=document.createElement("i");mp.className="battle-mp";hp.append(mp);}
-          mp.style.width=`${battlePlayerMpFillWidth(state.myMp)}px`;
+          mp.style.width=`${Math.max(0,Math.min(1,vitals.mp/vitals.maxMp))*40}px`;
         }else if(mp)mp.remove();
       }else if(hp)hp.remove();
       let ride=wrapper.querySelector(":scope > .battle-hp.ride");
-      const showRide=Boolean(showHp&&Number(spec.item.rideFlag)===1&&Number(spec.item.petHp)>0&&Number(spec.item.petMaxHp)>0);
+      const showRide=Boolean(showHp&&showHpFill&&Number(spec.item.rideFlag)===1&&Number(spec.item.petHp)>0&&Number(spec.item.petMaxHp)>0);
       if(showRide){
         if(!ride){ride=document.createElement("span");wrapper.append(ride);}
         ride.className=`battle-hp ride ${isPlayer?"player":"pet"}`;
@@ -19741,6 +19808,7 @@
       depthEntries.push({node:wrapper,depth:battleActorVerticalPosition(spec),order:-battleNo,kind:0});
     }
     for(const [battleNo,wrapper] of state.actorNodes){if(!visibleActors.has(Number(battleNo))){wrapper.remove();state.actorNodes.delete(battleNo);}}
+    renderBattleInspection();
     if(targetOverlay)for(const proxy of targetOverlay.querySelectorAll(":scope > [data-battle-target]") )if(!visibleTargetIds.has(Number(proxy.dataset.battleTarget)))proxy.remove();
     /* Projectiles are intentionally short-lived.  Rebuilding these small
        nodes is cheap; unlike the old independent layer, each one now enters
@@ -20543,13 +20611,15 @@
   }
   battleScreen.addEventListener("pointermove",event=>{
     if(!sampleBattleCursorY(event))return;
+    updateBattleInspection(event);
     updateBattleHoverFromPointer(event);
     const panel=$("battle-target-panel");
     if(panel&&!panel.classList.contains("hidden")&&panel.classList.contains("actor-target-prompt"))renderBattleTargets();
   },{passive:true});
-  battleScreen.addEventListener("pointerleave",()=>paintBattleHoverTarget(null));
+  battleScreen.addEventListener("pointerleave",()=>{paintBattleHoverTarget(null);if(app.battleState)app.battleState.inspectionTarget=null;renderBattleInspection();});
   battleScreen.addEventListener("pointerdown",event=>{
     sampleBattleCursorY(event);
+    updateBattleInspection(event);
     updateBattleHoverFromPointer(event);
     const panel=$("battle-target-panel");
     if(panel&&!panel.classList.contains("hidden")&&panel.classList.contains("actor-target-prompt"))renderBattleTargets();

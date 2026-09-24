@@ -1616,7 +1616,7 @@ if(!/(?:^|\n)\s*MenuProc\(\);/.test(nativeBattleProcSource)||
    !/const battleSystem=name==="system"&&app\.phase==="battle"&&app\.battle/.test(script)||
    !/if\(active\)\{event\.preventDefault\(\);closeGameplayOverlay\(\);return;\}/.test(script)||
    !/if\(app\.phase==="battle"&&app\.battle\)\{event\.preventDefault\(\);openPanel\("system"\);return;\}/.test(script)||
-   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,280\)/.test(script)){
+   !/const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,320\)/.test(script)){
   throw new Error("battle Esc must open and close the native system overlay without leaving battle");
 }
 /* Chat input is a native-owned buffer, not browser autocomplete.  Keep the
@@ -3609,13 +3609,9 @@ for(const [mp,expected] of [[0,0],[50,20],[100,40],[140,40],[-20,0]]){
   if(actual!==expected)throw new Error(`2.5 battle MP meter drifted: ${mp} -> ${actual}px, expected ${expected}px`);
 }
 const battleMpRenderSource=script.slice(script.indexOf("  function renderBattleWorld"),script.indexOf("  function enterBattle"));
-if(!/mp\.style\.width=`\$\{battlePlayerMpFillWidth\(state\.myMp\)\}px`/.test(battleMpRenderSource)||
-   /battle-mp[\s\S]{0,600}(app\.pc\?\.maxMp|spec\.item\.maxMp)/.test(battleMpRenderSource)){
-  throw new Error("battle MP HUD must use the native fixed-100 fill without the status maxMp denominator");
-}
-/* BattleMenuProc() invokes HpMeterDisp() for only the local ten-slot side,
-   never both sides.  Keep this source boundary locked because showing enemy
-   HP bars is a visually plausible Web addition that is not present in 2.5. */
+if(!battleMpRenderSource.includes("vitals.mp/vitals.maxMp"))throw new Error("battle气力 meter must use the authoritative maximum");
+/* The optional Web status display extends meters to both sides. Keep the
+   native source checks below as historical reference, not UI restrictions. */
 const nativeBattleMenuProcStart=nativeBattleMenuSource.indexOf("void BattleMenuProc");
 const nativeBattleMenuProcEnd=nativeBattleMenuSource.length;
 const nativeBattleMenuProcSource=nativeBattleMenuSource.slice(nativeBattleMenuProcStart,nativeBattleMenuProcEnd);
@@ -3642,8 +3638,8 @@ if(hpMeterSideStart<0||hpMeterSideEnd<=hpMeterSideStart)throw new Error("battle 
 const battleHpMeterVisible=new Function("battleSide",`${script.slice(hpMeterSideStart,hpMeterSideEnd)};return battleHpMeterVisible;`)(id=>{const value=Number(id);return value>=0&&value<10?0:value>=10&&value<20?1:-1;});
 const hpStageBase={myNo:0,myNoKnown:true,bpReceived:true,entryPending:false,awaitingBattleRoster:false,movieActive:false,result:null,exitPending:false,movieGeneration:2,bpMovieGeneration:2,commandPending:{player:null}};
 for(const [overrides,battleId,expected] of [
-  [{},0,true],[{},5,true],[{},10,false],
-  [{myNo:13},10,true],[{myNo:13},18,true],[{myNo:13},3,false],
+  [{},0,true],[{},5,true],[{},10,true],
+  [{myNo:13},10,true],[{myNo:13},18,true],[{myNo:13},3,true],
   [{myNoKnown:false},0,false],[{bpReceived:false},0,false],[{entryPending:true},0,false],
   [{awaitingBattleRoster:true},0,false],[{movieActive:true},0,false],[{movieGeneration:3},0,false],
   [{result:{}},0,false],[{exitPending:true},0,false],
@@ -4476,7 +4472,7 @@ for (const expected of [
   /add\("\s+音效设定\s+",[\s\S]{0,120}systemPage="se"/,
   /add\("\s+画面设定\s+",[\s\S]{0,120}systemPage="display"/,
   /add\("\s+游戏速度\s+",[\s\S]{0,120}systemPage="game-speed"/,
-  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,280\);list\.append\(close\)/,
+  /const close=systemChoice\("\s+关\s+闭\s+",closeGameplayOverlay,320\);list\.append\(close\)/,
   /if\(page==="logout-choice"\)[\s\S]{0,350}systemChoice\("\s+回记录点\s+",\(\)=>openLogoutConfirm\("record"\)[\s\S]{0,220}systemChoice\("\s+原地登出\s+",\(\)=>openLogoutConfirm\("in-place"\)/,
 ]) {
   if (!expected.test(systemMenuSource)) throw new Error(`2.5 system menu regression: ${expected}`);
@@ -4495,7 +4491,7 @@ if (!/options=BATTLE_ANIMATION_SPEED_OPTIONS/.test(gameSpeedPageSource) ||
   throw new Error("game speed must render the shared speed options in two columns and stay open after selection");
 }
 for (const expected of [
-  /const specs=\{menu:\{x:4,y:4,w:192,h:384,title:9145\}/,
+  /menu:\{x:4,y:4,w:192,h:432,title:9145\}/,
   /"logout-choice":\{x:224,y:144,w:192,h:192,title:9146\}/,
   /"logout-record":\{x:224,y:168,w:192,h:144,title:9146\}/,
   /chat:\{x:192,y:48,w:256,h:384,title:9148\}/,
@@ -4507,8 +4503,8 @@ for (const expected of [
 ]) {
   if (!expected.test(script)) throw new Error(`2.5 system window geometry regression: ${expected}`);
 }
-if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:384px/.test(html)){
-  throw new Error("2.5 system root menu must use the expanded 3x8 (192x384) frame");
+if(!/#system-screen\.system-page-menu\{[^}]*--legacy-h:432px/.test(html)){
+  throw new Error("2.5 system root menu must use the expanded 3x9 (192x432) frame");
 }
 if(!/#system-screen #system-list \.system-choice\{[^}]*white-space:pre/.test(html) ||
    !/function systemReturn\(page,top,label="\s+回上一页\s+",left=0\)[\s\S]{0,300}systemAction\(label/.test(script)){
