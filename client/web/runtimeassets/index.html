@@ -514,10 +514,10 @@
     /* The PC client keeps a tall transparent chat strip above the task bar.
        Keep it in the 640×480 buffer and leave a one-line input at the bottom;
        the old mobile port hid this form completely, making chat impossible. */
-    #chat-log { position:absolute; left:8px; bottom:80px; width:560px; height:400px; margin:0; padding:0; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; white-space:pre-wrap; color:#ffe95d; font:16px/20px "MS Gothic","SimSun","Microsoft YaHei",sans-serif; text-shadow:1px 1px #520000, -1px -1px #520000; background:transparent; border:0; pointer-events:none; }
-    #chat-log .legacy-chat-line,#battle-chat-log .legacy-chat-line { display:block; flex:0 0 20px; height:20px; overflow:hidden; white-space:pre; }
+    #chat-log { position:absolute; left:8px; bottom:80px; width:560px; height:400px; margin:0; padding:0; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; white-space:pre-wrap; color:#ffe95d; font:12px/16px "MS Gothic","SimSun","Microsoft YaHei",sans-serif; text-shadow:1px 1px #520000, -1px -1px #520000; background:transparent; border:0; pointer-events:none; }
+    #chat-log .legacy-chat-line,#battle-chat-log .legacy-chat-line { display:block; flex:0 0 16px; height:16px; overflow:hidden; white-space:pre; }
     #chat-log.chat-line-smooth,#battle-chat-log.chat-line-smooth { animation:legacy-chat-line-smooth 333ms steps(20,end); }
-    @keyframes legacy-chat-line-smooth { from{transform:translateY(20px)} to{transform:translateY(0)} }
+    @keyframes legacy-chat-line-smooth { from{transform:translateY(16px)} to{transform:translateY(0)} }
     /* CHAT.CPP::InitChat() owns one transparent STR_BUFFER at (8,432).
        The browser control is only an editing/accessibility surface: its
        pixels must look like StockFontBuffer2(), not like a form field. */
@@ -537,7 +537,7 @@
        that stacking context; the old field chat sibling (z-index:15) covered
        actors, the countdown, and command feedback. */
     #battle-chat-layer { position:absolute; left:0; top:0; width:640px; height:480px; z-index:2; pointer-events:none; overflow:hidden; }
-    #battle-chat-log { position:absolute; left:8px; bottom:80px; width:560px; height:400px; margin:0; padding:0; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; white-space:pre-wrap; color:#ffe95d; font:16px/20px "MS Gothic","SimSun","Microsoft YaHei",sans-serif; text-shadow:1px 1px #520000, -1px -1px #520000; background:transparent; }
+    #battle-chat-log { position:absolute; left:8px; bottom:80px; width:560px; height:400px; margin:0; padding:0; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; white-space:pre-wrap; color:#ffe95d; font:12px/16px "MS Gothic","SimSun","Microsoft YaHei",sans-serif; text-shadow:1px 1px #520000, -1px -1px #520000; background:transparent; }
     #wire-screen { display:none !important; }
     footer { display:none; }
 
@@ -16136,6 +16136,7 @@
     if(message.function==="S"&&String(message.textValues[0]||"").startsWith("AICHAT|"))return;
     if(deferMapTransitionPacket(packet,sourceTransport,sourceToken))return;
     const values=message.textValues; addWire(`← ${message.function}`); addEvent(`← ${message.function} ${values.map(value=>textOr(value)).join(" | ")}`);
+
     switch(message.function) {
       case "ClientLogin": if(values[0]==="ok") { loginStatus("账号验证成功，读取人物列表…","good"); app.phase="character-list"; send("CharList",[]).catch(reportError); } else { const reason=`账号登录失败：${values[0]||"未知错误"}`; app.phase="login-error"; loginStatus(reason,"error"); closeTransport();showConnectionFailure(reason,"账号验证失败，请检查账号和密码。"); } break;
       case "CharList": receiveCharacterList(values); break;
@@ -21171,6 +21172,7 @@
   window.setTimeout(focusLoginAccount,0);
 })();
 </script>
+<script src="/battle-panel.js"></script>
 <script src="/automation.js"></script>
 </body>
 </html>

@@ -37,6 +37,7 @@ jobs:
           node client/web/battle_result_test.js
           node --test client/web/fast_battle_test.js
           node client/web/battle_status_display_test.js
+          node client/web/battle_panel_test.js
           node client/web/battle_speed_test.js
           node client/web/battle_resource_test.js
           node client/web/connection_retry_test.js

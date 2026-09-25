@@ -1899,6 +1899,22 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		return
 	}
 	switch parts[1] {
+	case "battle-log":
+		if request.Method != http.MethodGet {
+			response.Header().Set("Allow", "GET")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		session.authoritativeMu.RLock()
+		observer := session.authoritative
+		session.authoritativeMu.RUnlock()
+		if observer == nil {
+			http.Error(response, "session observer unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(response).Encode(observer.BattleJournal())
 	case "send":
 		if request.Method != http.MethodPost {
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)

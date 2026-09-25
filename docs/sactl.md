@@ -155,7 +155,9 @@ sactl status                                           # 另开一个终端
 ./build/local/sactl walk up
 ./build/local/sactl goto 18 22        # 用地图数据寻路，逐步核对坐标
 ./build/local/sactl say "你好"
-./build/local/sactl log 20            # 最近的服务端事件
+./build/local/sactl log 20            # 最近的服务端事件（原始协议）
+./build/local/sactl battle-log        # 与 Web 战斗面板共用的可读战斗记录
+./build/local/sactl --json battle-log # 结构化记录，包含攻击者、目标、伤害、骑宠伤害和原始片段
 ./build/local/sactl wait 30s          # 阻塞等待下一个事件
 ./build/local/sactl stop
 ```
@@ -267,3 +269,12 @@ Web 自动战斗／自动练级面板提供「快速战斗」开关（默认关�
   比看文档更可靠。
 - `goto` 只在同一层内寻路；跨图传送（EV/warp）尚未接入。
 - 地图数据来自 `map_directory`，与 GMSV 实际使用的版本必须一致。
+
+### 战斗日志
+
+`battle-log` 使用会话公共解析层，与 Web 战斗面板采用同一套转换规则。
+每个会话只记录自己收到的数据，保留本次登录最近 20 场战斗、每场最近 300 条记录；
+重新登录会清空，不能读取登录前或其他玩家会话的历史。
+参战体力、气力及骑宠体力是最近收到的状态快照，日志按服务端结算顺序记录，可能早于浏览器动画。
+普通攻击记录区分多段、反击、闪避和骑宠伤害；协议没有提供的技能名不会猜测，未支持的特殊动作保留原始片段并明确标注。
+这些记录只用于观察，不改变战斗指令、自动化或动画流程。`log` 仍输出原始服务端事件。

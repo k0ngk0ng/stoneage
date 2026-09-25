@@ -163,8 +163,8 @@ if(!/<input id="chat-input"[^>]*aria-label="聊天输入"[^>]*maxlength="70"[^>]
    !/#chat-form \{[^}]*left:8px; top:432px; bottom:auto[^}]*width:560px; height:16px/.test(html)||
    !/#chat-form input \{[^}]*height:16px[^}]*padding:0[^}]*background:transparent[^}]*border:0[^}]*box-shadow:none[^}]*font:16px\/16px/.test(html)||
    !/#chat-form button,#chat-form button:hover \{ display:none !important; \}/.test(html)||
-   !/#chat-log \{[^}]*left:8px[^}]*width:560px[^}]*height:400px[^}]*font:16px\/20px/.test(html)||
-   !/#battle-chat-log \{[^}]*left:8px[^}]*width:560px[^}]*height:400px[^}]*font:16px\/20px/.test(html)){
+   !/#chat-log \{[^}]*left:8px[^}]*width:560px[^}]*height:400px[^}]*font:12px\/16px/.test(html)||
+   !/#battle-chat-log \{[^}]*left:8px[^}]*width:560px[^}]*height:400px[^}]*font:12px\/16px/.test(html)){
   throw new Error("chat buffer must use the native transparent 70-byte/8,432 layout");
 }
 /* The fixed 640x480 scene must not be focus-scrolled by Chromium when a

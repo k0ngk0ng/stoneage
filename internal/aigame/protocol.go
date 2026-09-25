@@ -157,9 +157,10 @@ var serverSchemas = map[string][]wireKind{
 // CharLogin succeeds; login/character-select requests are synchronously
 // consumed under requestMu so no two readers ever race on a legacy socket.
 type Session struct {
-	conn   net.Conn
-	reader *bufio.Reader
-	cfg    Config
+	journal battleJournal
+	conn    net.Conn
+	reader  *bufio.Reader
+	cfg     Config
 
 	writeMu   sync.Mutex
 	requestMu sync.Mutex
@@ -1015,6 +1016,7 @@ func responseText(event Event, index int) string {
 
 func (session *Session) applyEvent(event Event) {
 	session.stateMu.Lock()
+	session.journal.record(event)
 	applyEventLocked(&session.state, event)
 	session.state.snapshot.Revision++
 	session.state.snapshot.At = event.At

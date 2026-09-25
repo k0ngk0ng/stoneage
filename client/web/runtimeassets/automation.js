@@ -25,7 +25,7 @@
      and the screens the player has to be able to dismiss. The battle result
      screen is named explicitly because it is not an .advanced-screen, so the
      -close exception below never reached its 返回世界 button. */
-  const LOCK_ALLOWED = "#ai-control-panel,#ai-control-toggle,#world-tools,#battle-result-screen,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']";
+  const LOCK_ALLOWED = "#battle-journal,#battle-panel-toggle,#ai-control-panel,#ai-control-toggle,#world-tools,#battle-result-screen,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']";
   const MAX_CONFIG_BYTES = 64 * 1024;
 
   const state = {

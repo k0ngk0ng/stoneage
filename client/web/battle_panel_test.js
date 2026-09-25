@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const panel=fs.readFileSync(__dirname+'/runtimeassets/battle-panel.js','utf8');
+const html=fs.readFileSync(__dirname+'/runtimeassets/index.html','utf8');
+assert(panel.includes('/battle-log'));
+assert(!panel.includes('parseBattleCommandSegments'));
+assert(!panel.includes('createJournal'));
+assert(!html.includes('StoneAgeBattleJournal?.record'));
+assert(panel.includes('if(session!==client.app.transport)return;'));
+assert(panel.includes('align-items:baseline'));
+assert(panel.includes('max-height:260px;overflow:auto'));
+assert(panel.includes("doc.createTextNode(row.text)"));
+console.log('Battle panel uses shared session journal, escapes log text, and retains bounded scrolling.');

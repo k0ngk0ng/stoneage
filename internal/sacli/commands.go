@@ -55,6 +55,7 @@ const CommandHelp = `commands:
   auto-battle on [walk|stay]|off|status  heal the most hurt, otherwise attack in order; walk also looks for fights
   battle <command>                    battle turn (H|FF attack, W|FF|FF pet, T|FF defend, S|01|FF skill, E escape, N wait, G give up, HELP)
   battle-end                          acknowledge the battle animation and leave the battle (EO)
+  battle-log                         readable battle history (structured data with --json)
   battle-help <0|1>                   toggle the native battle help flag
   item use|drop|drop-gold|move|magic|pickup ...   inventory and field item actions
   mail list|add|send|remove-contact ...           address book and mail
@@ -156,6 +157,8 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return s.commandChoose(ctx, request)
 	case "reply":
 		return s.commandReply(ctx, request)
+	case "battle-log":
+		return s.commandBattleLog(ctx, request)
 	case "log":
 		return s.commandLog(ctx, request)
 	case "wait":
@@ -539,4 +542,44 @@ func failureWithText(kind, text, format string, args ...any) Response {
 		response.Text = text + "\nerror: " + response.Error
 	}
 	return response
+}
+
+// commandBattleLog shares the exact projection used by the Web battle panel.
+func (s *Server) commandBattleLog(ctx context.Context, request Request) Response {
+	if len(request.Args) != 0 {
+		return failure(KindUsage, "usage: sactl battle-log")
+	}
+	game, err := s.session(ctx)
+	if err != nil {
+		return sessionFailure(err)
+	}
+	source, ok := game.(interface{ BattleJournal() aigame.BattleJournal })
+	if !ok {
+		return failure(KindUsage, "battle journal unavailable for this session")
+	}
+	journal := source.BattleJournal()
+	var lines []string
+	for _, b := range journal.Battles {
+		lines = append(lines, fmt.Sprintf("第 %d 场 · 第 %d 回合 · %s", b.ID, b.Turn, b.Result))
+		for _, p := range b.Roster {
+			line := fmt.Sprintf("%s · Lv.%d · 体力 %d/%d", p.Name, p.Level, p.HP, p.MaxHP)
+			if p.MP != nil && p.MaxMP != nil {
+				line += fmt.Sprintf(" · 气力 %d/%d", *p.MP, *p.MaxMP)
+			}
+			if p.Ride {
+				line += fmt.Sprintf(" · 骑宠 %s 体力 %d/%d", p.PetName, p.PetHP, p.PetMaxHP)
+			}
+			lines = append(lines, line)
+		}
+		if b.Trimmed {
+			lines = append(lines, "较早记录已省略")
+		}
+		for _, e := range b.Logs {
+			lines = append(lines, fmt.Sprintf("回合 %d · %s", e.Turn, e.Text))
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "尚无战斗记录")
+	}
+	return Response{OK: true, Text: strings.Join(lines, "\n"), Data: replyJSON(journal)}
 }
