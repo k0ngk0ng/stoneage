@@ -82,6 +82,15 @@ CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
 cp config/sactl/sactl.toml.example "$sactl_root/sactl.toml.example"
 cp docs/sactl.md "$sactl_root/sactl.md"
 cp scripts/install-sactl.sh "$sactl_root/install-sactl.sh"
+# Agent skills are source files shared across Codex, Claude Code and other
+# SKILL.md-compatible hosts; installation is explicitly selected by the user.
+package_sactl_skill() {
+  mkdir -p "$1/skills"
+  cp -R .agents/skills/sactl "$1/skills/sactl"
+  cp scripts/install-sactl-skill.py "$1/install-sactl-skill.py"
+}
+package_sactl_skill "$sactl_root"
+
 if [[ "$goos" == windows ]]; then
   cp scripts/install-sactl.ps1 "$sactl_root/install-sactl.ps1"
 fi
@@ -108,6 +117,7 @@ if [[ "$goos" == linux ]]; then
   CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
     go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_TAG}" -o "$arm_root/sactl" ./cmd/sactl
   cp config/sactl/sactl.toml.example docs/sactl.md "$arm_root/"
+  package_sactl_skill "$arm_root"
   (cd "$stage" && tar -czf "$dist/stoneage-sactl-${RELEASE_TAG}-linux-arm64.tar.gz" \
     "stoneage-sactl-${RELEASE_TAG}-linux-arm64")
 
@@ -152,6 +162,7 @@ if [[ "$goos" == windows ]]; then
   rm -f "$dist/stoneage-control-plane-${RELEASE_TAG}-windows-amd64.tar.gz"
 fi
 if [[ "$goos" == linux ]]; then
+  cp scripts/install-sactl.sh scripts/install-sactl.ps1 "$dist/"
   python3 scripts/package-deployment.py "$RELEASE_TAG" --output "$dist" \
     --uploader "$stage/stoneage-control-plane-${RELEASE_TAG}-linux-amd64/bin/stoneage-assets-sync"
 fi

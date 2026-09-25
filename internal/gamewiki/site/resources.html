@@ -3,14 +3,21 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta id="media-config" name="wiki-cdn" content="__WIKI_CDN__">
-  <title>游戏资源下载 · 石器百科</title>
-  <link rel="stylesheet" href="/wiki/style.css"><script defer src="/wiki/resources.js"></script>
+  <title>下载区 · 石器百科</title>
+  <link rel="stylesheet" href="/wiki/style.css"><script defer src="/wiki/resources.js"></script><script defer src="/wiki/downloads.js"></script>
 </head>
 <body>
   <header><a class="brand" href="/wiki">石器百科 <small>STONEAGE FIELD GUIDE</small></a><a href="/">进入游戏 ↗</a></header>
   <main class="resource-downloads">
-    <section class="intro"><p class="eyebrow">准备好，再出发</p><h1>游戏资源下载</h1>
-      <p>一次下载地图、人物、宠物、骑乘、特效、界面图片、音乐与音效，减少游玩时等待。</p></section>
+    <section class="intro"><p class="eyebrow">准备好，再出发</p><h1>下载区</h1>
+      <p>下载 sactl 命令行客户端，或导入完整游戏资源，按你的方式进入石器世界。</p></section>
+    <section aria-labelledby="sactl-heading"><h2 id="sactl-heading">sactl 命令行客户端</h2>
+      <p>支持 macOS、Windows、Linux。一键安装客户端，并把游戏操作 skill 安装到 Codex 和 Claude Code 的标准用户目录，无需 Python。</p>
+      <p>安装后填写游戏地址、账号和角色，再启动 <code>sactl serve</code>。安装不会自动登录，也不会改动 Agent 的配置文件。</p>
+      <div id="sactl-download" aria-live="polite"><p>正在查询客户端版本…</p></div>
+      <p>已有 sactl 配置会保留，随包提供的同名 skill 文件会更新。仅安装客户端可为 macOS/Linux 脚本添加 <code>--no-skills</code>，Windows 添加 <code>-NoSkills</code>。skill 位于用户目录下的 <code>.agents/skills/sactl</code> 和 <code>.claude/skills/sactl</code>。</p>
+    </section>
+    <section><h2>完整游戏资源</h2><p>包含地图、人物、宠物、骑乘、特效、界面图片、音乐与音效。浏览器玩家无需安装 sactl。</p></section>
     <section id="resource-download" aria-label="资源包下载" aria-live="polite"><p>正在查询当前资源包…</p></section>
     <section><h2>如何导入</h2><ol>
       <li>下载完整游戏资源 ZIP，无需解压。</li>

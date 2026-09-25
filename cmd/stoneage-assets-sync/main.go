@@ -274,6 +274,8 @@ func run(arguments []string) error {
 	configPath := flags.String("config", envOr("STONEAGE_WEB_CONFIG", "/etc/stoneage/web.toml"), "Web TOML configuration")
 	assetsRoot := flags.String("assets", "", "sprite asset directory (defaults to static.assets_directory)")
 	clientRoot := flags.String("client-data", "/game/client", "2.5 client root containing map/ and data/{auto.dat,bgm,se}")
+	sactlPackages := flags.String("sactl-packages", "", "directory containing verified release client archives and installers")
+	sactlVersion := flags.String("sactl-version", "", "stable release tag for sactl CDN publication")
 	webOnly := flags.Bool("web-only", false, "publish CDN runtime and compressed indexes without changing core assets")
 	resourcePacks := flags.String("resource-packs", "", "directory with a complete game resource ZIP and catalog; supplements current publication")
 	mapPacks := flags.String("map-packs", "", "directory with matching map packs for CDN publication")
@@ -350,6 +352,16 @@ func run(arguments []string) error {
 	assetDirectory := strings.TrimSpace(*assetsRoot)
 	if assetDirectory == "" {
 		assetDirectory = strings.TrimSpace(disk.Static.AssetsDirectory)
+	}
+	if *sactlPackages != "" {
+		if *dryRun || *webOnly || *resourcePacks != "" || *mapPacks != "" {
+			return errors.New("-sactl-packages is a standalone publication mode")
+		}
+		store, err := newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
+		if err != nil {
+			return err
+		}
+		return publishSactlPackages(store, prefix, *sactlPackages, *sactlVersion)
 	}
 	if *resourcePacks != "" {
 		if *dryRun || *webOnly || *mapPacks != "" {

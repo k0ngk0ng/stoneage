@@ -21,6 +21,14 @@ sactl <命令> [参数]              一次性客户端：连 socket → 发一�
 
 ## 安装
 
+优先打开百科的 **下载区**（`/wiki/downloads`），选择 macOS、Windows 或 Linux，复制一键安装命令。
+安装脚本与安装包均从配置的 CDN 获取，自动识别 macOS/Linux 架构，校验 SHA-256，
+安装 sactl，并同时安装 Codex 与 Claude Code 的用户级 skill（无需 Python）。
+Windows 下载 x64 包；Windows ARM64 通过系统的 x64 兼容能力运行。
+现有账号配置保留，随包同名 skill 文件会更新，不改 Agent 配置或自动登录游戏。
+仅装客户端时可传 `--no-skills`（Windows 为 `-NoSkills`）。
+
+
 **0. 包管理器（推荐）**
 
 ```bash
@@ -110,6 +118,50 @@ go build -mod=mod -o build/local/sactl ./cmd/sactl
 | 二进制 | `${PREFIX:-~/.local/bin}/sactl` |
 | 配置 | `$XDG_CONFIG_HOME/sactl/sactl.toml`（默认 `~/.config/sactl/sactl.toml`） |
 | socket 与状态 | `$XDG_STATE_HOME/sactl/`（默认 `~/.local/state/sactl/`） |
+
+### 单独安装或调整 Agent skill（Codex / Claude Code）
+
+仓库提供标准 Agent Skills 格式的 [sactl skill](../.agents/skills/sactl/SKILL.md)，
+同一份文件适用于 Codex、Claude Code 及其他兼容 `SKILL.md` 的 Agent。
+它说明游戏观察、JSON 结果处理、战斗操作及当前能力边界，不包含大模型或账号配置。
+
+| Agent | 项目级路径 | 用户级路径 |
+| --- | --- | --- |
+| Codex | `<项目>/.agents/skills/sactl/` | `~/.agents/skills/sactl/` |
+| Claude Code | `<项目>/.claude/skills/sactl/` | `~/.claude/skills/sactl/` |
+
+Codex 的路径采用[官方技能发现规则](https://developers.openai.com/codex/skills)；
+Claude Code 使用其[技能目录约定](https://code.claude.com/docs/en/skills)。
+用户级目录属于运行安装工具的当前用户；Windows 对应用户主目录下的相同子目录。
+
+从源码仓库安装，需要 Python 3（标准库，无额外依赖）：
+
+```bash
+# 预览两种 Agent 的项目级目标，不写文件
+python3 scripts/install-sactl-skill.py --agent all --scope project --project-dir /path/to/your/project --dry-run
+# 执行项目级安装；也可单选 --agent codex 或 --agent claude
+python3 scripts/install-sactl-skill.py --agent all --scope project --project-dir /path/to/your/project
+# 安装到当前用户的标准目录，供其所有项目使用
+python3 scripts/install-sactl-skill.py --agent all --scope user
+```
+
+sactl 独立 Release 归档的打包流程也包含 `skills/sactl/` 和 `install-sactl-skill.py`。
+下载含这些文件的版本并解压后，在包目录运行：
+
+```bash
+python3 install-sactl-skill.py --agent codex --scope user
+python3 install-sactl-skill.py --agent claude --scope project --project-dir /path/to/your/project
+```
+
+Windows 可以用 `py -3` 替换 `python3`。无需脚本时，也可把整个 `skills/sactl/`
+文件夹复制到表中的目标路径，保留 `SKILL.md` 和 `references/` 的相对关系。
+百科的一键安装脚本默认包含 skill。通过 brew/scoop 单独安装二进制不会自动修改 Agent 目录；此时仍可使用上面的独立 skill 安装工具。
+
+安装工具不会修改 `.codex/config.toml`、Claude Code 配置或 sactl 账号配置。
+内容相同可以重复安装；已有文件内容不同时拒绝覆盖，确认后才使用 `--force`。
+`--force` 只覆盖包内同名文件，保留其他自定义文件。安装到符号链接目标时会拒绝操作。
+安装后在新 Agent 会话中使用；Codex 可显式调用 `$sactl`，Claude Code 可调用 `/sactl`。
+仍须另行安装 sactl 二进制并配置游戏会话；skill 不会自动获得登录或游戏操作权限。
 
 ### 两种传输：直连网关，或走 Web 域名
 
@@ -278,3 +330,12 @@ Web 自动战斗／自动练级面板提供「快速战斗」开关（默认关�
 参战体力、气力及骑宠体力是最近收到的状态快照，日志按服务端结算顺序记录，可能早于浏览器动画。
 普通攻击记录区分多段、反击、闪避和骑宠伤害；协议没有提供的技能名不会猜测，未支持的特殊动作保留原始片段并明确标注。
 这些记录只用于观察，不改变战斗指令、自动化或动画流程。`log` 仍输出原始服务端事件。
+
+### 发布下载区
+
+Release workflow 在正式 tag 的测试、五平台安装包、镜像和 Windows 安装器测试全部通过后发布 GitHub Release，
+再由 `cdn` 作业上传到对象存储。需配置仓库 secrets：`SACTL_CDN_ACCESS_KEY`、`SACTL_CDN_ACCESS_SECRET`、
+`SACTL_CDN_CONFIG`（与资源上传器一致的 `[static.oss]` / `[static.cdn]` TOML）。凭据只在上传作业中使用。
+所有安装包和脚本按 `SHA256SUMS` 验证，写入 `downloads/sactl/<版本>/`；最后更新
+`downloads/sactl/latest.json`。上传失败会使 workflow 失败；较旧版本重跑不会降级下载区索引。
+预发布 tag 不更新正式版下载区；游戏资源 ZIP 继续使用独立的资源版本，不随每次客户端发版重复上传。

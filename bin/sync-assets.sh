@@ -23,6 +23,8 @@ config/web/web.toml. The host-native bin/stoneage-assets-sync uploader is
 required; set STONEAGE_ASSET_SYNC_BIN to override its path.
 
 Options:
+  --sactl-packages DIR Publish released client archives and installers.
+  --sactl-version TAG Stable release tag for the client archives.
   --web-only      Publish CDN modules and compressed indexes only.
   --resource-packs DIR Publish complete game resource ZIP and download catalog.
   --map-packs DIR Publish matching map packages (with --web-only).
@@ -39,6 +41,9 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --sactl-packages|--sactl-version)
+            [[ $# -ge 2 ]] || { echo "$1 requires a value" >&2; exit 2; }
+            web_args+=("-${1#--}" "$2"); shift ;;
         --web-only) web_args+=(-web-only) ;;
         --resource-packs)
             [[ $# -ge 2 ]] || { echo "--resource-packs requires a directory" >&2; exit 2; }

@@ -384,3 +384,8 @@ dialog.map-dialog-fullscreen { width: 100vw; max-width: none; height: 100dvh; ma
 .resource-downloads section { margin-bottom: 32px; }
 .resource-downloads #resource-download { padding: 24px; background: #fff5d9; border: 1px solid var(--line); border-radius: 12px; }
 .resource-download-link { display: inline-block; padding: 12px 20px; border-radius: 8px; background: var(--accent); color: white; font-weight: 600; }
+.client-download-card { margin: 16px 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: #fff5d9; min-width: 0; }
+.client-download-card h3 { margin-top: 0; }
+.client-download-card pre { padding: 12px; background: #fffaf0; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.client-download-card button { padding: 8px 14px; cursor: pointer; }
+.client-download-links { display: flex; flex-wrap: wrap; gap: 12px; }

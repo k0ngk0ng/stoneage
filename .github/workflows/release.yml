@@ -31,7 +31,7 @@ jobs:
         run: |
           go test ./...
           go vet ./...
-          node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js internal/gamewiki/resources_test.js
+          node --test internal/gamewiki/site_test.js internal/gamewiki/search_worker_test.js internal/gamewiki/resources_test.js internal/gamewiki/downloads_test.js
           node client/web/battle_target_async_test.js
           node client/web/battle_target_rules_test.js
           node client/web/battle_result_test.js
@@ -95,6 +95,8 @@ jobs:
           bash bin/clean-images_test.sh
           python3 scripts/test-deployment-package.py
           python3 scripts/build-release-target_test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/install-sactl-skill_test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/install-sactl_test.py
       - uses: actions/cache/save@v4
         if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.hit != 'true'
         with:
@@ -251,7 +253,7 @@ jobs:
   publish:
     name: Publish verified release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [verify, binaries, images]
+    needs: [verify, binaries, images, windows-installer]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -275,3 +277,49 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
           files: dist/*
+
+  cdn:
+    name: Publish client downloads to CDN
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    needs: [publish]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: sactl-cdn-publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-binaries-linux-amd64
+          path: uploader-artifact
+      - name: Download verified Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p build/sactl-cdn
+          gh release download "$TAG" --dir build/sactl-cdn --pattern 'stoneage-sactl-*' --pattern 'install-sactl.*' --pattern SHA256SUMS
+          mkdir -p build/cdn-uploader
+          tar -xzf "uploader-artifact/stoneage-assets-sync-$TAG-linux-amd64.tar.gz" -C build/cdn-uploader
+      - name: Upload archives, then publish download catalog
+        env:
+          STONEAGE_ASSET_SYNC_ACCESS_KEY: ${{ secrets.SACTL_CDN_ACCESS_KEY }}
+          STONEAGE_ASSET_SYNC_ACCESS_SECRET: ${{ secrets.SACTL_CDN_ACCESS_SECRET }}
+          CDN_CONFIG: ${{ secrets.SACTL_CDN_CONFIG }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -n "$STONEAGE_ASSET_SYNC_ACCESS_KEY" || { echo 'Missing SACTL_CDN_ACCESS_KEY'; exit 1; }
+          test -n "$STONEAGE_ASSET_SYNC_ACCESS_SECRET" || { echo 'Missing SACTL_CDN_ACCESS_SECRET'; exit 1; }
+          test -n "$CDN_CONFIG" || { echo 'Missing SACTL_CDN_CONFIG'; exit 1; }
+          umask 077
+          printf '%s' "$CDN_CONFIG" > build/sactl-cdn/web.toml
+          build/cdn-uploader/bin/stoneage-assets-sync -config build/sactl-cdn/web.toml -sactl-packages build/sactl-cdn -sactl-version "$TAG"
+
+  windows-installer:
+    name: Verify Windows one-click installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise CDN installation and bundled skills
+        shell: powershell
+        run: ./scripts/install-sactl_test.ps1

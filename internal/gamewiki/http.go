@@ -46,7 +46,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	name, mime := "", ""
 	switch r.URL.Path {
-	case "/wiki/resources", "/wiki/resources/":
+	case "/wiki/downloads", "/wiki/downloads/", "/wiki/resources", "/wiki/resources/":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		if r.Method != http.MethodHead {
@@ -60,7 +60,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write(h.page)
 		}
 		return
-	case "/wiki/app.js", "/wiki/search-worker.js", "/wiki/resources.js":
+	case "/wiki/app.js", "/wiki/search-worker.js", "/wiki/resources.js", "/wiki/downloads.js":
 		name = "site/" + path.Base(r.URL.Path)
 		mime = "text/javascript; charset=utf-8"
 	case "/wiki/style.css":

@@ -67,11 +67,14 @@ target.write_text('mock package')
                 sactl_names = archive.getnames()
                 payload = archive.extractfile(f'{sactl_prefix}/sactl{suffix}').read().decode()
         assert payload == f'{target_os}/{arch}', payload
-        for entry in ['sactl.toml.example', 'sactl.md', 'install-sactl.sh']:
+        for entry in ['sactl.toml.example', 'sactl.md', 'install-sactl.sh', 'install-sactl-skill.py', 'skills/sactl/SKILL.md', 'skills/sactl/references/battle.md', 'skills/sactl/references/session.md']:
             assert f'{sactl_prefix}/{entry}' in sactl_names, entry
     with tarfile.open(dist / 'stoneage-deploy-v0.1.99.tar.gz') as archive:
         assert archive.extractfile('VERSION').read() == b'v0.1.99\n'
         assert archive.extractfile('bin/stoneage-assets-sync').read() == b'linux/amd64'
+    with tarfile.open(dist / 'stoneage-sactl-v0.1.99-linux-arm64.tar.gz') as archive:
+        assert archive.extractfile('stoneage-sactl-v0.1.99-linux-arm64/skills/sactl/SKILL.md')
+        assert archive.extractfile('stoneage-sactl-v0.1.99-linux-arm64/install-sactl-skill.py')
     # Linux additionally ships an arm64 client plus .deb and .rpm packages.
     for name in ['sactl_0.1.99_amd64.deb', 'sactl_0.1.99_arm64.deb',
                  'sactl-0.1.99-1.x86_64.rpm', 'sactl-0.1.99-1.aarch64.rpm',
@@ -79,5 +82,5 @@ target.write_text('mock package')
         assert (dist / name).exists(), name
     # 4 control-plane archives, 4 assets-sync archives, 5 sactl archives,
     # 4 Linux packages and the deploy bundle.
-    assert len(list(dist.iterdir())) == 18, sorted(p.name for p in dist.iterdir())
+    assert len(list(dist.iterdir())) == 20, sorted(p.name for p in dist.iterdir())
 print('Release target package layouts passed')

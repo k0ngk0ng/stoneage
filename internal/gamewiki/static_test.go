@@ -103,7 +103,7 @@ func TestStaticServingHasNoSearchOrCatalogCache(t *testing.T) {
 	h := NewHandler()
 	var catalog StaticIndex
 	staticJSON(t, "catalog.json", &catalog)
-	for _, path := range []string{"/wiki", "/wiki/data/catalog.json", "/wiki/data/" + catalog.Revision + "/category-quest.json", "/wiki/search-worker.js", "/wiki/resources", "/wiki/resources.js"} {
+	for _, path := range []string{"/wiki", "/wiki/data/catalog.json", "/wiki/data/" + catalog.Revision + "/category-quest.json", "/wiki/search-worker.js", "/wiki/resources", "/wiki/resources.js", "/wiki/downloads", "/wiki/downloads.js"} {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", path, nil)
 		r.Header.Set("Accept-Encoding", "gzip")
