@@ -14581,7 +14581,8 @@
   function battleResourceMoviePacket(kind,data){
     if(kind!=="B")return false;
     const parts=String(data||"").split("|"),marker=parts[0];
-    if(["BC","BA","BU"].includes(marker))return false;
+    // Display snapshots must never acquire the movie lock, even on a cold cache.
+    if(["BC","BA","BU","BVS"].includes(marker))return false;
     const values=parts.slice(1).filter(Boolean);
     return !(marker==="BP"&&values.length===3&&values.every(value=>/^[0-9a-f]+$/i.test(value)));
   }

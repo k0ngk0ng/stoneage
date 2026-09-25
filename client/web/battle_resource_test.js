@@ -31,11 +31,19 @@ const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
  c.openBattleResult=(kind,data)=>{assert.equal(c.deferBattleResourcePacket(kind,data),false);delivered.push([kind,data]);};
  const state={participants:[{graphic:100296}],movieHoldUntil:0};c.app.battleState=state;
  assert.equal(c.deferBattleResourcePacket('B','BP|0|1|A'),false,'initial turn state must not start an asset wait');
+ for(const spritesReady of [false,true]){
+  c.assetState.spritesReady=spritesReady;
+  assert.equal(c.deferBattleResourcePacket('B','BVS|0|32|64|'),false,'display snapshot must not start a movie resource wait');
+  assert.equal(state.movieActive,undefined);assert.equal(state.commandLocked,undefined);
+  assert.equal(state.resourcePacketQueue,undefined);assert.equal(requests,0,'display snapshot must not preload actions');
+ }
+ c.assetState.spritesReady=false;
+ assert.equal(c.battleResourceMoviePacket('B','BV|0|1|'),true,'legacy attribute-change animation remains a movie');
  assert.equal(c.deferBattleResourcePacket('B','BH|a0|rA|f0|d1|FF|'),true);
- for(const [kind,data] of [['BC','roster'],['B','BP|0|1|A'],['B','BA|0|1'],['RS','-2|0|1,,,,,||'],['B','BU|']])assert.equal(c.deferBattleResourcePacket(kind,data),true);
+ for(const [kind,data] of [['BC','roster'],['B','BP|0|1|A'],['B','BVS|0|32|64|'],['B','BA|0|1'],['RS','-2|0|1,,,,,||'],['B','BU|']])assert.equal(c.deferBattleResourcePacket(kind,data),true);
  assert.equal(delivered.length,0);assert.equal(state.commandLocked,true);
  resolveManifest();await tick();
- assert.deepEqual(delivered.map(p=>p[0]+':'+p[1]),['B:BH|a0|rA|f0|d1|FF|','BC:roster','B:BP|0|1|A','B:BA|0|1','RS:-2|0|1,,,,,||','B:BU|']);
+ assert.deepEqual(delivered.map(p=>p[0]+':'+p[1]),['B:BH|a0|rA|f0|d1|FF|','BC:roster','B:BP|0|1|A','B:BVS|0|32|64|','B:BA|0|1','RS:-2|0|1,,,,,||','B:BU|']);
  assert.equal(requests,1,'duplicate references share a single cached Image lookup');
  assert.equal(c.deferBattleResourcePacket('B','BH|next'),false);assert.equal(requests,1,'later movies reuse the prepared resource set');
  // A completed cache hit has no asynchronous gate, manifest fetch or new image copy.
