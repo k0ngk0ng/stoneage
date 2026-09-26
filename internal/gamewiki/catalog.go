@@ -304,9 +304,9 @@ func (b *builder) loadMaps(ctx context.Context) error {
 		name := strings.Split(decode([]byte(strings.SplitN(string(h[8:40]), "\x00", 2)[0])), "|")[0]
 		switch id {
 		case 100:
-			name = "北岛 · 萨伊那斯"
+			name = "萨伊那斯"
 		case 200:
-			name = "南岛 · 加鲁卡"
+			name = "加鲁卡"
 		}
 		rel, _ := filepath.Rel(b.k.DataDir, path)
 		if old := b.maps[id]; old != nil {
@@ -315,6 +315,12 @@ func (b *builder) loadMaps(ctx context.Context) error {
 			return nil
 		}
 		e := b.add("map", id, name, "服务端地图、NPC、野外遭遇与传送出口")
+		if id == 100 {
+			e.Notes = append(e.Notes, "北岛")
+		}
+		if id == 200 {
+			e.Notes = append(e.Notes, "南岛")
+		}
 		e.field("地图编号", id)
 		e.field("宽 × 高", fmt.Sprintf("%d × %d", binary.BigEndian.Uint16(h[40:42]), binary.BigEndian.Uint16(h[42:44])))
 		e.Sources = []string{filepath.ToSlash(rel)}

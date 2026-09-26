@@ -26,6 +26,7 @@ Options:
   --sactl-packages DIR Publish released client archives and installers.
   --sactl-version TAG Stable release tag for the client archives.
   --web-only      Publish CDN modules and compressed indexes only.
+  --wiki-materials DIR Publish prebuilt encyclopedia material ZIPs.
   --resource-packs DIR Publish complete game resource ZIP and download catalog.
   --map-packs DIR Publish matching map packages (with --web-only).
   --dry-run       Validate the source trees and print the object count only.
@@ -41,7 +42,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --sactl-packages|--sactl-version)
+        --sactl-packages|--sactl-version|--wiki-materials)
             [[ $# -ge 2 ]] || { echo "$1 requires a value" >&2; exit 2; }
             web_args+=("-${1#--}" "$2"); shift ;;
         --web-only) web_args+=(-web-only) ;;

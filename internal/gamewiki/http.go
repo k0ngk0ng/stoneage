@@ -33,7 +33,7 @@ func NewHandler(cdn ...string) *Handler {
 	}
 	page, _ := content.ReadFile("site/index.html")
 	resources, _ := content.ReadFile("site/resources.html")
-	return &Handler{resources: []byte(strings.ReplaceAll(string(resources), "__WIKI_CDN__", html.EscapeString(base))), page: []byte(strings.ReplaceAll(string(page), "__WIKI_CDN__", html.EscapeString(base))), policy: "default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; connect-src 'self' " + origin + "; img-src " + origin + "; base-uri 'none'; frame-ancestors 'none'"}
+	return &Handler{resources: []byte(strings.ReplaceAll(string(resources), "__WIKI_CDN__", html.EscapeString(base))), page: []byte(strings.ReplaceAll(string(page), "__WIKI_CDN__", html.EscapeString(base))), policy: "default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; connect-src 'self' " + origin + "; img-src " + origin + "; media-src " + origin + "; base-uri 'none'; frame-ancestors 'none'"}
 }
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -60,7 +60,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write(h.page)
 		}
 		return
-	case "/wiki/app.js", "/wiki/search-worker.js", "/wiki/resources.js", "/wiki/downloads.js":
+	case "/wiki/materials.js", "/wiki/app.js", "/wiki/search-worker.js", "/wiki/resources.js", "/wiki/downloads.js":
 		name = "site/" + path.Base(r.URL.Path)
 		mime = "text/javascript; charset=utf-8"
 	case "/wiki/style.css":

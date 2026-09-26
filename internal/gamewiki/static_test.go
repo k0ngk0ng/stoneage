@@ -62,7 +62,10 @@ func TestStaticSnapshotCoverage(t *testing.T) {
 			if strings.HasPrefix(entry.Key, "map:3002") && entry.Key >= "map:30022" && entry.Key <= "map:30026" && (entry.Map == nil || entry.MapStatus != "") {
 				t.Fatal("crystal cavern graphics missing", entry.Key)
 			}
-			if entry.Key == "map:100" && entry.Name != "北岛 · 萨伊那斯" || entry.Key == "map:200" && entry.Name != "南岛 · 加鲁卡" {
+			if entry.Key == "map:100" && !strings.Contains(row[9], "北岛") || entry.Key == "map:200" && !strings.Contains(row[9], "南岛") {
+				t.Fatal("island notes must remain searchable")
+			}
+			if entry.Key == "map:100" && entry.Name != "萨伊那斯" || entry.Key == "map:200" && entry.Name != "加鲁卡" {
 				t.Fatal("island label missing", entry.Key, entry.Name)
 			}
 			if entry.Map == nil {

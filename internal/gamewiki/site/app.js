@@ -248,7 +248,7 @@ function ensureMediaCache() {
 }
 function mediaURL(path) {
   const base = $("media-config")?.getAttribute?.("content") || "";
-  if (!/^https:\/\//.test(base) || !/^(assets\/bitmaps\/bitmap_\d+\.png|wiki\/maps\/(thumb-)?\d+-[a-f0-9]+\.webp)$/.test(path || "")) return "";
+  if (!/^https:\/\//.test(base) || !/^(assets\/bitmaps\/(?:white-tiger-8\.5\/)?bitmap_\d+\.png|audio\/(?:se|bgm)\/[a-z0-9_]+\.wav|wiki\/materials\/(?:[a-f0-9]{64}\.zip|catalog\.json|materials-[a-f0-9]{16}\/(?:[a-f0-9]{2}|sprite-\d+)\.json)|wiki\/maps\/(thumb-)?\d+-[a-f0-9]+\.webp)$/.test(path || "")) return "";
   return base.replace(/\/$/, "") + "/" + path;
 }
 function mediaImage(path, caption, cls) {
@@ -387,6 +387,11 @@ async function openDetail(id) {
       el("p", e.description),
     );
     showMedia(e, a);
+    if (window.WikiMaterials && (e.images?.length || e.map || e.fields?.some(f => f.label === "图号") || e.kind === "map")) {
+      const previous = cleanupMedia;
+      const materialCleanup = window.WikiMaterials.mount(e, a, {mediaURL, ensureCache: ensureMediaCache});
+      cleanupMedia = () => { previous?.(); materialCleanup(); };
+    }
     const dl = el("dl");
     for (const f of e.fields || [])
       dl.append(el("dt", f.label), el("dd", f.value));

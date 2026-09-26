@@ -71,3 +71,22 @@ python tools/build-wiki-media.py --output build/wiki-media-final/maps --manifest
 补齐同组8.5原版ADRN/REAL后，新增246张已校验图片，修复240个地图图号及天空背景；来源、原文件CRC/SHA-256、图号和PNG校验值见 `docs/wiki-map-resource-repairs.json`。水晶洞窟30022–30026使用原版水晶地面、洞壁与核心物件。天空之境5581的普通地图层为空是原版设计：客户端 `system/skyisland.cpp` 的 `SkyIslandSetNo` 指定背景40511，百科展示其完整1604×1204静态背景；104使用相同背景，30689及30691–30695使用40510。原版云层与视差滚动为运行时效果，百科不运行动画。已重建22张地图，696张地图的逻辑图号缺口为0。
 
 地图只标本图NPC；传送用Warp NPC不重复绘制，同一目标地图的邻近传送格合并为一个入口，保留相隔较远的独立入口。入口直接打开目标地图详情，子地图内部NPC仅在子地图显示。合并在离线媒体生成时完成。
+
+
+## 素材制作参考与 ZIP
+
+有素材的词条提供“素材参考与下载”，覆盖宠物、装备、物品、NPC、战斗、地图、任务等实际收录的图片引用。展开后才查询 CDN 上的小型版本指针与该词条所在的索引分片；动画再按造型逐份读取，仅加载当前动作/方向。关掉面板或切换词条会停止动画、音频并释放图片引用。
+
+图片、动画、声音、素材索引及制作 ZIP 全部使用配置 CDN 的固定路径。在线索引在 `wiki/materials/materials-<hash>/`，ZIP 为 `wiki/materials/<sha256>.zip`。不改变游戏资源版本标记，不让生产服务动态扫描或压缩素材。相同素材及参数关联合并为一份包；缺失动画、图鉴映射、图块或声音时页面标明缺项，下载按钮显示“已收录素材”。
+
+ZIP 面向后续创作，包含离线 preview.html、原始 PNG/WAV、sprites.json、逐帧 CSV、bitmap-index.json、关联条目参数、编号模板及哈希清单。地图还保留服务端 LS2MAP、客户端 DAT（已有时）、可编辑布局分层、图块索引、标记、auto.dat、调色板和实际音乐标记关联的音频。骑乘映射读取原生 ridePetTable 的有效记录，并合入现代服务端已验证的白虎映射；人物映射和骑乘资格不得混为一谈。
+
+```sh
+# 在项目已有 Pillow 环境中运行。先生成百科快照，再生成素材包。
+python tools/build-wiki-materials.py --output build/wiki-materials
+# --plan 仅检查关联与依赖；--keys pet:777 map:100 可生成审核样本。
+# 按发版流程发布 uploader 后执行；凭证走现有受限文件。
+bin/stoneage sync-assets --wiki-materials build/wiki-materials --env <发布环境文件>
+```
+
+发布器先检查所有 ZIP/索引校验值与包内路径，再上传 ZIP、压缩 JSON，最后更新 CDN 版本指针。JSON 保留 `Content-Encoding: gzip`。地图名称为“萨伊那斯”和“加鲁卡”，“北岛”和“南岛”只在备注中保留，仍参与检索。纯素材展示无需新增 sactl 游戏命令；本次没有改变游戏操作或状态协议。

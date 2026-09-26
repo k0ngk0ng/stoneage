@@ -27,6 +27,9 @@ func shardFor(key string) string {
 }
 func searchText(e *Entry) string {
 	parts := []string{e.Key, e.Name, e.Description, e.Location, e.Group, e.Skills}
+	if e.Kind == "map" {
+		parts = append(parts, e.Notes...)
+	}
 	for _, f := range e.Fields {
 		if strings.Contains(f.Label, "编号") || f.Label == "任务奖励" || f.Label == "任务前提" {
 			parts = append(parts, f.Value)

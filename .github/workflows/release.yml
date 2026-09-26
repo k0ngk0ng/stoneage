@@ -62,6 +62,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 tools/build-resource-pack_test.py
           PYTHONDONTWRITEBYTECODE=1 python3 tools/asset-cooker_test.py
           PYTHONDONTWRITEBYTECODE=1 python3 tools/build-wiki-media_test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/build-wiki-materials_test.py
           node client/web/ai_observation_test.js
           node client/web/chat_identity_test.js
           node --test client/web/automation_catalog_test.js client/web/automation_battle_test.js client/web/automation_pet_test.js client/web/automation_recovery_test.js client/web/automation_supply_test.js

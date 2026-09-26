@@ -154,9 +154,10 @@ var uploadRetrySleep = time.Sleep
 // client.  Both Aliyun OSS and Cloudflare R2 preserve these HTTP headers and
 // the sha256 metadata used to audit a publication.
 type objectMetadata struct {
-	ContentType  string
-	CacheControl string
-	SHA256       string
+	ContentType     string
+	ContentEncoding string
+	CacheControl    string
+	SHA256          string
 }
 
 var errObjectNotFound = errors.New("object not found")
@@ -188,6 +189,9 @@ func (store aliyunObjectStore) GetObject(key string) (io.ReadCloser, error) {
 
 func aliyunOptions(metadata objectMetadata) []oss.Option {
 	options := []oss.Option{oss.ContentType(metadata.ContentType), oss.CacheControl(metadata.CacheControl)}
+	if metadata.ContentEncoding != "" {
+		options = append(options, oss.ContentEncoding(metadata.ContentEncoding))
+	}
 	if metadata.SHA256 != "" {
 		options = append(options, oss.Meta("sha256", metadata.SHA256))
 	}
@@ -238,6 +242,9 @@ func (store r2ObjectStore) PutFile(key, filename string, metadata objectMetadata
 		CacheControl:  awsV2.String(metadata.CacheControl),
 		ContentLength: awsV2.Int64(info.Size()),
 	}
+	if metadata.ContentEncoding != "" {
+		input.ContentEncoding = awsV2.String(metadata.ContentEncoding)
+	}
 	if metadata.SHA256 != "" {
 		input.Metadata = map[string]string{"sha256": metadata.SHA256}
 	}
@@ -253,6 +260,9 @@ func (store r2ObjectStore) Put(key string, payload []byte, metadata objectMetada
 		ContentLength: awsV2.Int64(int64(len(payload))),
 		ContentType:   awsV2.String(metadata.ContentType),
 		CacheControl:  awsV2.String(metadata.CacheControl),
+	}
+	if metadata.ContentEncoding != "" {
+		input.ContentEncoding = awsV2.String(metadata.ContentEncoding)
 	}
 	if metadata.SHA256 != "" {
 		input.Metadata = map[string]string{"sha256": metadata.SHA256}
@@ -277,6 +287,7 @@ func run(arguments []string) error {
 	sactlPackages := flags.String("sactl-packages", "", "directory containing verified release client archives and installers")
 	sactlVersion := flags.String("sactl-version", "", "stable release tag for sactl CDN publication")
 	webOnly := flags.Bool("web-only", false, "publish CDN runtime and compressed indexes without changing core assets")
+	wikiMaterials := flags.String("wiki-materials", "", "directory of verified, prebuilt wiki material ZIPs")
 	resourcePacks := flags.String("resource-packs", "", "directory with a complete game resource ZIP and catalog; supplements current publication")
 	mapPacks := flags.String("map-packs", "", "directory with matching map packs for CDN publication")
 	dryRun := flags.Bool("dry-run", false, "list the upload plan without writing object-storage objects")
@@ -352,6 +363,16 @@ func run(arguments []string) error {
 	assetDirectory := strings.TrimSpace(*assetsRoot)
 	if assetDirectory == "" {
 		assetDirectory = strings.TrimSpace(disk.Static.AssetsDirectory)
+	}
+	if *wikiMaterials != "" {
+		if *dryRun || *webOnly || *resourcePacks != "" || *mapPacks != "" || *sactlPackages != "" {
+			return errors.New("-wiki-materials is a standalone publication mode")
+		}
+		store, err := newObjectStore(provider, endpoint, region, bucketName, accessKeyID, accessKeySecret)
+		if err != nil {
+			return err
+		}
+		return publishWikiMaterials(store, prefix, *wikiMaterials, *workers)
 	}
 	if *sactlPackages != "" {
 		if *dryRun || *webOnly || *resourcePacks != "" || *mapPacks != "" {
