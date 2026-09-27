@@ -349,7 +349,8 @@ static void match_json(JSON *j,int m,int p)
         "\"start_at_ms\":%lld,\"started_at_ms\":%lld,\"power_gap\":%.8f,\"teams\":[",
         v->id,v->mode,phase(p),side,v->start_at,v->started_at,Ladder_PowerGap(totals[0],totals[1]));
     for(s=0;s<2;s++) {
-        if(s)append(j,",");append(j,"{\"power\":%.6f,\"rating\":%.6f,\"members\":[",totals[s],v->ratings[s]);
+        if(s)append(j,",");
+        append(j,"{\"power\":%.6f,\"rating\":%.6f,\"members\":[",totals[s],v->ratings[s]);
         for(i=0;i<v->mode;i++) { int k=s*v->mode+i;if(i)append(j,",");
             player_json(j,v->members[k],v->mode,&v->profiles[k],v->powers[k],v->before[k]); }
         append(j,"]}");
@@ -400,7 +401,8 @@ static void send_reply(int p,const char *request,const char *code,int replay,uns
     if(r<0)append(&j,"null");else room_json(&j,r);
     append(&j,",\"invitations\":[");
     for(i=0;i<LADDER_INVITE_MAX;i++) if(invitations[i].used && invitations[i].to==p) {
-        Invitation *v=&invitations[i];if(!first)append(&j,",");first=0;
+        Invitation *v=&invitations[i];if(!first)append(&j,",");
+        first=0;
         append(&j,"{\"id\":\"%s\",\"room_id\":\"%s\",\"mode\":%d,\"expires_at_ms\":%lld,\"from\":",
             v->id,rooms[v->room].id,rooms[v->room].mode,v->expires);
         player_json(&j,v->from,rooms[v->room].mode,NULL,0,0);append(&j,"}");
@@ -429,7 +431,8 @@ static void send_contacts(int p,const char *request,const char *original)
     for(i=0;i<80;i++) {
         memset(&entry,0,sizeof(entry));
         if(!hooks.contact_entry(players[p].profile.character,i,&entry))continue;
-        if(!first)append(&j,",");first=0;
+        if(!first)append(&j,",");
+        first=0;
         append(&j,"{\"slot\":%d,\"id\":\"%s\",\"name_hex\":\"%s\",\"online\":%s}",
             i,entry.id,entry.name_hex,entry.online?"true":"false");
     }
@@ -703,7 +706,8 @@ int Ladder_Init(const char *database,const LadderHooks *h)
 void Ladder_Shutdown(void)
 {
     mutation_active=mutation_failed=revision_exhausted=0;finish_notices(0);published_revision=0;
-    if(db)sqlite3_close(db);db=NULL;
+    if(db)sqlite3_close(db);
+    db=NULL;
     memset(players,0,sizeof(players));memset(rooms,0,sizeof(rooms));memset(matches,0,sizeof(matches));memset(invitations,0,sizeof(invitations));
 }
 void Ladder_Request(int character,const char *wire)
@@ -878,7 +882,8 @@ static int journal_match(Match *v,int terminal)
         sqlite3_bind_text(s,1,v->id,-1,SQLITE_TRANSIENT);sqlite3_bind_text(s,2,v->profiles[i].id,-1,SQLITE_TRANSIENT);
         sqlite3_bind_int(s,3,v->mode);sqlite3_bind_int(s,4,v->before[i]);
         sqlite3_bind_int(s,5,v->before[i]+(i<v->mode?v->delta:-v->delta));
-        if(sqlite3_step(s)!=SQLITE_DONE || sqlite3_changes(db)!=1)goto done;sqlite3_finalize(s);s=NULL;
+        if(sqlite3_step(s)!=SQLITE_DONE || sqlite3_changes(db)!=1)goto done;
+        sqlite3_finalize(s);s=NULL;
     }
     ok=execsql("COMMIT");
 done:
@@ -961,7 +966,8 @@ void Ladder_Tick(void)
 {
     int i,j,k,p,oldest,best,visited[LADDER_ROOM_MAX]={0};double gap,bestgap;
     LadderTime now;
-    if(!db)return;now=hooks.now();
+    if(!db)return;
+    now=hooks.now();
     for(i=0;i<LADDER_INVITE_MAX;i++)if(invitations[i].used && invitations[i].expires<=now){
         invitations[i].used=0;changed(invitations[i].to,"invitation_expired");
     }
@@ -979,7 +985,8 @@ void Ladder_Tick(void)
         oldest=-1;
         for(i=0;i<LADDER_ROOM_MAX;i++)if(rooms[i].used && rooms[i].queued_at && !visited[i] &&
             (oldest<0 || rooms[i].queued_at<rooms[oldest].queued_at))oldest=i;
-        if(oldest<0)break;visited[oldest]=1;best=-1;bestgap=2;
+        if(oldest<0)break;
+        visited[oldest]=1;best=-1;bestgap=2;
         for(i=0;i<LADDER_ROOM_MAX;i++)if(i!=oldest && rooms[i].used && rooms[i].queued_at && compatible(oldest,i,&gap) && gap<bestgap){best=i;bestgap=gap;}
         if(best>=0 && !reserve_match(oldest,best))break;
     }
@@ -1019,7 +1026,8 @@ void Ladder_Tick(void)
 void Ladder_Disconnected(int character)
 {
     int p=find(character),r;
-    if(p<0)return;players[p].profile.online=0;r=players[p].room;
+    if(p<0)return;
+    players[p].profile.online=0;r=players[p].room;
     if(players[p].match>=0 && matches[players[p].match].phase==2 && !players[p].offline_at)players[p].offline_at=hooks.now();
     if(r>=0 && rooms[r].queued_at){rooms[r].queued_at=0;reset_ready(r);}
     if(r>=0)room_changed(r,"member_disconnected");
@@ -1061,7 +1069,8 @@ void Ladder_Rejected(int character)
 int Ladder_Reserved(int character)
 {
     int p=find(character),r;
-    if(p<0)return 0;r=players[p].room;
+    if(p<0)return 0;
+    r=players[p].room;
     return players[p].match>=0 || (r>=0 && rooms[r].queued_at);
 }
 int Ladder_PetAllowed(int character,int slot)

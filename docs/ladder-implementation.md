@@ -1,6 +1,6 @@
 # 天梯实现跟踪
 
-状态：本地开发验收完成，尚未提交、发布或上线。真实 Web/sactl 的 1v1—5v5、
+状态：本地开发验收完成，GitHub 发布检查中，尚未上线。真实 Web/sactl 的 1v1—5v5、
 邀请和再次匹配、同场重连、跨端续战、GMSV 崩溃恢复、复杂资源恢复、操作回执恢复及
 移动端流程已有下述证据。最终网络全组 network-final-social-a 退出码为 0。
 本文件区分本地验收与生产发布；历史检查记录中的局部待办，以后续补充结论为准。
@@ -582,3 +582,7 @@ final-runtime-entrypoint.log、final-skill-package.log。所有记录均在 buil
 `refs/audit/` 保留的历史审计引用；逐一核对当前 GitHub 分支、全部标签和待发布历史后，
 确认这些旧对象不在发布范围内，无需重写或强制推送。生产访问参数由用户另行提供，
 不写入公开文件。发布与部署按项目入口及 GitHub 检查顺序执行。
+
+GitHub 的 Linux GCC 严格编译发现同一行条件语句造成 misleading-indentation 警告，
+现仅拆分语句行，保留控制流。缓存 GCC 13 工具链下核心 49 项通过，记录为
+`build/ladder/gcc-release-core.log`；v0.1.94 未通过发布，后续使用新的版本标签。
