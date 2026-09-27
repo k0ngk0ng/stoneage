@@ -20,7 +20,7 @@ function documentFixture() {
     }
     querySelectorAll(selector){return this.all().filter(node=>selector==='input:checked'&&node.tag==='input'&&node.checked);}
   }
-  return {head:new Node('head'),body:new Node('body'),createElement:tag=>new Node(tag),createTextNode:text=>Object.assign(new Node('#text'),{textContent:text})};
+  return {head:new Node('head'),body:new Node('body'),getElementById(id){return this.body.all().find(node=>node.id===id);},createElement:tag=>new Node(tag),createTextNode:text=>Object.assign(new Node('#text'),{textContent:text})};
 }
 
 function fixture(document) {
@@ -43,6 +43,7 @@ test('mode and pet controls preserve edits through a contact-triggered DOM rebui
   f.api.state.open=true;
   const snapshot={phase:'lobby',self:{id:'player_a',pet_mask:3,available_pet_mask:3},room:{id:'room',mode:2,leader_id:'player_a',members:[]}};
   f.api.apply({ok:true,revision:11,snapshot});
+  assert.ok(!doc.body.all().some(node=>node.attributes['aria-label']==='天梯战斗策略'));
   const mode=()=>doc.body.all().find(node=>node.attributes['aria-label']==='天梯模式');
   const pets=()=>doc.body.all().filter(node=>node.tag==='input');
   mode().value='5';mode().onchange();

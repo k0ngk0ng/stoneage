@@ -126,7 +126,7 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 	}
 	var decision Decision
 	var ok bool
-	if snapshot.Battle.LadderID != "" {
+	if r.LadderOnly && snapshot.Battle.LadderID != "" {
 		strategies := r.Strategies
 		if strategies.entries == nil {
 			strategies, _ = NewStrategies(r.Tables)

@@ -133,12 +133,10 @@ class BrowserTest:
 
     def strategy(self, name):
         self.panel()
-        self.run_browser("select", '[aria-label="天梯战斗策略"]', name)
-        # A real directory refresh rerenders the whole ladder panel. Preserve
-        # the user's strategy choice until its explicit submission.
-        self.evaluate("(async()=>{await StoneAgeLadder.refreshContacts();return true;})()")
-        assert self.evaluate("document.querySelector('[aria-label=\"天梯战斗策略\"]').value") == name
-        self.click("切换策略")
+        # Strategy hosting remains a compatibility API for these native
+        # fixtures; human players no longer have a strategy selector.
+        assert self.evaluate("!document.querySelector('[aria-label=\"天梯战斗策略\"]')")
+        self.evaluate(f"(async()=>{{await StoneAgeLadder.perform('strategy',{json.dumps(name)});return true;}})()")
         self.wait(f"StoneAgeLadder.state.envelope.snapshot.self.strategy === {json.dumps(name)} && !StoneAgeLadder.state.busy")
 
     def web_ready_queue(self):

@@ -1021,9 +1021,16 @@
       #new-character-form { left:255px; top:270px; width:450px; }
     }
     @media (max-width:680px) { body{padding:6px 0 20px} header{border-radius:0} #app{width:100%} .advanced-screen{padding:26px 10px 10px} }
+    #player-tools{position:fixed;right:12px;top:12px;z-index:3000;display:flex;align-items:center;gap:8px}
+    #player-tools>button{position:static;margin:0}
+    #player-tools>#ladder-toggle{order:0}
+    #player-tools>#battle-panel-toggle{order:1}
+    #player-tools>#ai-control-toggle{order:2}
+    body:not(.gameplay-panels-visible) :is(#player-tools,#ai-control-panel,#battle-journal,#ladder-panel){display:none!important}
   </style>
 </head>
 <body>
+<nav id="player-tools" data-game-ui aria-label="游戏工具"></nav>
 <div id="app">
   <header><h1>StoneAge 2.5 [本机—线]</h1><small id="connection">离线</small></header>
   <main>
@@ -4174,6 +4181,7 @@
     });
   }
   function applyScreenVisibility(screen) {
+    document.body?.classList.toggle("gameplay-panels-visible",[worldScreen,battleScreen,battleResultScreen].includes(screen));
     [serverScreen,loginScreen,characterScreen,creationScreen,worldScreen,battleScreen,battleResultScreen].forEach(s=>s.classList.toggle("hidden",s!==screen));
     /* Hydrate only the scene that is about to be painted.  The title/login
        scene keeps its own two button hover images eager, while server/world/
@@ -20138,7 +20146,7 @@
   function isWorldUiTarget(target,event=null){
     if(!(target instanceof Element))return false;
     if(target.closest("#chat-input")&&chatInputMapHit(event,target))return false;
-    return Boolean(target.closest("#world-loading,#field-ui,#world-tools,button,input,textarea,select,[contenteditable=true]"));
+    return Boolean(target.closest("#world-loading,#field-ui,#world-tools,[data-game-ui],button,input,textarea,select,[contenteditable=true]"));
   }
   function worldPointerIsUiTarget(event){
     if(isWorldUiTarget(event?.target,event))return true;
@@ -20296,6 +20304,13 @@
     endHeldWorldPointer(null,false);
   }
   function handleWorldPointerDown(event){
+    if(event.target?.closest?.("[data-game-ui]")){
+      app.panelPointerGesture=event.pointerId??"mouse";
+      if(app.pointerMoveHeld)cancelHeldWorldPointer();
+      app.pointerLookTargetId=null;app.pointerLookPointerId=null;
+      return;
+    }
+    app.panelPointerGesture=null;
     if(app.phase!=="world"||worldRouteInputBlocked()||(event.button!==0&&event.button!==2))return;
     /* Touch devices have no hover event to wake the auto-hidden task bar.
        Reveal it on the first bottom-edge press and remember that gesture so
@@ -20342,6 +20357,10 @@
     event.preventDefault();
   }
   function handleWorldPointerUp(event){
+    if(app.panelPointerGesture===(event.pointerId??"mouse")){
+      app.panelPointerGesture=null;
+      return;
+    }
     if(app.phase!=="world"||app.battle||(event.button!==0&&event.button!==2))return;
     if(app.taskbarRevealPointerId!==null&&(
       event.pointerId===undefined||Number(event.pointerId)===Number(app.taskbarRevealPointerId)
@@ -20751,7 +20770,7 @@
      editor menu for chat/mail fields, but swallow it everywhere else while
      the field is active. */
   document.addEventListener("contextmenu",event=>{
-    if(isEditableTarget(event.target))return;
+    if(event.target?.closest?.("[data-game-ui]")||isEditableTarget(event.target))return;
     if(app.phase==="world"){event.preventDefault();return;}
     /* #battle-target-overlay is deliberately a top-level scene sibling so
        actor hit boxes stay above the transformed battle surface.  Listen at
@@ -20914,6 +20933,7 @@
     return true;
   }
   document.addEventListener("keydown",event=>{
+    if(event.target?.closest?.("[data-game-ui]"))return;
     const activeEditor=event.target?.closest?.("input,textarea,select,[contenteditable=true]")||document.activeElement?.closest?.("input,textarea,select,[contenteditable=true]");
     if(activeEditor?.id==="server-window-input"&&guardServerWindowImeKey(event))return;
     const gameplayChat=(app.phase==="world"&&!app.battle)||(app.phase==="battle"&&app.battle);

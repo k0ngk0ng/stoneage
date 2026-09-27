@@ -199,11 +199,12 @@
         if (current) current.hidden = !state.panelOpen;
         if (state.panelOpen) { refreshPets(); refreshTasks().catch(() => {}); }
       });
-      root.document.body?.appendChild(toggle);
+      (root.document.getElementById("player-tools")||root.document.body)?.appendChild(toggle);
     }
     if (!panel) {
       panel = root.document.createElement("aside");
       panel.id = "ai-control-panel";
+      panel.setAttribute("data-game-ui", "");
       panel.hidden = !state.panelOpen;
       panel.setAttribute("aria-label", "自动化：任务、练级与战斗");
       panel.innerHTML = `

@@ -198,7 +198,7 @@ class Coordinator(unittest.TestCase):
         self.assertEqual(LIB.Ladder_RatingDelta(1200, 1400, 0), -8)
 
     def test_strategy_default_switch_in_battle_and_durable_preference(self):
-        self.assertEqual(self.snapshot(0)["self"]["strategy"], "basic")
+        self.assertEqual(self.snapshot(0)["self"]["strategy"], "manual")
         self.battle()
         before = self.snapshot(0)
         self.request(0, "strategy", "manual")
@@ -206,7 +206,7 @@ class Coordinator(unittest.TestCase):
         self.assertEqual(after["self"]["strategy"], "manual")
         self.assertEqual(after["match"]["id"], before["match"]["id"])
         self.assertEqual(after["self"]["ready"], before["self"]["ready"])
-        self.assertEqual(self.snapshot(1)["self"]["strategy"], "basic")
+        self.assertEqual(self.snapshot(1)["self"]["strategy"], "manual")
         self.request(0, "loadout", "1", expect="result_or_match_pending")
         self.profiles[0].online = 0
         LIB.Ladder_Disconnected(0)
@@ -219,7 +219,7 @@ class Coordinator(unittest.TestCase):
         self.assertEqual(LIB.Ladder_Init(self.database, C.byref(self.callbacks)), 1)
         self.assertEqual(self.snapshot(0)["self"]["strategy"], "manual")
         self.assertEqual(self.snapshot(1)["self"]["strategy"], "local_advanced")
-        self.assertEqual(self.snapshot(2)["self"]["strategy"], "basic")
+        self.assertEqual(self.snapshot(2)["self"]["strategy"], "manual")
 
     def test_strategy_write_failure_keeps_previous_selection(self):
         self.request(0, "strategy", "manual")

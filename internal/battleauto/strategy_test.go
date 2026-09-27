@@ -156,3 +156,22 @@ func TestLadderCountersWaitForAuthoritativeResultAndCountOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestPlayerEnabledAutoBattleDoesNotRequireLadderStrategy(t *testing.T) {
+	g := &recordingStrategyGame{snapshot: ladderObservation("manual")}
+	r := Runner{Game: g}
+	if err := r.tick(context.Background(), DefaultPolicy()); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.actions) != 1 || g.actions[0].Command != "H|A" {
+		t.Fatalf("explicit auto-battle did not answer manual ladder: %+v", g.actions)
+	}
+	g.actions = nil
+	r.LadderOnly = true
+	if err := r.tick(context.Background(), DefaultPolicy()); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.actions) != 0 {
+		t.Fatal("manual ladder started strategy actions")
+	}
+}

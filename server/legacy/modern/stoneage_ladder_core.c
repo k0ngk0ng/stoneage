@@ -291,7 +291,7 @@ static int player(int character)
     if(!next_revision())return -1;
     i=empty;memset(&players[i],0,sizeof(Player));players[i].used=1;
     players[i].room=players[i].match=-1;players[i].profile=f;
-    strcpy(players[i].strategy,"basic");
+    strcpy(players[i].strategy,"manual");
     strategy_preference(f.id,players[i].strategy,NULL);
     players[i].cooldown_until=cooldown(f.id);
     players[i].mask=(f.active_pet>=0 ? 1<<f.active_pet : 0) | (f.ride_pet>=0 ? 1<<f.ride_pet : 0);

@@ -301,15 +301,6 @@
         button('接管角色',async()=>{try{await root.StoneAgeAutomation.takeover();await status();}catch(error){state.error=error.message;render();}}));
     }
     if (!s) { const retry=button('重新读取',()=>status().catch(error=>{state.error=error.message;render();})); retry.disabled=false; body.append(retry); return; }
-    const strategyRow=element('div',null,'ladder-row'), strategySelect=element('select');
-    strategySelect.setAttribute('aria-label','天梯战斗策略');
-    const choices=state.strategies.length?state.strategies:[{id:'basic',name:'初级自动战斗'},{id:'manual',name:'手动 / 本地脚本'}];
-    for(const choice of choices){const option=element('option',choice.name);option.value=choice.id;strategySelect.append(option);}
-    if(!choices.some(choice=>choice.id===s.self.strategy)){const option=element('option',`未安装：${s.self.strategy||'未知策略'}`);option.value=s.self.strategy||'';strategySelect.append(option);}
-    strategySelect.value=state.selectedStrategy||s.self.strategy||'';
-    strategySelect.onchange=()=>{state.selectedStrategy=strategySelect.value;};
-    strategySelect.disabled=state.busy||!!state.pending;
-    strategyRow.append(strategySelect,button('切换策略',()=>perform('strategy',strategySelect.value)));body.append(strategyRow);
     const ratings = element('div',null,'ladder-ratings');
     for (let i=0;i<5;i++) ratings.append(element('span',`${i+1}v${i+1} · ${s.ratings?.[i] ?? '—'}`)); body.append(ratings);
     if (s.phase === 'result' && s.result) {
@@ -371,7 +362,6 @@
     }
     for(const invite of s.invitations||[]){const row=element('div',null,'ladder-member');
       row.append(element('strong',`${invite.from.name} 邀请你参加 ${invite.mode}v${invite.mode}`),button('接受',()=>perform('accept',invite.id),!!room),button('拒绝',()=>perform('decline',invite.id)));body.append(row);}
-    body.append(element('p','默认使用初级自动战斗。选择“手动 / 本地脚本”可自行出招；策略切换不会撤回本回合已经提交的动作。','ladder-muted'));
   }
   root.StoneAgeLadder={resetCharacter:()=>reset(session()),state,apply,receive,presentResult,resultPending,perform,status,refresh,refreshContacts,setOpen,countdownText,retainUnconfirmed};
   if (!root.document) return;
@@ -380,8 +370,8 @@
     #ladder-panel{position:fixed;right:12px;top:48px;width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 64px);z-index:3200;overflow:auto;box-sizing:border-box;padding:16px;color:#eee0c2;background:#241d16fa;border:1px solid #a68b59;border-radius:8px;box-shadow:0 8px 32px #0008;font:13px/1.6 sans-serif}
     #ladder-panel[hidden],#ladder-toggle[hidden]{display:none}#ladder-panel header{position:sticky;top:-16px;z-index:1;background:#241d16;padding-top:8px;padding-bottom:8px;height:auto;border:0;display:flex;justify-content:space-between;align-items:center;gap:12px}#ladder-panel h2{margin:0;font-size:18px;color:#ffe4a0}#ladder-panel h3{font-size:14px;margin:12px 0 6px}#ladder-panel p{margin:6px 0;overflow-wrap:anywhere}#ladder-panel button,#ladder-panel select{font:inherit;color:#f5dfa7;border:1px solid #806b49;border-radius:4px;background:#382c20;padding:6px 10px;margin:3px 4px 3px 0;min-height:34px;max-width:100%}#ladder-panel button:disabled{opacity:.45}#ladder-panel .ladder-muted{color:#b6aa94;font-size:12px}#ladder-panel .ladder-error{color:#ffa49a}#ladder-panel .ladder-state{color:#ffdfa0;font-weight:bold}#ladder-panel .ladder-row{display:flex;align-items:center;flex-wrap:wrap}#ladder-panel .ladder-row select{flex:1;min-width:120px}#ladder-panel .ladder-ratings{display:flex;flex-wrap:wrap;gap:4px 12px;margin:10px 0;color:#d4c096}#ladder-panel .ladder-member{background:#ffffff08;padding:8px 10px;margin:6px 0;border-left:2px solid #9ba777;border-radius:4px;overflow-wrap:anywhere}#ladder-panel .ladder-member>span,#ladder-panel .ladder-member>strong{display:block}#ladder-panel .ladder-teams{display:grid;grid-template-columns:1fr 1fr;gap:12px}#ladder-panel .ladder-teams section{min-width:0}#ladder-panel fieldset{margin:12px 0;border:1px solid #806b49}#ladder-panel fieldset label{display:block;padding:4px 0}#ladder-panel input{accent-color:#ba9b61;margin-right:8px}@media(max-width:380px){#ladder-panel{padding:12px}#ladder-panel .ladder-teams{gap:6px}#ladder-panel .ladder-member{padding:6px}}`;
   doc.head.append(style);
-  toggle=element('button','天梯');toggle.id='ladder-toggle';toggle.type='button';toggle.hidden=true;toggle.setAttribute('aria-controls','ladder-panel');toggle.onclick=()=>setOpen(!state.open);doc.body.append(toggle);
-  panel=element('section');panel.id='ladder-panel';panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','天梯');
+  toggle=element('button','天梯');toggle.id='ladder-toggle';toggle.type='button';toggle.hidden=true;toggle.setAttribute('aria-controls','ladder-panel');toggle.onclick=()=>setOpen(!state.open);(doc.getElementById('player-tools')||doc.body).append(toggle);
+  panel=element('section');panel.id='ladder-panel';panel.setAttribute('data-game-ui','');panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','天梯');
   panel.innerHTML='<header><h2>天梯</h2><button type="button" aria-label="关闭天梯面板">关闭</button></header><div data-body></div>';doc.body.append(panel);
   panel.querySelector('header button').onclick=()=>setOpen(false);
   panel.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();setOpen(false);}});

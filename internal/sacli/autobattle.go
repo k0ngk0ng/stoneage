@@ -215,7 +215,7 @@ func (s *Server) ensureLadderBattle(game Game) {
 		return
 	}
 	eligible := state.AutoBattleEligible()
-	if s.autoRunning && ((s.autoLadderOnly && !eligible) || (eligible && state.Self.Strategy == "manual")) {
+	if s.autoRunning && s.autoLadderOnly && (!eligible || state.Self.Strategy == "manual") {
 		s.stopAutoBattleLocked()
 	}
 	if err != nil || !eligible || !registry.Has(state.Self.Strategy) {

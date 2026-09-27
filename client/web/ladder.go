@@ -170,7 +170,7 @@ func (handler *Handler) ensureLadderAuto(ctx context.Context, session *tcpSessio
 	handle, mode, automationGen := session.automationStatus()
 	runner, isLoop := handle.(battleauto.Runner)
 	eligible := s.AutoBattleEligible()
-	if isLoop && mode == aicontrol.Battle && ((runner.LadderOnly && !eligible) || (s.Self.Strategy == "manual" && eligible)) {
+	if isLoop && mode == aicontrol.Battle && runner.LadderOnly && (!eligible || s.Self.Strategy == "manual") {
 		if _, _, err := session.gate.Switch(generation, aicontrol.Manual, "天梯手动控制"); err != nil {
 			return err
 		}
