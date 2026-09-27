@@ -1,6 +1,6 @@
 # 天梯实现跟踪
 
-状态：本地开发验收完成，GitHub 发布检查中，尚未上线。真实 Web/sactl 的 1v1—5v5、
+状态：v0.1.95 已于 2026-09-27 发布并上线，GitHub 发布检查全部通过。真实 Web/sactl 的 1v1—5v5、
 邀请和再次匹配、同场重连、跨端续战、GMSV 崩溃恢复、复杂资源恢复、操作回执恢复及
 移动端流程已有下述证据。最终网络全组 network-final-social-a 退出码为 0。
 本文件区分本地验收与生产发布；历史检查记录中的局部待办，以后续补充结论为准。
@@ -586,3 +586,17 @@ final-runtime-entrypoint.log、final-skill-package.log。所有记录均在 buil
 GitHub 的 Linux GCC 严格编译发现同一行条件语句造成 misleading-indentation 警告，
 现仅拆分语句行，保留控制流。缓存 GCC 13 工具链下核心 49 项通过，记录为
 `build/ladder/gcc-release-core.log`；v0.1.94 未通过发布，后续使用新的版本标签。
+
+## v0.1.95 生产发布验收
+
+发布源码为 `7db18fce0`，GitHub Actions 运行 `36305990017` 全部通过，发布包与两个
+镜像摘要均核对一致。生产按 `bin/stoneage check`、`pull`、`deploy --no-image-update`、
+`status` 完成更新；六个容器均为 v0.1.95 且健康。网页版本及 CDN 天梯模块与发布源码一致，
+天梯 SQLite `quick_check` 为 ok、九张表已创建、权限为 0600，SAAC 格式标记为 pet-items-v1。
+生产核验未使用真实玩家账号发起对战；真实战斗、重连及崩溃恢复证据来自上述隔离验收。
+
+网页脚本发布前发现服务器本地索引与已发布清单不同。为保留现有资源，使用独立目录保存
+逐项核验 SHA-256 的已发布 JSON 索引，并通过现有 `sync-assets --web-only` 入口发布。
+最终资源版本保持不变，未替换生产图片或本地资源目录。发布记录在 build/ladder 的
+production-check.log、production-pull.log、production-deploy.log、production-status.log
+及 production-web-publish-verified.log。
