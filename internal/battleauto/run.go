@@ -30,6 +30,10 @@ type Runner struct {
 	Tables   *aiknowledge.RecoveryTables
 	Policy   Policy
 	Interval time.Duration
+	// LadderOnly starts with preparation and never acts in ordinary battles
+	// or the world. Strategies adds local extensions to the shared default.
+	LadderOnly bool
+	Strategies Strategies
 	// Seek paces the walk that keeps encounters coming between battles. Zero
 	// uses DefaultSeekInterval.
 	SeekInterval time.Duration
@@ -53,6 +57,9 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context) error {
 	if r.Game == nil {
 		return errors.New("battleauto: no game session")
+	}
+	if r.Strategies.entries == nil {
+		r.Strategies, _ = NewStrategies(r.Tables)
 	}
 	interval := r.Interval
 	if interval <= 0 {
@@ -99,6 +106,9 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 	if err != nil {
 		return err
 	}
+	if r.LadderOnly && snapshot.Battle.LadderID == "" {
+		return nil
+	}
 	if r.live != nil {
 		r.live.observe(snapshot)
 		blocked := ""
@@ -114,7 +124,21 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 			r.statef(state)
 		}
 	}
-	if decision, ok := Decide(snapshot, r.Tables, policy); ok {
+	var decision Decision
+	var ok bool
+	if snapshot.Battle.LadderID != "" {
+		strategies := r.Strategies
+		if strategies.entries == nil {
+			strategies, _ = NewStrategies(r.Tables)
+		}
+		decision, ok, err = strategies.Decide(ctx, snapshot)
+		if err != nil {
+			return err
+		}
+	} else {
+		decision, ok = Decide(snapshot, r.Tables, policy)
+	}
+	if ok {
 		err = r.Game.ExecuteExpected(ctx, snapshot.Revision, decision.Action)
 		switch {
 		case err == nil:
@@ -128,7 +152,7 @@ func (r Runner) tick(ctx context.Context, policy Policy) error {
 			return err
 		}
 	}
-	if !policy.SeekEncounters {
+	if r.LadderOnly || !policy.SeekEncounters {
 		return nil
 	}
 	// A notice waiting to be acknowledged is the one thing a walking loop can

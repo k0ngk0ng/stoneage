@@ -10,6 +10,7 @@ package sacli
 
 import (
 	"fmt"
+	"github.com/k0ngk0ng/stoneage/internal/battleauto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,9 @@ import (
 // Config is the daemon configuration. Credentials live here or in
 // PasswordFile; they are never command-line arguments.
 type Config struct {
-	SocketPath string `toml:"socket_path"`
+	// Local embedding extension only; no TOML subprocess or model loader.
+	LadderStrategies []battleauto.Strategy `toml:"-" json:"-"`
+	SocketPath       string                `toml:"socket_path"`
 	// Transport selects how the game session reaches the server:
 	//
 	//   "tcp"  (default) dials the named-protocol gateway directly

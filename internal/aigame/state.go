@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/ladder"
 	"github.com/k0ngk0ng/stoneage/server/go/namedproto"
 )
 
@@ -18,7 +19,10 @@ import (
 // The server remains authoritative: this structure only records packets that
 // have actually arrived on the named-protocol stream.
 type gameState struct {
-	snapshot Snapshot
+	snapshot      Snapshot
+	ladderReplies []ladder.Envelope
+	ladderEvents  []ladder.Envelope
+	ladderFloor   uint64
 
 	characters       []Character
 	actors           map[int32]ActorSnapshot
@@ -118,6 +122,10 @@ func applyEventLocked(state *gameState, event Event) {
 		}
 	case "CharLogin":
 		if strings.EqualFold(eventText(event, 0), "successful") {
+			state.snapshot.Ladder = nil
+			state.ladderReplies = nil
+			state.ladderEvents = nil
+			state.ladderFloor = 0
 			invalidateTradeForLifecycleLocked(state)
 			clearAddressBookLocked(state)
 			rotateSessionTokenLocked(state)
@@ -135,6 +143,10 @@ func applyEventLocked(state *gameState, event Event) {
 		}
 	case "CharLogout":
 		if strings.EqualFold(eventText(event, 0), "successful") {
+			state.snapshot.Ladder = nil
+			state.ladderReplies = nil
+			state.ladderEvents = nil
+			state.ladderFloor = 0
 			invalidateTradeForLifecycleLocked(state)
 			clearAddressBookLocked(state)
 			rotateSessionTokenLocked(state)
@@ -161,6 +173,10 @@ func applyEventLocked(state *gameState, event Event) {
 			state.snapshot.Position.Floor = eventInt(event, 0, -1)
 		}
 	case "S":
+		if strings.HasPrefix(eventText(event, 0), ladder.Prefix) {
+			state.applyLadder(eventText(event, 0))
+			return
+		}
 		if strings.HasPrefix(eventText(event, 0), "AICHAT|") {
 			state.pendingChatIdentity = parseChatIdentity(eventText(event, 0))
 			return
@@ -1321,6 +1337,10 @@ func (state *gameState) beginBattle(event Event) {
 	}
 	state.snapshot.Phase = PhaseBattle
 	state.snapshot.Battle = BattleSnapshot{Active: true, Type: typeValue, Field: field}
+	if e := state.snapshot.Ladder; e != nil && e.Snapshot.Match != nil &&
+		(e.Snapshot.Phase == "battle" || e.Snapshot.Phase == "countdown") {
+		state.snapshot.Battle.LadderID = e.Snapshot.Match.ID
+	}
 }
 
 func (state *gameState) applyBattlePacket(value string) {
@@ -1372,6 +1392,16 @@ func (state *gameState) applyBattlePacket(value string) {
 			battle.Turn = battleNumber(parts[2])
 		}
 		battle.BAReceived = true
+		// Ladder reconnection resends the native accepted-command mask.
+		// Menu-off alone also means incapacitation, so only BA proves that
+		// the old connection's action is already held by the server. Keep
+		// local submissions when an earlier acknowledgement is in flight.
+		if battle.LadderID != "" && battle.MyNoKnown &&
+			((battle.MyNo >= 0 && battle.MyNo < 5) || (battle.MyNo >= 10 && battle.MyNo < 15)) {
+			battle.PlayerSubmitted = battle.PlayerSubmitted || battle.AnimationFlags&(1<<uint(battle.MyNo)) != 0
+			battle.PetSubmitted = battle.PetSubmitted || battle.AnimationFlags&(1<<uint(battle.MyNo+5)) != 0
+			battle.updateCommandReadiness()
+		}
 		return
 	case "BU":
 		state.endBattle()

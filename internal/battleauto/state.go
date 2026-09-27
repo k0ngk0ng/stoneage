@@ -27,13 +27,15 @@ type State struct {
 
 // live keeps the running totals and the current fight across passes.
 type live struct {
-	inBattle  bool
-	sawDefeat bool
-	sawResult bool
-	battles   int
-	wins      int
-	losses    int
-	reported  State
+	inBattle      bool
+	sawDefeat     bool
+	sawResult     bool
+	battles       int
+	wins          int
+	losses        int
+	reported      State
+	ladderID      string
+	ladderSettled bool
 }
 
 // observe folds one snapshot into the totals. A fight is counted when it
@@ -42,6 +44,34 @@ type live struct {
 // is neither.
 func (l *live) observe(snapshot aigame.Snapshot) {
 	battle := snapshot.Battle
+	if battle.LadderID != "" {
+		l.inBattle = false
+		if battle.Active && l.ladderID != battle.LadderID {
+			l.ladderID, l.ladderSettled = battle.LadderID, false
+			l.battles++
+		}
+		// A ladder wipe can be followed by revival. Only its durable result,
+		// never ordinary RS packets or a temporarily defeated side, settles it.
+		if snapshot.Ladder != nil && !l.ladderSettled {
+			result := snapshot.Ladder.Snapshot.Result
+			if result != nil && result.ID == l.ladderID {
+				l.ladderSettled = true
+				if result.Rated && result.WinnerSide >= 0 {
+					for _, member := range result.Members {
+						if member.ID == snapshot.Ladder.Snapshot.Self.ID {
+							if member.Side == result.WinnerSide {
+								l.wins++
+							} else {
+								l.losses++
+							}
+							break
+						}
+					}
+				}
+			}
+		}
+		return
+	}
 	if battle.Active {
 		if !l.inBattle {
 			l.inBattle = true

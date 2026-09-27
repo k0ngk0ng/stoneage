@@ -211,7 +211,7 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 	phase := state.snapshot.Phase
 	if state.trade.snapshot.Active || state.trade.snapshot.Pending {
 		switch action.Kind {
-		case ActionTrade, ActionStatus, ActionChat, ActionMail:
+		case ActionTrade, ActionStatus, ActionChat, ActionMail, ActionLadder:
 		default:
 			return nil, "", fmt.Errorf("%w: finish or cancel the pending trade before other gameplay actions", ErrInvalidAction)
 		}
@@ -262,6 +262,19 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 	}
 
 	switch action.Kind {
+	case ActionLadder:
+		if !state.snapshot.Connected || (state.snapshot.Phase != PhaseWorld && state.snapshot.Phase != PhaseBattle) {
+			return nil, "", fmt.Errorf("%w: ladder requires an entered character", ErrInvalidAction)
+		}
+		if action.LadderRequest == nil {
+			return nil, "", fmt.Errorf("%w: missing ladder request", ErrInvalidAction)
+		}
+		wire, err := action.LadderRequest.Wire()
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidAction, err)
+		}
+		return []wireValue{{kind: wireString, text: []byte(wire)}}, "S", nil
+
 	case ActionMove:
 		if err := requireWorld(); err != nil {
 			return nil, "", err
@@ -442,6 +455,9 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 		return []wireValue{{kind: wireString, text: []byte(command)}}, "B", nil
 
 	case ActionBattleEnd:
+		if state.snapshot.Battle.LadderID != "" {
+			return nil, "", ErrBattleNotReady
+		}
 		if phase != PhaseWorld && phase != PhaseBattle {
 			return nil, "", characterPhaseError()
 		}

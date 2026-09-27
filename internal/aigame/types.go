@@ -12,6 +12,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/k0ngk0ng/stoneage/internal/ladder"
 )
 
 // Phase is the state of the server-side client state machine.
@@ -43,6 +45,7 @@ const (
 	ActionBattleEnd ActionKind = "battle-end"
 	ActionParty     ActionKind = "party"
 	ActionDuel      ActionKind = "duel"
+	ActionLadder    ActionKind = "ladder"
 	ActionChat      ActionKind = "chat"
 	// ActionMail covers the native address-book mail path.  Its Command is
 	// "list" (AB), "add" (AAB at the current position), or "send"
@@ -436,6 +439,9 @@ type BattleParticipant struct {
 // while CommandReady is true.  BA is retained separately because it is the
 // animation/turn marker, not the menu acknowledgement.
 type BattleSnapshot struct {
+	// LadderID remains attached through BU until the next EN. Ladder results
+	// are acknowledged by ladder ack, never by ordinary EO cleanup.
+	LadderID        string
 	Active          bool
 	Type            int32
 	Field           int32
@@ -498,6 +504,7 @@ type Snapshot struct {
 	AddressBook      []AddressBookEntry
 	Chat             []ChatMessage
 	Battle           BattleSnapshot
+	Ladder           *ladder.Envelope
 	// AddressBookRevision advances only when a complete AB table has been
 	// parsed. ABI incremental packets never advance it. It is scoped to this
 	// connection and reset when the character lifecycle clears the address
@@ -570,7 +577,8 @@ type Event struct {
 // the explicitly supported RawAction and is still checked against the known
 // schema; arbitrary wire injection is not permitted.
 type Action struct {
-	Kind ActionKind
+	Kind          ActionKind
+	LadderRequest *ladder.Request
 
 	X, Y, Direction int32
 	// Event and EventSequence are used only by ActionMapEvent. EventSequence

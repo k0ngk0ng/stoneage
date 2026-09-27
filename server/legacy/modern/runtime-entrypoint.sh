@@ -70,6 +70,17 @@ init_saac()
 {
     root="$game_root/saac"
     mkdir -p "$root"
+    # Persistent format fence: older readers discard pet inventory fields.
+    # Keep this marker with the character directory during restores/moves.
+    format_file="$root/.stoneage-character-format"
+    if [ -e "$format_file" ] || [ -L "$format_file" ]; then
+        if [ "$(cat "$format_file")" != pet-items-v1 ]; then
+            echo 'Unsupported character archive format; refusing to start SAAC.' >&2
+            exit 1
+        fi
+    else
+        (umask 077; set -C; printf '%s\n' pet-items-v1 > "$format_file")
+    fi
     copy_file "$defaults/saac/saacjt.exe" "$root/saacjt.exe" 0755
     if [ -f "$defaults/saac/badpetstring.txt" ]; then
         copy_file "$defaults/saac/badpetstring.txt" "$root/badpetstring.txt"

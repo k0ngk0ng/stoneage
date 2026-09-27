@@ -457,6 +457,24 @@ case "$mode" in
         ;;
 esac
 
+saac_archive_root="${STONEAGE_SAAC_DATA_ROOT:-$(env_value STONEAGE_SAAC_DATA_ROOT || true)}"
+saac_archive_root="${saac_archive_root:-./data/saac}"
+case "$saac_archive_root" in
+    /*) ;;
+    *) saac_archive_root="$project_root/$saac_archive_root" ;;
+esac
+archive_format_file="$saac_archive_root/.stoneage-character-format"
+if [[ -e "$archive_format_file" || -L "$archive_format_file" ]]; then
+    archive_format="$(cat "$archive_format_file")"
+    target_runtime_image="${STONEAGE_LEGACY_IMAGE:-$legacy_image}:${STONEAGE_VERSION:-$version}"
+    image_format="$("$docker_bin" image inspect --format '{{ index .Config.Labels "org.stoneage.character-format" }}' "$target_runtime_image")"
+    if [[ "$archive_format" != pet-items-v1 || "$image_format" != "$archive_format" ]]; then
+        echo 'Deployment refused: target runtime cannot preserve the current character archive format.' >&2
+        echo 'Keep a runtime supporting pet-items-v1; do not remove the persistent format marker to downgrade.' >&2
+        exit 2
+    fi
+fi
+
 if [[ "$sync_assets" == 1 ]]; then
     echo "Publishing the complete client asset tree with the standalone uploader..."
     "$project_root/bin/sync-assets.sh" --env "$env_file"

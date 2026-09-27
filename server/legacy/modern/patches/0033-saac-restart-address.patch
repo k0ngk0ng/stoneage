@@ -1,0 +1,16 @@
+--- a/main.c
++++ b/main.c
+@@ -697,3 +697,13 @@
+     /* socket */
+     mainsockfd = socket( AF_INET , SOCK_STREAM ,  0 );
++    /* STONEAGE_SAAC_RESTART_ADDRESS: accepted sockets may leave TIME_WAIT
++     * after a process crash. Allow the next service to bind the same port. */
++    if( mainsockfd >= 0 ) {
++        int reuse = 1;
++        if( setsockopt(mainsockfd, SOL_SOCKET, SO_REUSEADDR,
++                       &reuse, sizeof(reuse)) < 0 ) {
++            close(mainsockfd);
++            mainsockfd = -1;
++        }
++    }
+     if( mainsockfd < 0 ) return TCPSTRUCT_ESOCK;

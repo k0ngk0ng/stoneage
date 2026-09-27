@@ -1015,12 +1015,21 @@ func responseText(event Event, index int) string {
 }
 
 func (session *Session) applyEvent(event Event) {
+	session.applyEventWithLadderView(event, false)
+}
+
+func (session *Session) applyEventWithLadderView(event Event, capture bool) *LadderPacketView {
 	session.stateMu.Lock()
+	previousLadder := session.state.snapshot.Ladder
 	session.journal.record(event)
 	applyEventLocked(&session.state, event)
 	session.state.snapshot.Revision++
 	session.state.snapshot.At = event.At
 	session.state.snapshot.LastFunction = event.Function
+	var view *LadderPacketView
+	if capture {
+		view = session.state.ladderPacketView(event, previousLadder)
+	}
 	session.stateMu.Unlock()
 	if event.Function == "EV" && len(event.Fields) >= 2 {
 		sequence := event.Fields[0].IntValue(0)
@@ -1051,6 +1060,7 @@ func (session *Session) applyEvent(event Event) {
 			session.mapEventAckMu.Unlock()
 		}
 	}
+	return view
 }
 
 // WaitForMapEvent waits for the server's EV(sequence,result) response. It is
@@ -1111,6 +1121,10 @@ func cloneEvent(event Event) Event {
 }
 
 func cloneSnapshot(snapshot Snapshot) Snapshot {
+	if snapshot.Ladder != nil {
+		e := snapshot.Ladder.Clone()
+		snapshot.Ladder = &e
+	}
 	snapshot.Trade = cloneTradeSnapshot(snapshot.Trade)
 	snapshot.Characters = append([]Character(nil), snapshot.Characters...)
 	snapshot.Skills = append([]SkillSnapshot(nil), snapshot.Skills...)

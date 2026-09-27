@@ -282,6 +282,8 @@ func (s *tcpSession) setAutomation(handle AutomationHandle, mode aicontrol.Mode,
 	s.automationHandle = handle
 	s.automationMode = mode
 	s.automationGen = generation
+	s.automationNote = ""
+	s.automationStateKnown = false
 	return true
 }
 
@@ -302,6 +304,7 @@ func (s *tcpSession) clearAutomation(generation uint64) AutomationHandle {
 	s.automationHandle = nil
 	s.automationMode = ""
 	s.automationGen = 0
+	s.automationStateKnown = false
 	return handle
 }
 

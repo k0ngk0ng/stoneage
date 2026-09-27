@@ -71,4 +71,23 @@ run_gmsv_init "$nested_custom"
 assert_file_contains "$nested_custom/gmsv/log.cf" 'operator-root-log-config'
 assert_file_contains "$nested_custom/gmsv/log/log.cf" 'operator-nested-log-config'
 
+mkdir -p "$defaults/saac"
+printf '%s\n' 'saac-binary' >"$defaults/saac/saacjt.exe"
+printf '%s\n' 'saac-config' >"$defaults/saac/acserv.cf"
+saac_root="$test_root/archive-format"
+run_saac_init()
+{
+    STONEAGE_GAME_ROOT="$saac_root" STONEAGE_RUNTIME_ROLE=saac \
+        STONEAGE_DEFAULTS_ROOT="$defaults" STONEAGE_SAAC_CONFIG= \
+        "$entrypoint" true
+}
+run_saac_init
+assert_file_contains "$saac_root/saac/.stoneage-character-format" pet-items-v1
+run_saac_init
+printf '%s\n' future-format >"$saac_root/saac/.stoneage-character-format"
+if run_saac_init >"$test_root/format-error" 2>&1; then
+    fail 'unknown archive format was accepted'
+fi
+assert_file_contains "$saac_root/saac/.stoneage-character-format" future-format
+
 echo "runtime-entrypoint tests passed"

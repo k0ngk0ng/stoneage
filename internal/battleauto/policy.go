@@ -52,12 +52,15 @@ func Decide(snapshot aigame.Snapshot, tables *aiknowledge.RecoveryTables, policy
 		return Decision{}, false
 	}
 	if battle.Ended || battle.Result != "" {
+		if battle.LadderID != "" {
+			return Decision{}, false
+		}
 		return Decision{Action: aigame.EndBattle(), Reason: "battle result is in"}, true
 	}
 	// A wiped side is the client's cue to end the battle; the server does not
 	// send a result for it, so waiting for one leaves the character stuck in a
 	// fight that is already over.
-	if battle.MySideDefeated() {
+	if battle.LadderID == "" && battle.MySideDefeated() {
 		return Decision{Action: aigame.EndBattle(), Reason: "the party is down, ending the battle"}, true
 	}
 	if !battle.Active {

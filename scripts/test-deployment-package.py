@@ -130,6 +130,7 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='deploy-test-') as t
 printf '%s\\n' "$*" >> "$MOCK_LOG"
 for arg in "$@"; do [[ "$arg" != build ]] || exit 99; done
 case "$*" in
+  "image inspect"*) printf '%s\\n' "${MOCK_ARCHIVE_FORMAT-pet-items-v1}" ;;
   *"ps -q "*) echo test-container ;;
   inspect*) echo 'running healthy' ;;
 esac
@@ -161,6 +162,25 @@ esac
     assert 'up -d --no-build --remove-orphans' in cached_calls
     assert 'assets-sync' not in calls
     assert '-dry-run' in (stage / 'uploads').read_text()
+
+    # Refuse incompatible rollback images before compose can replace services.
+    archive_root = host / 'data/saac'
+    archive_root.mkdir(parents=True, exist_ok=True)
+    marker = archive_root / '.stoneage-character-format'
+    marker.write_text('pet-items-v1\n')
+    for image_format in ['', '<no value>', 'legacy', 'pet-items-v2']:
+        (stage / 'calls').write_text('')
+        refused = subprocess.run([str(entry), 'deploy', '--no-image-update'],
+                                 env=dict(env, MOCK_ARCHIVE_FORMAT=image_format), capture_output=True, text=True)
+        assert refused.returncode != 0 and 'archive format' in refused.stderr
+        assert 'up -d' not in (stage / 'calls').read_text()
+    (stage / 'calls').write_text('')
+    subprocess.run([str(entry), 'deploy', '--no-image-update'], env=env, check=True, capture_output=True)
+    format_calls = (stage / 'calls').read_text()
+    assert format_calls.index('image inspect') < format_calls.index('up -d')
+    marker.write_text('')
+    assert subprocess.run([str(entry), 'deploy', '--no-image-update'], env=env, capture_output=True).returncode != 0
+    marker.write_text('pet-items-v1\n')
 
     # The optional overlay retains the existing human-facing automation data.
     ai_data = host / 'data/gmsv/data'

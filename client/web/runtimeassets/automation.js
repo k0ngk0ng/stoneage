@@ -25,7 +25,7 @@
      and the screens the player has to be able to dismiss. The battle result
      screen is named explicitly because it is not an .advanced-screen, so the
      -close exception below never reached its 返回世界 button. */
-  const LOCK_ALLOWED = "#battle-journal,#battle-panel-toggle,#ai-control-panel,#ai-control-toggle,#world-tools,#battle-result-screen,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']";
+  const LOCK_ALLOWED = "#battle-journal,#battle-panel-toggle,#ladder-panel,#ladder-toggle,#ai-control-panel,#ai-control-toggle,#world-tools,#battle-result-screen,.advanced-screen [id$='-close'],.advanced-screen [id$='-return']";
   const MAX_CONFIG_BYTES = 64 * 1024;
 
   const state = {
@@ -512,6 +512,13 @@
     }
     if (transport() !== session || session.id !== sessionID || session.closed) throw new Error("游戏会话已变化，请刷新自动化状态");
     if (!response.ok) {
+      // Takeover may have succeeded locally while its native ladder strategy
+      // receipt was lost. Publish the new control token and retain the exact
+      // request before showing the error.
+      if (path === "takeover" && data?.control) {
+        if (syncControl) dispatchControl(data);
+        if (data.code === "outcome_unknown" && data.request) root.StoneAgeLadder?.retainUnconfirmed(data.request);
+      }
       const message = data?.error || data?.message || errorText.trim() || `HTTP ${response.status}`;
       const error = new Error(message);
       error.status = response.status;

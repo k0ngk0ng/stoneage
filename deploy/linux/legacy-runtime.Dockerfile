@@ -18,15 +18,17 @@ COPY config/gmsv/setup.cf.example /battle-smoke.cf
 COPY bin/battle-export.py /battle-export.py
 # Test the actual compiled engine before an image can be published.
 RUN sh /modern/tests/run-battle-dataset-smoke.sh
+RUN sh /modern/tests/run-ladder-native-smoke.sh
 
 FROM alpine:3.22 AS legacy-runtime
+LABEL org.stoneage.character-format="pet-items-v1"
 ARG RELEASE_VERSION=dev
 ENV STONEAGE_RELEASE_VERSION=$RELEASE_VERSION
 
 # Use local time consistently for server announcements and runtime logs.
 ENV TZ=Asia/Shanghai
 
-RUN apk add --no-cache tzdata netcat-openbsd
+RUN apk add --no-cache tzdata netcat-openbsd sqlite-libs
 
 COPY --from=build /src/gmsv/gmsvjt.exe /opt/stoneage/defaults/gmsv/gmsvjt.exe
 COPY --from=build /src/gmsv/data /opt/stoneage/defaults/gmsv/data

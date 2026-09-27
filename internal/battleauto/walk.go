@@ -89,6 +89,8 @@ func (s *seeker) blocked(snapshot aigame.Snapshot) string {
 		return "phase"
 	case snapshot.Battle.Active:
 		return "battle"
+	case snapshot.Ladder != nil && snapshot.Ladder.Snapshot.ReservesCharacter():
+		return "ladder"
 	case unansweredWindow(snapshot):
 		return "window"
 	default:

@@ -58,12 +58,16 @@ type Server struct {
 
 	// The auto battle loop runs alongside the command socket, so its state is
 	// kept separate from mu: commands must keep answering while it runs.
-	autoMu        sync.Mutex
-	autoRunning   bool
-	autoCancel    context.CancelFunc
-	autoLastLine  string
-	autoState     battleauto.State
-	autoStateKept bool
+	autoMu               sync.Mutex
+	autoRunning          bool
+	autoCancel           context.CancelFunc
+	autoLastLine         string
+	autoState            battleauto.State
+	autoStateKept        bool
+	autoWalk             bool
+	autoLadderOnly       bool
+	autoGeneration       uint64
+	autoLadderSuppressed bool
 
 	recoveryOnce sync.Once
 	recoveryData *aiknowledge.RecoveryTables
@@ -201,6 +205,9 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) shutdown() {
+	s.mu.Lock()
+	s.stopping = true
+	s.mu.Unlock()
 	s.stopAutoBattle()
 	s.mu.Lock()
 	game := s.game
@@ -248,6 +255,9 @@ func (s *Server) session(ctx context.Context) (Game, error) {
 func (s *Server) pump(game Game, generation uint64) {
 	for event := range game.Events() {
 		s.events.append(event)
+		if event.Function == "S" && len(event.Fields) == 1 && strings.HasPrefix(string(event.Fields[0].Text), "LADDER|") {
+			s.ensureLadderBattle(game)
+		}
 	}
 	s.mu.Lock()
 	if s.generation == generation && s.game == game {

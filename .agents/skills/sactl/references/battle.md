@@ -9,6 +9,11 @@ sactl --json battle-log
 
 `observe.data.Battle`：`Active`、`Turn`、`CommandReady`、`PlayerSubmitted`、`PetSubmitted`、`MyNo`、`MyNoKnown`、`MyMP`、`Participants` 等控制/观察字段。不要只凭 `Phase` 判断可以发指令；也不要把日志中的回合号当成命令就绪信号。
 
+开发版天梯战斗还提供 `Battle.LadderID`。天梯使用 `ladder result` 查看结算、`ladder ack`
+确认结算，不使用普通 `battle-end`。重连先读取 `ladder status` 和 `observe`，已提交动作
+以恢复后的 `PlayerSubmitted`、`PetSubmitted` 为准，不能重放断线前的动作。完整流程及
+当前验收范围见 [天梯玩家流程](../../../../docs/ladder-player-flow.md)。
+
 `battle-log.data.battles` 是从新到旧的战斗历史；这里的字段使用小写 JSON 名称，与 `observe` 不同：
 
 - `id`、`started`（Unix 毫秒）、`turn`、`myNo`（未获知为 null）、`ended`、`result`、`trimmed`。

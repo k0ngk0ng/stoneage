@@ -16,7 +16,7 @@ function button() {
   };
 }
 
-function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
+function fixture(control = { mode: 'manual', generation: 7 }, seek = false, takeoverFailure = null) {
   const calls = [];
   const transport = {
     id: 'session-a', base: '', closed: false,
@@ -44,6 +44,7 @@ function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
     window: root,
     fetch: async (url, options) => {
       calls.push({ url, options });
+      if (takeoverFailure && url.endsWith('/takeover')) return {ok:false,status:502,text:async()=>JSON.stringify(takeoverFailure)};
       if (url.endsWith('/control')) return { ok: true, json: async () => ({ control, automation_available: control.available !== false }) };
       return { ok: true, json: async () => ({ control: { mode: 'battle', generation: 8, reason: '自动战斗中' }, automation_active: true, automation_mode: 'battle', automation_available: true }) };
     },
@@ -58,6 +59,16 @@ function fixture(control = { mode: 'manual', generation: 7 }, seek = false) {
   };
   return { api: root.StoneAgeAutomation, app, calls, nodes, locked, root };
 }
+
+test('uncertain ladder preference cannot hide successful local takeover',async()=>{
+  const request={request_id:'takeover',revision:12,operation:'strategy',argument:'manual'};
+  const f=fixture({mode:'battle',generation:7},false,{control:{mode:'manual',generation:8},code:'outcome_unknown',message:'手动策略尚未确认',request});
+  let retained;f.root.StoneAgeLadder={retainUnconfirmed:r=>{retained=r;}};
+  await assert.rejects(f.api.takeover(),/手动策略尚未确认/);
+  assert.equal(f.api.currentControl().mode,'manual');assert.equal(f.api.currentControl().generation,8);
+  assert.equal(f.app.transport.control.control.generation,8);
+  assert.deepEqual(JSON.parse(JSON.stringify(retained)),request);
+});
 
 /* Auto battle takes the command bar and nothing else. Locking the whole page
    the way the executor modes do cost the player the result screen as well:

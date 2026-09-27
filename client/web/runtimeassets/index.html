@@ -3942,7 +3942,7 @@
     main.classList.remove("map-transition-active","map-transition-press-in","map-transition-pressed","map-transition-press-out");
     if(phase)main.classList.add("map-transition-active",`map-transition-${phase}`);
   }
-  function deferMapTransitionPacket(packet,sourceTransport,sourceToken){
+  function deferMapTransitionPacket(packet,sourceTransport,sourceToken,ladderView=null){
     /* The native producer keeps drawing its captured lpBattleSurface while
        S:C/MC/M are already rebuilding the destination.  The browser has no
        DirectDraw surface snapshot of all canvas, bitmap and DOM layers, so
@@ -3950,13 +3950,13 @@
        short press-in phase.  They are replayed, in wire order, only after
        the field has collapsed completely onto the black centre fold. */
     if(!mapTransitionState.active||mapTransitionState.pressed||app.phase!=="world")return false;
-    mapTransitionState.pendingPackets.push({packet,sourceTransport,sourceToken});
+    mapTransitionState.pendingPackets.push({packet,sourceTransport,sourceToken,ladderView});
     return true;
   }
   function flushMapTransitionPackets(){
     if(!mapTransitionState.pendingPackets.length)return;
     const pending=mapTransitionState.pendingPackets.splice(0);
-    for(const item of pending)handlePacket(item.packet,item.sourceTransport,item.sourceToken);
+    for(const item of pending)handlePacket(item.packet,item.sourceTransport,item.sourceToken,item.ladderView);
   }
   function cancelMapFloorTransition(){
     mapTransitionToken++;
@@ -9779,6 +9779,7 @@
     return match>=0?match:0;
   }
   function sendBattlePetDefault(state=app.battleState,options={}){
+    if(state?.ladderID&&(state.ladderAwaitingCommands||state.ladderPetSubmitted||state.ladderSettling))return;
     const force=Boolean(options?.force),clearChoice=Boolean(options?.clearChoice);
     /* A server MENU_NON bit also paints the pet owner as locked, but it is
        still required to submit exactly one W|FF|FF after the player command.
@@ -9923,9 +9924,81 @@
     if(text==="PET")return openBattlePopup("pet");
     return battleCommand(text);
   }
+  function applyBattleLadderCommands(state,view){
+    const commands=view?.commands;
+    if(!commands||!state?.ladderID||view.match_id!==state.ladderID||app.battleState!==state||state.ladderSettling)return;
+    if(commands.my_no!==state.myNo||commands.turn!==state.serverTurnNo)return;
+    const wasWaiting=state.ladderAwaitingCommands;
+    state.lastLadderCommands=view;
+    state.ladderAwaitingCommands=false;
+    // A delayed BA cannot retract a local write still crossing the bridge.
+    state.ladderPlayerSubmitted=Boolean(state.ladderPlayerSubmitted||commands.player_submitted);
+    state.ladderPetSubmitted=Boolean(state.ladderPetSubmitted||commands.pet_submitted);
+    if(state.ladderPlayerSubmitted){battleClearCommandPending(state,"player");clearBattlePlayerChoiceTimer(state);}
+    if(state.ladderPetSubmitted){battleClearCommandPending(state,"pet");clearBattlePetChoiceTimer(state);}
+    const entering=battleEntryPending(state)||!state.myNoKnown;
+    state.commandLocked=entering||Boolean(state.bpFlags&BATTLE_BP_PLAYER_MENU_NON)||state.ladderPlayerSubmitted||Boolean(state.commandPending?.player);
+    state.petCommandLocked=entering||Boolean(state.bpFlags&BATTLE_BP_PET_MENU_NON)||state.ladderPetSubmitted||Boolean(state.commandPending?.pet);
+    if(state.ladderPlayerSubmitted&&!state.ladderPetSubmitted)state.petAfterPlayerReady=true;
+    if(!state.movieActive&&!entering&&!state.awaitingBattleRoster){
+      if(wasWaiting){battleOpenCommandCountdown(state);armDefaultBattleAttack(state);submitBattleUnavailableDefaults(state,state.turnKey);}
+      continueBattlePetAfterPlayer(state);
+    }
+  }
+  function receiveBattleLadderEnvelope(envelope){
+    if(!envelope?.snapshot)return;
+    if(deferBattleResourcePacket("LADDER",envelope))return;
+    const state=app.battleState,snapshot=envelope.snapshot;
+    window.StoneAgeLadder?.receive(envelope,app.transport);
+    if(!state||!app.battle||!state.ladderID)return;
+    if(envelope.revision<(state.ladderRevision||0))return;
+    state.ladderRevision=envelope.revision;
+    const result=snapshot.phase==="result"?snapshot.result:null;
+    const settling=snapshot.phase==="settling"&&snapshot.match?.id===state.ladderID;
+    if(!settling&&result?.id!==state.ladderID)return;
+    state.ladderSettling=true;
+    state.commandLocked=true;state.petCommandLocked=true;
+    clearBattleChoiceTimer(state);battleClearCommandPending(state);battleCancelPendingUi(state);
+    for(const key of ["turnApplyTimer","entryTimer","initializationTimer","battleExitTimer","deathExitTimer","escapeExitTimer"]){window.clearTimeout(state[key]);state[key]=0;}
+    state.pendingBattleControls=[];state.pendingTurnState=null;state.pendingBattleStatuses=[];
+    if(result){state.ladderResult=result;queueBattleLadderResult(state);}
+    renderBattle();
+  }
+  function queueBattleLadderResult(state){
+    if(!state?.ladderResult||app.battleState!==state||!app.battle)return;
+    window.clearTimeout(state.ladderResultTimer);
+    // Like RS/RD, a ladder result waits for the complete final actor/death
+    // timeline. Recheck the hold when the callback runs: a late visual may
+    // extend it, and a cold-resource queue must drain first.
+    const delay=Math.max(80,battleTerminalHoldUntil(state)-Date.now()+80);
+    state.ladderResultTimer=window.setTimeout(()=>finishBattleLadderResult(state),delay);
+  }
+  function finishBattleLadderResult(state){
+    if(!state?.ladderResult||app.battleState!==state||!app.battle)return;
+    if(state.resourcePacketQueue||battleTerminalHoldUntil(state)>Date.now()){queueBattleLadderResult(state);return;}
+    window.clearTimeout(state.ladderResultTimer);state.ladderResultTimer=0;
+    battleResetCommandLocks(state);battleCancelPendingUi(state);battleCancelPendingDamage(state);clearPendingBattlePackets();
+    window.clearTimeout(state.transientTimer);state.transientTimer=0;
+    state.motions=[];state.projectiles=[];state.effects=[];state.ladderResultReady=true;
+    closeBattlePopup();$("battle-target-panel")?.classList.add("hidden");
+    app.ignoreBattlePacketsUntil=Date.now()+3000;app.battle=false;app.phase="world";
+    restoreMapMusic();show(worldScreen);setWorldState("天梯比赛结束，请查看结算。","good");
+    // A direct battle login can interrupt initial MC/DAT validation, leaving
+    // only a map header. Resume with a real M window once combat has ended.
+    // Resident map tiles are reused; no extra window is requested for them.
+    if(app.floor>=0&&!app.map?.tiles?.length){
+      clearInitialMapChecksum();
+      requestMapWindow(...legacyMapWindowBounds(app.floor,app.position[0],app.position[1]));
+    }
+    // Field drawing was suspended during combat; start it even when no new
+    // map/movement packet is needed so the loading curtain can be released.
+    renderWorld(true);
+    window.StoneAgeLadder?.presentResult(state.ladderID);
+  }
   function battleCommandAllowed(command,state=app.battleState){
     const text=String(command||"");
     if(!app.battle||!state)return false;
+    if(state.ladderAwaitingCommands||state.ladderSettling)return false;
     if(battleHelpCommand(text)&&state.noHelp)return false;
     const flags=Number(state.bpFlags)||0;
     /* BP is the server's turn/menu gate.  Keep the same gate on the command
@@ -9935,6 +10008,7 @@
        until the next authoritative BP snapshot. */
     if(state.movieActive||battleChoiceExpired(state)||battleLocalDeath(state))return false;
     const kind=battleCommandKind(text);
+    if(state.ladderID&&((kind==="player"&&state.ladderPlayerSubmitted)||(kind==="pet"&&state.ladderPetSubmitted)))return false;
     /* S is the native pet-out/pet-in selection command.  BattleButtonPet()
        lives in the player's command menu, so it follows the player BP bit;
        BATTLE_BP_PET_MENU_NON only gates the later pet-skill stage. */
@@ -9945,6 +10019,8 @@
   }
   function battleActionAllowed(action,state=app.battleState){
     if(!app.battle||!state)return false;
+    if(state.ladderAwaitingCommands||state.ladderSettling)return false;
+    if(state.ladderID&&(action?.kind==="pet"?state.ladderPetSubmitted:state.ladderPlayerSubmitted))return false;
     const flags=Number(state.bpFlags)||0;
     if(state.movieActive||battleChoiceExpired(state)||battleLocalDeath(state))return false;
     if(action?.kind==="pet")return !(flags&BATTLE_BP_PET_MENU_NON)&&!state.petCommandLocked;
@@ -10009,6 +10085,7 @@
   }
   function finishFastBattle(state,result=null){
     if(!state||app.battleState!==state)return;
+    if(state.ladderID)return;
     if(result&&!state.fastResultLogged){
       state.fastResultLogged=true;
       const rows=result.characters.map((entry,index)=>{
@@ -10028,6 +10105,7 @@
   }
   function syncFastBattlePresentation(){
     const state=app.battleState;if(!state)return;
+    if(state.ladderSettling)return;
     const enabled=fastBattleEnabled();
     const live=window.StoneAgeAutomation?.currentControl?.()?.automationState;
     if(state.fastBattle&&app.battle&&live?.in_battle===true)state.fastSawActive=true;
@@ -10036,13 +10114,13 @@
     if(app.battle&&state.fastBattle&&!enabled){
       const roster=state.lastRosterPacket,bp=state.lastTurnPacket,ba=state.lastAnimationPacket;
       stopFastBattlePresentation(state);
-      enterBattle(state.fieldNo,state.type);
+      enterBattle(state.fieldNo,state.type,state.ladderID);
       if(roster)receiveBattleStatus(roster);
       if(bp&&!state.fastAwaitingTurn)receiveBattlePacket(bp);
-      if(ba)receiveBattlePacket(ba);
+      if(ba)receiveBattlePacket(ba,state.lastLadderCommands);
     }
   }
-  function receiveFastBattlePacket(command){
+  function receiveFastBattlePacket(command,ladderView=null){
     const state=app.battleState;
     if(!state?.fastBattle)return false;
     const parts=String(command||"").split("|"),marker=parts[0];
@@ -10052,7 +10130,7 @@
       const values=parts.slice(1).filter(Boolean);
       if(values.length===3&&values.every(v=>/^[0-9a-f]+$/i.test(v))&&parseInt(values[0],16)<=20){state.lastTurnPacket=command;state.fastAwaitingTurn=false;if(fastBattleSideDefeated(state))finishFastBattle(state);}
       else state.fastAwaitingTurn=true;
-    }else if(app.battle&&marker==="BA")state.lastAnimationPacket=command;
+    }else if(app.battle&&marker==="BA"){state.lastAnimationPacket=command;state.lastLadderCommands=ladderView;}
     else if(marker==="BVS")return true;
     else if(app.battle)state.fastAwaitingTurn=true;
     return true;
@@ -10158,6 +10236,7 @@
   }
   function finishBattleWorldExit(state){
     if(!state||app.battleState!==state||!app.battle)return;
+    if(state.ladderID)return;
     window.clearTimeout(state.battleExitTimer);state.battleExitTimer=0;state.exitPending=false;
     if(state.result){queueBattleResult(state);return;}
     sendBattleEndOnce(state,state.escapeLocalSuccess||state.escape?"escape-or-bu":"battle-exit");
@@ -10165,12 +10244,14 @@
   }
   function queueBattleWorldExit(state){
     if(!state)return;
+    if(state.ladderID)return;
     window.clearTimeout(state.battleExitTimer);
     const now=Date.now(),lastVisual=battleTerminalHoldUntil(state);
     state.exitPending=true;
     state.battleExitTimer=window.setTimeout(()=>finishBattleWorldExit(state),Math.max(80,Math.max(0,lastVisual-now)+80));
   }
   function openBattleResult(kind,data){
+    if(app.battleState?.ladderID)return;
     if(app.battleState?.fastBattle){finishFastBattle(app.battleState,parseBattleResult(kind,data));return;}
     if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket(kind,data))return;
     /* RS/RD belongs to the currently active BattleProc back-buffer.  A
@@ -10326,6 +10407,9 @@
   }
   function battlePlayerTimeoutDefaults(state=app.battleState){
     if(!state||app.battleState!==state||!app.battle||state.movieActive||state.commandLocked||battleEntryPending(state))return;
+    // The ladder server owns the deadline and submits defense/pet idle.
+    // A browser N would override that policy, especially after reconnection.
+    if(state.ladderID){clearBattleChoiceTimer(state);battleCancelPendingUi(state);state.commandLocked=true;state.petCommandLocked=true;renderBattle();return;}
     state.choiceExpiredAt=Date.now();
     clearBattlePlayerChoiceTimer(state);
     /* The native timeout path plays SE 203 once, then emits N (and W for a
@@ -10546,8 +10630,8 @@
     /* Before BP arrives the native client still has no local battle slot;
        retain the initial lock.  Once BP is known, only its menu-off bits keep
        the corresponding owner disabled. */
-    state.commandLocked=!state.myNoKnown||Boolean(Number(state.bpFlags)&BATTLE_BP_PLAYER_MENU_NON);
-    state.petCommandLocked=!state.myNoKnown||Boolean(Number(state.bpFlags)&BATTLE_BP_PET_MENU_NON);
+    state.commandLocked=!state.myNoKnown||Boolean(Number(state.bpFlags)&BATTLE_BP_PLAYER_MENU_NON)||Boolean(state.ladderID&&(state.ladderAwaitingCommands||state.ladderPlayerSubmitted||state.commandPending?.player||state.ladderSettling));
+    state.petCommandLocked=!state.myNoKnown||Boolean(Number(state.bpFlags)&BATTLE_BP_PET_MENU_NON)||Boolean(state.ladderID&&(state.ladderAwaitingCommands||state.ladderPetSubmitted||state.commandPending?.pet||state.ladderSettling));
     renderBattleWorld();
     renderBattle();
     /* Finish the native CHAR_IN/surprise boundary before exposing command
@@ -10577,7 +10661,7 @@
      window's close button remains a local UI action.  Mark the attempt before
      writing so a delayed BU/XYD/RS packet cannot submit a second EO. */
   function sendBattleEndOnce(state,reason=""){
-    if(!state||state.eoSent)return false;
+    if(!state||state.eoSent||state.ladderID)return false;
     state.eoSent=true;state.eoReason=String(reason||"");state.eoSentAt=Date.now();
     const transport=app.transport;
     if(!transport)return false;
@@ -10689,6 +10773,7 @@
     return players.length>0&&players.every(battleParticipantDefeated);
   }
   function finishLocalBattleDeath(state){
+    if(state?.ladderID)return;
     /* battleLocalSideDefeated(state) is retained as the full-roster
        diagnostic; the server-accurate predicate below ignores pet rows. */
     if(!state||app.battleState!==state||!app.battle||!battleServerSideDefeated(state))return;
@@ -10712,6 +10797,7 @@
     if(app.floor>=0&&!app.map){const bounds=legacyMapWindowBounds(app.floor,app.position[0],app.position[1]);requestMapWindow(...bounds);}
   }
   function scheduleBattleDeathExit(state,fromPosition=false){
+    if(state?.ladderID)return;
     /* RS/RD is authoritative for the terminal surface.  A queued final BC
        may be applied after the result packet and still describe the defeated
        roster; re-arming a death watchdog here leaves a stale timer behind
@@ -10767,6 +10853,7 @@
   }
   function battleSetCommandLock(state,kind,locked){
     if(!state)return;
+    if(state.ladderID&&!locked&&(state.ladderAwaitingCommands||state.ladderSettling||(kind==="pet"?state.ladderPetSubmitted:state.ladderPlayerSubmitted)))locked=true;
     if(kind==="player"&&locked){
       /* BattleButtonAttack/Guard/Escape set battleMenuReturn immediately;
          keep the menu's visible return trajectory independent from the
@@ -10889,7 +10976,7 @@
     return true;
   }
   function applyBattleTurnState(state,snapshot){
-    if(!state||app.battleState!==state||!app.battle||state.result)return;
+    if(!state||app.battleState!==state||!app.battle||state.result||state.ladderSettling)return;
     const values=snapshot||{};
     /* NETPROC.CPP merely overwrites BP's three numeric fields.  A new native
        command menu is created only after the preceding B movie reaches
@@ -10917,6 +11004,7 @@
       return;
     }
     const hasServerTurn=state.serverTurnNo!==null&&state.serverTurnNo!==undefined&&String(state.serverTurnNo).trim()!==""&&Number.isFinite(Number(state.serverTurnNo));
+    if(state.ladderID){state.ladderAwaitingCommands=true;state.ladderPlayerSubmitted=false;state.ladderPetSubmitted=false;}
     const localTurnKey=state.bpReceived?(Number.isFinite(Number(state.turnKey))?Number(state.turnKey)+1:1):0;
     const turnKey=hasServerTurn?Math.max(localTurnKey,Number(state.serverTurnNo)+1):localTurnKey;
     state.bpMovieGeneration=movieGeneration;
@@ -11004,8 +11092,8 @@
       if(!item||item.dead||Number(item.hp)<=0)continue;
       battlePushMotion(state.motions,motion);
     }
-    state.commandLocked=Boolean(state.bpFlags&BATTLE_BP_PLAYER_MENU_NON)||battleEntryPending(state);
-    state.petCommandLocked=Boolean(state.bpFlags&BATTLE_BP_PET_MENU_NON)||battleEntryPending(state);
+    state.commandLocked=Boolean(state.bpFlags&BATTLE_BP_PLAYER_MENU_NON)||battleEntryPending(state)||Boolean(state.ladderAwaitingCommands);
+    state.petCommandLocked=Boolean(state.bpFlags&BATTLE_BP_PET_MENU_NON)||battleEntryPending(state)||Boolean(state.ladderAwaitingCommands);
     state.petAfterPlayerReady=false;
     state.petAfterPlayerPending=false;
     battleCancelPendingUi(state);
@@ -11037,8 +11125,8 @@
       submitBattleUnavailableDefaults(state,turnKey);
     }
   }
-  function battleApplyAnimationState(state,flags,serverTurn){
-    if(!state||app.battleState!==state||state.result)return;
+  function battleApplyAnimationState(state,flags,serverTurn,ladderView=null){
+    if(!state||app.battleState!==state||state.result||state.ladderSettling)return;
     const value=Number(flags)||0,turn=Number(serverTurn)||0;
     state.animationFlags=value;
     state.serverTurnNo=turn;
@@ -11058,6 +11146,7 @@
     if(clientTurnUnknown||!Number.isFinite(Number(state.clientTurnNo)))state.clientTurnNo=turn;
     state.animationDoneMask=Number(state.clientTurnNo)===turn?value:0xffffffff;
     state.turn=turn;
+    if(ladderView)applyBattleLadderCommands(state,ladderView);
     if(!state.movieActive){state.movieDone=false;state.flashUntil=0;}
     renderBattleWorld();
     /* BA is not a menu-enable acknowledgement, but it is still the
@@ -11072,7 +11161,7 @@
     return state.pendingBattleControls;
   }
   function queueBattleControl(state,packet){
-    if(!state||app.battleState!==state||!packet||state.result)return;
+    if(!state||app.battleState!==state||!packet||state.result||state.ladderSettling)return;
     const queue=battleControlQueue(state);
     queue.push({...packet,receivedAt:Date.now()});
     /* A broken gateway must not grow the back-buffer forever.  Keep enough
@@ -11089,7 +11178,7 @@
     }else if(packet.kind==="BVS"){
       applyBattleVitals(state,packet.payload);
     }else if(packet.kind==="BA"){
-      battleApplyAnimationState(state,packet.flags,packet.turn);
+      battleApplyAnimationState(state,packet.flags,packet.turn,packet.ladderView);
     }
   }
   function flushQueuedBattleControls(state){
@@ -11117,7 +11206,7 @@
     return true;
   }
   function armQueuedBattleTurn(state){
-    if(!state||app.battleState!==state||!app.battle||state.result)return;
+    if(!state||app.battleState!==state||!app.battle||state.result||state.ladderSettling)return;
     window.clearTimeout(Number(state.turnApplyTimer)||0);
     state.turnApplyTimer=0;
     const hold=battleMovieHoldUntil(state),delay=Math.max(16,hold-Date.now()+20);
@@ -11139,7 +11228,7 @@
     },delay);
   }
   function queueBattleTurnState(state,snapshot){
-    if(!state||app.battleState!==state||state.result)return;
+    if(!state||app.battleState!==state||state.result||state.ladderSettling)return;
     state.pendingTurnState={...snapshot};
     /* A BP can race the last presentation tick.  battleFinishMovieIfReady()
        clears movieActive as soon as the visual timeline reaches its terminal
@@ -11215,6 +11304,7 @@
     renderBattle();
   }
   function battleOpenCommandCountdown(state){
+    if(state?.ladderAwaitingCommands||state?.ladderSettling)return;
     /* BC may arrive before BP on a split HTTP poll.  CHAR_IN can release its
        entrance pose with that roster, but BattleCntDown is owned by the BP
        command-menu packet; never start a deadline until BP is installed. */
@@ -11275,6 +11365,7 @@
      repeated BP/BC packets cannot submit them twice. */
   function submitBattleUnavailableDefaults(state,turnKey=state?.turn){
     if(!state||app.battleState!==state||!app.battle||state.movieActive||battleEntryPending(state))return;
+    if(state.ladderID&&(state.ladderAwaitingCommands||state.ladderSettling||state.ladderPlayerSubmitted))return;
     const flags=Number(state.bpFlags)||0;
     /* Enemy surprise already has its own two-command path above.  Do not race
        it with a second N/W pair while the opening surprise banner is active. */
@@ -11347,6 +11438,7 @@
   }
   function continueBattlePetAfterPlayer(state=app.battleState){
     if(!state||app.battleState!==state||!app.battle||state.movieActive||!state.petAfterPlayerReady)return;
+    if(state.ladderID&&(state.ladderAwaitingCommands||state.ladderSettling||state.ladderPetSubmitted))return;
     /* BP can precede BC.  Do not manufacture a W packet until the roster is
        present; receiveBattleStatus() calls this helper again after installing
        the authoritative pet row. */
@@ -14304,12 +14396,12 @@
     if(!Array.isArray(app.pendingBattlePackets))app.pendingBattlePackets=[];
     app.pendingBattlePackets.length=0;
   }
-  function queuePendingBattlePacket(kind,payload){
+  function queuePendingBattlePacket(kind,payload,ladderView=null){
     const now=Date.now();
     if(Number(app.ignoreBattlePacketsUntil)>now)return;
     if(!Array.isArray(app.pendingBattlePackets))app.pendingBattlePackets=[];
     app.pendingBattlePackets=app.pendingBattlePackets.filter(item=>now-Number(item.receivedAt||0)<=pendingBattlePacketTTL);
-    app.pendingBattlePackets.push({kind:String(kind||"B"),payload:String(payload||""),receivedAt:now});
+    app.pendingBattlePackets.push({kind:String(kind||"B"),payload:String(payload||""),receivedAt:now,ladderView});
     if(app.pendingBattlePackets.length>48)app.pendingBattlePackets.splice(0,app.pendingBattlePackets.length-48);
     window.clearTimeout(app.pendingBattlePacketTimer);
     app.pendingBattlePacketTimer=window.setTimeout(()=>{
@@ -14326,7 +14418,7 @@
     for(const item of pending){
       if(now-Number(item.receivedAt||0)>pendingBattlePacketTTL)continue;
       if(item.kind==="BC")receiveBattleStatus(item.payload);
-      else receiveBattlePacket(item.payload);
+      else receiveBattlePacket(item.payload,item.ladderView);
     }
   }
   function battleInitializationReady(state=app.battleState){
@@ -14610,10 +14702,10 @@
       if(typeof image.decode==="function")image.decode().then(loaded).catch(()=>{});
     });
   }
-  function deferBattleResourcePacket(kind,data){
+  function deferBattleResourcePacket(kind,data,ladderView=null){
     const state=app.battleState;
     if(!state||!app.battle||app.phase!=="battle"||state.result||state.resourceDraining)return false;
-    if(state.resourcePacketQueue){state.resourcePacketQueue.push({kind,data});return true;}
+    if(state.resourcePacketQueue){state.resourcePacketQueue.push({kind,data,ladderView});return true;}
     if(!battleResourceMoviePacket(kind,data))return false;
     const key=[...new Set((state.participants||[]).map(item=>String(actorGraphicValue(item))))].sort().join(",");
     if(!key||state.resourcePreparedKey===key)return false;
@@ -14623,7 +14715,7 @@
     // A B movie is authoritative: stop accepting choices while its resources
     // load, but defer the movie clock and subsequent BC/BP/BA/RS/RD/BU in order.
     // Otherwise RS can erase the pending movie before its first frame exists.
-    const queue=[{kind,data}],previousHold=Number(state.movieHoldUntil)||0;
+    const queue=[{kind,data,ladderView}],previousHold=Number(state.movieHoldUntil)||0;
     state.resourcePacketQueue=queue;state.movieActive=true;state.movieDone=false;
     state.commandLocked=true;state.petCommandLocked=true;clearBattleChoiceTimer(state);
     state.movieHoldUntil=Math.max(previousHold,Date.now()+10000);
@@ -14643,8 +14735,9 @@
       try{
         for(const packet of queue){
           if(app.battleState!==state||!app.battle||app.phase!=="battle")break;
-          if(packet.kind==="B")receiveBattlePacket(packet.data);
+          if(packet.kind==="B")receiveBattlePacket(packet.data,packet.ladderView);
           else if(packet.kind==="BC")receiveBattleStatus(packet.data);
+          else if(packet.kind==="LADDER")receiveBattleLadderEnvelope(packet.data);
           else openBattleResult(packet.kind,packet.data);
         }
       }finally{state.resourceDraining=false;}
@@ -14652,9 +14745,9 @@
     });
     return true;
   }
-  function receiveBattlePacket(text){
-    if(typeof receiveFastBattlePacket==="function"&&receiveFastBattlePacket(text))return;
-    if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket("B",text))return;
+  function receiveBattlePacket(text,ladderView=null){
+    if(typeof receiveFastBattlePacket==="function"&&receiveFastBattlePacket(text,ladderView))return;
+    if(typeof deferBattleResourcePacket==="function"&&deferBattleResourcePacket("B",text,ladderView))return;
     const command=String(text||"");
     /* A successful local escape can be followed by queued B/BC/BP packets
        from the just-finished turn.  The native client has already switched
@@ -14669,7 +14762,7 @@
        battle-result/escape traffic remains quarantined by the latch above. */
     if(!app.battle||app.phase!=="battle"){
       const marker=String(command.split("|",1)[0]||"").toUpperCase();
-      if(app.phase==="world"&&marker!=="BU"&&(marker==="BC"||marker==="BP"||marker==="BA"||marker.startsWith("B")))queuePendingBattlePacket("B",command);
+      if(app.phase==="world"&&marker!=="BU"&&(marker==="BC"||marker==="BP"||marker==="BA"||marker.startsWith("B")))queuePendingBattlePacket("B",command,ladderView);
       return;
     }
     app.battleCommands.push(command);if(app.battleCommands.length>64)app.battleCommands.shift();
@@ -14733,10 +14826,10 @@
              it behind the movie and behind BP/BC so a fresh turn can never
              clear the old attack/death pose early. */
     if(state.movieActive){
-      queueBattleControl(state,{kind:"BA",flags,turn});
+      queueBattleControl(state,{kind:"BA",flags,turn,ladderView});
       break;
           }
-          battleApplyAnimationState(state,flags,turn);
+          battleApplyAnimationState(state,flags,turn,ladderView);
         }
         /* BA is BattleActSettingSend(), not the movie itself.  The native
            NETPROC handler only stores BattleAnimFlag/BattleSvTurnNo here;
@@ -16117,7 +16210,7 @@
           // A packet handler can fail in UI/rendering code even though HTTP
           // and TCP are healthy. Report it without deleting the live session
           // or discarding the remaining packets in this response.
-          try{if(event.packet)handlePacket(Protocol.fromBase64(event.packet),transport,token);}
+          try{if(event.packet)handlePacket(Protocol.fromBase64(event.packet),transport,token,event.ladder);}
           catch(error){recordConnectionDiagnostic("client",error);}
           if(app.transport!==transport||app.connectionToken!==token)return;
           transport.acknowledgeEvent?.(event);
@@ -16129,12 +16222,12 @@
       if(app.pollingTransport===transport){app.polling=false;app.pollingTransport=null;}
     }
   }
-  function handlePacket(packet,sourceTransport=null,sourceToken=null) {
+  function handlePacket(packet,sourceTransport=null,sourceToken=null,ladderView=null) {
     if(sourceTransport&&(sourceTransport!==app.transport||sourceToken!==app.connectionToken))return;
     let message;
     try { message=Protocol.decodeMessage(packet); } catch(error) { addWire(`← 无法解码：${error.message}`); addEvent(`解码失败：${error.message}`); return; }
     if(message.function==="S"&&String(message.textValues[0]||"").startsWith("AICHAT|"))return;
-    if(deferMapTransitionPacket(packet,sourceTransport,sourceToken))return;
+    if(deferMapTransitionPacket(packet,sourceTransport,sourceToken,ladderView))return;
     const values=message.textValues; addWire(`← ${message.function}`); addEvent(`← ${message.function} ${values.map(value=>textOr(value)).join(" | ")}`);
 
     switch(message.function) {
@@ -16146,6 +16239,7 @@
       case "CharLogout": {
         addChat("系统",`${values[0]||""} ${values[1]||""}`);
         if(values[0]==="successful"){
+          window.StoneAgeLadder?.resetCharacter();
           app.logoutPending="";app.systemPage="menu";app.phase="character-list";
           setMusicMode("title",2);show(characterScreen);send("CharList",[]).catch(reportError);
         }else{
@@ -16230,7 +16324,7 @@
       case "SI": if(app.inventory.length){const from=Number(values[0]),to=Number(values[1]);const a=app.inventory.find(item=>item.index===from),b=app.inventory.find(item=>item.index===to);if(a)a.index=to;if(b)b.index=from;renderInventory();} break;
       case "I": receiveInventory(values[0],true); break;
       case "PME": { const pet={id:Number(values[0])||0,graphic:Number(values[1])||0,x:Number(values[2])||0,y:Number(values[3])||0,direction:Number(values[4])||0,flag:Number(values[5])||0,slot:Number(values[6])||0,raw:values[7]||""};const old=app.pets.find(item=>item.id===pet.id);if(old)Object.assign(old,pet);else app.pets.push(pet);if(pet.raw){const parts=pet.raw.split("|");pet.name=parts[8]||parts[9]||pet.name;pet.level=stateNumber(parts[6]);}renderPets();renderWorld(); } break;
-      case "EN": if(Number(values[0])>0){enterBattle(Number(values[1])||0,Number(values[0])||1);flushPendingBattlePackets();}else{clearPendingBattlePackets();app.battle=false;app.phase="world";restoreMapMusic();show(worldScreen);setWorldState("服务器未触发遇敌");} break;
+      case "EN": if(Number(values[0])>0){enterBattle(Number(values[1])||0,Number(values[0])||1,ladderView?.match_id||"");flushPendingBattlePackets();}else{clearPendingBattlePackets();app.battle=false;app.phase="world";restoreMapMusic();show(worldScreen);setWorldState("服务器未触发遇敌");} break;
       case "BC": receiveBattleStatus(values[0]||""); break;
       case "EV": {
         const seq=Number(values[0])||0,result=Number(values[1])||0;setStatus("lastEventResult",`${seq}:${result}`);
@@ -16257,14 +16351,14 @@
         break;
       }
       case "RS": case "RD": openBattleResult(message.function,values[0]||""); $("battle-log").textContent+=`\n${message.function}：${values[0]||""}`; break;
-      case "B": receiveBattlePacket(values[0]); if(app.battleState?.fastBattle)break; $("battle-log").textContent+=`\n服务器：${values[0]||""}`; $("battle-log").scrollTop=$("battle-log").scrollHeight; break;
+      case "B": receiveBattlePacket(values[0],ladderView); if(app.battleState?.fastBattle)break; $("battle-log").textContent+=`\n服务器：${values[0]||""}`; $("battle-log").scrollTop=$("battle-log").scrollHeight; break;
       case "FS": { const flags=Number(values[0])||0;setStatus("etcFlag",flags);setStatus("partyAllowed",Boolean(flags&1));setStatus("duelAllowed",Boolean(flags&4));renderFieldSettings();break; }
       case "HL": { const help=Number(values[0])?1:0;setStatus("helpFlag",help);addChat("战斗",help?"队伍求助已开启":"队伍求助已关闭");break; }
       case "PR": { const request=Number(values[0])||0,result=Number(values[1])||0,ok=result===1;const message=ok?(request===1?"组队成功":"已离开队伍"):(request===1?"组队请求失败":"离队失败");setStatus("partyResult",`${request}:${result}`);addChat("队伍",message);if(ok&&request===0){app.party.fill(null);clearPartyFollow();}renderPartyFixed();break; }
       case "KS": receivePetBattleStatus(values[0],values[1]);break;
       case "PS": { const ok=Number(values[0])===1,petindex=Number(values[1])||0,skillindex=Number(values[2])||0,toindex=Number(values[3]);setStatus("petSkill",`${ok?1:0}:${petindex}:${skillindex}:${toindex}`);addChat("宠物技能",ok?`宠物 ${petindex+1} 使用技能 ${skillindex}`:"宠物技能使用失败");renderPets();break; }
       case "SKUP": setStatus("skillPoints",values[0]); break;
-      case "S": receiveSystemState(values[0]||"");setStatus("serverCategory",values[0]||"");break;
+      case "S": if(String(values[0]||"").startsWith("LADDER|")){if(ladderView?.envelope)receiveBattleLadderEnvelope(ladderView.envelope);break;}receiveSystemState(values[0]||"");setStatus("serverCategory",values[0]||"");break;
       case "PlayerNumGet": app.serverInfo.players=values[1]??values[0];addChat("服务器",`在线人数：${values[1]??values[0]}`);renderSystem();break;
       case "ProcGet": app.serverInfo.version=values[0]||"";addChat("服务器",`版本：${values[0]||"未知"}`);renderSystem();break;
       case "Echo": setStatus("lastEcho",values[0]||"");break;
@@ -19908,7 +20002,7 @@
       effectLayer.append(node);
     }
   }
-  function enterBattle(field,type=1) {
+  function enterBattle(field,type=1,ladderID="") {
     /* A new EN replaces the previous native battle back-buffer.  BattleCntDown
        is client-owned, so clear every old owner timer before swapping the
        state object; otherwise a late timeout from the previous encounter
@@ -19934,6 +20028,8 @@
        whose remembered player command was Attack. */
     app.battleState={field:fieldNo,fieldNo,fieldAtt:0,type:type||1,noHelp:battleNoHelpType(type),myNo:0,myNoKnown:false,bpFlags:0,bpReceived:false,myMp:0,turn:0,turnKey:0,choiceTurnKey:null,clientTurnNo:null,serverTurnNo:null,animationDoneMask:0,autoTurn:-1,implicitPlayerTurn:null,implicitPetTurn:null,petAfterPlayerReady:false,petAfterPlayerPending:false,participants:[],statuses:[],animations:[],effects:[],damageLedger:[],motions:[],projectiles:[],actorNodes:new Map(),motionQueueAt:0,movieHoldUntil:0,pendingTurnState:null,pendingBattleStatuses:[],pendingBattleControls:[],turnApplyTimer:0,entryPending:true,entryReadyAt:0,entryTimer:0,rasterStartedAt:performance.now(),deathStartedAt:new Map(),escapePending:new Map(),animationFlags:0,pendingAction:null,result:null,resultTimer:0,resultTransitionTimer:0,battleExitTimer:0,exitPending:false,flashUntil:0,movieActive:false,movieDone:false,commandLocked:true,petCommandLocked:true,commandTimers:{player:0,pet:0},commandPending:{player:null,pet:null},choiceTimer:0,choiceDeadline:0,choiceOwner:"",playerChoiceTimer:0,playerChoiceDeadline:0,petChoiceTimer:0,petChoiceDeadline:0,escapeLocalSuccess:false,eoSent:false,eoReason:"",eoSentAt:0,deathExitPending:false,deathExitTimer:0,deathExitAt:0,deathExitFromPosition:false,transientTimer:0,escapeExitTimer:0,initializationTimer:0,initializing:true,rosterBeforeBp:false,lastPlayerActionKind:"attack",lastPlayerActionCommand:"",lastPetActionKind:"",lastPetActionCommand:"",defaultAttackTurnKey:null};
     app.battleState.lastPetActionSlot=-1;
+    app.battleState.ladderID=ladderID;
+    app.battleState.ladderAwaitingCommands=Boolean(ladderID);
     app.battleState.playerMenuOpenedTurnKey=null;
     app.battleState.petMenuStagePending=false;
     app.battleState.pendingPetMenuCommand="";
@@ -21174,5 +21270,6 @@
 </script>
 <script src="/battle-panel.js"></script>
 <script src="/automation.js"></script>
+<script src="/ladder.js"></script>
 </body>
 </html>

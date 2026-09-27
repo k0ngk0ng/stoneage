@@ -56,7 +56,20 @@ func (s *Server) commandAutoBattle(ctx context.Context, request Request) Respons
 			Text: "auto battle on: the character heals whoever is hurt most, otherwise attacks the first living enemy, and never runs away.\nit answers battles it is in and walks nowhere; add `walk` to look for fights.",
 		}
 	case "off":
-		if !s.stopAutoBattle() {
+		s.autoMu.Lock()
+		s.autoLadderSuppressed = true
+		s.autoMu.Unlock()
+		stopped := s.stopAutoBattle()
+		s.mu.Lock()
+		game := s.game
+		s.mu.Unlock()
+		if game != nil {
+			observed, err := game.Observe(ctx)
+			if err == nil && observed.Ladder != nil && observed.Ladder.Snapshot.ReservesCharacter() && observed.Ladder.Snapshot.Self.Strategy != "manual" {
+				return s.commandLadder(ctx, Request{Args: []string{"strategy", "manual"}})
+			}
+		}
+		if !stopped {
 			return Response{OK: true, Text: "auto battle is already off"}
 		}
 		return Response{OK: true, Text: "auto battle off"}
@@ -85,44 +98,80 @@ func autoBattleWalk(args []string) (bool, error) {
 }
 
 func (s *Server) startAutoBattle(walk bool) (bool, error) {
+	return s.startBattleLoop(walk, false)
+}
+
+func (s *Server) startBattleLoop(walk, ladderOnly bool) (bool, error) {
 	s.autoMu.Lock()
 	defer s.autoMu.Unlock()
-	if s.autoRunning {
+	return s.startBattleLoopLocked(walk, ladderOnly)
+}
+
+func (s *Server) startBattleLoopLocked(walk, ladderOnly bool) (bool, error) {
+	if ladderOnly && s.autoLadderSuppressed {
 		return false, nil
 	}
+	if s.isStopping() {
+		return false, fmt.Errorf("daemon is stopping")
+	}
+	if s.autoRunning {
+		if ladderOnly || !s.autoLadderOnly {
+			return false, nil
+		}
+	}
 	tables, err := s.recoveryTables()
+	if err != nil && !ladderOnly {
+		return false, err
+	}
+	strategies, err := battleauto.NewStrategies(tables, s.config.LadderStrategies...)
 	if err != nil {
 		return false, err
+	}
+	if s.autoRunning {
+		s.autoCancel()
 	}
 	// The loop outlives the request, so it must not inherit the request
 	// context: handleConn cancels that when the response is written.
 	ctx, cancel := context.WithCancel(context.Background())
 	s.autoCancel = cancel
 	s.autoRunning = true
+	s.autoStateKept = false
+	s.autoLastLine = ""
+	s.autoWalk, s.autoLadderOnly = walk, ladderOnly
+	s.autoGeneration++
+	generation := s.autoGeneration
 	go func() {
 		policy := battleauto.DefaultPolicy()
 		policy.SeekEncounters = walk
 		runner := battleauto.Runner{
-			Game:   sessionGame{server: s},
-			Tables: tables,
-			Policy: policy,
+			Game:       sessionGame{server: s},
+			Tables:     tables,
+			Policy:     policy,
+			LadderOnly: ladderOnly,
+			Strategies: strategies,
 			Log: func(format string, args ...any) {
 				s.autoMu.Lock()
-				s.autoLastLine = fmt.Sprintf(format, args...)
+				if s.autoGeneration == generation {
+					s.autoLastLine = fmt.Sprintf(format, args...)
+				}
 				s.autoMu.Unlock()
 			},
 			State: func(state battleauto.State) {
 				s.autoMu.Lock()
-				s.autoState = state
-				s.autoStateKept = true
+				if s.autoGeneration == generation {
+					s.autoState = state
+					s.autoStateKept = true
+				}
 				s.autoMu.Unlock()
 			},
 		}
 		_ = runner.Run(ctx)
 		s.autoMu.Lock()
-		s.autoRunning = false
-		s.autoCancel = nil
-		s.autoStateKept = false
+		if s.autoGeneration == generation {
+			s.autoRunning = false
+			s.autoCancel = nil
+			s.autoStateKept = false
+		}
 		s.autoMu.Unlock()
 	}()
 	return true, nil
@@ -131,15 +180,48 @@ func (s *Server) startAutoBattle(walk bool) (bool, error) {
 // stopAutoBattle cancels the loop and reports whether one was running.
 func (s *Server) stopAutoBattle() bool {
 	s.autoMu.Lock()
-	cancel := s.autoCancel
+	defer s.autoMu.Unlock()
+	return s.stopAutoBattleLocked()
+}
+
+func (s *Server) stopAutoBattleLocked() bool {
 	running := s.autoRunning
+	if s.autoCancel != nil {
+		s.autoCancel()
+	}
 	s.autoRunning = false
 	s.autoCancel = nil
-	s.autoMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
+	s.autoStateKept = false
+	s.autoGeneration++
 	return running
+}
+
+// A received ladder snapshot restores the default policy after login or
+// reconnect. Only this daemon runs it; its HTTP bridge never starts another
+// policy merely because it observed a raw ladder packet.
+func (s *Server) ensureLadderBattle(game Game) {
+	snapshot, err := game.Observe(context.Background())
+	if err != nil || snapshot.Ladder == nil {
+		return
+	}
+	state := snapshot.Ladder.Snapshot
+	registry, err := battleauto.NewStrategies(nil, s.config.LadderStrategies...)
+	s.autoMu.Lock()
+	defer s.autoMu.Unlock()
+	s.mu.Lock()
+	current := s.game == game && !s.stopping
+	s.mu.Unlock()
+	if !current {
+		return
+	}
+	eligible := state.AutoBattleEligible()
+	if s.autoRunning && ((s.autoLadderOnly && !eligible) || (eligible && state.Self.Strategy == "manual")) {
+		s.stopAutoBattleLocked()
+	}
+	if err != nil || !eligible || !registry.Has(state.Self.Strategy) {
+		return
+	}
+	_, _ = s.startBattleLoopLocked(false, true)
 }
 
 func (s *Server) autoBattleStatus() string {
@@ -149,6 +231,9 @@ func (s *Server) autoBattleStatus() string {
 		return "auto battle: off"
 	}
 	status := "auto battle: on"
+	if s.autoLadderOnly {
+		status += " (ladder only)"
+	}
 	if s.autoStateKept {
 		status += "\n" + describeAutoState(s.autoState)
 	}

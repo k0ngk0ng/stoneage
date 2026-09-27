@@ -142,11 +142,13 @@ func run(args []string) error {
 			}
 			options.timeout = parsed
 			index++
-		case strings.HasPrefix(arg, "--"):
+		case strings.HasPrefix(arg, "--") && command == "":
 			return fmt.Errorf("unknown flag %q", arg)
 		case command == "":
 			command = arg
 		default:
+			// Subcommand flags (including ladder cursors and retry IDs)
+			// belong to the daemon's command parser.
 			commandArgs = append(commandArgs, arg)
 		}
 	}

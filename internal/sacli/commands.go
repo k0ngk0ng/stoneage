@@ -61,6 +61,9 @@ const CommandHelp = `commands:
   mail list|add|send|remove-contact ...           address book and mail
   pet status|standby|battle|rename|drop ...       pet operations
   party invite|leave / duel           social invitations
+  ladder status|contacts|create|mode|invite|accept|decline|loadout|ready|unready|queue|cancel|leave|kick|leader|result|ack|wait|strategy|strategies
+                                     ranked teams, matchmaking, results and cursor-based events
+  ladder invite <slot> <character_id> invite the exact card selected from ladder contacts
   trade request|offer-item|offer-gold|offer-pet|lock|confirm|cancel
   logout                              leave the world and close the session
   alloc <0-3>                         spend one stat point
@@ -129,6 +132,8 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return s.commandParty(ctx, request)
 	case "duel":
 		return s.commandDuel(ctx, request)
+	case "ladder":
+		return s.commandLadder(ctx, request)
 	case "trade":
 		return s.commandTrade(ctx, request)
 	case "logout":

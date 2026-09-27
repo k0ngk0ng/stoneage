@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-apk add --no-cache build-base file python3
+apk add --no-cache build-base file python3 sqlite-dev
 
 prepare_makefile() {
   target="$1"
@@ -19,6 +19,16 @@ cp /modern/saac_admin_bridge.c /src/saac/saac_admin_bridge.c
 cp /modern/saac_admin_bridge.h /src/saac/include/saac_admin_bridge.h
 if ! grep -q 'saac_admin_bridge.h' /src/saac/main.c; then
   patch -d /src/saac -p1 < /modern/patches/0009-saac-admin-character-bridge.patch
+fi
+
+# Ladder preparation relies on a save receipt proving a complete, durable
+# character archive, including inventory and pets. Never truncate the old
+# archive in place or acknowledge an unchecked stdio write.
+cp /modern/stoneage_character_store.c /src/saac/stoneage_character_store.c
+cp /modern/stoneage_character_store.h /src/saac/include/stoneage_character_store.h
+python3 /modern/integrate-character-store.py /src/saac
+if ! grep -q 'STONEAGE_SAAC_RESTART_ADDRESS' /src/saac/main.c; then
+  patch -d /src/saac -p1 < /modern/patches/0033-saac-restart-address.patch
 fi
 
 for child_makefile in \
@@ -287,6 +297,14 @@ if ! grep -q 'stoneage_battle_record.h' /src/gmsv/battle/battle.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0032-battle-records.patch
   sed -i '/^$(CLIRPCSRC) $(SERVRPCSRC)/s/$/ stoneage_battle_log.c stoneage_battle_record.c stoneage_battle_dataset.c/' /src/gmsv/makefile
 fi
+
+# Ladder reservations, native battles and reconnections share the GMSV loop.
+# The checked rewriter preserves all unrelated bytes of the archived source.
+for module in stoneage_ladder stoneage_ladder_core; do
+  cp "/modern/$module.c" "/src/gmsv/$module.c"
+  cp "/modern/$module.h" "/src/gmsv/include/$module.h"
+done
+python3 /modern/integrate-ladder.py /src/gmsv
 
 # Debug output in the historic login, delete, shutdown, and configuration
 # paths exposes player passwords, the GMSV-to-SAAC shared secret, and the GM

@@ -14,15 +14,26 @@ import (
 // published on Events; callers that need the event stream can use a normal
 // Session reader instead.
 func (session *Session) ApplyServerPacket(packet []byte) error {
+	_, err := session.applyServerPacket(packet, false)
+	return err
+}
+
+// ApplyServerPacketWithLadderView captures the ladder presentation at this
+// exact packet boundary. Bridges must queue the returned view with its packet,
+// rather than sampling a newer observation when an HTTP poll is delivered.
+func (session *Session) ApplyServerPacketWithLadderView(packet []byte) (*LadderPacketView, error) {
+	return session.applyServerPacket(packet, true)
+}
+
+func (session *Session) applyServerPacket(packet []byte, ladderView bool) (*LadderPacketView, error) {
 	if err := session.ensureOpen(); err != nil {
-		return err
+		return nil, err
 	}
 	event, err := decodeEvent(packet)
 	if err != nil {
-		return fmt.Errorf("apply server packet: %w", err)
+		return nil, fmt.Errorf("apply server packet: %w", err)
 	}
-	session.applyEvent(event)
-	return nil
+	return session.applyEventWithLadderView(event, ladderView), nil
 }
 
 // ApplyClientPacket records the identity fields from one already framed

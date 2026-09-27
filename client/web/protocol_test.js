@@ -1950,13 +1950,13 @@ for (const expected of [
   /autoMapDataRequests\.delete\(id\);[\s\S]{0,700}if\(app\.autoMapLoading===request\)app\.autoMapLoading=null;/,
   /* EN replaces the battle state; the old BattleCntDown timeout must be
      cancelled before the new encounter owns the shared choice deadline. */
-  /function enterBattle\(field,type=1\)[\s\S]{0,520}clearBattleChoiceTimer\(app\.battleState\);[\s\S]{0,1400}app\.battleState=\{/,
+  /function enterBattle\(field,type=1,ladderID=""\)[\s\S]{0,520}clearBattleChoiceTimer\(app\.battleState\);[\s\S]{0,1400}app\.battleState=\{/,
   /* An encounter may interrupt a two-step W batch.  Retire the field walk
      watchdog/route before BattleProc owns the back-buffer, otherwise a late
      timeout can overwrite the post-escape field status with a stale move
      error. */
   /function interruptWorldMovementForBattle\(\)[\s\S]{0,1200}app\.pendingMove=false;[\s\S]{0,700}app\.movePredictionActive=false/,
-  /function enterBattle\(field,type=1\)[\s\S]{0,700}interruptWorldMovementForBattle\(\);/,
+  /function enterBattle\(field,type=1,ladderID=""\)[\s\S]{0,700}interruptWorldMovementForBattle\(\);/,
   /* A W POST may resolve after EN has handed the back-buffer to BattleProc;
      its completion must not restore the stale field “行走中…” status. */
   /function interruptWorldMovementForBattle\(\)[\s\S]{0,120}app\.moveWireGeneration=Number\(app\.moveWireGeneration\|\|0\)\+1;/,
@@ -2152,7 +2152,7 @@ for (const expected of [
   /image\.dataset\.logicalBitmap=String\(BATTLE_COUNTDOWN_LOGICAL_BASE\+digit\)/,
   /* BattleCntDownDisp() plays SE 203 exactly when the shared deadline
      expires, before the implicit N/W wait commands are sent. */
-  /function battlePlayerTimeoutDefaults\(state=app\.battleState\)[\s\S]{0,520}playSoundEffect\(203,320,240\)[\s\S]{0,900}leaveBattleMenuMotion\(state,"player"\)[\s\S]{0,900}send\("B",\["N"\]\)/,
+  /function battlePlayerTimeoutDefaults\(state=app\.battleState\)[\s\S]{0,1000}playSoundEffect\(203,320,240\)[\s\S]{0,900}leaveBattleMenuMotion\(state,"player"\)[\s\S]{0,900}send\("B",\["N"\]\)/,
   /function battlePetChoiceTimeout\(state\)[\s\S]{0,760}playSoundEffect\(203,320,240\)[\s\S]{0,1200}sendBattlePetDefault\(state,\{force:true\}\)/,
   /* The player->pet hand-off can cross the shared deadline after the active
      pet has died/disappeared.  Native BattleCntDownDisp() sends no W in that
@@ -2194,7 +2194,7 @@ for (const expected of [
   /* A PET_MENU_NON bit requires an immediate forced W after the player's
      command; it is not a local already-submitted lock. */
   /function maybeOpenBattlePetSkillMenu\(state,command=""\)[\s\S]{0,1900}queueBattlePetMenuStage\(state,command\)/,
-  /function sendBattlePetDefault[\s\S]{0,500}state\.commandPending\?\.pet/,
+  /function sendBattlePetDefault[\s\S]{0,700}state\.commandPending\?\.pet/,
   /* A dead master follows 2.5's terminal path (BATTLE_CountAlive excludes
      pets); only an escape keeps the explicit pet wait command. */
   /function continueBattlePetAfterPlayer[\s\S]{0,1100}if\(battleLocalDeath\(state\)\)[\s\S]{0,420}BATTLE_Finish|function continueBattlePetAfterPlayer[\s\S]{0,1000}state\.escapeLocalSuccess\|\|state\.escape[\s\S]{0,260}sendBattlePetDefault\(state,\{force:true,clearChoice:true\}\)/,
@@ -2315,7 +2315,7 @@ for (const expected of [
   /const activePet=battleActivePet\(state\);[\s\S]{0,520}if\(!activePet\)\{/,
   /* BattleProc waits for CHAR_IN/action_inf==3 after BC.  A BP that arrives
      before the entrance movie must not unlock the web command hitboxes. */
-  /function battleEntryPending\(state=app\.battleState\)[\s\S]{0,2200}function armBattleEntry\(state,readyAt\)/,
+  /function battleEntryPending\(state=app\.battleState\)[\s\S]{0,2600}function armBattleEntry\(state,readyAt\)/,
   /state\.commandLocked=Boolean\(state\.bpFlags&BATTLE_BP_PLAYER_MENU_NON\)\|\|battleEntryPending\(state\)/,
   /if\(freshEntryReadyAt\)\{[\s\S]{0,260}armBattleEntry\(state,freshEntryReadyAt\)/,
   /* If the BC entrance timer elapsed while BP was still in flight, the
@@ -2424,7 +2424,7 @@ for (const expected of [
   /function applyScreenVisibility\(screen\)/,
   /function show\(screen\)[\s\S]{0,700}const battleSwap=Boolean\(/,
   /applyScreenVisibility\(previous\);[\s\S]{0,220}startSceneTransition\(previous,screen,\(\)=>applyScreenVisibility\(screen\)\)/,
-  /function enterBattle\(field,type=1\)[\s\S]{0,760}clearBattleChoiceTimer\(app\.battleState\);[\s\S]{0,520}cancelMapFloorTransition\(\);/,
+  /function enterBattle\(field,type=1,ladderID=""\)[\s\S]{0,760}clearBattleChoiceTimer\(app\.battleState\);[\s\S]{0,520}cancelMapFloorTransition\(\);/,
   /* ProduceCenterPress() clears one black back-buffer and vertically
      compresses the complete field surface into the y=240 fold.  The black
      surface stays below that field so the centre strip remains visible while
@@ -2442,8 +2442,8 @@ for (const expected of [
   /@keyframes map-transition-field-press-out\s*\{[\s\S]{0,300}scaleY\(0\)[\s\S]{0,220}scaleY\(1\)/,
   /function presentWorldBackBuffer\(buffer\)[\s\S]{0,420}if\(app\.mapBackBufferHold\)return;/,
   /function startMapFloorTransition\(targetFloor=null,eventSeq=0\)[\s\S]{0,3000}mapTransitionState\.targetFloor=floor/,
-  /function deferMapTransitionPacket\(packet,sourceTransport,sourceToken\)[\s\S]{0,900}mapTransitionState\.pendingPackets\.push/,
-  /function handlePacket\(packet,sourceTransport=null,sourceToken=null\)[\s\S]{0,500}if\(deferMapTransitionPacket\(packet,sourceTransport,sourceToken\)\)return;/,
+  /function deferMapTransitionPacket\(packet,sourceTransport,sourceToken,ladderView=null\)[\s\S]{0,900}mapTransitionState\.pendingPackets\.push/,
+  /function handlePacket\(packet,sourceTransport=null,sourceToken=null,ladderView=null\)[\s\S]{0,500}if\(deferMapTransitionPacket\(packet,sourceTransport,sourceToken,ladderView\)\)return;/,
   /mapTransitionState\.pressed=true;[\s\S]{0,500}setMapTransitionVisualPhase\("pressed"\);[\s\S]{0,300}flushMapTransitionPackets\(\);[\s\S]{0,220}app\.mapBackBufferHold=false;[\s\S]{0,220}presentWorldBackBuffer\(app\.worldBackBuffer\)/,
   /function requestMapFloorReveal\(floor\)[\s\S]{0,900}revealMapFloorTransition\(mapTransitionToken\)/,
   /function triggerMapEvent\(point,eventOverride,direction=-1\)[\s\S]{0,1800}startMapFloorTransition\(null,seq\);[\s\S]{0,900}send\("EV"/,
@@ -5263,8 +5263,8 @@ if (openResultStart < 0 || openResultEnd <= openResultStart ||
     !/state\.pendingBattleStatuses\)\)state\.pendingBattleStatuses\.length=0/.test(openResultSource) ||
     !/resetBattleMenuMotion\(state,\{keepGeneration:true\}\)/.test(openResultSource) ||
     !/closeBattlePopup\(\{skipDefault:true,clearChoiceTimer:true\}\)/.test(openResultSource) ||
-    !/function applyBattleTurnState\(state,snapshot\)\{\s*if\(!state\|\|app\.battleState!==state\|\|!app\.battle\|\|state\.result\)return;/.test(script) ||
-    !/function queueBattleControl\(state,packet\)\{\s*if\(!state\|\|app\.battleState!==state\|\|!packet\|\|state\.result\)return;/.test(script) ||
+    !/function applyBattleTurnState\(state,snapshot\)\{\s*if\(!state\|\|app\.battleState!==state\|\|!app\.battle\|\|state\.result\|\|state\.ladderSettling\)return;/.test(script) ||
+    !/function queueBattleControl\(state,packet\)\{\s*if\(!state\|\|app\.battleState!==state\|\|!packet\|\|state\.result\|\|state\.ladderSettling\)return;/.test(script) ||
     !/function receiveBattleStatus\(text\)[\s\S]{0,1900}const state=app\.battleState;[\s\S]{0,520}if\(state\.result\)return;/.test(script) ||
     !/function maybeOpenBattlePetSkillMenu\(state,command=""\)\{\s*if\(!state\|\|app\.battleState!==state\|\|!app\.battle\|\|state\.result\)return;/.test(script)) {
   throw new Error("terminal RS/RD can still drain a queued turn and flash a false command menu");

@@ -44,6 +44,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/clientip"
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"github.com/k0ngk0ng/stoneage/internal/gamewiki"
+	"github.com/k0ngk0ng/stoneage/internal/ladder"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
@@ -130,21 +131,23 @@ const (
 // configured, the gateway directory supplies the selected listener address
 // and TCPUpstream remains only as a backwards-compatible single-line fallback.
 type Config struct {
-	TrustedProxies  []string
-	ForwardClientIP bool
-	ListenAddress   string
-	TCPUpstream     string
-	GatewayAPIURL   string
-	AssetsDirectory string
-	MapDirectory    string
-	AudioDirectory  string
-	NPCDirectory    string
-	PacketLimit     int
-	MaxSessions     int
-	PollTimeout     time.Duration
-	IdleTimeout     time.Duration
-	DialTimeout     time.Duration
-	AllowedOrigin   string
+	// Compiled local decision extensions, never supplied through HTTP.
+	LadderStrategies []battleauto.Strategy
+	TrustedProxies   []string
+	ForwardClientIP  bool
+	ListenAddress    string
+	TCPUpstream      string
+	GatewayAPIURL    string
+	AssetsDirectory  string
+	MapDirectory     string
+	AudioDirectory   string
+	NPCDirectory     string
+	PacketLimit      int
+	MaxSessions      int
+	PollTimeout      time.Duration
+	IdleTimeout      time.Duration
+	DialTimeout      time.Duration
+	AllowedOrigin    string
 	// CDNBaseURL is the public static root which contains assets/, maps/ and
 	// audio/.  It changes only browser static-resource URLs; the account, NPC
 	// and game-session APIs always remain on this process.
@@ -456,6 +459,7 @@ func positiveDurationEnv(name string) time.Duration {
 
 type packetEvent struct {
 	packet []byte
+	ladder json.RawMessage
 	closed bool
 	err    string
 	// seq is assigned only after a session opts into the reliable events
@@ -504,6 +508,7 @@ type tcpSession struct {
 	automationNote       string
 	automationState      battleauto.State
 	automationStateKnown bool
+	ladderAutoSuppressed bool
 	authoritative        *aigame.Session
 	authoritativeMu      sync.RWMutex
 	authoritativeErr     error
@@ -618,14 +623,14 @@ func (session *tcpSession) enqueue(event packetEvent) {
 		session.mu.Unlock()
 		return
 	}
-	if len(session.events) >= maxQueuedEvents || session.eventBytes+len(event.packet) > maxQueuedBytes {
+	if len(session.events) >= maxQueuedEvents || session.eventBytes+len(event.packet)+len(event.ladder) > maxQueuedBytes {
 		session.mu.Unlock()
 		session.finish("HTTP event queue overflow")
 		return
 	}
 	session.assignEventSequenceLocked(&event)
 	session.events = append(session.events, event)
-	session.eventBytes += len(event.packet)
+	session.eventBytes += len(event.packet) + len(event.ladder)
 	session.touchLocked()
 	session.mu.Unlock()
 	session.signal()
@@ -643,28 +648,34 @@ func (session *tcpSession) readLoop() {
 			}
 			return
 		}
-		session.applyAuthoritativePacket(packet)
-		session.enqueue(packetEvent{packet: packet})
+		view := session.applyAuthoritativePacket(packet)
+		session.enqueue(packetEvent{packet: packet, ladder: view})
 	}
 }
 
-func (session *tcpSession) applyAuthoritativePacket(packet []byte) {
+func (session *tcpSession) applyAuthoritativePacket(packet []byte) json.RawMessage {
 	if session == nil {
-		return
+		return nil
 	}
 	session.authoritativeMu.RLock()
 	observer := session.authoritative
 	session.authoritativeMu.RUnlock()
 	if observer == nil {
-		return
+		return nil
 	}
-	if err := observer.ApplyServerPacket(packet); err != nil && !errors.Is(err, aigame.ErrClosed) {
+	view, err := observer.ApplyServerPacketWithLadderView(packet)
+	if err != nil && !errors.Is(err, aigame.ErrClosed) {
 		session.authoritativeMu.Lock()
 		if session.authoritativeErr == nil {
 			session.authoritativeErr = err
 		}
 		session.authoritativeMu.Unlock()
 	}
+	if err != nil || view == nil {
+		return nil
+	}
+	payload, _ := json.Marshal(view)
+	return payload
 }
 
 func readDelimitedPacket(reader *bufio.Reader, limit int) ([]byte, error) {
@@ -892,7 +903,7 @@ func (session *tcpSession) acknowledgeEventsLocked(ack uint64) {
 			continue
 		}
 		kept = append(kept, event)
-		bytes += len(event.packet)
+		bytes += len(event.packet) + len(event.ladder)
 	}
 	// The compacted slice may keep references to acknowledged packet buffers in
 	// its unused capacity.  Clear those slots so a busy session does not retain
@@ -1728,7 +1739,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		}
 		return
 	}
-	if request.URL.Path == "/world-resources.js" || request.URL.Path == "/map-pack.js" || request.URL.Path == "/resource-pack.js" || request.URL.Path == "/resource-worker.js" || request.URL.Path == "/resource-client.js" || request.URL.Path == "/map-packs.json" {
+	if request.URL.Path == "/world-resources.js" || request.URL.Path == "/map-pack.js" || request.URL.Path == "/resource-pack.js" || request.URL.Path == "/resource-worker.js" || request.URL.Path == "/resource-client.js" || request.URL.Path == "/map-packs.json" || request.URL.Path == "/ladder.js" || request.URL.Path == "/battle-panel.js" {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -1899,6 +1910,8 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		return
 	}
 	switch parts[1] {
+	case "ladder":
+		handler.ladder(response, request, session)
 	case "battle-log":
 		if request.Method != http.MethodGet {
 			response.Header().Set("Allow", "GET")
@@ -2379,13 +2392,33 @@ func (handler *Handler) takeover(response http.ResponseWriter, request *http.Req
 		handler.discardRecoveredAutomation(response, request, session, input)
 		return
 	}
-	_, err = session.gate.Takeover(input.Reason)
+	session.automationMu.Lock()
+	session.ladderAutoSuppressed = true
+	session.automationMu.Unlock()
+	control, err := session.gate.Takeover(input.Reason)
 	if err != nil {
 		controlError(response, err)
 		return
 	}
-	handle := session.clearAutomation(0)
-	stopAutomationHandle(handle)
+	// A new loop may have acquired the returned manual generation already.
+	// Clear only a handle whose lease this takeover actually revoked.
+	_, _, retiredGeneration := session.automationStatus()
+	if retiredGeneration != 0 && retiredGeneration < control.Generation {
+		stopAutomationHandle(session.clearAutomation(retiredGeneration))
+	}
+	if pending, err := handler.setLadderManual(request.Context(), session, control.Generation); err != nil {
+		code := "ladder_manual_failed"
+		if pending != nil {
+			code = "outcome_unknown"
+		}
+		handler.writeJSON(response, http.StatusBadGateway, struct {
+			controlResponse
+			Code    string          `json:"code"`
+			Message string          `json:"message"`
+			Request *ladder.Request `json:"request,omitempty"`
+		}{handler.controlSnapshot(session), code, "已停止本地自动战斗，但手动策略尚未确认：" + err.Error(), pending})
+		return
+	}
 	handler.writeJSON(response, http.StatusOK, handler.controlSnapshot(session))
 }
 
@@ -2434,6 +2467,10 @@ func (handler *Handler) pauseAutomation(response http.ResponseWriter, request *h
 }
 
 func (handler *Handler) resumeAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	if session.ladderBlocksWorldAutomation(request.Context()) {
+		http.Error(response, "请先取消天梯准备、退出匹配或完成结算", http.StatusConflict)
+		return
+	}
 	input, err := decodeControlRequest(response, request)
 	if err != nil {
 		if strings.Contains(err.Error(), "external automation owner") {
@@ -2539,6 +2576,10 @@ func decodeAutomationStart(response http.ResponseWriter, request *http.Request) 
 }
 
 func (handler *Handler) startAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
+	if session.ladderBlocksWorldAutomation(request.Context()) {
+		http.Error(response, "请先取消天梯准备、退出匹配或完成结算", http.StatusConflict)
+		return
+	}
 	input, err := decodeAutomationStart(response, request)
 	if err != nil {
 		if strings.Contains(err.Error(), "external automation owner") {
@@ -2732,10 +2773,11 @@ func (handler *Handler) sendPacket(response http.ResponseWriter, request *http.R
 }
 
 type eventResponse struct {
-	Packet string `json:"packet,omitempty"`
-	Closed bool   `json:"closed,omitempty"`
-	Error  string `json:"error,omitempty"`
-	Seq    uint64 `json:"seq,omitempty"`
+	Ladder json.RawMessage `json:"ladder,omitempty"`
+	Packet string          `json:"packet,omitempty"`
+	Closed bool            `json:"closed,omitempty"`
+	Error  string          `json:"error,omitempty"`
+	Seq    uint64          `json:"seq,omitempty"`
 }
 
 func parseEventsAck(request *http.Request) (uint64, bool, error) {
@@ -2794,7 +2836,7 @@ func (handler *Handler) pollEvents(response http.ResponseWriter, request *http.R
 	}
 	encoded := make([]eventResponse, 0, len(events))
 	for _, event := range events {
-		item := eventResponse{Closed: event.closed, Error: event.err}
+		item := eventResponse{Closed: event.closed, Error: event.err, Ladder: event.ladder}
 		if reliable {
 			item.Seq = event.seq
 		}
