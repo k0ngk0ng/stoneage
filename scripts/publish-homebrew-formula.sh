@@ -77,6 +77,8 @@ class Sactl < Formula
 
   def install
     bin.install "sactl"
+    bin.install "arena-agent"
+    doc.install "local-arena-agent.md", "arena-agent.example.json"
   end
 
   test do

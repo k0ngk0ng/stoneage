@@ -7,6 +7,9 @@ with tempfile.TemporaryDirectory(dir=root/'build',prefix='sactl-cdn-install-') a
     stage=Path(tmp); fixture=stage/'cdn';fixture.mkdir();mock=stage/'mock';mock.mkdir()
     bundle=stage/'stoneage-sactl-v0.1.99-linux-arm64';bundle.mkdir()
     (bundle/'sactl').write_text('#!/bin/sh\necho sactl-test\n')
+    (bundle/'arena-agent').write_text('#!/bin/sh\necho arena-agent-test\n')
+    shutil.copy(root/'config/arena-agent/example.json',bundle/'arena-agent.example.json')
+    shutil.copy(root/'docs/local-arena-agent.md',bundle)
     shutil.copy(root/'config/sactl/sactl.toml.example',bundle)
     shutil.copytree(root/'.agents/skills/sactl',bundle/'skills/sactl')
     archive=fixture/(bundle.name+'.tar.gz')
@@ -22,6 +25,8 @@ shutil.copy(pathlib.Path(os.environ['TEST_CDN'])/url.rsplit('/',1)[1],args[args.
     home=stage/'user';env=dict(os.environ,PATH=str(mock)+':'+os.environ['PATH'],SACTL_INSTALL_HOME=str(home),TEST_CDN=str(fixture),XDG_CONFIG_HOME=str(home/'.config'),XDG_STATE_HOME=str(home/'.local/state'),TMPDIR=str(stage),PREFIX=str(home/'.local/bin'))
     cmd=['bash',str(root/'scripts/install-sactl.sh'),'--download','v0.1.99','--cdn-base','https://cdn.example/game']
     subprocess.run(cmd,env=env,check=True,capture_output=True)
+    assert (home/'.local/bin/arena-agent').is_file()
+    assert (home/'.config/sactl/examples/local-arena-agent.md').is_file()
     for agent in ['.agents','.claude']:assert (home/agent/'skills/sactl/references/battle.md').is_file()
     config=home/'.config/sactl/sactl.toml';config.write_text('existing user config')
     subprocess.run(cmd,env=env,check=True,capture_output=True);assert config.read_text()=='existing user config'

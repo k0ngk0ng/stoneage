@@ -58,6 +58,15 @@ try {
     $target = Join-Path $Prefix 'sactl.exe'
     Copy-Item -Force $source $target
     Unblock-File -Path $target
+    $arenaSource = Join-Path $bundle 'arena-agent.exe'
+    if (Test-Path $arenaSource) {
+        $arenaTarget = Join-Path $Prefix 'arena-agent.exe'
+        Copy-Item -Force $arenaSource $arenaTarget
+        Unblock-File -Path $arenaTarget
+        Copy-Item -Force (Join-Path $bundle 'local-arena-agent.md') $Prefix
+        Copy-Item -Force (Join-Path $bundle 'arena-agent.example.json') $Prefix
+        Write-Host 'Arena commander installed. Use: arena-agent init --directory <new-directory>'
+    }
     # Match sactl.ConfigSearchPaths and StatePath, including explicit XDG overrides.
     $configBase = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $userHome '.config' }
     $stateBase = if ($env:XDG_STATE_HOME) { $env:XDG_STATE_HOME } else { Join-Path $userHome '.local\state' }

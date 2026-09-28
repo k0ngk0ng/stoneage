@@ -26,7 +26,10 @@
     for(const [os,title,hint,command] of rows){
       const card=document.createElement('article');card.className='client-download-card';
       const heading=document.createElement('h3');heading.textContent=`${title} · ${version}`;
-      const note=document.createElement('p');note.textContent=hint;
+      const note=document.createElement('p');
+      const parts=version.slice(1).split('.').map(Number);
+      const hasArena=parts[0]>0||parts[1]>1||(parts[1]===1&&parts[2]>=98);
+      note.textContent=hint+(hasArena?' 内含 sactl + 天梯 AI 指挥官（arena-agent）。':'');
       const pre=document.createElement('pre'),code=document.createElement('code');code.textContent=command;pre.append(code);
       const copy=document.createElement('button');copy.type='button';copy.textContent='复制安装命令';copy.onclick=async()=>{try{await navigator.clipboard.writeText(command);copy.textContent='已复制';}catch{copy.textContent='请选中下方命令复制';}};
       const links=document.createElement('p');links.className='client-download-links';

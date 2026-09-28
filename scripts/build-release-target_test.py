@@ -67,7 +67,7 @@ target.write_text('mock package')
                 sactl_names = archive.getnames()
                 payload = archive.extractfile(f'{sactl_prefix}/sactl{suffix}').read().decode()
         assert payload == f'{target_os}/{arch}', payload
-        for entry in ['sactl.toml.example', 'sactl.md', 'install-sactl.sh', 'install-sactl-skill.py', 'skills/sactl/SKILL.md', 'skills/sactl/references/battle.md', 'skills/sactl/references/session.md']:
+        for entry in ['arena-agent'+suffix, 'local-arena-agent.md', 'arena-agent.example.json', 'sactl.toml.example', 'sactl.md', 'install-sactl.sh', 'install-sactl-skill.py', 'skills/sactl/SKILL.md', 'skills/sactl/references/battle.md', 'skills/sactl/references/session.md']:
             assert f'{sactl_prefix}/{entry}' in sactl_names, entry
     with tarfile.open(dist / 'stoneage-deploy-v0.1.99.tar.gz') as archive:
         assert archive.extractfile('VERSION').read() == b'v0.1.99\n'

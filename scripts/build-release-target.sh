@@ -89,7 +89,15 @@ package_sactl_skill() {
   cp -R .agents/skills/sactl "$1/skills/sactl"
   cp scripts/install-sactl-skill.py "$1/install-sactl-skill.py"
 }
+package_arena_agent() {
+  local arena_root="$1" arena_os="$2" arena_arch="$3" arena_suffix="$4"
+  CGO_ENABLED=0 GOOS="$arena_os" GOARCH="$arena_arch" \
+    go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_TAG}" -o "$arena_root/arena-agent$arena_suffix" ./cmd/arena-agent
+  cp docs/local-arena-agent.md "$arena_root/"
+  cp config/arena-agent/example.json "$arena_root/arena-agent.example.json"
+}
 package_sactl_skill "$sactl_root"
+package_arena_agent "$sactl_root" "$goos" "$goarch" "$suffix"
 
 if [[ "$goos" == windows ]]; then
   cp scripts/install-sactl.ps1 "$sactl_root/install-sactl.ps1"
@@ -118,6 +126,8 @@ if [[ "$goos" == linux ]]; then
     go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_TAG}" -o "$arm_root/sactl" ./cmd/sactl
   cp config/sactl/sactl.toml.example docs/sactl.md "$arm_root/"
   package_sactl_skill "$arm_root"
+  package_arena_agent "$arm_root" linux arm64 ''
+  cp scripts/install-sactl.sh "$arm_root/"
   (cd "$stage" && tar -czf "$dist/stoneage-sactl-${RELEASE_TAG}-linux-arm64.tar.gz" \
     "stoneage-sactl-${RELEASE_TAG}-linux-arm64")
 

@@ -61,6 +61,9 @@ else
   workdir="$(mktemp -d)"; trap 'rm -rf "$workdir"' EXIT
   bundle="$workdir/source"; mkdir -p "$bundle/skills"
   (cd "$root" && go build -mod=readonly -trimpath -o "$bundle/sactl" ./cmd/sactl)
+  (cd "$root" && go build -mod=readonly -trimpath -o "$bundle/arena-agent" ./cmd/arena-agent)
+  cp "$root/config/arena-agent/example.json" "$bundle/arena-agent.example.json"
+  cp "$root/docs/local-arena-agent.md" "$bundle/local-arena-agent.md"
   cp "$root/config/sactl/sactl.toml.example" "$bundle/sactl.toml.example"
   cp -R "$root/.agents/skills/sactl" "$bundle/skills/sactl"
 fi
@@ -78,7 +81,14 @@ if [[ $skills == 1 ]]; then
 fi
 mkdir -p "$prefix" "$config_dir" "$state_dir"; chmod 700 "$state_dir"
 install -m 755 "$bundle/sactl" "$prefix/sactl"
+if [[ -f "$bundle/arena-agent" ]]; then
+  install -m 755 "$bundle/arena-agent" "$prefix/arena-agent"
+  mkdir -p "$config_dir/examples"
+  cp "$bundle/arena-agent.example.json" "$bundle/local-arena-agent.md" "$config_dir/examples/"
+  echo "Arena commander installed: $prefix/arena-agent (use arena-agent init --directory <new-directory>)"
+fi
 if command -v xattr >/dev/null 2>&1; then xattr -d com.apple.quarantine "$prefix/sactl" 2>/dev/null || true; fi
+if [[ -f "$prefix/arena-agent" ]] && command -v xattr >/dev/null 2>&1; then xattr -d com.apple.quarantine "$prefix/arena-agent" 2>/dev/null || true; fi
 config_path="$config_dir/sactl.toml"
 if [[ ! -f "$config_path" || $force == 1 ]]; then
   # Escape paths for TOML and sed, including macOS home paths with spaces.

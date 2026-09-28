@@ -23,6 +23,14 @@ description: |
   whole client command surface to short shell commands, so a terminal agent
   or a human can observe the world, move, talk, fight and trade.
 contents:
+  - src: ${NFPM_DOC_DIR}/arena-agent
+    dst: /usr/bin/arena-agent
+    file_info:
+      mode: 0755
+  - src: ${NFPM_DOC_DIR}/local-arena-agent.md
+    dst: /usr/share/doc/sactl/local-arena-agent.md
+  - src: ${NFPM_DOC_DIR}/arena-agent.example.json
+    dst: /usr/share/doc/sactl/arena-agent.example.json
   - src: ${NFPM_BIN}
     dst: /usr/bin/sactl
     file_info:

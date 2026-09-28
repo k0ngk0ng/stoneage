@@ -9,6 +9,9 @@ try {
     $bundle = Join-Path $testStage 'stoneage-sactl-v0.1.99-windows-amd64'
     New-Item -ItemType Directory -Force $fixture, $bundle, (Join-Path $bundle 'skills') | Out-Null
     Set-Content (Join-Path $bundle 'sactl.exe') 'fixture binary'
+    Set-Content (Join-Path $bundle 'arena-agent.exe') 'fixture arena binary'
+    Copy-Item "$root\docs\local-arena-agent.md" $bundle
+    Copy-Item "$root\config\arena-agent\example.json" (Join-Path $bundle 'arena-agent.example.json')
     Copy-Item "$root\config\sactl\sactl.toml.example" $bundle
     Copy-Item -Recurse "$root\.agents\skills\sactl" (Join-Path $bundle 'skills')
     $archive = 'stoneage-sactl-v0.1.99-windows-amd64.zip'
@@ -26,6 +29,8 @@ try {
     $env:XDG_STATE_HOME = Join-Path $testStage 'state'
     $prefix = Join-Path $testStage 'bin'
     & "$PSScriptRoot\install-sactl.ps1" -Download -Version v0.1.99 -CdnBase https://cdn.example/game -Prefix $prefix
+    if (-not (Test-Path (Join-Path $prefix 'arena-agent.exe'))) { throw 'Missing arena commander' }
+    if (-not (Test-Path (Join-Path $prefix 'local-arena-agent.md'))) { throw 'Missing arena instructions' }
     foreach ($agent in @('.agents','.claude')) {
         if (-not (Test-Path "$env:SACTL_INSTALL_HOME\$agent\skills\sactl\SKILL.md")) { throw 'Missing installed skill' }
     }

@@ -1,17 +1,11 @@
 {
   "schema_version": 1,
-  "sactl": "../../build/local-arena/bin/sactl-macos",
-  "state_dir": "../../build/local-arena/team-a",
+  "sactl": "sactl",
+  "state_dir": "./data",
   "mode": 1,
   "strategy": "basic",
   "fallback": "basic",
-  "members": [
-    {
-      "id": "captain",
-      "config": "../../runtime/local-arena/captain.toml",
-      "socket": "../../build/local-arena/captain.sock"
-    }
-  ],
+  "members": [{"id": "member-1", "config": "./member-1.toml", "socket": "./member-1.sock"}],
   "llm": {
     "endpoint": "http://127.0.0.1:8000/v1/chat/completions",
     "model": "your-model-name",
