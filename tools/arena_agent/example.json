@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "sactl": "../../build/local-arena/bin/sactl-macos",
+  "state_dir": "../../build/local-arena/team-a",
+  "mode": 1,
+  "strategy": "basic",
+  "fallback": "basic",
+  "members": [
+    {
+      "id": "captain",
+      "config": "../../runtime/local-arena/captain.toml",
+      "socket": "../../build/local-arena/captain.sock"
+    }
+  ],
+  "llm": {
+    "endpoint": "http://127.0.0.1:8000/v1/chat/completions",
+    "model": "your-model-name",
+    "api_key_env": "STONEAGE_ARENA_MODEL_KEY",
+    "timeout_seconds": 12,
+    "context_bytes": 180000,
+    "response_format": "json_object"
+  }
+}

@@ -23,6 +23,7 @@ type gameState struct {
 	ladderReplies []ladder.Envelope
 	ladderEvents  []ladder.Envelope
 	ladderFloor   uint64
+	battleStream  battleEventStream
 
 	characters       []Character
 	actors           map[int32]ActorSnapshot
@@ -136,7 +137,9 @@ func applyEventLocked(state *gameState, event Event) {
 			state.chatContext = newChatContext()
 			state.snapshot.AI.PartyModeKnown = false
 			state.snapshot.Battle = BattleSnapshot{}
+			state.snapshot.Magic = nil
 			state.snapshot.Player.BattlePetSlotKnown = false
+			state.snapshot.Player.StandbyPetMaskKnown = false
 			state.snapshot.Player.RidePetKnown = false
 			state.snapshot.Player.StatPointsKnown = false
 			state.snapshot.Player.SocialFlagsKnown = false
@@ -151,7 +154,9 @@ func applyEventLocked(state *gameState, event Event) {
 			clearAddressBookLocked(state)
 			rotateSessionTokenLocked(state)
 			state.snapshot.Phase = PhaseDisconnected
+			state.snapshot.Magic = nil
 			state.snapshot.Player.RidePetKnown = false
+			state.snapshot.Player.StandbyPetMaskKnown = false
 			state.snapshot.AI.PersistentCharacterID = ""
 			clear(state.actors)
 			clear(state.party)
@@ -182,6 +187,12 @@ func applyEventLocked(state *gameState, event Event) {
 			return
 		}
 		state.applySystem(eventText(event, 0))
+	case "SPET":
+		mask := eventInt(event, 0, -1)
+		if mask >= 0 && mask <= 31 {
+			state.snapshot.Player.StandbyPetMask = mask
+			state.snapshot.Player.StandbyPetMaskKnown = true
+		}
 	case "SKUP":
 		state.statPointsEpoch++
 		state.snapshot.Player.StatPointsKnown = false
@@ -357,6 +368,14 @@ func parseCharacterList(value string) []Character {
 }
 
 func (state *gameState) applySystem(value string) {
+	if strings.HasPrefix(value, "BTIME|") {
+		state.applyBattleClock(value)
+		return
+	}
+	if strings.HasPrefix(value, "J") {
+		state.applyMagic(value)
+		return
+	}
 	// Split the native five-field skill records before unescaping their
 	// display strings; an escaped pipe must not shift subsequent skill slots.
 	if len(value) >= 3 && value[0] == 'W' && value[2] == '|' {
@@ -950,7 +969,7 @@ func (state *gameState) applyPetStatus(parts []string) {
 		// A complete K record has no stable pet ID. Even when the slot was
 		// occupied, it may have been replaced; discard the old identity and
 		// mutable details until a fresh S("AI") response confirms continuity.
-		current = PetSnapshot{Slot: slot}
+		current = PetSnapshot{Slot: slot, UseFlag: 1}
 	}
 	if mask == 1 {
 		values := parts[2:]
@@ -1374,6 +1393,7 @@ func (state *gameState) applyBattlePacket(value string) {
 			battle.PlayerSubmitted = false
 			battle.PetSubmitted = false
 			battle.LastCommand = ""
+			battle.Clock = BattleClock{}
 			battle.Turn++
 			battle.Movie = false
 			battle.updateCommandReadiness()

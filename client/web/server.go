@@ -1912,6 +1912,10 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	switch parts[1] {
 	case "ladder":
 		handler.ladder(response, request, session)
+	case "battle-state":
+		handler.battleView(response, request, session)
+	case "battle-events":
+		handler.battleEvents(response, request, session)
 	case "battle-log":
 		if request.Method != http.MethodGet {
 			response.Header().Set("Allow", "GET")

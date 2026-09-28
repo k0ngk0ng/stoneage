@@ -253,8 +253,10 @@ type PlayerSnapshot struct {
 	BaseImage         int32
 	HasStatus         bool
 	// KS(slot,1) confirms the selected combat pet; zero is a real slot.
-	BattlePetSlot      int32
-	BattlePetSlotKnown bool
+	BattlePetSlot       int32
+	BattlePetSlotKnown  bool
+	StandbyPetMask      int32
+	StandbyPetMaskKnown bool
 }
 
 // SkillSnapshot is one server-owned character skill. Skill IDs and levels
@@ -263,6 +265,19 @@ type PlayerSnapshot struct {
 type SkillSnapshot struct {
 	ID    int32
 	Level int32
+}
+
+// MagicSnapshot is an observed J slot, including the native field/target
+// restrictions. It describes an owned spell, never an opponent's abilities.
+type MagicSnapshot struct {
+	Index      int32
+	UseFlag    int32
+	MP         int32
+	Field      int32
+	Target     int32
+	DeadTarget bool
+	Name       string
+	Memo       string
 }
 
 // PetSkillSnapshot is one server-owned pet skill slot. The W status stream
@@ -438,7 +453,17 @@ type BattleParticipant struct {
 // is legal only after BP and BC for the current turn have been observed and
 // while CommandReady is true.  BA is retained separately because it is the
 // animation/turn marker, not the menu acknowledgement.
+type BattleClock struct {
+	RulesVersion string
+	Known        bool
+	ServerTurn   int32
+	DeadlineMS   int64
+	ServerNowMS  int64
+	ReceivedAtMS int64
+}
+
 type BattleSnapshot struct {
+	Clock BattleClock
 	// LadderID remains attached through BU until the next EN. Ladder results
 	// are acknowledged by ladder ack, never by ordinary EO cleanup.
 	LadderID        string
@@ -494,6 +519,7 @@ type Snapshot struct {
 	Position         Point
 	Player           PlayerSnapshot
 	Skills           []SkillSnapshot
+	Magic            []MagicSnapshot
 	Pets             []PetSnapshot
 	Inventory        []InventoryItem
 	Windows          []WindowSnapshot

@@ -53,9 +53,12 @@ const CommandHelp = `commands:
   reply <ok|cancel|yes|no|prev|next> [text]  answer a message window
   look <direction>                    turn without moving
   auto-battle on [walk|stay]|off|status  heal the most hurt, otherwise attack in order; walk also looks for fights
-  battle <command>                    battle turn (H|FF attack, W|FF|FF pet, T|FF defend, S|01|FF skill, E escape, N wait, G give up, HELP)
+  battle <command>                    battle turn (H|FF attack, W|FF|FF pet, G guard, T|FF capture, S|01 change pet, E escape, N wait, HELP)
   battle-end                          acknowledge the battle animation and leave the battle (EO)
   battle-log                         readable battle history (structured data with --json)
+  battle-state                       shared structured battle observation and action candidates
+  battle-act <JSON>                  submit a candidate bound to match, turn and observation
+  battle-events <cursor> [stream]    incremental combat packets, gap flag and coherent observation
   battle-help <0|1>                   toggle the native battle help flag
   item use|drop|drop-gold|move|magic|pickup ...   inventory and field item actions
   mail list|add|send|remove-contact ...           address book and mail
@@ -70,7 +73,7 @@ const CommandHelp = `commands:
   social <setting> <0|1>              toggle party/duel/trade switches
   ride <slot>|off / title equip|text  riding and titles
   click <object-id> / probe <name>    click a map object; send idle probes
-  query <c|i|w|j|n|t|g|AI|k0..k9>     request one status stream
+  query <c|i|w|j|n|t|g|AI|BTIME|k0..k9> request one status stream
   send <FUNC> [args...] / functions   raw escape hatch with schema validation
   log [count]                         recent server events
   wait [duration]                     block until the next server event
@@ -164,6 +167,12 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return s.commandReply(ctx, request)
 	case "battle-log":
 		return s.commandBattleLog(ctx, request)
+	case "battle-state":
+		return s.commandBattleState(ctx, request)
+	case "battle-act":
+		return s.commandBattleAct(ctx, request)
+	case "battle-events":
+		return s.commandBattleEvents(ctx, request)
 	case "log":
 		return s.commandLog(ctx, request)
 	case "wait":
@@ -530,7 +539,11 @@ func sessionFailure(err error) Response {
 }
 
 func actionFailure(err error) Response {
-	return failureWithText(KindAction, "", "%v", err)
+	r := failureWithText(KindAction, "", "%v", err)
+	if errors.Is(err, aigame.ErrStaleRevision) {
+		r.Data = replyJSON(map[string]string{"code": "stale_observation"})
+	}
+	return r
 }
 
 func executeFailure(err error) Response {

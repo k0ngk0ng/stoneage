@@ -881,6 +881,7 @@ func (session *Session) snapshotLocked() Snapshot {
 	snapshot.Characters = append([]Character(nil), session.state.characters...)
 	snapshot.AI.Pets = clonePetSnapshots(session.state.snapshot.AI.Pets)
 	snapshot.Skills = append([]SkillSnapshot(nil), session.state.snapshot.Skills...)
+	snapshot.Magic = append([]MagicSnapshot(nil), session.state.snapshot.Magic...)
 	snapshot.Pets = snapshot.Pets[:0]
 	for _, pet := range session.state.pets {
 		snapshot.Pets = append(snapshot.Pets, pet)
@@ -1021,11 +1022,14 @@ func (session *Session) applyEvent(event Event) {
 func (session *Session) applyEventWithLadderView(event Event, capture bool) *LadderPacketView {
 	session.stateMu.Lock()
 	previousLadder := session.state.snapshot.Ladder
+	previousBattleID := session.state.snapshot.Battle.LadderID
+	session.journal.emitted = nil
 	session.journal.record(event)
 	applyEventLocked(&session.state, event)
 	session.state.snapshot.Revision++
 	session.state.snapshot.At = event.At
 	session.state.snapshot.LastFunction = event.Function
+	session.state.recordBattleEvent(event, previousBattleID, session.journal.emitted...)
 	var view *LadderPacketView
 	if capture {
 		view = session.state.ladderPacketView(event, previousLadder)
@@ -1128,6 +1132,7 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 	snapshot.Trade = cloneTradeSnapshot(snapshot.Trade)
 	snapshot.Characters = append([]Character(nil), snapshot.Characters...)
 	snapshot.Skills = append([]SkillSnapshot(nil), snapshot.Skills...)
+	snapshot.Magic = append([]MagicSnapshot(nil), snapshot.Magic...)
 	snapshot.Pets = clonePetSnapshots(snapshot.Pets)
 	snapshot.AI.Pets = clonePetSnapshots(snapshot.AI.Pets)
 	snapshot.AI.Items = append([]AIInventoryItem(nil), snapshot.AI.Items...)

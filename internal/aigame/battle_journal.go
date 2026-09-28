@@ -20,6 +20,9 @@ type BattleLogEntry struct {
 	Hits      int    `json:"hits,omitempty"`
 	Text      string `json:"text"`
 	Raw       string `json:"raw,omitempty"`
+	Resource  string `json:"resource,omitempty"`
+	Delta     *int   `json:"delta,omitempty"`
+	Status    *int   `json:"status,omitempty"`
 }
 type BattleLogPerson struct {
 	ID       int    `json:"id"`
@@ -53,6 +56,7 @@ type battleJournal struct {
 	battles []BattleLog
 	serial  int
 	pending []string
+	emitted []BattleLogEntry
 }
 
 func journalNumber(s string) int { n, _ := strconv.ParseInt(s, 16, 32); return int(n) }
@@ -63,7 +67,7 @@ func (s *Session) BattleJournal() BattleJournal {
 	for i := range out.Battles {
 		b := &out.Battles[i]
 		b.Roster = append([]BattleLogPerson{}, b.Roster...)
-		b.Logs = append([]BattleLogEntry{}, b.Logs...)
+		b.Logs = cloneBattleLogEntries(b.Logs)
 		if b.MyNo != nil {
 			v := *b.MyNo
 			b.MyNo = &v
@@ -85,6 +89,7 @@ func (s *Session) BattleJournal() BattleJournal {
 func (j *battleJournal) add(e BattleLogEntry) {
 	b := &j.battles[0]
 	e.Turn = b.Turn
+	j.emitted = append(j.emitted, e)
 	b.Logs = append(b.Logs, e)
 	if len(b.Logs) > 300 {
 		b.Logs = append([]BattleLogEntry(nil), b.Logs[len(b.Logs)-300:]...)
@@ -386,6 +391,15 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 		e.Target = target
 		e.Damage = amount
 		e.PetDamage = pet
+		e.Resource = "hp"
+		if kind == 1 {
+			e.Resource = "mp"
+		}
+		delta := -amount
+		if sign != 0 {
+			delta = amount
+		}
+		e.Delta = &delta
 		e.Text = fmt.Sprintf("%s：%s %s%d", j.name(target), label, symbol, amount)
 		if pet != 0 {
 			e.Text += fmt.Sprintf("，骑宠体力 %s%d", symbol, pet)
@@ -399,6 +413,7 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 				label = labels[status]
 			}
 			e.Target = target
+			e.Status = &status
 			e.Text = j.name(target) + "：" + label
 		}
 	case "BG", "bg":

@@ -603,8 +603,10 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 		return []wireValue{{kind: wireInt, integer: action.Index}}, "SKUP", nil
 
 	case ActionStatus:
-		if err := requireWorld(); err != nil {
-			return nil, "", err
+		if !(battle && action.Command == "BTIME") {
+			if err := requireWorld(); err != nil {
+				return nil, "", err
+			}
 		}
 		if !validStatusRequest(action.Command) {
 			return nil, "", fmt.Errorf("%w: unsupported status request %q", ErrInvalidAction, action.Command)
@@ -703,6 +705,9 @@ func validBattleCommand(command string) (string, error) {
 }
 
 func validStatusRequest(value string) bool {
+	if value == "BTIME" {
+		return true
+	}
 	if strings.HasPrefix(value, "AI:") {
 		return validAIRequestID(strings.TrimPrefix(value, "AI:"))
 	}

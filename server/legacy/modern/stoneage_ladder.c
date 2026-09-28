@@ -538,6 +538,22 @@ void StoneAge_LadderTick(void)
 }
 int StoneAge_LadderRequest(int fd,const char *category)
 {
+    /* Optional observer-only clock. Never initialize/extend a command timer:
+     * that remains exclusively owned by StoneAge_LadderCommandWait. */
+    if(category && !strcmp(category,"BTIME")) {
+        int c;NativeMatch *m;char reply[256];LadderTime deadline=0;
+        if(!CONNECT_isCLI(fd) || !CONNECT_isLOGIN(fd))return 1;
+        c=CONNECT_getCharaindex(fd);
+        if(!valid_player(c))return 1;
+        m=native_character(c);
+        if(m && !BATTLE_CHECKINDEX(m->battle))m=NULL;
+        if(m && m->last_turn==BattleArray[m->battle].turn)deadline=m->deadline;
+        snprintf(reply,sizeof(reply),"BTIME|%s|%d|%lld|%lld|stoneage-native-ladder-v1",
+                 m?m->id:"",m?BattleArray[m->battle].turn:-1,
+                 (long long)deadline,(long long)now_ms());
+        lssproto_S_send(fd,reply);
+        return 1;
+    }
     if(!category || strncmp(category,"LADDER|",7))return 0;
     initialize();
     if(CONNECT_isCLI(fd) && CONNECT_isLOGIN(fd))Ladder_Request(CONNECT_getCharaindex(fd),category);

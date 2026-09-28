@@ -72,11 +72,11 @@ func (s *Server) commandLook(ctx context.Context, request Request) Response {
 }
 
 // commandBattle submits one battle command. The vocabulary is the native one
-// (H|FF attack, T|FF defend, S|nn|FF skill, C|.. capture, I|.. item, E|.. escape,
-// N wait, G give up, HELP), and the server validates it again.
+// (H|FF attack, G guard, T|FF capture, S|nn change pet, I|.. item, E escape,
+// N wait, HELP), and the server validates it again.
 func (s *Server) commandBattle(ctx context.Context, request Request) Response {
 	if len(request.Args) == 0 {
-		return failure(KindUsage, "usage: sactl battle <command> (e.g. H|FF attack, T|FF defend, S|01|FF skill, N wait, G give up, HELP)")
+		return failure(KindUsage, "usage: sactl battle <command> (e.g. H|FF attack, G guard, T|FF capture, S|01 change pet, N wait, HELP)")
 	}
 	command := strings.Join(request.Args, "")
 	// A hand-issued command wins. Leaving the loop running would have the two
