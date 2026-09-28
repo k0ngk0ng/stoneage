@@ -340,6 +340,33 @@ Release workflow 在正式 tag 的测试、五平台安装包、镜像和 Window
 `downloads/sactl/latest.json`。上传失败会使 workflow 失败；较旧版本重跑不会降级下载区索引。
 预发布 tag 不更新正式版下载区；游戏资源 ZIP 继续使用独立的资源版本，不随每次客户端发版重复上传。
 
+## Bash / zsh 补全（v0.2.0 起）
+
+Homebrew 将补全脚本安装到其标准 bash/zsh 补全目录；deb/rpm 安装到系统补全目录。
+shell 已启用补全框架时，升级后重新打开终端即可使用。支持命令、`arena` 子命令、选项和文件路径；
+补全仅在本地计算，不登录游戏，也不发出游戏操作。
+
+当前终端也可以直接加载：
+
+```sh
+# zsh（若框架已经初始化 compinit，只需执行 source 那行）
+autoload -Uz compinit && compinit
+source <(sactl completion zsh)
+
+# bash（兼容 macOS 自带的 Bash 3.2）
+source <(sactl completion bash)
+```
+
+要永久启用，可将对应的初始化/加载语句加入 `~/.zshrc` 或 `~/.bashrc`；
+macOS 的 bash 登录 shell 还需由 `~/.bash_profile` 加载 `~/.bashrc`。
+一键安装脚本把文件放入用户数据目录下的 `bash-completion/completions/sactl`
+和 `zsh/site-functions/_sactl`（数据目录取 `XDG_DATA_HOME`，默认 `~/.local/share`），
+输出加载方法，不自动改写 shell 配置。
+使用 Homebrew zsh 自动发现时，需先通过 `brew shellenv` 设置环境，再初始化 `compinit`。
+
+示例：输入 `sactl arena r<Tab>` 补全 `run`，`sactl arena run --f<Tab>` 补全 `--forever`，
+`sactl arena run --config <Tab>` 补全配置文件路径。旧版本没有此功能，需先升级到 v0.2.0。
+
 ## 天梯 AI 指挥官
 
 从 v0.1.99 起，组队指挥、对局采集、训练和评估统一在本客户端中，不需要另装工具：

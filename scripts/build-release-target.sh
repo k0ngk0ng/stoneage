@@ -85,6 +85,7 @@ cp scripts/install-sactl.sh "$sactl_root/install-sactl.sh"
 # Agent skills are source files shared across Codex, Claude Code and other
 # SKILL.md-compatible hosts; installation is explicitly selected by the user.
 package_sactl_skill() {
+  cp -R internal/sacli/completions "$1/completions"
   mkdir -p "$1/skills"
   cp -R .agents/skills/sactl "$1/skills/sactl"
   cp scripts/install-sactl-skill.py "$1/install-sactl-skill.py"

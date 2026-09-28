@@ -1,0 +1,19 @@
+#compdef sactl
+_sactl() {
+    local result
+    local -a candidates
+    result="$("${words[1]}" __complete "${(@)words[2,CURRENT]}" 2>/dev/null)" || return 0
+    case "$result" in
+        @files) _files ;;
+        @dirs) _files -/ ;;
+        *)
+            candidates=("${(@f)result}")
+            [[ -z "$result" ]] || compadd -a candidates
+            ;;
+    esac
+}
+if [[ "$funcstack[1]" == _sactl ]]; then
+    _sactl "$@"
+else
+    compdef _sactl sactl
+fi

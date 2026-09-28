@@ -23,6 +23,13 @@ description: |
   whole client command surface to short shell commands, so a terminal agent
   or a human can observe the world, move, talk, fight and trade.
 contents:
+  - src: ${NFPM_DOC_DIR}/completions/sactl.bash
+    dst: /usr/share/bash-completion/completions/sactl
+  - src: ${NFPM_DOC_DIR}/completions/_sactl
+    dst: /usr/share/zsh/vendor-completions/_sactl
+  # Debian and RPM distributions use different default zsh search paths.
+  - src: ${NFPM_DOC_DIR}/completions/_sactl
+    dst: /usr/share/zsh/site-functions/_sactl
   - src: ${NFPM_DOC_DIR}/local-arena-agent.md
     dst: /usr/share/doc/sactl/local-arena-agent.md
   - src: ${NFPM_DOC_DIR}/arena-agent.example.json

@@ -17,6 +17,15 @@
       <div id="sactl-download" aria-live="polite"><p>正在查询客户端版本…</p></div>
       <p>已有 sactl 配置会保留，随包提供的同名 skill 文件会更新。仅安装客户端可为 macOS/Linux 脚本添加 <code>--no-skills</code>，Windows 添加 <code>-NoSkills</code>。skill 位于用户目录下的 <code>.agents/skills/sactl</code> 和 <code>.claude/skills/sactl</code>。</p>
     </section>
+    <section aria-labelledby="completion-heading"><h2 id="completion-heading">终端补全 · v0.2.0</h2>
+      <p>Homebrew、deb/rpm 和下载包现已提供 bash/zsh 补全。shell 已启用补全框架时，包管理器升级后重新打开终端即可使用；也可在当前终端直接加载：</p>
+      <pre><code># zsh
+autoload -Uz compinit &amp;&amp; compinit
+source &lt;(sactl completion zsh)
+# bash
+source &lt;(sactl completion bash)</code></pre>
+      <p>需要每次打开终端都加载，可把对应语句加入 ~/.zshrc 或 ~/.bashrc。支持命令、arena 子命令、选项和路径补全；补全过程不登录游戏。</p>
+    </section>
     <section aria-labelledby="arena-heading"><h2 id="arena-heading">天梯 AI 指挥官 · sactl arena</h2>
       <p>从 v0.1.99 起，天梯 AI 指挥官已整合到 sactl arena，只需安装一个 sactl 客户端，包内附配置示例与使用说明。一支队伍由一个指挥官统一控制，支持 1v1–5v5 自动登录、组队、匹配和作战。连接线上天梯无需 Docker 或 Python。</p>
       <p>安装后，在终端创建一支队伍的配置（将 <code>--mode 1</code> 改成 2–5 可创建多人队伍）：</p>

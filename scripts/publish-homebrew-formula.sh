@@ -77,10 +77,14 @@ class Sactl < Formula
 
   def install
     bin.install "sactl"
+    bash_completion.install "completions/sactl.bash" => "sactl"
+    zsh_completion.install "completions/_sactl"
     doc.install "local-arena-agent.md", "arena-agent.example.json"
   end
 
   test do
+    assert_path_exists bash_completion/"sactl"
+    assert_path_exists zsh_completion/"_sactl"
     assert_match "sactl", shell_output("#{bin}/sactl version")
     assert_match "sactl arena", shell_output("#{bin}/sactl arena --help")
   end

@@ -63,6 +63,7 @@ else
   (cd "$root" && go build -mod=readonly -trimpath -o "$bundle/sactl" ./cmd/sactl)
   cp "$root/config/arena-agent/example.json" "$bundle/arena-agent.example.json"
   cp "$root/docs/local-arena-agent.md" "$bundle/local-arena-agent.md"
+  cp -R "$root/internal/sacli/completions" "$bundle/completions"
   cp "$root/config/sactl/sactl.toml.example" "$bundle/sactl.toml.example"
   cp -R "$root/.agents/skills/sactl" "$bundle/skills/sactl"
 fi
@@ -80,6 +81,16 @@ if [[ $skills == 1 ]]; then
 fi
 mkdir -p "$prefix" "$config_dir" "$state_dir"; chmod 700 "$state_dir"
 install -m 755 "$bundle/sactl" "$prefix/sactl"
+if [[ -f "$bundle/completions/sactl.bash" && -f "$bundle/completions/_sactl" ]]; then
+  completion_data="${XDG_DATA_HOME:-$install_home/.local/share}"
+  mkdir -p "$completion_data/bash-completion/completions" "$completion_data/zsh/site-functions"
+  install -m 644 "$bundle/completions/sactl.bash" "$completion_data/bash-completion/completions/sactl"
+  install -m 644 "$bundle/completions/_sactl" "$completion_data/zsh/site-functions/_sactl"
+  echo 'Bash/zsh completion files installed. For this shell:'
+  echo '  bash: source <(sactl completion bash)'
+  echo '  zsh:  autoload -Uz compinit && compinit; source <(sactl completion zsh)'
+  echo 'To load on every shell start, add the matching line to ~/.bashrc or ~/.zshrc.'
+fi
 if [[ -f "$bundle/arena-agent.example.json" && -f "$bundle/local-arena-agent.md" ]]; then
   mkdir -p "$config_dir/examples"
   cp "$bundle/arena-agent.example.json" "$bundle/local-arena-agent.md" "$config_dir/examples/"

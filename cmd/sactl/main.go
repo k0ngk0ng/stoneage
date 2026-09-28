@@ -47,6 +47,27 @@ func main() {
 	}
 	sacli.BuildVersion = version
 	switch os.Args[1] {
+	case "completion":
+		if len(os.Args) == 3 && (os.Args[2] == "--help" || os.Args[2] == "-h") {
+			fmt.Println("usage: sactl completion <bash|zsh>")
+			return
+		}
+		if len(os.Args) != 3 {
+			fmt.Fprintln(os.Stderr, "usage: sactl completion <bash|zsh>")
+			os.Exit(exitUsage)
+		}
+		script, err := sacli.CompletionScript(os.Args[2])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(exitUsage)
+		}
+		fmt.Print(script)
+		return
+	case "__complete":
+		for _, candidate := range sacli.Complete(os.Args[2:]) {
+			fmt.Println(candidate)
+		}
+		return
 	case "arena":
 		if err := arenaagent.Main(context.Background(), os.Args[2:], version, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "sactl arena: %v\n", err)
@@ -247,6 +268,7 @@ func usage() {
 	fmt.Fprintf(os.Stdout, `sactl - headless StoneAge client
 
 usage:
+  sactl completion <bash|zsh>           print shell completion script
   sactl arena <init|check|run|train|evaluate|simulate> [options]  local squad commander
   sactl serve --config <file>            hold one game session and serve the CLI
 %s

@@ -134,6 +134,14 @@ func TestArenaIntegratedCLI(t *testing.T) {
 	if !strings.Contains(string(invoke("arena", "--help")), "sactl arena") {
 		t.Fatal("missing integrated help")
 	}
+	for _, shell := range []string{"bash", "zsh"} {
+		if !strings.Contains(string(invoke("completion", shell)), "__complete") {
+			t.Fatal("missing shell completion", shell)
+		}
+	}
+	if output := string(invoke("__complete", "arena", "run", "--f")); !strings.Contains(output, "--forever") {
+		t.Fatal("completion unexpectedly requires daemon", output)
+	}
 	for _, command := range []string{"run", "train", "evaluate", "simulate"} {
 		invoke("arena", command, "--help")
 	}
