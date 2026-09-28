@@ -30,7 +30,9 @@ shutil.copy(pathlib.Path(os.environ['TEST_CDN'])/url.rsplit('/',1)[1],args[args.
     assert (home/'.local/share/zsh/site-functions/_sactl').read_bytes()==(bundle/'completions/_sactl').read_bytes()
     assert (home/'.config/sactl/examples/local-arena-agent.md').is_file()
     for agent in ['.agents','.claude']:assert (home/agent/'skills/sactl/references/battle.md').is_file()
-    config=home/'.config/sactl/sactl.toml';config.write_text('existing user config')
+    config=home/'.config/sactl/sactl.toml'
+    assert not config.exists(), 'installer must leave first configuration to init'
+    config.write_text('existing user config')
     subprocess.run(cmd,env=env,check=True,capture_output=True);assert config.read_text()=='existing user config'
     # Streamed one-liner works without BASH_SOURCE or a local checkout.
     subprocess.run(['bash','-s','--',*cmd[2:]],input=(root/'scripts/install-sactl.sh').read_bytes(),env=env,check=True,capture_output=True)

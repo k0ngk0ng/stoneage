@@ -13,9 +13,26 @@
       <p>下载 sactl 命令行客户端，或导入完整游戏资源，按你的方式进入石器世界。</p></section>
     <section aria-labelledby="sactl-heading"><h2 id="sactl-heading">sactl 客户端与竞技场 AI 指挥官</h2>
       <p>支持 macOS、Windows、Linux。一键安装客户端，并把游戏操作 skill 安装到 Codex 和 Claude Code 的标准用户目录，无需 Python。</p>
-      <p>安装后填写游戏地址、账号和角色，再启动 <code>sactl serve</code>。安装不会自动登录，也不会改动 Agent 的配置文件。</p>
+      <p>v0.2.2 起，安装后运行 <code>sactl init</code> 配置游戏网址，再运行 <code>sactl login</code> 交互登录。密码隐藏输入，账号密码仅保存在后台进程内存中，不写入配置。安装不会自动登录，也不会改动 Agent 的配置文件。</p>
       <div id="sactl-download" aria-live="polite"><p>正在查询客户端版本…</p></div>
       <p>已有 sactl 配置会保留，随包提供的同名 skill 文件会更新。仅安装客户端可为 macOS/Linux 脚本添加 <code>--no-skills</code>，Windows 添加 <code>-NoSkills</code>。skill 位于用户目录下的 <code>.agents/skills/sactl</code> 和 <code>.claude/skills/sactl</code>。</p>
+    </section>
+    <section aria-labelledby="login-heading"><h2 id="login-heading">登录与多个角色</h2>
+      <pre><code>sactl init
+sactl login
+sactl chars
+sactl enter "角色名"
+sactl status
+sactl logout</code></pre>
+      <p>login 自动启动后台会话，命令返回后仍保持登录。status 只查询状态，logout 清除内存凭据，stop 关闭后台进程。serve 默认后台运行，排障时可加 --foreground。</p>
+      <p>多个角色分别配置和登录，每个 profile 使用独立连接：</p>
+      <pre><code>sactl init --profile main
+sactl init --profile alt
+sactl login --profile main
+sactl login --profile alt
+sactl --profile main status
+sactl --profile alt status</code></pre>
+      <p>旧配置会保留。若旧后台进程仍在运行，先执行对应会话的 stop，再使用 login；旧配置中的账号密码可移除。多个角色同时在线仍须符合服务器的账号登录规则。</p>
     </section>
     <section aria-labelledby="completion-heading"><h2 id="completion-heading">终端补全 · v0.2.0</h2>
       <p>Homebrew、deb/rpm 和下载包现已提供 bash/zsh 补全。shell 已启用补全框架时，包管理器升级后重新打开终端即可使用；也可在当前终端直接加载：</p>
@@ -23,7 +40,7 @@
 autoload -Uz compinit &amp;&amp; compinit
 source &lt;(sactl completion zsh)
 # bash
-source &lt;(sactl completion bash)</code></pre>
+eval "$(sactl completion bash)"</code></pre>
       <p>需要每次打开终端都加载，可把对应语句加入 ~/.zshrc 或 ~/.bashrc。支持命令、arena 子命令、选项和路径补全；补全过程不登录游戏。</p>
     </section>
     <section aria-labelledby="arena-heading"><h2 id="arena-heading">竞技场 · sactl arena</h2>

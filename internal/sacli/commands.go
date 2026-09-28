@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -68,7 +69,8 @@ const CommandHelp = `commands:
                                      ranked teams, matchmaking, results and cursor-based events
   arena invite <slot> <character_id> invite the exact card selected from arena contacts
   trade request|offer-item|offer-gold|offer-pet|lock|confirm|cancel
-  logout                              leave the world and close the session
+  login                               interactively log in (credentials stay in memory)
+  logout                              log out and clear in-memory credentials
   alloc <0-3>                         spend one stat point
   social <setting> <0|1>              toggle party/duel/trade switches
   ride <slot>|off / title equip|text  riding and titles
@@ -86,9 +88,11 @@ const CommandHelp = `commands:
 func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 	switch request.Command {
 	case "ping":
-		return Response{OK: true, Text: "pong"}
+		return Response{OK: true, Text: "pong", Data: replyJSON(map[string]any{"pid": os.Getpid(), "version": BuildVersion, "interactive_login": true, "endpoint": s.config.Endpoint(), "transport": s.config.Transport})}
 	case "help", "commands":
 		return Response{OK: true, Text: CommandHelp}
+	case "login":
+		return s.commandLogin(ctx, request)
 	case "status":
 		return s.commandStatus(ctx, request)
 	case "observe":
@@ -192,12 +196,13 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 }
 
 func (s *Server) commandStatus(ctx context.Context, request Request) Response {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	// Observe first: the session connects lazily, so a header built before the
-	// attempt would report "not connected" for a daemon that is about to
-	// connect.
-	snapshot, err := s.snapshot(timeoutCtx)
+	s.mu.Lock()
+	game := s.game
+	s.mu.Unlock()
+	if game == nil {
+		return Response{OK: true, Text: s.statusReport() + "\nnot logged in; run sactl login", Data: replyJSON(map[string]any{"Connected": false, "Phase": "logged_out", "Endpoint": s.config.Endpoint()})}
+	}
+	snapshot, err := game.Observe(ctx)
 	lines := []string{s.statusReport()}
 	if err != nil {
 		lines = append(lines, "game: "+err.Error())

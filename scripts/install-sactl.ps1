@@ -70,11 +70,6 @@ try {
     $stateDir = Join-Path $stateBase 'sactl'
     New-Item -ItemType Directory -Force -Path $configDir, $stateDir | Out-Null
     $configPath = Join-Path $configDir 'sactl.toml'
-    if (-not (Test-Path $configPath)) {
-        $socket = (Join-Path $stateDir 'sactl.sock').Replace('\','/').Replace('"','\"')
-        $config = (Get-Content $template -Raw).Replace('runtime/sactl/sactl.sock', $socket)
-        [IO.File]::WriteAllText($configPath, $config, (New-Object Text.UTF8Encoding $false))
-    }
     if (-not $NoSkills) {
         foreach ($destination in $skillTargets) {
             New-Item -ItemType Directory -Force $destination | Out-Null
@@ -89,7 +84,7 @@ try {
     }
     Write-Host "Installed: $target"
     Write-Host "Config: $configPath"
-    Write-Host 'Configure the game address/account/character, then run sactl serve. No game login was started.'
+    Write-Host 'Run sactl init, then sactl login. Existing configurations are preserved. No game login was started.'
 } finally {
     if ($temporary -and (Test-Path $temporary)) { Remove-Item -Recurse -Force $temporary }
 }

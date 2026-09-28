@@ -109,19 +109,31 @@ func snapshotActorByID(snapshot aigame.Snapshot, id int32) (aigame.ActorSnapshot
 	return aigame.ActorSnapshot{}, false
 }
 
-// commandLogout leaves the world and closes the session. The daemon keeps the
-// character remembered, so the next command reconnects and re-enters.
+// commandLogout closes the session and clears credentials. Only an explicit
+// login may authenticate again; observation must not undo a logout.
 func (s *Server) commandLogout(ctx context.Context, request Request) Response {
-	game, err := s.session(ctx)
-	if err != nil {
-		return sessionFailure(err)
+	s.stopAutoBattle()
+	s.connectMu.Lock()
+	defer s.connectMu.Unlock()
+	s.mu.Lock()
+	game := s.game
+	s.game = nil
+	s.generation++
+	s.config.Account = ""
+	s.config.Password = ""
+	s.config.PasswordFile = ""
+	s.lastError = ""
+	s.mu.Unlock()
+	if game == nil {
+		return Response{OK: true, Text: "logged out"}
 	}
+	defer game.Close()
 	snapshot, err := game.Observe(ctx)
 	if err != nil {
 		return sessionFailure(err)
 	}
 	if !inWorld(snapshot.Phase) {
-		return Response{OK: true, Text: fmt.Sprintf("not in the world (phase=%s)", snapshot.Phase)}
+		return Response{OK: true, Text: fmt.Sprintf("logged out (phase=%s); credentials cleared", snapshot.Phase)}
 	}
 	character := snapshot.Character
 	// The native session closes the socket unconditionally after writing
@@ -138,12 +150,12 @@ func (s *Server) commandLogout(ctx context.Context, request Request) Response {
 		return Response{
 			OK:   true,
 			Kind: KindUnknown,
-			Text: fmt.Sprintf("sent CharLogout for %q and closed the session, but the server's acknowledgement could not be read (%v); the daemon reconnects and re-enters on the next command",
+			Text: fmt.Sprintf("sent CharLogout for %q and closed the session, but the server's acknowledgement could not be read (%v); credentials cleared; use sactl login to log in again",
 				character, logoutErr),
 		}
 	}
 	return Response{
 		OK:   true,
-		Text: fmt.Sprintf("logged out %q; the daemon will reconnect and re-enter on the next command", character),
+		Text: fmt.Sprintf("logged out %q; credentials cleared; use sactl login to log in again", character),
 	}
 }

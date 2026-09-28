@@ -62,10 +62,18 @@ target.write_text('mock package')
             with zipfile.ZipFile(dist / f'{sactl_prefix}.zip') as archive:
                 sactl_names = archive.namelist()
                 payload = archive.read(f'{sactl_prefix}/sactl.exe').decode()
+                for source in (root / '.agents/skills/sactl').rglob('*'):
+                    if source.is_file():
+                        relative = source.relative_to(root / '.agents/skills/sactl')
+                        assert archive.read(f'{sactl_prefix}/skills/sactl/{relative}') == source.read_bytes()
         else:
             with tarfile.open(dist / f'{sactl_prefix}.tar.gz') as archive:
                 sactl_names = archive.getnames()
                 payload = archive.extractfile(f'{sactl_prefix}/sactl{suffix}').read().decode()
+                for source in (root / '.agents/skills/sactl').rglob('*'):
+                    if source.is_file():
+                        relative = source.relative_to(root / '.agents/skills/sactl')
+                        assert archive.extractfile(f'{sactl_prefix}/skills/sactl/{relative}').read() == source.read_bytes()
         assert payload == f'{target_os}/{arch}', payload
         assert f'{sactl_prefix}/arena-agent{suffix}' not in sactl_names
         for entry in ['completions/sactl.bash', 'completions/_sactl']:

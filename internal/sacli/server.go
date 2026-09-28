@@ -32,6 +32,7 @@ type Server struct {
 	config Config
 	events *eventLog
 
+	connectMu  sync.Mutex
 	mu         sync.Mutex
 	game       Game
 	generation uint64
@@ -222,22 +223,40 @@ func (s *Server) shutdown() {
 // login is reported verbatim; swallowing that error is what made the
 // previous AI chain hard to debug.
 func (s *Server) session(ctx context.Context) (Game, error) {
+	s.connectMu.Lock()
+	defer s.connectMu.Unlock()
+	return s.connectSession(ctx)
+}
+
+func (s *Server) connectSession(ctx context.Context) (Game, error) {
 	s.mu.Lock()
 	if s.game != nil {
 		game := s.game
 		s.mu.Unlock()
 		return game, nil
 	}
+	if s.stopping {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("daemon is stopping")
+	}
+	config := s.config
 	s.mu.Unlock()
+	if config.Account == "" || config.Password == "" {
+		return nil, fmt.Errorf("not logged in; run sactl login")
+	}
 
 	// Connect outside the lock: dialing and entering the world takes seconds
 	// and must not block `status` from reporting the attempt.
-	game, err := connect(ctx, s.config, s.desiredCharacter())
+	game, err := connect(ctx, config, s.desiredCharacter())
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
 		s.lastError = err.Error()
 		return nil, err
+	}
+	if s.stopping {
+		_ = game.Close()
+		return nil, fmt.Errorf("daemon is stopping")
 	}
 	if s.game != nil { // another command connected first
 		_ = game.Close()
@@ -347,7 +366,7 @@ func (s *Server) statusReport() string {
 		state = "not connected"
 	}
 	report := fmt.Sprintf("version: %s\nsession: %s\naccount: %s\ncharacter: %s\nsocket: %s\naddress: %s",
-		BuildVersion, state, s.config.Account, s.config.Character, s.config.SocketPath, s.config.Address)
+		BuildVersion, state, s.config.Account, s.character, s.config.SocketPath, s.config.Endpoint())
 	if s.lastError != "" {
 		report += "\nlast error: " + s.lastError
 	}

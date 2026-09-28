@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install sactl and its Codex/Claude Code skills on macOS or Linux.
 # Usage: install-sactl.sh --download [vX.Y.Z] [--cdn-base https://cdn.example/game]
-#        install-sactl.sh [--prefix DIR] [--force] [--no-skills]
-# --force replaces the config template; existing config is otherwise preserved.
+#        install-sactl.sh [--prefix DIR] [--no-skills]
+# Account configuration is created interactively by sactl init.
 set -euo pipefail
 script_dir=""
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
@@ -12,15 +12,15 @@ install_home="${SACTL_INSTALL_HOME:-$HOME}"
 prefix="${PREFIX:-$install_home/.local/bin}"
 config_dir="${XDG_CONFIG_HOME:-$install_home/.config}/sactl"
 state_dir="${XDG_STATE_HOME:-$install_home/.local/state}/sactl"
-force=0; download=0; skills=1; tag=""; cdn=""; bundle=""
+download=0; skills=1; tag=""; cdn=""; bundle=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix) prefix="${2:?--prefix requires a directory}"; shift 2 ;;
     --cdn-base) cdn="${2:?--cdn-base requires a URL}"; cdn="${cdn%/}"; shift 2 ;;
-    --force) force=1; shift ;;
+    --force) shift ;; # Legacy option; account configurations are always preserved.
     --no-skills) skills=0; shift ;;
     --download) download=1; shift ;;
-    -h|--help) echo 'Install sactl + Codex/Claude skills: --download [vX.Y.Z] [--cdn-base URL] [--prefix DIR] [--force] [--no-skills]'; exit 0 ;;
+    -h|--help) echo 'Install sactl + Codex/Claude skills: --download [vX.Y.Z] [--cdn-base URL] [--prefix DIR] [--no-skills]'; exit 0 ;;
     v[0-9]*) tag="$1"; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -98,12 +98,6 @@ if [[ -f "$bundle/arena-agent.example.json" && -f "$bundle/local-arena-agent.md"
 fi
 if command -v xattr >/dev/null 2>&1; then xattr -d com.apple.quarantine "$prefix/sactl" 2>/dev/null || true; fi
 config_path="$config_dir/sactl.toml"
-if [[ ! -f "$config_path" || $force == 1 ]]; then
-  # Escape paths for TOML and sed, including macOS home paths with spaces.
-  socket="$(printf '%s' "$state_dir/sactl.sock" | sed 's/\\/\\\\/g; s/"/\\"/g; s/[&|]/\\&/g')"
-  sed "s|^socket_path = .*|socket_path = \"$socket\"|" "$bundle/sactl.toml.example" > "$config_path"
-  chmod 600 "$config_path"
-fi
 if [[ $skills == 1 ]]; then
   for target in "$install_home/.agents/skills/sactl" "$install_home/.claude/skills/sactl"; do
     mkdir -p "$target"
@@ -112,6 +106,6 @@ if [[ $skills == 1 ]]; then
   done
 fi
 printf '\nInstalled: %s\nConfig: %s\n' "$prefix/sactl" "$config_path"
-echo 'Next: configure your game address/account/character, then run sactl serve.'
+echo 'Next: run sactl init, then sactl login. Existing configurations are preserved.'
 echo 'Skills are available in a new Codex/Claude Code session; no game login was started.'
 case ":$PATH:" in *":$prefix:"*) ;; *) printf 'Add to your shell PATH: export PATH="%s:$PATH"\n' "$prefix" ;; esac

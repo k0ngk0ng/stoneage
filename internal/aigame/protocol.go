@@ -726,15 +726,19 @@ func (session *Session) watchContext(ctx context.Context) func() {
 	if ctx == nil {
 		return func() {}
 	}
-	stop := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = session.conn.Close()
-		case <-stop:
+	// AfterFunc can be stopped synchronously. A goroutine selecting between
+	// a completed handshake and a later cancellation could randomly close a
+	// successfully established session when both channels became ready.
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = session.conn.Close()
+		close(done)
+	})
+	return func() {
+		if !stop() {
+			<-done
 		}
-	}()
-	return func() { close(stop) }
+	}
 }
 
 func (session *Session) startReader() {

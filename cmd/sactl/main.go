@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -47,6 +48,12 @@ func main() {
 	}
 	sacli.BuildVersion = version
 	switch os.Args[1] {
+	case "init":
+		if err := initConfig(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "sactl init: %v\n", err)
+			os.Exit(exitFailed)
+		}
+		return
 	case "completion":
 		if len(os.Args) == 3 && (os.Args[2] == "--help" || os.Args[2] == "-h") {
 			fmt.Println("usage: sactl completion <bash|zsh>")
@@ -94,34 +101,34 @@ func main() {
 }
 
 func serve(args []string) error {
-	var configPath string
-	for index := 0; index < len(args); index++ {
-		switch args[index] {
-		case "--config", "-config":
-			if index+1 >= len(args) {
-				return errors.New("--config requires a path")
-			}
-			configPath = args[index+1]
-			index++
-		default:
-			return fmt.Errorf("unknown serve argument %q", args[index])
+	fs := flag.NewFlagSet("sactl serve", flag.ContinueOnError)
+	configPath := fs.String("config", "", "custom configuration file")
+	profile := fs.String("profile", "", "named player profile")
+	foreground := fs.Bool("foreground", false, "keep daemon in foreground (for supervisors/debugging)")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
 		}
+		return err
 	}
-	config, usedPath, err := sacli.LoadConfigPath(configPath)
+	if fs.NArg() != 0 {
+		return errors.New("unexpected serve arguments")
+	}
+	config, usedPath, err := sacli.LoadProfileConfig(*profile, *configPath)
 	if err != nil {
 		return err
 	}
 	if usedPath == "" {
-		fmt.Fprintf(os.Stderr, "sactl: no config file found (searched %s); using defaults — set account/password before starting\n",
-			strings.Join(sacli.ConfigSearchPaths(), ", "))
-	} else {
-		fmt.Printf("sactl: using config %s\n", usedPath)
+		return errors.New("no config found; run sactl init first")
 	}
+	if !*foreground {
+		return startBackground(config, usedPath, *profile)
+	}
+	fmt.Printf("sactl: using config %s\n", usedPath)
 	server := sacli.NewServer(config)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	fmt.Printf("sactl: serving on %s (gateway %s, account %s, character %s)\n",
-		config.SocketPath, config.Address, config.Account, config.Character)
+	fmt.Printf("sactl: serving on %s (%s %s)\n", config.SocketPath, config.Transport, config.Endpoint())
 	fmt.Printf("sactl: run `sactl status` in another terminal; stop with `sactl stop` or Ctrl-C\n")
 	if err := server.Serve(ctx); err != nil {
 		return err
@@ -161,6 +168,12 @@ func run(args []string) error {
 			}
 			options.socket = args[index+1]
 			index++
+		case arg == "--profile":
+			if index+1 >= len(args) {
+				return errors.New("--profile requires a name")
+			}
+			options.profile = args[index+1]
+			index++
 		case arg == "--config" || arg == "-config":
 			if index+1 >= len(args) {
 				return errors.New("--config requires a path")
@@ -191,6 +204,25 @@ func run(args []string) error {
 		usage()
 		os.Exit(exitUsage)
 	}
+	if command == "serve" || command == "init" {
+		localArgs := append([]string{}, commandArgs...)
+		if options.profile != "" {
+			localArgs = append(localArgs, "--profile", options.profile)
+		}
+		if options.config != "" {
+			localArgs = append(localArgs, "--config", options.config)
+		}
+		if options.socket != "" || options.json || options.timeout != 0 {
+			return errors.New("unsupported local command flags")
+		}
+		if command == "serve" {
+			return serve(localArgs)
+		}
+		return initConfig(localArgs)
+	}
+	if command == "login" {
+		return login(options, commandArgs)
+	}
 	if command == "arena" || command == "ladder" {
 		if err := sacli.ValidateArenaCommand(commandArgs); err != nil {
 			return err
@@ -220,7 +252,7 @@ func run(args []string) error {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sactl: %v\n", err)
-		fmt.Fprintf(os.Stderr, "sactl: is the daemon running? start it with `sactl serve --config <file>`\n")
+		fmt.Fprintf(os.Stderr, "sactl: is the daemon running? start it with `sactl serve` using the same --profile or --config\n")
 		os.Exit(exitNoDaemon)
 	}
 	printResponse(response, options.json)
@@ -229,6 +261,7 @@ func run(args []string) error {
 }
 
 type clientOptions struct {
+	profile string
 	socket  string
 	config  string
 	json    bool
@@ -236,6 +269,13 @@ type clientOptions struct {
 }
 
 func (options clientOptions) socketPath() (string, error) {
+	if options.profile != "" {
+		if options.socket != "" {
+			return "", errors.New("--profile and --socket cannot be combined")
+		}
+		config, _, err := sacli.LoadProfileConfig(options.profile, options.config)
+		return config.SocketPath, err
+	}
 	if options.socket != "" {
 		return options.socket, nil
 	}
@@ -286,14 +326,16 @@ func usage() {
 	fmt.Fprintf(os.Stdout, `sactl - headless StoneAge client
 
 usage:
+  sactl init [--profile <name>]         configure server/profile without saving credentials
   sactl completion <bash|zsh>           print shell completion script
   sactl ai <init|check|run|train|evaluate|simulate> [options]  local squad commander
-  sactl serve --config <file>            hold one game session and serve the CLI
+  sactl serve [--profile <name>]        start a background game session
 %s
 
 global flags:
   --version         print the client version
   --socket <path>   daemon socket (default %s)
+  --profile <name>  select an isolated player profile
   --config <file>   read socket_path from a sactl config file
   --timeout <dur>   per-command timeout (default %s)
   --json            print the structured result

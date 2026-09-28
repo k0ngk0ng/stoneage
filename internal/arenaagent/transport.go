@@ -171,7 +171,7 @@ func (m *member) start(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	cmd := exec.Command(m.binary, "serve", "--config", m.cfg.Config)
+	cmd := exec.Command(m.binary, "serve", "--foreground", "--config", m.cfg.Config)
 	cmd.Stdout = log
 	cmd.Stderr = log
 	if e = cmd.Start(); e != nil {

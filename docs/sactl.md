@@ -10,12 +10,13 @@
 ## 结构
 
 ```text
-sactl serve --config <file>     长驻进程：持有游戏会话，监听私有 Unix socket（0600）
+sactl init                    首次配置服务器和会话选项，不保存凭据
+sactl login                   交互登录，自动启动后台进程保持游戏会话
 sactl <命令> [参数]              一次性客户端：连 socket → 发一条请求 → 打印结果 → 退出
 ```
 
 登录、选角、进入世界是有状态的长连接，不能每条命令重连，所以有守护进程这一层。一次性命令
-通过 `runtime/sactl/sactl.sock` 找到它。
+通过用户状态目录中的私有 socket 找到它，默认是 `~/.local/state/sactl/sactl.sock`。
 
 退出码：`0` 成功、`1` 动作失败或结果未知、`2` 用法错误、`3` 守护进程未运行。
 
@@ -70,8 +71,8 @@ tar -xzf stoneage-sactl-v0.1.48-darwin-arm64.tar.gz
 cd stoneage-sactl-v0.1.48-darwin-arm64
 install -m 755 sactl ~/.local/bin/sactl
 xattr -d com.apple.quarantine ~/.local/bin/sactl 2>/dev/null   # 见下方 macOS 说明
-mkdir -p ~/.config/sactl && cp sactl.toml.example ~/.config/sactl/sactl.toml
-chmod 600 ~/.config/sactl/sactl.toml    # 填账号、密码、map_directory
+sactl init
+sactl login    # 交互输入账号密码，不保存到磁盘
 ```
 
 > **macOS：从浏览器下载的副本会被系统杀掉。** 浏览器会给文件打上
@@ -102,7 +103,7 @@ chmod 600 ~/.config/sactl/sactl.toml    # 填账号、密码、map_directory
 scripts/install-sactl.sh                        # 从源码构建并安装
 scripts/install-sactl.sh --download             # 下载最新正式版（curl，不带隔离属性）
 scripts/install-sactl.sh --download v0.1.48     # 指定版本
-scripts/install-sactl.sh --prefix /usr/local/bin --force
+scripts/install-sactl.sh --prefix /usr/local/bin
 ```
 
 **3. 手工构建**
@@ -191,8 +192,46 @@ socket 路径也可用 `--socket` 或 `STONEAGE_SACTL_SOCKET` 覆盖。
 
 ## 开始使用
 
+从 **v0.2.2** 起，首次运行 `sactl init`，只配置游戏网址和可选角色名，默认生产网址为 `https://sa.ichenj.com`。
+配置中不保存账号密码；`sactl login` 在终端交互输入账号和隐藏的密码，自动启动后台会话，
+凭据仅保存在该进程内存中。`logout` 清除凭据，退出后查询状态不会重新登录。
+默认配置为 `~/.config/sactl/sactl.toml`（遵循 `XDG_CONFIG_HOME` 和 `STONEAGE_SACTL_CONFIG`）；
+已有配置不覆盖。`sactl init --config <file>` 可指定其他位置。
+
 ```bash
-sactl serve                                            # 前台持有会话；或 nohup 到后台
+sactl init
+sactl login
+sactl chars
+sactl enter '角色名'
+sactl status
+sactl logout
+sactl stop
+```
+
+多角色用独立 profile，每个有独立配置、socket、日志和后台进程：
+
+```bash
+sactl init --profile main
+sactl init --profile alt
+sactl login --profile main
+sactl login --profile alt
+sactl --profile main enter '角色一'
+sactl --profile alt enter '角色二'
+sactl --profile main status
+sactl --profile alt status
+sactl --profile main logout
+sactl --profile main stop
+```
+
+命名配置保存在用户配置目录的 `sactl/profiles/<name>.toml`，运行状态在用户状态目录的
+`sactl/profiles/`。显式 `--profile` 不受默认配置和 `STONEAGE_SACTL_SOCKET` 干扰，
+不能与 `--config` / `--socket` 混用。同一账号能否同时登录多个角色由服务端限制决定。
+`serve` 只启动后台进程，不代表登录成功；`login` 完成认证才报告成功。
+需要排障或交给进程管理器时使用 `sactl serve --foreground`。旧配置的凭据字段保留兼容，
+现有配置不会自动迁移或删除；推荐移除账号密码字段，改用交互登录。
+
+```bash
+sactl serve                                            # 可选：单独启动后台进程
 sactl status                                           # 另开一个终端
 ```
 

@@ -3,6 +3,8 @@ package sacli
 import (
 	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -34,6 +36,17 @@ func Complete(words []string) []string {
 			return []string{"@files"}
 		case "--directory", "--root", "--work":
 			return []string{"@dirs"}
+		case "--profile":
+			path, _, _ := ProfilePaths("placeholder")
+			entries, _ := os.ReadDir(filepath.Dir(path))
+			var names []string
+			for _, entry := range entries {
+				name := strings.TrimSuffix(entry.Name(), ".toml")
+				if !entry.IsDir() && name != entry.Name() && profileName.MatchString(name) {
+					names = append(names, name)
+				}
+			}
+			return completePrefix(strings.Join(names, " "), prefix)
 		case "--mode":
 			return completePrefix("1 2 3 4 5", prefix)
 		case "--strategy":
@@ -50,7 +63,7 @@ func Complete(words []string) []string {
 	positional := []string{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--socket", "-socket", "--config", "-config", "--timeout", "-timeout":
+		case "--socket", "-socket", "--config", "-config", "--timeout", "-timeout", "--profile":
 			i++
 		case "--json", "-json":
 		default:
@@ -58,9 +71,9 @@ func Complete(words []string) []string {
 		}
 	}
 	if len(positional) == 0 {
-		commands := "commands duel functions title probe --json --socket --config --timeout"
+		commands := "commands duel functions title probe init serve --json --socket --config --profile --timeout"
 		if len(args) == 0 {
-			commands += " ai completion serve --help --version"
+			commands += " ai completion --help --version"
 		}
 		// Reuse the public command help instead of maintaining a second root list.
 		for _, line := range strings.Split(CommandHelp, "\n") {
@@ -98,7 +111,10 @@ func Complete(words []string) []string {
 		return nil
 	}
 	if command == "serve" {
-		return completePrefix("--config", prefix)
+		return completePrefix("--config --profile --foreground --help", prefix)
+	}
+	if command == "init" || command == "login" {
+		return completePrefix("--config --profile --help", prefix)
 	}
 	subcommands := map[string]string{
 		"arena": "status contacts create mode invite accept decline loadout ready unready queue cancel leave kick leader result ack wait strategy strategies",
@@ -108,7 +124,7 @@ func Complete(words []string) []string {
 		"auto-battle": "on off status", "reply": "ok cancel yes no prev next",
 		"walk": "up down left right n ne e se s sw w nw", "look": "up down left right n ne e se s sw w nw",
 	}
-	choices := "--json --socket --config --timeout"
+	choices := "--json --socket --config --profile --timeout"
 	choices += " " + map[string]string{
 		"say": "--color --range", "warp": "--time", "arena": "--request-id --revision",
 		"create-character": "--hometown --slot --image --face --vital --strength --toughness --dexterity --earth --water --fire --wind",

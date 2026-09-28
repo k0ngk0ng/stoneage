@@ -34,7 +34,7 @@ try {
         if (-not (Test-Path "$env:SACTL_INSTALL_HOME\$agent\skills\sactl\SKILL.md")) { throw 'Missing installed skill' }
     }
     $config = Join-Path $env:XDG_CONFIG_HOME 'sactl\sactl.toml'
-    if (-not (Test-Path $config)) { throw 'Missing discoverable config' }
+    if (Test-Path $config) { throw 'Installer must leave first configuration to init' }
     Set-Content $config 'user config'
     & "$PSScriptRoot\install-sactl.ps1" -Download -Version v0.1.99 -CdnBase https://cdn.example/game -Prefix $prefix
     if ((Get-Content $config -Raw).Trim() -ne 'user config') { throw 'Config overwritten' }
