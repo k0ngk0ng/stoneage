@@ -43,8 +43,8 @@ test('mode and pet controls preserve edits through a contact-triggered DOM rebui
   f.api.state.open=true;
   const snapshot={phase:'lobby',self:{id:'player_a',pet_mask:3,available_pet_mask:3},room:{id:'room',mode:2,leader_id:'player_a',members:[]}};
   f.api.apply({ok:true,revision:11,snapshot});
-  assert.ok(!doc.body.all().some(node=>node.attributes['aria-label']==='天梯战斗策略'));
-  const mode=()=>doc.body.all().find(node=>node.attributes['aria-label']==='天梯模式');
+  assert.ok(!doc.body.all().some(node=>node.attributes['aria-label']==='竞技场战斗策略'));
+  const mode=()=>doc.body.all().find(node=>node.attributes['aria-label']==='竞技场模式');
   const pets=()=>doc.body.all().filter(node=>node.tag==='input');
   mode().value='5';mode().onchange();
   for(const input of pets()){input.checked=false;input.onchange();}

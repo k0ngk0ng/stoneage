@@ -44,8 +44,9 @@ func TestCommandFlagsReachDaemon(t *testing.T) {
 		name, command string
 		args          []string
 	}{
-		{"ladder events", "ladder", []string{"wait", "42", "1s", "--stream", "session-1"}},
-		{"ladder retry", "ladder", []string{"queue", "--request-id", "original-id", "--revision", "42"}},
+		{"arena events", "arena", []string{"wait", "42", "1s", "--stream", "session-1"}},
+		{"arena retry", "arena", []string{"queue", "--request-id", "original-id", "--revision", "42"}},
+		{"legacy alias", "ladder", []string{"status"}},
 		{"character options", "create-character", []string{"Fixture", "--vital", "5"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,7 +86,11 @@ func TestCommandFlagsReachDaemon(t *testing.T) {
 				t.Fatal(err)
 			}
 			request := <-requests
-			if request.Command != tc.command || !reflect.DeepEqual(request.Args, tc.args) || !request.JSON || request.Timeout != 3*time.Second {
+			expectedCommand := tc.command
+			if expectedCommand == "arena" {
+				expectedCommand = "ladder"
+			}
+			if request.Command != expectedCommand || !reflect.DeepEqual(request.Args, tc.args) || !request.JSON || request.Timeout != 3*time.Second {
 				t.Fatalf("command flags changed before daemon: %+v", request)
 			}
 		})
@@ -100,9 +105,9 @@ func TestUnknownGlobalFlagFails(t *testing.T) {
 	}
 }
 
-// Exercise main, not just the daemon-command parser: arena runs locally and
+// Exercise main, not just the daemon-command parser: ai runs locally and
 // must never attempt daemon RPC for help, init or check.
-func TestArenaCLIProcess(t *testing.T) {
+func TestAICLIProcess(t *testing.T) {
 	if os.Getenv("STONEAGE_TEST_ARENA_PROCESS") != "1" {
 		return
 	}
@@ -115,7 +120,7 @@ func TestArenaCLIProcess(t *testing.T) {
 	}
 	t.Fatal("missing arguments")
 }
-func TestArenaIntegratedCLI(t *testing.T) {
+func TestAIIntegratedCLI(t *testing.T) {
 	dir, err := os.MkdirTemp("", "sa-")
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +128,7 @@ func TestArenaIntegratedCLI(t *testing.T) {
 	defer os.RemoveAll(dir)
 	invoke := func(args ...string) []byte {
 		t.Helper()
-		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestArenaCLIProcess$", "--"}, args...)...)
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestAICLIProcess$", "--"}, args...)...)
 		cmd.Env = append(os.Environ(), "STONEAGE_TEST_ARENA_PROCESS=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -131,22 +136,25 @@ func TestArenaIntegratedCLI(t *testing.T) {
 		}
 		return out
 	}
-	if !strings.Contains(string(invoke("arena", "--help")), "sactl arena") {
+	if !strings.Contains(string(invoke("ai", "--help")), "sactl ai") {
 		t.Fatal("missing integrated help")
+	}
+	if !strings.Contains(string(invoke("arena", "--help")), "player arena") {
+		t.Fatal("arena help must work without a daemon")
 	}
 	for _, shell := range []string{"bash", "zsh"} {
 		if !strings.Contains(string(invoke("completion", shell)), "__complete") {
 			t.Fatal("missing shell completion", shell)
 		}
 	}
-	if output := string(invoke("__complete", "arena", "run", "--f")); !strings.Contains(output, "--forever") {
+	if output := string(invoke("__complete", "ai", "run", "--f")); !strings.Contains(output, "--forever") {
 		t.Fatal("completion unexpectedly requires daemon", output)
 	}
 	for _, command := range []string{"run", "train", "evaluate", "simulate"} {
-		invoke("arena", command, "--help")
+		invoke("ai", command, "--help")
 	}
 	team := filepath.Join(dir, "team")
-	invoke("arena", "init", "--directory", team, "--mode", "2")
+	invoke("ai", "init", "--directory", team, "--mode", "2")
 	raw, err := os.ReadFile(filepath.Join(team, "team.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -159,8 +167,19 @@ func TestArenaIntegratedCLI(t *testing.T) {
 	if config["sactl"] != exe {
 		t.Fatal("init must use current executable", config["sactl"])
 	}
-	output := invoke("arena", "check", "--config", filepath.Join(team, "team.json"))
+	output := invoke("ai", "check", "--config", filepath.Join(team, "team.json"))
 	if !strings.Contains(string(output), `"ok":true`) {
 		t.Fatal(string(output))
+	}
+}
+
+func TestOldArenaAICommandsFailBeforeOpeningSession(t *testing.T) {
+	for _, sub := range []string{"init", "check", "run", "train", "evaluate", "simulate", "native-simulate", "version"} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestAICLIProcess$", "--", "--config", "/does-not-exist", "arena", sub)
+		cmd.Env = append(os.Environ(), "STONEAGE_TEST_ARENA_PROCESS=1")
+		out, err := cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "sactl ai "+sub) || strings.Contains(string(out), "daemon running") {
+			t.Fatalf("old arena %s did not safely explain migration: %v %s", sub, err, out)
+		}
 	}
 }

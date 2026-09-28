@@ -232,7 +232,7 @@ func (s *Server) autoBattleStatus() string {
 	}
 	status := "auto battle: on"
 	if s.autoLadderOnly {
-		status += " (ladder only)"
+		status += " (arena only)"
 	}
 	if s.autoStateKept {
 		status += "\n" + describeAutoState(s.autoState)

@@ -98,7 +98,7 @@ func (handler *Handler) ladder(response http.ResponseWriter, request *http.Reque
 		if input.Request.Operation == "ready" || input.Request.Operation == "queue" {
 			handle, _, _ := session.automationStatus()
 			if runner, ok := handle.(battleauto.Runner); ok && runner.Policy.SeekEncounters {
-				http.Error(response, "请先停止自动寻敌，再准备天梯", http.StatusConflict)
+				http.Error(response, "请先停止自动寻敌，再准备竞技场", http.StatusConflict)
 				return
 			}
 		}
@@ -171,7 +171,7 @@ func (handler *Handler) ensureLadderAuto(ctx context.Context, session *tcpSessio
 	runner, isLoop := handle.(battleauto.Runner)
 	eligible := s.AutoBattleEligible()
 	if isLoop && mode == aicontrol.Battle && runner.LadderOnly && (!eligible || s.Self.Strategy == "manual") {
-		if _, _, err := session.gate.Switch(generation, aicontrol.Manual, "天梯手动控制"); err != nil {
+		if _, _, err := session.gate.Switch(generation, aicontrol.Manual, "竞技场手动控制"); err != nil {
 			return err
 		}
 		session.clearAutomation(automationGen)
@@ -188,7 +188,7 @@ func (handler *Handler) ensureLadderAuto(ctx context.Context, session *tcpSessio
 		return err
 	}
 	if !strategies.Has(s.Self.Strategy) {
-		return errors.New("已选天梯策略尚未安装，请切换到手动或已安装策略")
+		return errors.New("已选竞技场策略尚未安装，请切换到手动或已安装策略")
 	}
 	control := session.gate.State()
 	if control.Mode == aicontrol.Battle && isLoop {
@@ -197,7 +197,7 @@ func (handler *Handler) ensureLadderAuto(ctx context.Context, session *tcpSessio
 	if control.Mode != aicontrol.Manual {
 		return aicontrol.ErrOwner
 	}
-	return handler.startBattleLoop(session, generation, aicontrol.Battle, "天梯自动战斗", false, true)
+	return handler.startBattleLoop(session, generation, aicontrol.Battle, "竞技场自动战斗", false, true)
 }
 
 // A nonnil request means the write's result is unknown; callers must retain

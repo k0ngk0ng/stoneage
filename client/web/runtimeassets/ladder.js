@@ -9,7 +9,7 @@
     busy: false, polling: false, pending: null, pendingQueue: [], error: '', networkError: '', notice: '', contacts: [],
     contactsKnown: false, selectedContact: '', selectedStrategy: '', selectedMode: null, selectedPetMask: null, pets: [], strategies: [], receivedAt: 0, announced: '', orderedResult: '', controller: null };
   const phases = { idle:'尚未组队', lobby:'队伍准备', queued:'匹配中', countdown:'即将开战',
-    battle:'战斗中', settling:'正在保存结算', result:'比赛结算', unavailable:'天梯暂不可用' };
+    battle:'战斗中', settling:'正在保存结算', result:'比赛结算', unavailable:'竞技场暂不可用' };
   const errors = { stale_revision:'队伍状态已变化，请查看最新状态后重新操作。',
     revision_conflict:'队伍状态已变化，请查看最新状态后重新操作。',
     leader_required:'此操作需要队长执行。', team_size_mismatch:'队伍人数须与所选模式一致。',
@@ -17,12 +17,12 @@
     player_busy:'角色正在进行其他活动，请先结束。', not_idle:'角色正在进行其他活动，请先结束。',
     offline:'队伍中有玩家离线。', room_locked:'当前队伍已锁定。',
     invitation_expired:'邀请已过期或失效。', invitation_pending:'已向这位玩家发出邀请。',
-    contact_unavailable:'这张名片对应的玩家当前不可邀请。', already_in_room:'玩家已在天梯队伍中。',
+    contact_unavailable:'这张名片对应的玩家当前不可邀请。', already_in_room:'玩家已在竞技场队伍中。',
     contact_identity_required:'这张旧名片尚未确认角色身份，请与对方重新交换名片。',
     contact_identity_changed:'原名片对应的角色已变化，请确认对方并重新交换名片。',
     contact_slot_changed:'名片槽位已变化，请刷新名片并重新选择玩家。',
     result_or_match_pending:'请先完成当前比赛并确认结算。', invalid_loadout:'参战宠物配置已变化，请重新选择。',
-    cooldown:'弃赛冷却尚未结束。', ladder_reserved:'角色已被天梯比赛占用。',
+    cooldown:'弃赛冷却尚未结束。', ladder_reserved:'角色已被竞技场比赛占用。',
     database_unavailable:'结算存储暂不可用，请稍后重试。' };
   const session = () => client.app.transport;
   const visible = () => ['world','battle','battle-result'].includes(client.app.phase);
@@ -136,7 +136,7 @@
     });
     const text = await response.text();
     let data; try { data = JSON.parse(text); } catch (_) { data = null; }
-    if (session() !== current || current.closed || epoch !== state.characterEpoch) throw new Error('游戏会话已变化，请重新读取天梯状态。');
+    if (session() !== current || current.closed || epoch !== state.characterEpoch) throw new Error('游戏会话已变化，请重新读取竞技场状态。');
     if (!response.ok) {
       const error = new Error(data?.code === 'outcome_unknown' ? '操作结果尚未确认，可重试原请求。' : text.trim() || `HTTP ${response.status}`);
       error.code = data?.code; error.status = response.status; throw error;
@@ -160,7 +160,7 @@
     const reply = await submit({request_id:requestID(), revision:0, operation:'status', argument:''});
     if (current !== state.session || epoch !== state.characterEpoch) return;
     apply(reply);
-    if (!reply.ok) throw new Error(errors[reply.code] || `天梯暂不可用（${reply.code}）`);
+    if (!reply.ok) throw new Error(errors[reply.code] || `竞技场暂不可用（${reply.code}）`);
     return reply;
   }
   async function perform(operation, argument = '', retry = false) {
@@ -188,7 +188,7 @@
       if (!historical && ['create','mode'].includes(request.operation)) state.selectedMode = null;
       if (!historical && request.operation === 'loadout') state.selectedPetMask = null;
       if (reply.automation_error) state.error=`操作已完成，自动战斗未启动：${reply.automation_error}`;
-      if (!historical && operation === 'invite') state.notice = '邀请已发出，对方可在天梯中接受。';
+      if (!historical && operation === 'invite') state.notice = '邀请已发出，对方可在竞技场中接受。';
       if (!historical && operation === 'ack') state.announced = '';
     } catch (error) {
       if (current !== state.session || epoch !== state.characterEpoch) return;
@@ -246,7 +246,7 @@
   function now() { return (state.envelope?.server_time_ms || Date.now()) + Date.now() - state.receivedAt; }
   function countdownText() {
     const s = snapshot();
-    if (!s) return '正在读取天梯状态…';
+    if (!s) return '正在读取竞技场状态…';
     if (s.phase === 'countdown') return `距离开战 ${Math.max(0,Math.ceil((s.match.start_at_ms-now())/1000))} 秒`;
     if (s.phase === 'queued') return `匹配中 · 已等待 ${Math.max(0,Math.floor((now()-s.room.queued_at_ms)/1000))} 秒`;
     if (s.cooldown_until_ms > now()) return `弃赛冷却 ${Math.ceil((s.cooldown_until_ms-now())/1000)} 秒`;
@@ -287,7 +287,7 @@
   function render() {
     if (!panel) return;
     panel.hidden = !state.open; toggle.setAttribute('aria-expanded',String(state.open));
-    const s = snapshot(); toggle.textContent = `天梯${s?.invitations?.length ? ` · ${s.invitations.length}` : ''}`;
+    const s = snapshot(); toggle.textContent = `竞技场${s?.invitations?.length ? ` · ${s.invitations.length}` : ''}`;
     if (!state.open) return;
     const body = panel.querySelector('[data-body]'); body.replaceChildren();
     const clock = element('p',countdownText(),'ladder-state'); clock.id = 'ladder-clock'; body.append(clock);
@@ -297,7 +297,7 @@
     if (state.notice) body.append(element('p',state.notice,'ladder-muted'));
     const control = root.StoneAgeAutomation?.currentControl();
     if (control && !['manual','battle'].includes(control.mode)) {
-      body.append(element('p','先结束自动任务或自动练级，再准备天梯。','ladder-muted'),
+      body.append(element('p','先结束自动任务或自动练级，再准备竞技场。','ladder-muted'),
         button('接管角色',async()=>{try{await root.StoneAgeAutomation.takeover();await status();}catch(error){state.error=error.message;render();}}));
     }
     if (!s) { const retry=button('重新读取',()=>status().catch(error=>{state.error=error.message;render();})); retry.disabled=false; body.append(retry); return; }
@@ -331,7 +331,7 @@
     }
     const room=s.room, leader=room?.leader_id===s.self.id, editable=s.phase==='lobby';
     if (!room || leader) {
-      const row=element('div',null,'ladder-row'), modes=element('select');modes.setAttribute('aria-label','天梯模式');
+      const row=element('div',null,'ladder-row'), modes=element('select');modes.setAttribute('aria-label','竞技场模式');
       for(let i=1;i<=5;i++){const option=element('option',`${i}v${i}`);option.value=i;modes.append(option);}modes.value=state.selectedMode??room?.mode??1;
       modes.onchange=()=>{state.selectedMode=Number(modes.value);};
       modes.disabled=state.busy||!!state.pending||!!room&&!editable;
@@ -370,9 +370,9 @@
     #ladder-panel{position:fixed;right:12px;top:48px;width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 64px);z-index:3200;overflow:auto;box-sizing:border-box;padding:16px;color:#eee0c2;background:#241d16fa;border:1px solid #a68b59;border-radius:8px;box-shadow:0 8px 32px #0008;font:13px/1.6 sans-serif}
     #ladder-panel[hidden],#ladder-toggle[hidden]{display:none}#ladder-panel header{position:sticky;top:-16px;z-index:1;background:#241d16;padding-top:8px;padding-bottom:8px;height:auto;border:0;display:flex;justify-content:space-between;align-items:center;gap:12px}#ladder-panel h2{margin:0;font-size:18px;color:#ffe4a0}#ladder-panel h3{font-size:14px;margin:12px 0 6px}#ladder-panel p{margin:6px 0;overflow-wrap:anywhere}#ladder-panel button,#ladder-panel select{font:inherit;color:#f5dfa7;border:1px solid #806b49;border-radius:4px;background:#382c20;padding:6px 10px;margin:3px 4px 3px 0;min-height:34px;max-width:100%}#ladder-panel button:disabled{opacity:.45}#ladder-panel .ladder-muted{color:#b6aa94;font-size:12px}#ladder-panel .ladder-error{color:#ffa49a}#ladder-panel .ladder-state{color:#ffdfa0;font-weight:bold}#ladder-panel .ladder-row{display:flex;align-items:center;flex-wrap:wrap}#ladder-panel .ladder-row select{flex:1;min-width:120px}#ladder-panel .ladder-ratings{display:flex;flex-wrap:wrap;gap:4px 12px;margin:10px 0;color:#d4c096}#ladder-panel .ladder-member{background:#ffffff08;padding:8px 10px;margin:6px 0;border-left:2px solid #9ba777;border-radius:4px;overflow-wrap:anywhere}#ladder-panel .ladder-member>span,#ladder-panel .ladder-member>strong{display:block}#ladder-panel .ladder-teams{display:grid;grid-template-columns:1fr 1fr;gap:12px}#ladder-panel .ladder-teams section{min-width:0}#ladder-panel fieldset{margin:12px 0;border:1px solid #806b49}#ladder-panel fieldset label{display:block;padding:4px 0}#ladder-panel input{accent-color:#ba9b61;margin-right:8px}@media(max-width:380px){#ladder-panel{padding:12px}#ladder-panel .ladder-teams{gap:6px}#ladder-panel .ladder-member{padding:6px}}`;
   doc.head.append(style);
-  toggle=element('button','天梯');toggle.id='ladder-toggle';toggle.type='button';toggle.hidden=true;toggle.setAttribute('aria-controls','ladder-panel');toggle.onclick=()=>setOpen(!state.open);(doc.getElementById('player-tools')||doc.body).append(toggle);
-  panel=element('section');panel.id='ladder-panel';panel.setAttribute('data-game-ui','');panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','天梯');
-  panel.innerHTML='<header><h2>天梯</h2><button type="button" aria-label="关闭天梯面板">关闭</button></header><div data-body></div>';doc.body.append(panel);
+  toggle=element('button','竞技场');toggle.id='ladder-toggle';toggle.type='button';toggle.hidden=true;toggle.setAttribute('aria-controls','ladder-panel');toggle.onclick=()=>setOpen(!state.open);(doc.getElementById('player-tools')||doc.body).append(toggle);
+  panel=element('section');panel.id='ladder-panel';panel.setAttribute('data-game-ui','');panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','竞技场');
+  panel.innerHTML='<header><h2>竞技场</h2><button type="button" aria-label="关闭竞技场面板">关闭</button></header><div data-body></div>';doc.body.append(panel);
   panel.querySelector('header button').onclick=()=>setOpen(false);
   panel.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();setOpen(false);}});
   root.setInterval(()=>{if(session()!==state.session)reset(session());toggle.hidden=!visible();if(toggle.hidden){state.controller?.abort();panel.hidden=true;return;}updateClocks();refresh();},1000);

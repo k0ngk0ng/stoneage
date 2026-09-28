@@ -88,7 +88,7 @@ func (r *Runner) initialize(ctx context.Context) error {
 		if str(observation["Account"]) != str(m.login["account"]) || str(observation["Character"]) != str(m.login["character"]) {
 			return fmt.Errorf("member socket belongs to another identity")
 		}
-		data, e := m.data(ctx, "ladder", "status")
+		data, e := m.data(ctx, "arena", "status")
 		if e != nil {
 			return e
 		}
@@ -134,7 +134,7 @@ func (r *Runner) statuses(ctx context.Context) (map[string]Object, error) {
 	replies := make(chan result, len(r.members))
 	for _, m := range r.members {
 		go func(m *member) {
-			v, e := m.call(ctx, 4*time.Second, true, "ladder", "status")
+			v, e := m.call(ctx, 4*time.Second, true, "arena", "status")
 			replies <- result{m, v, e}
 		}(m)
 	}
@@ -386,7 +386,7 @@ func (r *Runner) contact(ctx context.Context, leader, target *member) (Object, e
 	}
 	defer lock.Close()
 	find := func() (Object, error) {
-		v, e := leader.data(ctx, "ladder", "contacts")
+		v, e := leader.data(ctx, "arena", "contacts")
 		if e != nil {
 			return nil, e
 		}

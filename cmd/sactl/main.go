@@ -68,9 +68,9 @@ func main() {
 			fmt.Println(candidate)
 		}
 		return
-	case "arena":
+	case "ai":
 		if err := arenaagent.Main(context.Background(), os.Args[2:], version, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "sactl arena: %v\n", err)
+			fmt.Fprintf(os.Stderr, "sactl ai: %v\n", err)
 			os.Exit(exitFailed)
 		}
 		return
@@ -144,6 +144,13 @@ func run(args []string) error {
 		case arg == "--help" || arg == "-h" || (arg == "help" && command == ""):
 			// Help must work wherever the flags sit: a wrapper script may put
 			// its own flags before the command name.
+			if command == "arena" || command == "ladder" {
+				if err := sacli.ValidateArenaCommand(commandArgs); err != nil {
+					return err
+				}
+				fmt.Println(sacli.ArenaHelp)
+				return nil
+			}
 			usage()
 			return nil
 		case arg == "--json":
@@ -183,6 +190,17 @@ func run(args []string) error {
 	if command == "" {
 		usage()
 		os.Exit(exitUsage)
+	}
+	if command == "arena" || command == "ladder" {
+		if err := sacli.ValidateArenaCommand(commandArgs); err != nil {
+			return err
+		}
+		if len(commandArgs) > 0 && (commandArgs[0] == "--help" || commandArgs[0] == "-h" || commandArgs[0] == "help") {
+			fmt.Println(sacli.ArenaHelp)
+			return nil
+		}
+		// Keep the local RPC name compatible with already running daemons.
+		command = "ladder"
 	}
 	socketPath, err := options.socketPath()
 	if err != nil {
@@ -269,7 +287,7 @@ func usage() {
 
 usage:
   sactl completion <bash|zsh>           print shell completion script
-  sactl arena <init|check|run|train|evaluate|simulate> [options]  local squad commander
+  sactl ai <init|check|run|train|evaluate|simulate> [options]  local squad commander
   sactl serve --config <file>            hold one game session and serve the CLI
 %s
 

@@ -86,6 +86,7 @@ class Sactl < Formula
     assert_path_exists bash_completion/"sactl"
     assert_path_exists zsh_completion/"_sactl"
     assert_match "sactl", shell_output("#{bin}/sactl version")
+    assert_match "sactl ai", shell_output("#{bin}/sactl ai --help")
     assert_match "sactl arena", shell_output("#{bin}/sactl arena --help")
   end
 end

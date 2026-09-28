@@ -211,7 +211,7 @@ func (m *member) mutate(ctx context.Context, operation string, args ...string) (
 			return reply, nil
 		}
 	}
-	status, e := m.request(ctx, "ladder", "status")
+	status, e := m.request(ctx, "arena", "status")
 	if e != nil {
 		return nil, e
 	}
@@ -225,7 +225,7 @@ func (m *member) retry(ctx context.Context, p Object) (Object, error) {
 		if e := m.store.Err(); e != nil {
 			return nil, e
 		}
-		args := []string{"ladder", str(p["operation"])}
+		args := []string{"arena", str(p["operation"])}
 		switch a := p["args"].(type) {
 		case []string:
 			args = append(args, a...)

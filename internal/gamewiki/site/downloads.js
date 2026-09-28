@@ -28,8 +28,8 @@
       const heading=document.createElement('h3');heading.textContent=`${title} · ${version}`;
       const note=document.createElement('p');
       const parts=version.slice(1).split('.').map(Number);
-      const hasArena=parts[0]>0||parts[1]>1||(parts[1]===1&&parts[2]>=99);
-      note.textContent=hint+(hasArena?' 内含天梯 AI 指挥功能（sactl arena），无需额外程序。':'');
+      const hasAI=parts[0]>0||parts[1]>2||(parts[1]===2&&parts[2]>=1);
+      note.textContent=hint+(hasAI?' 内含竞技场 AI 指挥功能（sactl ai），无需额外程序。':'');
       const pre=document.createElement('pre'),code=document.createElement('code');code.textContent=command;pre.append(code);
       const copy=document.createElement('button');copy.type='button';copy.textContent='复制安装命令';copy.onclick=async()=>{try{await navigator.clipboard.writeText(command);copy.textContent='已复制';}catch{copy.textContent='请选中下方命令复制';}};
       const links=document.createElement('p');links.className='client-download-links';

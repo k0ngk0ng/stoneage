@@ -56,5 +56,5 @@ func Init(directory string, mode int) (Object, error) {
 	if e = writePrivate(path, append(enc(c), '\n')); e != nil {
 		return nil, e
 	}
-	return Object{"config": path, "mode": mode, "next": "Edit each member TOML account/character and password file, then run sactl arena check --config <team.json> and sactl arena run --config <team.json> --forever."}, nil
+	return Object{"config": path, "mode": mode, "next": "Edit each member TOML account/character and password file, then run sactl ai check --config <team.json> and sactl ai run --config <team.json> --forever."}, nil
 }

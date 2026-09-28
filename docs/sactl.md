@@ -354,7 +354,7 @@ autoload -Uz compinit && compinit
 source <(sactl completion zsh)
 
 # bash（兼容 macOS 自带的 Bash 3.2）
-source <(sactl completion bash)
+eval "$(sactl completion bash)"
 ```
 
 要永久启用，可将对应的初始化/加载语句加入 `~/.zshrc` 或 `~/.bashrc`；
@@ -364,21 +364,37 @@ macOS 的 bash 登录 shell 还需由 `~/.bash_profile` 加载 `~/.bashrc`。
 输出加载方法，不自动改写 shell 配置。
 使用 Homebrew zsh 自动发现时，需先通过 `brew shellenv` 设置环境，再初始化 `compinit`。
 
-示例：输入 `sactl arena r<Tab>` 补全 `run`，`sactl arena run --f<Tab>` 补全 `--forever`，
-`sactl arena run --config <Tab>` 补全配置文件路径。旧版本没有此功能，需先升级到 v0.2.0。
+示例：输入 `sactl ai r<Tab>` 补全 `run`，`sactl ai run --f<Tab>` 补全 `--forever`，
+`sactl ai run --config <Tab>` 补全配置文件路径。补全从 v0.2.0 提供，本文 `ai` / `arena` 命令分工需 v0.2.1。
 
-## 天梯 AI 指挥官
+## 竞技场：普通玩家
 
-从 v0.1.99 起，组队指挥、对局采集、训练和评估统一在本客户端中，不需要另装工具：
+`sactl arena` 管理竞技场队伍、匹配和结算；先启动 `sactl serve` 并登录角色。
 
 ```sh
-sactl arena init --directory arena-team --mode 2
+sactl arena create 1
+sactl arena loadout 1  # 示例：只登记第一个宠物槽位；按实际出战宠和骑宠调整
+sactl arena ready
+sactl arena queue
+sactl arena status
+```
+
+模式取 1–5，对应 1v1–5v5。多人时逐人准备，由队长排队；比赛后 `arena result` 查看结算，
+`arena ack` 确认后可再次准备。完整操作见 [竞技场玩家流程](arena-player-flow.md)。
+旧 `ladder` 命令仍是兼容别名，新的帮助和补全统一使用 `arena`。
+
+## 竞技场 AI 指挥官
+
+从 v0.2.1 起，组队指挥、对局采集、训练和评估统一在本客户端中，不需要另装工具：
+
+```sh
+sactl ai init --directory arena-team --mode 2
 # 填写各成员 TOML 的账号、角色及对应 password 文件
-sactl arena check --config arena-team/team.json
-sactl arena run --config arena-team/team.json --forever
+sactl ai check --config arena-team/team.json
+sactl ai run --config arena-team/team.json --forever
 ```
 
 每队一个指挥官统一决定所有人物与宠物的行动，支持 1v1–5v5。默认 basic 无需模型。
-`train`、`evaluate`、`simulate` 的参数用 `sactl arena <子命令> --help` 查看。
+`train`、`evaluate`、`simulate` 的参数用 `sactl ai <子命令> --help` 查看。
 在线运行无需 Docker 或 Python；本地隔离原生游戏服的模拟采集需要 Docker。
-完整说明与旧配置迁移方法见 [本地天梯 AI 指挥官](local-arena-agent.md)。
+完整说明与旧配置迁移方法见 [本地竞技场 AI 指挥官](local-arena-agent.md)。

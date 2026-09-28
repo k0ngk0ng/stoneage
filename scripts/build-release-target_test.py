@@ -19,7 +19,7 @@ import os, pathlib, sys
 args = sys.argv[1:]
 output = pathlib.Path(args[args.index('-o') + 1])
 if args[-1] == './client/web':
-    assert '-ldflags=-s -w -X main.releaseVersion=v0.2.0' in args
+    assert '-ldflags=-s -w -X main.releaseVersion=v0.2.1' in args
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text(os.environ['GOOS'] + '/' + os.environ['GOARCH'])
 output.chmod(0o755)
@@ -37,10 +37,10 @@ target.write_text('mock package')
     nfpm.chmod(0o755)
     dist = stage / 'dist'
     env = dict(os.environ, PATH=f'{mock_bin}:{os.environ["PATH"]}',
-               RELEASE_TAG='v0.2.0', RELEASE_STAGE=str(stage / 'packages'), RELEASE_DIST=str(dist))
+               RELEASE_TAG='v0.2.1', RELEASE_STAGE=str(stage / 'packages'), RELEASE_DIST=str(dist))
     for target_os, arch in [('linux', 'amd64'), ('darwin', 'arm64'), ('darwin', 'amd64'), ('windows', 'amd64')]:
         subprocess.run(['bash', 'scripts/build-release-target.sh', target_os, arch], cwd=root, env=env, check=True)
-        prefix = f'stoneage-control-plane-v0.2.0-{target_os}-{arch}'
+        prefix = f'stoneage-control-plane-v0.2.1-{target_os}-{arch}'
         suffix = '.exe' if target_os == 'windows' else ''
         if target_os == 'windows':
             assert not (dist / f'{prefix}.tar.gz').exists()
@@ -52,12 +52,12 @@ target.write_text('mock package')
         for command in ['stoneage-admin', 'stoneage-gateway', 'stoneage-operator', 'stoneage-assets-sync']:
             assert f'{prefix}/bin/{command}{suffix}' in names
         assert (f'{prefix}/bin/stoneage-web' in names) == (target_os == 'linux')
-        with tarfile.open(dist / f'stoneage-assets-sync-v0.2.0-{target_os}-{arch}.tar.gz') as archive:
+        with tarfile.open(dist / f'stoneage-assets-sync-v0.2.1-{target_os}-{arch}.tar.gz') as archive:
             assert archive.extractfile(f'bin/stoneage-assets-sync{suffix}').read().decode() == f'{target_os}/{arch}'
         # The standalone client archive carries the binary, the config example
         # and its documentation, because it is installed on an operator
         # machine rather than deployed with the server.
-        sactl_prefix = f'stoneage-sactl-v0.2.0-{target_os}-{arch}'
+        sactl_prefix = f'stoneage-sactl-v0.2.1-{target_os}-{arch}'
         if target_os == 'windows':
             with zipfile.ZipFile(dist / f'{sactl_prefix}.zip') as archive:
                 sactl_names = archive.namelist()
@@ -72,17 +72,17 @@ target.write_text('mock package')
             assert f'{sactl_prefix}/{entry}' in sactl_names, entry
         for entry in ['local-arena-agent.md', 'arena-agent.example.json', 'sactl.toml.example', 'sactl.md', 'install-sactl.sh', 'install-sactl-skill.py', 'skills/sactl/SKILL.md', 'skills/sactl/references/battle.md', 'skills/sactl/references/session.md']:
             assert f'{sactl_prefix}/{entry}' in sactl_names, entry
-    with tarfile.open(dist / 'stoneage-deploy-v0.2.0.tar.gz') as archive:
-        assert archive.extractfile('VERSION').read() == b'v0.2.0\n'
+    with tarfile.open(dist / 'stoneage-deploy-v0.2.1.tar.gz') as archive:
+        assert archive.extractfile('VERSION').read() == b'v0.2.1\n'
         assert archive.extractfile('bin/stoneage-assets-sync').read() == b'linux/amd64'
-    with tarfile.open(dist / 'stoneage-sactl-v0.2.0-linux-arm64.tar.gz') as archive:
-        assert 'stoneage-sactl-v0.2.0-linux-arm64/arena-agent' not in archive.getnames()
-        assert archive.extractfile('stoneage-sactl-v0.2.0-linux-arm64/skills/sactl/SKILL.md')
-        assert archive.extractfile('stoneage-sactl-v0.2.0-linux-arm64/install-sactl-skill.py')
+    with tarfile.open(dist / 'stoneage-sactl-v0.2.1-linux-arm64.tar.gz') as archive:
+        assert 'stoneage-sactl-v0.2.1-linux-arm64/arena-agent' not in archive.getnames()
+        assert archive.extractfile('stoneage-sactl-v0.2.1-linux-arm64/skills/sactl/SKILL.md')
+        assert archive.extractfile('stoneage-sactl-v0.2.1-linux-arm64/install-sactl-skill.py')
     # Linux additionally ships an arm64 client plus .deb and .rpm packages.
-    for name in ['sactl_0.2.0_amd64.deb', 'sactl_0.2.0_arm64.deb',
-                 'sactl-0.2.0-1.x86_64.rpm', 'sactl-0.2.0-1.aarch64.rpm',
-                 'stoneage-sactl-v0.2.0-linux-arm64.tar.gz']:
+    for name in ['sactl_0.2.1_amd64.deb', 'sactl_0.2.1_arm64.deb',
+                 'sactl-0.2.1-1.x86_64.rpm', 'sactl-0.2.1-1.aarch64.rpm',
+                 'stoneage-sactl-v0.2.1-linux-arm64.tar.gz']:
         assert (dist / name).exists(), name
     # 4 control-plane archives, 4 assets-sync archives, 5 sactl archives,
     # 4 Linux packages and the deploy bundle.

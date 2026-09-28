@@ -24,7 +24,7 @@ func ladderResponse(e ladder.Envelope) Response {
 		}
 		return Response{OK: e.OK, Text: strings.TrimSpace(b.String()), Data: replyJSON(e)}
 	}
-	fmt.Fprintf(&b, "ladder: %s; result=%s revision=%d\n", s.Phase, e.Code, e.Revision)
+	fmt.Fprintf(&b, "arena: %s; result=%s revision=%d\n", s.Phase, e.Code, e.Revision)
 	fmt.Fprintf(&b, "strategy=%s\n", s.Self.Strategy)
 	if s.Room != nil {
 		fmt.Fprintf(&b, "room=%s mode=%dv%d leader=%s\n", s.Room.ID, s.Room.Mode, s.Room.Mode, s.Room.LeaderID)
@@ -74,7 +74,7 @@ func (s *Server) commandLadder(ctx context.Context, request Request) Response {
 	}
 	if args[0] == "strategies" {
 		if len(args) != 1 {
-			return failure(KindUsage, "usage: ladder strategies")
+			return failure(KindUsage, "usage: arena strategies")
 		}
 		registry, err := battleauto.NewStrategies(nil, s.config.LadderStrategies...)
 		if err != nil {
@@ -90,7 +90,7 @@ func (s *Server) commandLadder(ctx context.Context, request Request) Response {
 	s.autoMu.Unlock()
 	if op == "ready" || op == "queue" {
 		if walking {
-			return Response{OK: false, Kind: KindAction, Text: "stop auto-battle walking before ladder preparation", Data: replyJSON(map[string]string{"code": "automation_conflict"})}
+			return Response{OK: false, Kind: KindAction, Text: "stop auto-battle walking before arena preparation", Data: replyJSON(map[string]string{"code": "automation_conflict"})}
 		}
 	}
 	var id, arg string
@@ -122,7 +122,7 @@ func (s *Server) commandLadder(ctx context.Context, request Request) Response {
 				continue
 			}
 			if arg != "" || strings.HasPrefix(args[0], "--") {
-				return failure(KindUsage, "unexpected ladder argument %q", args[0])
+				return failure(KindUsage, "unexpected arena argument %q", args[0])
 			}
 			arg = args[0]
 			args = args[1:]
@@ -161,7 +161,7 @@ func (s *Server) commandLadder(ctx context.Context, request Request) Response {
 		}
 		status, err := client.RequestLadder(ctx, ladder.Request{ID: statusID, Operation: "status"})
 		if err != nil {
-			return actionFailure(fmt.Errorf("ladder observation unavailable: %w", err))
+			return actionFailure(fmt.Errorf("arena observation unavailable: %w", err))
 		}
 		if !status.OK {
 			return ladderResponse(status)
@@ -175,12 +175,12 @@ func (s *Server) commandLadder(ctx context.Context, request Request) Response {
 			return actionFailure(err)
 		}
 		if !registry.Has(arg) {
-			return failure(KindUsage, "strategy %q is not installed; use ladder strategies", arg)
+			return failure(KindUsage, "strategy %q is not installed; use arena strategies", arg)
 		}
 	}
 	e, err := client.RequestLadder(ctx, r)
 	if err != nil {
-		return Response{OK: false, Kind: KindAction, Text: fmt.Sprintf("ladder reply unconfirmed: %v; retain request_id=%s revision=%d", err, r.ID, r.Revision),
+		return Response{OK: false, Kind: KindAction, Text: fmt.Sprintf("arena reply unconfirmed: %v; retain request_id=%s revision=%d", err, r.ID, r.Revision),
 			Data: replyJSON(struct {
 				Code    string         `json:"code"`
 				Request ladder.Request `json:"request"`
@@ -206,7 +206,7 @@ type ladderEventGame interface {
 
 func (s *Server) commandLadderWait(ctx context.Context, args []string) Response {
 	if len(args) < 1 {
-		return failure(KindUsage, "usage: ladder wait <cursor> [duration] [--stream <stream>]")
+		return failure(KindUsage, "usage: arena wait <cursor> [duration] [--stream <stream>]")
 	}
 	cursor, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
@@ -223,7 +223,7 @@ func (s *Server) commandLadderWait(ctx context.Context, args []string) Response 
 			continue
 		}
 		if hasDuration {
-			return failure(KindUsage, "unexpected ladder wait argument")
+			return failure(KindUsage, "unexpected arena wait argument")
 		}
 		timeout, err = time.ParseDuration(args[0])
 		if err != nil || timeout <= 0 || timeout > 5*time.Minute {
@@ -237,7 +237,7 @@ func (s *Server) commandLadderWait(ctx context.Context, args []string) Response 
 	}
 	client, ok := game.(ladderEventGame)
 	if !ok {
-		return failure(KindAction, "session does not support ladder event recovery")
+		return failure(KindAction, "session does not support arena event recovery")
 	}
 	// A reconnect starts with no local projection. Ask the authority before
 	// waiting, then let the shared journal declare any missing history.
@@ -264,5 +264,5 @@ func (s *Server) commandLadderWait(ctx context.Context, args []string) Response 
 	if err != nil {
 		return Response{OK: false, Kind: KindSession, Text: err.Error(), Data: replyJSON(batch)}
 	}
-	return Response{OK: true, Text: fmt.Sprintf("ladder events=%d cursor=%d gap=%t timed_out=%t", len(batch.Events), batch.Cursor, batch.Gap, batch.TimedOut), Data: replyJSON(batch)}
+	return Response{OK: true, Text: fmt.Sprintf("arena events=%d cursor=%d gap=%t timed_out=%t", len(batch.Events), batch.Cursor, batch.Gap, batch.TimedOut), Data: replyJSON(batch)}
 }

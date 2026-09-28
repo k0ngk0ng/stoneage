@@ -88,7 +88,7 @@ func (handler *Handler) startBattleAuto(response http.ResponseWriter, request *h
 	}
 	seek := mode == aicontrol.Leveling || (input.Seek != nil && *input.Seek)
 	if seek && observed.Ladder != nil && observed.Ladder.Snapshot.ReservesCharacter() {
-		http.Error(response, "天梯准备或比赛期间只能开启原地自动战斗", http.StatusConflict)
+		http.Error(response, "竞技场准备或比赛期间只能开启原地自动战斗", http.StatusConflict)
 		return
 	}
 	reason := strings.TrimSpace(input.Reason)

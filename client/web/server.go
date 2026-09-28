@@ -2472,7 +2472,7 @@ func (handler *Handler) pauseAutomation(response http.ResponseWriter, request *h
 
 func (handler *Handler) resumeAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
 	if session.ladderBlocksWorldAutomation(request.Context()) {
-		http.Error(response, "请先取消天梯准备、退出匹配或完成结算", http.StatusConflict)
+		http.Error(response, "请先取消竞技场准备、退出匹配或完成结算", http.StatusConflict)
 		return
 	}
 	input, err := decodeControlRequest(response, request)
@@ -2581,7 +2581,7 @@ func decodeAutomationStart(response http.ResponseWriter, request *http.Request) 
 
 func (handler *Handler) startAutomation(response http.ResponseWriter, request *http.Request, session *tcpSession) {
 	if session.ladderBlocksWorldAutomation(request.Context()) {
-		http.Error(response, "请先取消天梯准备、退出匹配或完成结算", http.StatusConflict)
+		http.Error(response, "请先取消竞技场准备、退出匹配或完成结算", http.StatusConflict)
 		return
 	}
 	input, err := decodeAutomationStart(response, request)

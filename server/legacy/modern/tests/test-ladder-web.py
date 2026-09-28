@@ -135,7 +135,7 @@ class BrowserTest:
         self.panel()
         # Strategy hosting remains a compatibility API for these native
         # fixtures; human players no longer have a strategy selector.
-        assert self.evaluate("!document.querySelector('[aria-label=\"天梯战斗策略\"]')")
+        assert self.evaluate("!document.querySelector('[aria-label=\"竞技场战斗策略\"]')")
         self.evaluate(f"(async()=>{{await StoneAgeLadder.perform('strategy',{json.dumps(name)});return true;}})()")
         self.wait(f"StoneAgeLadder.state.envelope.snapshot.self.strategy === {json.dumps(name)} && !StoneAgeLadder.state.busy")
 
@@ -149,7 +149,7 @@ class BrowserTest:
         self.wait("StoneAgeLadder.state.envelope.snapshot.self.ready && !StoneAgeLadder.state.busy")
         self.click("开始匹配")
         self.wait("!StoneAgeLadder.state.busy")
-        self.click("关闭天梯面板")
+        self.click("关闭竞技场面板")
 
     def acknowledge(self):
         self.panel()
@@ -244,7 +244,7 @@ class BrowserTest:
             participants = list(range(mode * 2))
             strategy = "manual" if mode == 5 else "basic"
             self.panel()
-            self.run_browser("select", '[aria-label="天梯模式"]', str(mode))
+            self.run_browser("select", '[aria-label="竞技场模式"]', str(mode))
             self.click("创建队伍" if mode == 2 else "更改模式")
             self.wait(f"StoneAgeLadder.state.envelope.snapshot.room?.mode === {mode} && !StoneAgeLadder.state.busy")
             self.click("刷新名片")
@@ -283,12 +283,12 @@ class BrowserTest:
             assert countdown["match"]["mode"] == mode and roster == {ids[i] for i in participants}
             self.panel()
             self.run_browser("screenshot", str(self.artifacts / f"{mode}v{mode}-countdown.png"))
-            self.click("关闭天梯面板")
+            self.click("关闭竞技场面板")
             if mode == 5:
                 assert self.reconnect(participants, "5v5-reconnect") == countdown["match"]["id"]
                 self.monitor()
                 self.strategy("basic")
-                self.click("关闭天梯面板")
+                self.click("关闭竞技场面板")
                 for i in participants[1:]:
                     self.cli("ladder", "strategy", "basic", player=i)
             room = self.finish_match(f"{mode}v{mode}-result", countdown["match"]["id"], mode=mode)
@@ -350,7 +350,7 @@ class BrowserTest:
         self.run_browser("set", "viewport", "1280", "900")
         self.login()
         self.panel()
-        self.run_browser("select", '[aria-label="天梯模式"]', str(mode))
+        self.run_browser("select", '[aria-label="竞技场模式"]', str(mode))
         self.click("创建队伍")
         self.wait("!!StoneAgeLadder.state.envelope.snapshot.room && !StoneAgeLadder.state.busy")
         if mode > 1:
@@ -428,7 +428,7 @@ class BrowserTest:
         self.save("cross-next-turn.json", self.battle())
         self.monitor()
         self.strategy("basic")
-        self.click("关闭天梯面板")
+        self.click("关闭竞技场面板")
         for player in participants[1:]:
             self.cli("ladder", "strategy", "basic", player=player)
         self.finish_match("cross-client-result", before["match"], mode=mode)
@@ -543,9 +543,9 @@ class BrowserTest:
         if not state.get("room"):
             self.click("创建队伍")
             self.wait("!!StoneAgeLadder.state.envelope.snapshot.room && !StoneAgeLadder.state.busy")
-        self.run_browser("select", '[aria-label="天梯模式"]', "3")
+        self.run_browser("select", '[aria-label="竞技场模式"]', "3")
         self.evaluate("(async()=>{await StoneAgeLadder.refreshContacts();return true;})()")
-        assert self.evaluate("document.querySelector('[aria-label=\"天梯模式\"]').value") == "3"
+        assert self.evaluate("document.querySelector('[aria-label=\"竞技场模式\"]').value") == "3"
         self.click("更改模式")
         self.wait("StoneAgeLadder.state.envelope.snapshot.room.mode === 3 && !StoneAgeLadder.state.busy")
         # The fixture owns one pet. An explicit zero mask is a valid saved
@@ -574,7 +574,7 @@ class BrowserTest:
         self.panel()
         state = self.evaluate("StoneAgeLadder.state.envelope.snapshot")
         assert state["phase"] in ("idle", "lobby")
-        self.run_browser("select", '[aria-label="天梯模式"]', "1")
+        self.run_browser("select", '[aria-label="竞技场模式"]', "1")
         self.click("更改模式" if state.get("room") else "创建队伍")
         self.wait("StoneAgeLadder.state.envelope.snapshot.room?.mode === 1 && !StoneAgeLadder.state.busy")
         self.run_browser("uncheck", '#ladder-panel fieldset input[value="0"]')
@@ -692,7 +692,7 @@ class BrowserTest:
         assert not next_turn["player"] and not next_turn["pet"]
         self.monitor()
         self.strategy("basic")
-        self.click("关闭天梯面板")
+        self.click("关闭竞技场面板")
         self.cli("ladder", "strategy", "basic")
         assert self.finish_match("reconnected-match", before["match"]) == room
         self.run_browser("set", "viewport", "375", "812")

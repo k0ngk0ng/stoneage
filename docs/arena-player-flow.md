@@ -1,13 +1,13 @@
-# 天梯玩家流程（v0.1.95 起）
+# 竞技场玩家流程（v0.1.95 起）
 
-天梯已在 v0.1.95 发布并上线，Web 与 sactl 均须使用支持该协议的版本。真实认证网络下的 sactl 1v1—5v5、
+竞技场已在 v0.1.95 发布并上线，Web 与 sactl 均须使用支持该协议的版本。真实认证网络下的 sactl 1v1—5v5、
 多人邀请及再次匹配、1v1 同场重连和 GMSV 崩溃恢复已通过专项联调；真实 Web–sactl 1v1
 战斗、同场重连与再次匹配也已通过。Web 2v2—5v5 邀请至再次匹配，以及 5v5 中一名玩家
 同场重连、退场地图恢复已通过；sactl 5v5 多人、整队和全场十人同时掉线并交错登录已通过。
 同一角色 Web→sactl→Web 的 1v1/5v5 续战，以及 5v5 中 Web 玩家和一名 CLI 队友同时
 离线后交错恢复已通过。
 新增邀请身份参数、旧名片重建及槽位复用已通过真实网络专项检查。
-完整验收及证据范围见 [实现跟踪](ladder-implementation.md)。Web 与 sactl 均可独立
+完整验收及证据范围见 [实现跟踪](arena-implementation.md)。Web 与 sactl 均可独立
 完成整个过程，多人队伍的每位玩家分别操作自己的账号。
 
 ## sactl 操作
@@ -15,51 +15,51 @@
 当前规则不限制重复对手；与相同玩家再次匹配仍按正常 Elo 规则计分，没有重复对手次数
 上限、收益衰减或专用匹配冷却。
 
-以下命令假定 daemon 已配置并登录角色。`--json` 的外层 `ok` 表示命令结果，天梯权威
+以下命令假定 daemon 已配置并登录角色。`--json` 的外层 `ok` 表示命令结果，竞技场权威
 回执和事件批次在 `data` 中；不要从 `text` 的中文或英文说明推断状态。
 
 | 阶段 | 命令 | 观察/结果 |
 | --- | --- | --- |
-| 当前状态 | `sactl --json ladder status` | `data.snapshot`，含角色、五模式积分、队伍、邀请、比赛和待确认结算 |
-| 创建队伍 | `sactl --json ladder create 3` | 创建 3v3 队伍；模式取 1–5 |
-| 更改模式 | `sactl --json ladder mode 2` | 队长操作，重新准备 |
-| 查看天梯名片 | `sactl --json ladder contacts` | `data.contacts` 同时给出 `slot`、`id`、`name`、`online`；取选中行的槽位和角色 ID |
-| 发出邀请 | `sactl --json ladder invite 0 <character_id>` | 同时验证槽位和选中角色的身份；不是发送邮件 |
-| 处理邀请 | `sactl --json ladder accept <invitation_id>` / `decline <invitation_id>` | ID 来自 `snapshot.invitations` |
-| 成员管理 | `sactl --json ladder kick <player_id>` / `leader <player_id>` / `leave` | ID 来自 `snapshot.room.members`；移人/转让限队长 |
-| 登记宠物 | `sactl --json ladder loadout 3` | 五个宠物槽位的位掩码：3 表示槽位 0 和 1；登记骑宠和备用宠物 |
-| 准备 | `sactl --json ladder ready` / `unready` | 每位成员独立操作；人数和状态由服务器核查 |
-| 开始/取消匹配 | `sactl --json ladder queue` / `cancel` | 队长操作；队伍人数必须恰好等于模式人数 |
-| 等待事件 | `sactl --json ladder wait 0` | 初次订阅，读取当前快照及 `data.stream`、`data.cursor` |
-| 继续等待 | `sactl --json ladder wait <cursor> 30s --stream <stream>` | 使用上次返回的两个值；匹配后获取双方名单和开战时间 |
+| 当前状态 | `sactl --json arena status` | `data.snapshot`，含角色、五模式积分、队伍、邀请、比赛和待确认结算 |
+| 创建队伍 | `sactl --json arena create 3` | 创建 3v3 队伍；模式取 1–5 |
+| 更改模式 | `sactl --json arena mode 2` | 队长操作，重新准备 |
+| 查看竞技场名片 | `sactl --json arena contacts` | `data.contacts` 同时给出 `slot`、`id`、`name`、`online`；取选中行的槽位和角色 ID |
+| 发出邀请 | `sactl --json arena invite 0 <character_id>` | 同时验证槽位和选中角色的身份；不是发送邮件 |
+| 处理邀请 | `sactl --json arena accept <invitation_id>` / `decline <invitation_id>` | ID 来自 `snapshot.invitations` |
+| 成员管理 | `sactl --json arena kick <player_id>` / `leader <player_id>` / `leave` | ID 来自 `snapshot.room.members`；移人/转让限队长 |
+| 登记宠物 | `sactl --json arena loadout 3` | 五个宠物槽位的位掩码：3 表示槽位 0 和 1；登记骑宠和备用宠物 |
+| 准备 | `sactl --json arena ready` / `unready` | 每位成员独立操作；人数和状态由服务器核查 |
+| 开始/取消匹配 | `sactl --json arena queue` / `cancel` | 队长操作；队伍人数必须恰好等于模式人数 |
+| 等待事件 | `sactl --json arena wait 0` | 初次订阅，读取当前快照及 `data.stream`、`data.cursor` |
+| 继续等待 | `sactl --json arena wait <cursor> 30s --stream <stream>` | 使用上次返回的两个值；匹配后获取双方名单和开战时间 |
 | 战斗 | 原有 `observe`、`battle`、`battle-log`、`auto-battle` 命令 | 默认手动出招；仅在玩家主动开启普通自动战斗时自动操作 |
-| 读取结算 | `sactl --json ladder result` | 当前待确认结算；胜负、逐人统计和积分前后值 |
-| 历史结算 | `sactl --json ladder result <match_id>` | 仅能查询自己参与的比赛；不会替换当前比赛状态 |
-| 确认结算 | `sactl --json ladder ack` | 保留队伍、清除准备；之后逐人准备，由队长再次排队 |
+| 读取结算 | `sactl --json arena result` | 当前待确认结算；胜负、逐人统计和积分前后值 |
+| 历史结算 | `sactl --json arena result <match_id>` | 仅能查询自己参与的比赛；不会替换当前比赛状态 |
+| 确认结算 | `sactl --json arena ack` | 保留队伍、清除准备；之后逐人准备，由队长再次排队 |
 
 人物和宠物的实际出战/骑乘状态沿用现有宠物操作，`loadout` 只登记允许参战的槽位。
 结算的 `statistics.damage` 为人物及所属宠物的总伤害，`pet_damage` 是其中宠物造成的部分；
 `damage_taken` 同样包含本人和宠物承伤，`pet_damage_taken`、`ride_damage_taken` 为其中
 的宠物、骑宠部分，不能再次相加。Web 对应展示“总伤害”“总承伤”和各分项。
-普通名片交换仍用 `social trade-card 1`、面对对方后 `mail add`。邀请前用 `ladder contacts`
+普通名片交换仍用 `social trade-card 1`、面对对方后 `mail add`。邀请前用 `arena contacts`
 读取服务端当前名片；不可只保存数字槽位。底层邀请参数为 `<slot>:<character_id>`，未知
 结果重试须保留这个完整参数。槽位被替换返回 `contact_slot_changed`，刷新后重新选择；
 原角色删除重建返回 `contact_identity_changed`，旧名片没有身份字段则返回
 `contact_identity_required`，后两者须与对方重新交换名片。Web 使用同一查询及校验。
 
-排队后不能改参战配置。天梯结束不用普通 `battle end`/EO 确认，使用 `ladder ack`。
-发件人或收件人被天梯占用时，宠物邮件暂缓投递和回送；解除占用后继续，等待期间保留附件。
+排队后不能改参战配置。竞技场结束不用普通 `battle end`/EO 确认，使用 `arena ack`。
+发件人或收件人被竞技场占用时，宠物邮件暂缓投递和回送；解除占用后继续，等待期间保留附件。
 多人队伍须先由同队全部成员确认结算，再逐人准备、由队长排队；不必等待对方队伍确认。
 倒计时内服务器会确认全员赛前角色存档已保存；保存失败、存档超过旧协议容量或超时则取消
 开战，双方回到未准备的队伍，不扣积分或增加弃赛冷却。比赛内正常消耗的道具与装备损坏
 在结束后恢复，掉线重连期间仍保留本场已经消耗的状态。
-天梯匹配面板不提供 AI 策略选择；AI 玩家及其策略尚未安排。本地调用的兼容接口说明见
-[天梯战斗策略](ladder-strategies.md)，不作为人类玩家使用天梯的前置条件。
-此前通过兼容接口显式保存的策略仍保留；可用 `sactl ladder strategy manual` 改回手动。
+竞技场匹配面板不提供 AI 策略选择；AI 玩家及其策略尚未安排。本地调用的兼容接口说明见
+[竞技场战斗策略](arena-strategies.md)，不作为人类玩家使用竞技场的前置条件。
+此前通过兼容接口显式保存的策略仍保留；可用 `sactl arena strategy manual` 改回手动。
 
 ## 重连、事件与未知结果
 
-重新登录同一角色后先 `ladder status`。比赛仍在重连期限内时，服务器应接回原席位和
+重新登录同一角色后先 `arena status`。比赛仍在重连期限内时，服务器应接回原席位和
 当前回合；已结束则读取结算。预算为每人每场累计 60 秒，战斗不暂停；已接受动作保留，
 回合超时人物防御、宠物待机。真实 TCP 网关和 sactl 的 1v1 重连已验证原比赛、席位、
 回合及已提交动作恢复，旧事件 stream 返回缺口和完整快照。Web 1v1 另验证入场动画结束后
@@ -87,7 +87,7 @@
 技术中断通知、移动端结果面板和确认后重新建队。具体证据见实现跟踪；这不代表覆盖所有
 技能效果，也不代表游戏服与账号服同时崩溃时仍可续战。
 
-`wait` 返回 `gap=true` 时，丢弃旧的本地天梯投影，以 `data.snapshot` 完整替换，再使用
+`wait` 返回 `gap=true` 时，丢弃旧的本地竞技场投影，以 `data.snapshot` 完整替换，再使用
 返回的新 `stream` 和 `cursor` 等待。不能把缺失的事件当成“什么也没发生”。`timed_out=true`
 表示本次等待时间内没有新的可返回事件；取消与断线是错误，并尽可能保留最后快照。
 当前默认 CLI 总超时 60 秒；如等待超过 30 秒，按需要显式设置全局 `--timeout`。
@@ -95,7 +95,7 @@
 操作返回 `data.code=outcome_unknown` 时，保留 `data.request` 中的全部内容，例如：
 
 ```sh
-sactl --json ladder queue --request-id <原request_id> --revision <原revision>
+sactl --json arena queue --request-id <原request_id> --revision <原revision>
 ```
 
 重试必须携带相同操作、参数、ID 和版本。不要换 ID 盲目再次提交；服务器若返回
@@ -113,12 +113,12 @@ sactl 已验证游戏服与客户端同时重启后的成功/拒绝回执恢复�
 
 ## Web 与 sactl 核对
 
-Web 右上角“天梯”面板已有与上表对应的组队、邀请、宠物登记、准备、匹配和结算入口；
+Web 右上角“竞技场”面板已有与上表对应的组队、邀请、宠物登记、准备、匹配和结算入口；
 战斗及战斗记录沿用现有界面。关闭面板只是隐藏面板；“确认结算，返回队伍”才发送 ACK。
 不确定的操作在同一标签页的会话存储中保存，重新读取同一角色后提供“重试原请求”。
 
 Web 战斗页面已接入共享的同场比赛及已提交动作投影；重连后已接受的人物/宠物指令不会
-再次开放选择。天梯不走普通战斗退出确认；最后一回合动作播放结束后打开权威结算，
+再次开放选择。竞技场不走普通战斗退出确认；最后一回合动作播放结束后打开权威结算，
 提前轮询到结果也不能跳过动画确认。冷资源、重放、回合切换、快速战斗和本地全灭的页面
 状态机已通过专项检查；真实浏览器连接原生服务器的 1v1—5v5 已验证战斗、末回合动画后
 展示结果，以及保留队伍再次排队。1v1 与 5v5 单人重新登录后可以完成原比赛并恢复地图。
@@ -126,7 +126,7 @@ Web 战斗页面已接入共享的同场比赛及已提交动作投影；重连�
 再弹出。邀请对象在名片刷新时按槽位与角色 ID 保留，槽位换人则清空选择。
 
 两端的解析、状态投影、完整请求回执匹配和事件恢复均使用共享 Go 层。Web 还必须经过
-控制权 generation 校验；自动任务或练级占用角色时应先接管。已有寻敌循环会在天梯准备、
+控制权 generation 校验；自动任务或练级占用角色时应先接管。已有寻敌循环会在竞技场准备、
 匹配和结算期间停止走动；原地自动战斗可继续回答回合。
 
 尚未达到完整对等验收：初级策略兼容接口和扩展接口已有专项测试，完整配置冻结、
@@ -148,7 +148,7 @@ GMSV 强制退出后的恢复，以及通过实际移动/名片交换完成的 2
 持久回执恢复、冲突及淘汰检查，`multi-reconnect` 单独运行十人 5v5 的多人、整队、
 全员同时掉线及交错重连、累计额度和原场结算检查，
 `contact-restart` 验证 SAAC/GMSV 一起冷重启后的原名片身份保留及明确删角通知，
-`cross-map` 经正常传送将双人置于不同地图，验证普通决斗不会选择远端角色，而天梯
+`cross-map` 经正常传送将双人置于不同地图，验证普通决斗不会选择远端角色，而竞技场
 可以完整对战并在结束后保留双方原地图/坐标，
 默认 `all` 包含以上场景。它只接受仓库 `build/` 内尚不存在的测试目录，结束时清理其
 启动的进程；日志与 JSON 保留。它不读取玩家配置，也不访问生产。
@@ -217,7 +217,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 server/legacy/modern/tests/test-ladder-web.py 
 ```
 
 `--work` 须与夹具目录对应，`--name` 须为新的产物子目录。多人检查须在夹具与驱动两端
-均指定 `--scenario multiplayer`。驱动通过真实 UI 登录、操作天梯面板，手动回合通过
+均指定 `--scenario multiplayer`。驱动通过真实 UI 登录、操作竞技场面板，手动回合通过
 页面原生发送入口提交人物防御与宠物待机；对手通过 sactl 操作。成功写入 `passed.json`，
 失败保留 `failure-state.json`，结果采样和截图一同保留。结束后关闭专用浏览器会话、
 停止该夹具容器，再移除其专用 Docker 网络；这些清理均不触及其他会话或容器。

@@ -18,6 +18,22 @@ type ladderFixture struct {
 	historical bool
 }
 
+func TestArenaDispatchAndLegacyAlias(t *testing.T) {
+	for _, command := range []string{"arena", "ladder"} {
+		g := &ladderFixture{}
+		s := &Server{game: g}
+		r := s.Dispatch(context.Background(), Request{Command: command, Args: []string{"create", "2"}})
+		if !r.OK || len(g.requests) != 2 || g.requests[1].Operation != "create" || g.requests[1].Argument != "2" || !strings.HasPrefix(r.Text, "arena:") {
+			t.Fatalf("%s changed arena behavior: %+v %+v", command, r, g.requests)
+		}
+		g.requests = nil
+		r = s.Dispatch(context.Background(), Request{Command: command, Args: []string{"run"}})
+		if r.OK || r.Kind != KindUsage || len(g.requests) != 0 || !strings.Contains(r.Error, "sactl ai run") {
+			t.Fatalf("old AI command reached game: %+v %+v", r, g.requests)
+		}
+	}
+}
+
 type ladderWaitFixture struct {
 	ladderFixture
 	stream string

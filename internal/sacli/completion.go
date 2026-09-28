@@ -60,7 +60,7 @@ func Complete(words []string) []string {
 	if len(positional) == 0 {
 		commands := "commands duel functions title probe --json --socket --config --timeout"
 		if len(args) == 0 {
-			commands += " arena completion serve --help --version"
+			commands += " ai completion serve --help --version"
 		}
 		// Reuse the public command help instead of maintaining a second root list.
 		for _, line := range strings.Split(CommandHelp, "\n") {
@@ -74,7 +74,7 @@ func Complete(words []string) []string {
 		return completePrefix(commands, prefix)
 	}
 	command := positional[0]
-	if command == "arena" {
+	if command == "ai" {
 		if len(positional) == 1 {
 			return completePrefix("init check run train evaluate simulate version --help", prefix)
 		}
@@ -84,6 +84,12 @@ func Complete(words []string) []string {
 			"simulate": "--root --work --mode --matches --strategy --model --seed --image --reconnect",
 		}
 		return completePrefix(flags[positional[1]]+" --help", prefix)
+	}
+	if command == "ladder" {
+		command = "arena"
+	}
+	if command == "arena" && len(positional) == 2 && (positional[1] == "create" || positional[1] == "mode") {
+		return completePrefix("1 2 3 4 5", prefix)
 	}
 	if command == "completion" {
 		if len(positional) == 1 {
@@ -95,8 +101,8 @@ func Complete(words []string) []string {
 		return completePrefix("--config", prefix)
 	}
 	subcommands := map[string]string{
-		"ladder": "status contacts create mode invite accept decline loadout ready unready queue cancel leave kick leader result ack wait strategy strategies",
-		"item":   "use drop drop-gold move magic pickup", "mail": "list add send remove-contact",
+		"arena": "status contacts create mode invite accept decline loadout ready unready queue cancel leave kick leader result ack wait strategy strategies",
+		"item":  "use drop drop-gold move magic pickup", "mail": "list add send remove-contact",
 		"pet": "status standby battle rename drop", "party": "invite leave accept decline",
 		"trade": "request offer-item offer-gold offer-pet lock confirm cancel", "title": "equip text",
 		"auto-battle": "on off status", "reply": "ok cancel yes no prev next",
@@ -104,7 +110,7 @@ func Complete(words []string) []string {
 	}
 	choices := "--json --socket --config --timeout"
 	choices += " " + map[string]string{
-		"say": "--color --range", "warp": "--time", "ladder": "--request-id --revision",
+		"say": "--color --range", "warp": "--time", "arena": "--request-id --revision",
 		"create-character": "--hometown --slot --image --face --vital --strength --toughness --dexterity --earth --water --fire --wind",
 	}[command]
 	if len(positional) == 1 {

@@ -34,7 +34,7 @@ description: 使用 sactl 命令行客户端在石器时代游戏中观察角色
 
 ## 其他操作与能力边界
 
-- 开发版天梯：`ladder contacts` 的结构化名片同时含 `slot` 和 `id`；用 `ladder invite <slot> <id>` 邀请选中的角色，不单独缓存数字槽位。组队、匹配、战斗、结算和重连命令及尚未验收的范围见 [天梯玩家流程](../../../docs/ladder-player-flow.md)，实际客户端/服务端版本须支持这些命令。
+- 开发版竞技场：`arena contacts` 的结构化名片同时含 `slot` 和 `id`；用 `arena invite <slot> <id>` 邀请选中的角色，不单独缓存数字槽位。组队、匹配、战斗、结算和重连命令及尚未验收的范围见 [竞技场玩家流程](../../../docs/arena-player-flow.md)，实际客户端/服务端版本须支持这些命令。
 - 地图：`walk`、`goto`、`warp`、`exits`、`encounters`。除单步移动外，多项导航依赖本地 2.5 地图数据；缺数据时不要编造路线。
 - NPC：观察 `ActiveWindow`，使用 `talk`、`choose`、`reply`；选项、目标和坐标来自当前观察，不来自臆测。
 - 背包、宠物、邮件、队伍、交易：先查 `sactl --help`，再调用对应命令。出售/丢弃、转账/交易、删角色以及对外聊天/邮件必须处于用户授权范围；用户已有授权无需反复确认。

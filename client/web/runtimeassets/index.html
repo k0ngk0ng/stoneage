@@ -9990,7 +9990,7 @@
     state.motions=[];state.projectiles=[];state.effects=[];state.ladderResultReady=true;
     closeBattlePopup();$("battle-target-panel")?.classList.add("hidden");
     app.ignoreBattlePacketsUntil=Date.now()+3000;app.battle=false;app.phase="world";
-    restoreMapMusic();show(worldScreen);setWorldState("天梯比赛结束，请查看结算。","good");
+    restoreMapMusic();show(worldScreen);setWorldState("竞技场比赛结束，请查看结算。","good");
     // A direct battle login can interrupt initial MC/DAT validation, leaving
     // only a map header. Resume with a real M window once combat has ended.
     // Resident map tiles are reused; no extra window is requested for them.

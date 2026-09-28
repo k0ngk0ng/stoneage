@@ -15,17 +15,19 @@ func TestCompletionContexts(t *testing.T) {
 		want []string
 	}{
 		{[]string{"ar"}, []string{"arena"}},
-		{[]string{"arena", "r"}, []string{"run"}},
-		{[]string{"arena", "run", "--f"}, []string{"--forever"}},
-		{[]string{"arena", "run", "--config", "a directory/"}, []string{"@files"}},
-		{[]string{"arena", "init", "--directory", "a directory/"}, []string{"@dirs"}},
-		{[]string{"arena", "simulate", "--strategy", "l"}, []string{"learned"}},
-		{[]string{"arena", "init", "--mode", ""}, []string{"1", "2", "3", "4", "5"}},
+		{[]string{"arena", "qu"}, []string{"queue"}},
+		{[]string{"arena", "create", ""}, []string{"1", "2", "3", "4", "5"}},
+		{[]string{"ai", "r"}, []string{"run"}},
+		{[]string{"ai", "run", "--f"}, []string{"--forever"}},
+		{[]string{"ai", "run", "--config", "a directory/"}, []string{"@files"}},
+		{[]string{"ai", "init", "--directory", "a directory/"}, []string{"@dirs"}},
+		{[]string{"ai", "simulate", "--strategy", "l"}, []string{"learned"}},
+		{[]string{"ai", "init", "--mode", ""}, []string{"1", "2", "3", "4", "5"}},
 		{[]string{"--socket", "some socket", "ladder", "qu"}, []string{"queue"}},
 		{[]string{"--json", "pet", "re"}, []string{"rename"}},
 		{[]string{"auto-battle", "on", "st"}, []string{"stay"}},
 		{[]string{"completion", "z"}, []string{"zsh"}},
-		{[]string{"arena", "train", "--epochs", ""}, nil},
+		{[]string{"ai", "train", "--epochs", ""}, nil},
 	} {
 		if got := Complete(tc.args); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%q: got %q, want %q", tc.args, got, tc.want)
@@ -57,7 +59,7 @@ func TestCompletionShells(t *testing.T) {
 			}
 			// Keep engine fixtures separate: here verify word boundaries, path
 			// quoting and the first zsh autoload invocation without a daemon.
-			fixture := "#!/bin/sh\ncase \"$*\" in\n  '__complete arena r') echo run;;\n  '__complete arena run --config a ') echo @files;;\n  *) exit 1;;\nesac\n"
+			fixture := "#!/bin/sh\ncase \"$*\" in\n  '__complete ai r') echo run;;\n  '__complete ai run --config a ') echo @files;;\n  *) exit 1;;\nesac\n"
 			if err = os.WriteFile(filepath.Join(dir, "sactl"), []byte(fixture), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -65,10 +67,10 @@ func TestCompletionShells(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := `source ./sactl.bash
-COMP_WORDS=(sactl arena r); COMP_CWORD=2
+COMP_WORDS=(sactl ai r); COMP_CWORD=2
 _sactl_complete
 [[ ${COMPREPLY[*]} == run ]] || exit 11
-COMP_WORDS=(sactl arena run --config 'a '); COMP_CWORD=4
+COMP_WORDS=(sactl ai run --config 'a '); COMP_CWORD=4
 _sactl_complete
 [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == 'a file.json' ]] || exit 12
 `
@@ -80,12 +82,12 @@ compinit -D -i
 compadd() { [[ $candidates == run ]] || exit 13; print 'command-ok'; }
 _files() { print 'path-ok'; }
 autoload -Uz _sactl
-words=(sactl arena r); CURRENT=3
+words=(sactl ai r); CURRENT=3
 _sactl
-words=(sactl arena run --config 'a '); CURRENT=5
+words=(sactl ai run --config 'a '); CURRENT=5
 _sactl
 source ./_sactl
-words=(sactl arena r); CURRENT=3
+words=(sactl ai r); CURRENT=3
 _sactl
 `
 			}

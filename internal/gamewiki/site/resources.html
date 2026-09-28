@@ -11,7 +11,7 @@
   <main class="resource-downloads">
     <section class="intro"><p class="eyebrow">准备好，再出发</p><h1>下载区</h1>
       <p>下载 sactl 命令行客户端，或导入完整游戏资源，按你的方式进入石器世界。</p></section>
-    <section aria-labelledby="sactl-heading"><h2 id="sactl-heading">sactl 客户端与天梯 AI 指挥官</h2>
+    <section aria-labelledby="sactl-heading"><h2 id="sactl-heading">sactl 客户端与竞技场 AI 指挥官</h2>
       <p>支持 macOS、Windows、Linux。一键安装客户端，并把游戏操作 skill 安装到 Codex 和 Claude Code 的标准用户目录，无需 Python。</p>
       <p>安装后填写游戏地址、账号和角色，再启动 <code>sactl serve</code>。安装不会自动登录，也不会改动 Agent 的配置文件。</p>
       <div id="sactl-download" aria-live="polite"><p>正在查询客户端版本…</p></div>
@@ -26,13 +26,21 @@ source &lt;(sactl completion zsh)
 source &lt;(sactl completion bash)</code></pre>
       <p>需要每次打开终端都加载，可把对应语句加入 ~/.zshrc 或 ~/.bashrc。支持命令、arena 子命令、选项和路径补全；补全过程不登录游戏。</p>
     </section>
-    <section aria-labelledby="arena-heading"><h2 id="arena-heading">天梯 AI 指挥官 · sactl arena</h2>
-      <p>从 v0.1.99 起，天梯 AI 指挥官已整合到 sactl arena，只需安装一个 sactl 客户端，包内附配置示例与使用说明。一支队伍由一个指挥官统一控制，支持 1v1–5v5 自动登录、组队、匹配和作战。连接线上天梯无需 Docker 或 Python。</p>
+    <section aria-labelledby="arena-heading"><h2 id="arena-heading">竞技场 · sactl arena</h2>
+      <p>v0.2.1 起，普通玩家使用 sactl arena 管理队伍、准备、匹配和结算；本地 AI 指挥使用 sactl ai。旧 ladder 命令保留兼容。</p>
+      <pre><code>sactl arena create 1
+sactl arena loadout 1 # 示例：只登记第一个宠物槽位，按实际出战宠和骑宠调整
+sactl arena ready
+sactl arena queue</code></pre>
+      <p>以上命令需要已登录角色。模式 1–5 对应 1v1–5v5；多人队伍由每位成员准备，队长排队。</p>
+    </section>
+    <section aria-labelledby="ai-heading"><h2 id="ai-heading">本地 AI 指挥官 · sactl ai</h2>
+      <p>从 v0.2.1 起，竞技场 AI 指挥官已整合到 sactl ai，只需安装一个 sactl 客户端，包内附配置示例与使用说明。一支队伍由一个指挥官统一控制，支持 1v1–5v5 自动登录、组队、匹配和作战。连接线上竞技场无需 Docker 或 Python。</p>
       <p>安装后，在终端创建一支队伍的配置（将 <code>--mode 1</code> 改成 2–5 可创建多人队伍）：</p>
-      <pre><code>sactl arena init --directory arena-team --mode 1</code></pre>
+      <pre><code>sactl ai init --directory arena-team --mode 1</code></pre>
       <p>填写目录内各成员 TOML 的账号、角色，以及对应 password 文件中的密码，然后运行：</p>
-      <pre><code>sactl arena check --config arena-team/team.json
-sactl arena run --config arena-team/team.json --forever</code></pre>
+      <pre><code>sactl ai check --config arena-team/team.json
+sactl ai run --config arena-team/team.json --forever</code></pre>
       <p>默认「顺序攻击」basic 无需模型或 API Key。可切换为「经验指挥」learned、「推演指挥」llm 或「联合参谋」hybrid；学习策略需要训练模型，大模型策略需要自行配置服务。实验训练器尚不代表高胜率策略。</p>
       <p>战斗数据保存在队伍目录内的 data/arena.sqlite3，可继续用于训练与评估。首次 Ctrl-C 在当前比赛结束后停止，再次 Ctrl-C 立即退出。完整说明见安装包内 local-arena-agent.md；本地隔离游戏服的批量模拟采集另需 Docker。</p>
     </section>

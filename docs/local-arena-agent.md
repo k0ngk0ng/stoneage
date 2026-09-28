@@ -1,6 +1,6 @@
-# 本地天梯 AI 指挥官
+# 本地竞技场 AI 指挥官
 
-从 **v0.1.99** 起，天梯 AI 指挥功能统一为 **`sactl arena`** 子命令，不再单独安装 `arena-agent`。
+从 **v0.2.1** 起，竞技场 AI 指挥功能统一为 **`sactl ai`** 子命令，不再单独安装 `arena-agent`。
 在石器百科的 **下载区** 下载安装包，或升级包管理器中的 `sactl` 即可使用。
 在线登录、组队、匹配、作战、数据记录、训练和评估均不需要 Python、Go 开发环境或 Docker。
 只有本地启动隔离原生游戏服进行批量模拟采集时需要 Docker。
@@ -16,17 +16,17 @@ Mac 也可以通过 Homebrew 安装（已有用户执行 `brew upgrade sactl`）
 brew update
 brew install k0ngk0ng/tap/sactl
 sactl version
-sactl arena version
+sactl ai version
 ```
 
-安装包解压后，macOS/Linux 可直接执行 `./sactl arena`，Windows 使用 `./sactl.exe arena`。
+安装包解压后，macOS/Linux 可直接执行 `./sactl ai`，Windows 使用 `./sactl.exe ai`。
 一键安装脚本、Homebrew、Scoop、deb/rpm 都只需安装一个 `sactl` 程序。
 完整说明与 JSON 示例也随包提供。
 
 先创建队伍配置，目录必须是新的，避免覆盖已有账号和数据：
 
 ```sh
-sactl arena init --directory arena-team --mode 1
+sactl ai init --directory arena-team --mode 1
 ```
 
 编辑生成的文件：
@@ -39,17 +39,17 @@ sactl arena init --directory arena-team --mode 1
 不要同时用浏览器登录受指挥官控制的角色。角色须已创建并能正常进入世界。
 
 ```sh
-sactl arena check --config arena-team/team.json
-sactl arena run --config arena-team/team.json --matches 10
+sactl ai check --config arena-team/team.json
+sactl ai run --config arena-team/team.json --matches 10
 # 持续匹配：
-sactl arena run --config arena-team/team.json --forever
+sactl ai run --config arena-team/team.json --forever
 ```
 
 `check` 只校验配置和策略，不登录或验证密码。真正运行时会检查成员身份和服务端 `BTIME` 兼容性，
 旧服不兼容则在排队前退出。现有名片会直接复用；否则按正常移动、核对角色 ID、交换名片、邀请流程组队。
 跨地图会合需要在各成员 TOML 配置 sactl 的地图数据目录，或先让队员进入同一张可行走地图。
 
-首次 Ctrl-C 请求完成当前比赛后停止，再次 Ctrl-C 立即退出。立即退出仍适用正常天梯断线规则。
+首次 Ctrl-C 请求完成当前比赛后停止，再次 Ctrl-C 立即退出。立即退出仍适用正常竞技场断线规则。
 退出时只关闭本程序启动的 sactl 会话，已存在的用户会话保留。
 接管前应停止旧指挥官；同一 socket 和同一服务/账号/角色都有文件锁，未完成比赛固定策略版本。
 不要删除 SQLite 检查点来强行重发未知结果。
@@ -57,9 +57,11 @@ sactl arena run --config arena-team/team.json --forever
 默认身份锁位于用户缓存目录的 `stoneage-arena/ownership`；可设置 `ownership_dir`，但同一用户所有队伍
 必须使用同一个目录，才能防止同一身份被不同指挥官接管。跨进程名片会合也共用这里的锁。
 
-## 从独立工具迁移
+## 从旧命令迁移
 
-旧 `team.json`、成员 TOML、模型和 SQLite 数据不需要转换。把启动命令由 `arena-agent` 改为 `sactl arena` 即可。
+旧 `team.json`、成员 TOML、模型和 SQLite 数据不需要转换。把启动命令由 `arena-agent` 或旧版 `sactl arena` 改为 `sactl ai` 即可。
+从 v0.2.1 起，`sactl arena` 专门用于普通玩家的竞技场操作；旧 `arena run/train/init` 等命令会报迁移提示，不会执行匹配操作。
+旧 `sactl ladder` 保留为普通玩家 `sactl arena` 的兼容别名。底层 `LADDER` 协议、历史 JSON 字段、数据库表和数据目录保留原名称以兼容已有数据。
 先结束旧进程的当前比赛，再启动新命令。保留原 `state_dir`，不要删除检查点。
 `init` 默认将当前可执行文件写入配置；旧配置若写了其他 `sactl` 绝对路径，会继续尊重该路径。
 如需使用刚升级的客户端，可删除 JSON 的 `sactl` 字段或将其改成 `"sactl"`，此时使用当前可执行文件。
@@ -104,12 +106,12 @@ HTTP 请求由 Go 的 context 限时取消，禁止重定向转发密钥。超�
 终局先采齐本地最终事件再确认结算。持久化失败时停止后续变更操作。
 
 ```sh
-sactl arena train \
+sactl ai train \
   --database arena-team/data/arena.sqlite3 \
   --database another-team/data/arena.sqlite3 \
   --output models/policy-v1.json
 
-sactl arena evaluate \
+sactl ai evaluate \
   --database independent-team/data/arena.sqlite3 \
   --model models/policy-v1.json
 ```
@@ -130,19 +132,19 @@ Go 和 Python 的随机序列及模型序列化可能不同，不承诺相同种
 ## 隔离批量采集
 
 此高级入口需要仓库及预先编译的原生工具，在已有 Docker 镜像里启动临时账号服、原生游戏服、网关和两队客户端。
-所有对局通过正常天梯完成，使用真实 C 战斗引擎；容器内同样不需要 Python。
+所有对局通过正常竞技场完成，使用真实 C 战斗引擎；容器内同样不需要 Python。
 `--network none` 隔离生产，既不拉取也不构建镜像，不覆盖已有采集目录。
 
 ```sh
-sactl arena simulate --root . --work build/local-arena/collect-2v2-001 \
+sactl ai simulate --root . --work build/local-arena/collect-2v2-001 \
   --mode 2 --matches 100 --strategy explore --seed 7
 
-sactl arena train \
+sactl ai train \
   --database build/local-arena/collect-2v2-001/commander-0/arena.sqlite3 \
   --database build/local-arena/collect-2v2-001/commander-1/arena.sqlite3 \
   --output build/local-arena/models/2v2-v1.json
 
-sactl arena simulate --root . --work build/local-arena/eval-2v2-001 \
+sactl ai simulate --root . --work build/local-arena/eval-2v2-001 \
   --mode 2 --matches 100 --strategy learned \
   --model build/local-arena/models/2v2-v1.json
 ```
@@ -189,7 +191,7 @@ stdout 返回一个计划：`schema_version`、`match_id`、`turn`、`observatio
 Web 会话的 battle-state/battle-events 接口复用 Go 公共层，动作仍受控制权检查。
 敌方隐藏数值不填猜测值，未知战斗包保留 raw 和未知标识。现有 Web 按钮尚未全部迁入候选接口，不宣称所有客户端能力完全对等。
 
-正式用户直接运行 `sactl arena`，无需仓库、`bin/` 前缀或编译器。
+正式用户直接运行 `sactl ai`，无需仓库、`bin/` 前缀或编译器。
 
 ## 版本验证
 

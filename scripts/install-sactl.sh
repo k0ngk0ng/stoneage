@@ -87,14 +87,14 @@ if [[ -f "$bundle/completions/sactl.bash" && -f "$bundle/completions/_sactl" ]];
   install -m 644 "$bundle/completions/sactl.bash" "$completion_data/bash-completion/completions/sactl"
   install -m 644 "$bundle/completions/_sactl" "$completion_data/zsh/site-functions/_sactl"
   echo 'Bash/zsh completion files installed. For this shell:'
-  echo '  bash: source <(sactl completion bash)'
+  echo '  bash: eval "$(sactl completion bash)"'
   echo '  zsh:  autoload -Uz compinit && compinit; source <(sactl completion zsh)'
   echo 'To load on every shell start, add the matching line to ~/.bashrc or ~/.zshrc.'
 fi
 if [[ -f "$bundle/arena-agent.example.json" && -f "$bundle/local-arena-agent.md" ]]; then
   mkdir -p "$config_dir/examples"
   cp "$bundle/arena-agent.example.json" "$bundle/local-arena-agent.md" "$config_dir/examples/"
-  echo "Arena commander included: sactl arena init --directory <new-directory>"
+  echo "Arena commander included: sactl ai init --directory <new-directory>"
 fi
 if command -v xattr >/dev/null 2>&1; then xattr -d com.apple.quarantine "$prefix/sactl" 2>/dev/null || true; fi
 config_path="$config_dir/sactl.toml"
