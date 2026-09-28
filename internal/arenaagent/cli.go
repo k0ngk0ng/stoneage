@@ -15,11 +15,11 @@ func (p *pathsFlag) String() string     { return fmt.Sprint([]string(*p)) }
 func (p *pathsFlag) Set(v string) error { *p = append(*p, v); return nil }
 func Main(ctx context.Context, args []string, version string, out io.Writer) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
-		_, e := fmt.Fprintln(out, "arena-agent: local StoneAge squad commander\nCommands: version, init, check, run, train, evaluate, simulate\nUse <command> --help for options. Online play requires sactl; no Python or Docker.")
+		_, e := fmt.Fprintln(out, "sactl arena: local StoneAge squad commander\nCommands: version, init, check, run, train, evaluate, simulate\nUse <command> --help for options. Online play uses this sactl executable; no Python or Docker.")
 		return e
 	}
 	if args[0] == "version" {
-		_, e := fmt.Fprintln(out, "arena-agent", version)
+		_, e := fmt.Fprintln(out, "sactl arena", version)
 		return e
 	}
 	command := args[0]

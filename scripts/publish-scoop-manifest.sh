@@ -38,7 +38,7 @@ cat > "$manifest" <<EOF
   "url": "https://github.com/${repo}/releases/download/${tag}/${zip_name}",
   "hash": "${hash}",
   "extract_dir": "${archive}",
-  "bin": ["sactl.exe", "arena-agent.exe"],
+  "bin": "sactl.exe",
   "checkver": {
     "github": "https://github.com/${repo}"
   },

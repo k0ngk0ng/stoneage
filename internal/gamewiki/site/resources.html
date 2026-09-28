@@ -17,13 +17,13 @@
       <div id="sactl-download" aria-live="polite"><p>正在查询客户端版本…</p></div>
       <p>已有 sactl 配置会保留，随包提供的同名 skill 文件会更新。仅安装客户端可为 macOS/Linux 脚本添加 <code>--no-skills</code>，Windows 添加 <code>-NoSkills</code>。skill 位于用户目录下的 <code>.agents/skills/sactl</code> 和 <code>.claude/skills/sactl</code>。</p>
     </section>
-    <section aria-labelledby="arena-heading"><h2 id="arena-heading">天梯 AI 指挥官 · arena-agent</h2>
-      <p>从 v0.1.98 起，上方客户端安装包同时包含 arena-agent、sactl、配置示例与使用说明。一支队伍由一个指挥官统一控制，支持 1v1–5v5 自动登录、组队、匹配和作战。连接线上天梯无需 Docker 或 Python。</p>
+    <section aria-labelledby="arena-heading"><h2 id="arena-heading">天梯 AI 指挥官 · sactl arena</h2>
+      <p>从 v0.1.99 起，天梯 AI 指挥官已整合到 sactl arena，只需安装一个 sactl 客户端，包内附配置示例与使用说明。一支队伍由一个指挥官统一控制，支持 1v1–5v5 自动登录、组队、匹配和作战。连接线上天梯无需 Docker 或 Python。</p>
       <p>安装后，在终端创建一支队伍的配置（将 <code>--mode 1</code> 改成 2–5 可创建多人队伍）：</p>
-      <pre><code>arena-agent init --directory arena-team --mode 1</code></pre>
+      <pre><code>sactl arena init --directory arena-team --mode 1</code></pre>
       <p>填写目录内各成员 TOML 的账号、角色，以及对应 password 文件中的密码，然后运行：</p>
-      <pre><code>arena-agent check --config arena-team/team.json
-arena-agent run --config arena-team/team.json --forever</code></pre>
+      <pre><code>sactl arena check --config arena-team/team.json
+sactl arena run --config arena-team/team.json --forever</code></pre>
       <p>默认「顺序攻击」basic 无需模型或 API Key。可切换为「经验指挥」learned、「推演指挥」llm 或「联合参谋」hybrid；学习策略需要训练模型，大模型策略需要自行配置服务。实验训练器尚不代表高胜率策略。</p>
       <p>战斗数据保存在队伍目录内的 data/arena.sqlite3，可继续用于训练与评估。首次 Ctrl-C 在当前比赛结束后停止，再次 Ctrl-C 立即退出。完整说明见安装包内 local-arena-agent.md；本地隔离游戏服的批量模拟采集另需 Docker。</p>
     </section>

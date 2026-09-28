@@ -77,12 +77,12 @@ class Sactl < Formula
 
   def install
     bin.install "sactl"
-    bin.install "arena-agent"
     doc.install "local-arena-agent.md", "arena-agent.example.json"
   end
 
   test do
     assert_match "sactl", shell_output("#{bin}/sactl version")
+    assert_match "sactl arena", shell_output("#{bin}/sactl arena --help")
   end
 end
 EOF

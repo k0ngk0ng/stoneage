@@ -339,3 +339,19 @@ Release workflow 在正式 tag 的测试、五平台安装包、镜像和 Window
 所有安装包和脚本按 `SHA256SUMS` 验证，写入 `downloads/sactl/<版本>/`；最后更新
 `downloads/sactl/latest.json`。上传失败会使 workflow 失败；较旧版本重跑不会降级下载区索引。
 预发布 tag 不更新正式版下载区；游戏资源 ZIP 继续使用独立的资源版本，不随每次客户端发版重复上传。
+
+## 天梯 AI 指挥官
+
+从 v0.1.99 起，组队指挥、对局采集、训练和评估统一在本客户端中，不需要另装工具：
+
+```sh
+sactl arena init --directory arena-team --mode 2
+# 填写各成员 TOML 的账号、角色及对应 password 文件
+sactl arena check --config arena-team/team.json
+sactl arena run --config arena-team/team.json --forever
+```
+
+每队一个指挥官统一决定所有人物与宠物的行动，支持 1v1–5v5。默认 basic 无需模型。
+`train`、`evaluate`、`simulate` 的参数用 `sactl arena <子命令> --help` 查看。
+在线运行无需 Docker 或 Python；本地隔离原生游戏服的模拟采集需要 Docker。
+完整说明与旧配置迁移方法见 [本地天梯 AI 指挥官](local-arena-agent.md)。

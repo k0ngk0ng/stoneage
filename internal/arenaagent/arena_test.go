@@ -398,6 +398,28 @@ func TestInitProtectsExistingConfiguration(t *testing.T) {
 	if e != nil || len(c.Members) != 2 || c.Strategy != "basic" {
 		t.Fatal(e, c)
 	}
+	exe, e := os.Executable()
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, configured := range []string{"", "sactl", filepath.Join(dir, "custom-sactl")} {
+		c.Sactl = configured
+		path := filepath.Join(dir, "migration.json")
+		if e = os.WriteFile(path, enc(c), 0600); e != nil {
+			t.Fatal(e)
+		}
+		loaded, e := LoadConfig(path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		want := configured
+		if configured == "" || configured == "sactl" {
+			want = exe
+		}
+		if loaded.Sactl != want {
+			t.Fatalf("configured executable %q resolved to %q; want %q", configured, loaded.Sactl, want)
+		}
+	}
 	if _, e = Init(dir, 1); e == nil {
 		t.Fatal("overwrote configuration")
 	}

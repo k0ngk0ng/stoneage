@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/arenaagent"
 	"github.com/k0ngk0ng/stoneage/internal/sacli"
 )
 
@@ -46,6 +47,12 @@ func main() {
 	}
 	sacli.BuildVersion = version
 	switch os.Args[1] {
+	case "arena":
+		if err := arenaagent.Main(context.Background(), os.Args[2:], version, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "sactl arena: %v\n", err)
+			os.Exit(exitFailed)
+		}
+		return
 	case "version", "--version", "-v":
 		fmt.Printf("sactl %s\n", version)
 		return
@@ -240,6 +247,7 @@ func usage() {
 	fmt.Fprintf(os.Stdout, `sactl - headless StoneAge client
 
 usage:
+  sactl arena <init|check|run|train|evaluate|simulate> [options]  local squad commander
   sactl serve --config <file>            hold one game session and serve the CLI
 %s
 

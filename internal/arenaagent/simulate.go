@@ -82,7 +82,7 @@ func Simulate(ctx context.Context, s Simulation) error {
 	if s.Image == "" {
 		s.Image = "gcc:13-bookworm"
 	}
-	for _, name := range []string{"bin/arena-agent", "bin/sactl", "bin/stoneage-gateway", "bin/seed-network", "native/gmsv/gmsvjt.exe", "native/saac/saacjt.exe"} {
+	for _, name := range []string{"bin/sactl", "bin/stoneage-gateway", "bin/seed-network", "native/gmsv/gmsvjt.exe", "native/saac/saacjt.exe"} {
 		if info, e := os.Stat(filepath.Join(s.Root, "build/local-arena", name)); e != nil || !info.Mode().IsRegular() {
 			return fmt.Errorf("missing prepared Linux binary: build/local-arena/%s", name)
 		}
@@ -94,7 +94,7 @@ func Simulate(ctx context.Context, s Simulation) error {
 		rel, _ := filepath.Rel(s.Root, path)
 		return "/repo/" + filepath.ToSlash(rel)
 	}
-	args := []string{"run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--cpus", "2", "--memory", "2g", "--tmpfs", "/tmp:rw,size=128m", "--mount", "type=bind,src=" + s.Root + ",dst=/repo,readonly", "--mount", "type=bind,src=" + filepath.Join(s.Root, "build") + ",dst=/repo/build", "-e", "STONEAGE_ARENA_ISOLATED=1", "--entrypoint", "/repo/build/local-arena/bin/arena-agent", s.Image, "native-simulate", "--root", "/repo", "--work", containerPath(s.Work), "--mode", strconv.Itoa(s.Mode), "--matches", strconv.Itoa(s.Matches), "--strategy", s.Strategy, "--seed", strconv.FormatInt(s.Seed, 10)}
+	args := []string{"run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--cpus", "2", "--memory", "2g", "--tmpfs", "/tmp:rw,size=128m", "--mount", "type=bind,src=" + s.Root + ",dst=/repo,readonly", "--mount", "type=bind,src=" + filepath.Join(s.Root, "build") + ",dst=/repo/build", "-e", "STONEAGE_ARENA_ISOLATED=1", "--entrypoint", "/repo/build/local-arena/bin/sactl", s.Image, "arena", "native-simulate", "--root", "/repo", "--work", containerPath(s.Work), "--mode", strconv.Itoa(s.Mode), "--matches", strconv.Itoa(s.Matches), "--strategy", s.Strategy, "--seed", strconv.FormatInt(s.Seed, 10)}
 	if s.Model != "" {
 		args = append(args, "--model", containerPath(s.Model))
 	}

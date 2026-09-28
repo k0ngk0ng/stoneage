@@ -58,8 +58,11 @@ func LoadConfig(path string) (Config, error) {
 	if c.Fallback != "basic" {
 		return c, fmt.Errorf("fallback must be basic")
 	}
-	if c.Sactl == "" {
-		c.Sactl = "sactl"
+	if c.Sactl == "" || c.Sactl == "sactl" {
+		c.Sactl, e = os.Executable()
+		if e != nil {
+			return c, e
+		}
 	}
 	if filepath.Base(c.Sactl) != c.Sactl {
 		c.Sactl = absolute(base, c.Sactl)

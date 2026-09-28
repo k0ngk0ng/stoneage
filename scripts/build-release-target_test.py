@@ -67,12 +67,14 @@ target.write_text('mock package')
                 sactl_names = archive.getnames()
                 payload = archive.extractfile(f'{sactl_prefix}/sactl{suffix}').read().decode()
         assert payload == f'{target_os}/{arch}', payload
-        for entry in ['arena-agent'+suffix, 'local-arena-agent.md', 'arena-agent.example.json', 'sactl.toml.example', 'sactl.md', 'install-sactl.sh', 'install-sactl-skill.py', 'skills/sactl/SKILL.md', 'skills/sactl/references/battle.md', 'skills/sactl/references/session.md']:
+        assert f'{sactl_prefix}/arena-agent{suffix}' not in sactl_names
+        for entry in ['local-arena-agent.md', 'arena-agent.example.json', 'sactl.toml.example', 'sactl.md', 'install-sactl.sh', 'install-sactl-skill.py', 'skills/sactl/SKILL.md', 'skills/sactl/references/battle.md', 'skills/sactl/references/session.md']:
             assert f'{sactl_prefix}/{entry}' in sactl_names, entry
     with tarfile.open(dist / 'stoneage-deploy-v0.1.99.tar.gz') as archive:
         assert archive.extractfile('VERSION').read() == b'v0.1.99\n'
         assert archive.extractfile('bin/stoneage-assets-sync').read() == b'linux/amd64'
     with tarfile.open(dist / 'stoneage-sactl-v0.1.99-linux-arm64.tar.gz') as archive:
+        assert 'stoneage-sactl-v0.1.99-linux-arm64/arena-agent' not in archive.getnames()
         assert archive.extractfile('stoneage-sactl-v0.1.99-linux-arm64/skills/sactl/SKILL.md')
         assert archive.extractfile('stoneage-sactl-v0.1.99-linux-arm64/install-sactl-skill.py')
     # Linux additionally ships an arm64 client plus .deb and .rpm packages.

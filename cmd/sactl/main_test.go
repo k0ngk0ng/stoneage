@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,5 +97,62 @@ func TestUnknownGlobalFlagFails(t *testing.T) {
 	cmd.Env = append(os.Environ(), "STONEAGE_TEST_CLI_PROCESS=1")
 	if err := cmd.Run(); err == nil || cmd.ProcessState.ExitCode() != exitFailed {
 		t.Fatalf("unknown global flag exit = %v (%v)", cmd.ProcessState, err)
+	}
+}
+
+// Exercise main, not just the daemon-command parser: arena runs locally and
+// must never attempt daemon RPC for help, init or check.
+func TestArenaCLIProcess(t *testing.T) {
+	if os.Getenv("STONEAGE_TEST_ARENA_PROCESS") != "1" {
+		return
+	}
+	for i, arg := range os.Args {
+		if arg == "--" {
+			os.Args = append([]string{os.Args[0]}, os.Args[i+1:]...)
+			main()
+			return
+		}
+	}
+	t.Fatal("missing arguments")
+}
+func TestArenaIntegratedCLI(t *testing.T) {
+	dir, err := os.MkdirTemp("", "sa-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	invoke := func(args ...string) []byte {
+		t.Helper()
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestArenaCLIProcess$", "--"}, args...)...)
+		cmd.Env = append(os.Environ(), "STONEAGE_TEST_ARENA_PROCESS=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s (%v)", args, out, err)
+		}
+		return out
+	}
+	if !strings.Contains(string(invoke("arena", "--help")), "sactl arena") {
+		t.Fatal("missing integrated help")
+	}
+	for _, command := range []string{"run", "train", "evaluate", "simulate"} {
+		invoke("arena", command, "--help")
+	}
+	team := filepath.Join(dir, "team")
+	invoke("arena", "init", "--directory", team, "--mode", "2")
+	raw, err := os.ReadFile(filepath.Join(team, "team.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err = json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	exe, _ := os.Executable()
+	if config["sactl"] != exe {
+		t.Fatal("init must use current executable", config["sactl"])
+	}
+	output := invoke("arena", "check", "--config", filepath.Join(team, "team.json"))
+	if !strings.Contains(string(output), `"ok":true`) {
+		t.Fatal(string(output))
 	}
 }
