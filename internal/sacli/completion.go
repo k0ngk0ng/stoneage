@@ -3,8 +3,6 @@ package sacli
 import (
 	"embed"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -36,17 +34,14 @@ func Complete(words []string) []string {
 			return []string{"@files"}
 		case "--directory", "--root", "--work":
 			return []string{"@dirs"}
-		case "--profile":
-			path, _, _ := ProfilePaths("placeholder")
-			entries, _ := os.ReadDir(filepath.Dir(path))
-			var names []string
-			for _, entry := range entries {
-				name := strings.TrimSuffix(entry.Name(), ".toml")
-				if !entry.IsDir() && name != entry.Name() && profileName.MatchString(name) {
-					names = append(names, name)
-				}
-			}
-			return completePrefix(strings.Join(names, " "), prefix)
+		case "--profile", "use":
+			return completePrefix(strings.Join(KnownProfiles(), " "), prefix)
+		case "--transport":
+			return completePrefix("http tcp", prefix)
+		case "--map-directory":
+			return []string{"@dirs"}
+		case "--web-base-url", "--address", "--server-id", "--character":
+			return nil
 		case "--mode":
 			return completePrefix("1 2 3 4 5", prefix)
 		case "--strategy":
@@ -63,7 +58,7 @@ func Complete(words []string) []string {
 	positional := []string{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--socket", "-socket", "--config", "-config", "--timeout", "-timeout", "--profile":
+		case "--socket", "-socket", "--config", "-config", "--timeout", "-timeout", "--profile", "--transport", "--web-base-url", "--address", "--server-id", "--character", "--map-directory":
 			i++
 		case "--json", "-json":
 		default:
@@ -71,7 +66,7 @@ func Complete(words []string) []string {
 		}
 	}
 	if len(positional) == 0 {
-		commands := "commands duel functions title probe init serve --json --socket --config --profile --timeout"
+		commands := "sessions use commands duel functions title probe init serve --json --socket --config --profile --timeout"
 		if len(args) == 0 {
 			commands += " ai completion --help --version"
 		}
@@ -111,9 +106,12 @@ func Complete(words []string) []string {
 		return nil
 	}
 	if command == "serve" {
-		return completePrefix("--config --profile --foreground --help", prefix)
+		return completePrefix("--config --profile --socket --transport --address --web-base-url --server-id --character --map-directory --foreground --help", prefix)
 	}
-	if command == "init" || command == "login" {
+	if command == "login" {
+		return completePrefix("--config --profile --socket --transport --address --web-base-url --server-id --character --map-directory --help", prefix)
+	}
+	if command == "init" {
 		return completePrefix("--config --profile --help", prefix)
 	}
 	subcommands := map[string]string{

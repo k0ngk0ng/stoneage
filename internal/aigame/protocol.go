@@ -323,7 +323,34 @@ func (session *Session) authenticate(ctx context.Context, credentials Credential
 	session.stateMu.Lock()
 	session.state.snapshot.Phase = PhaseCharacterList
 	session.stateMu.Unlock()
+	session.startHeartbeat()
 	return nil
+}
+
+// The native server expires silent clients even while selecting a character.
+// Match the Web client's 20-second Echo cadence. request serializes heartbeat
+// replies with pre-world character operations and uses the reader in-world.
+func (session *Session) startHeartbeat() {
+	session.wg.Add(1)
+	go func() {
+		defer session.wg.Done()
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-session.done:
+				return
+			case <-ticker.C:
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				_, err := session.request(ctx, "Echo", []wireValue{{kind: wireString, text: []byte("sactl")}})
+				cancel()
+				if err != nil {
+					session.finish(fmt.Errorf("session heartbeat: %w", err))
+					return
+				}
+			}
+		}
+	}()
 }
 
 func (session *Session) readGreeting(ctx context.Context) error {
@@ -826,6 +853,13 @@ func (session *Session) Events() <-chan Event { return session.events }
 // Errors returns a terminal error only through Next; this method exists for
 // callers which want to observe closure while separately draining Events.
 func (session *Session) Done() <-chan struct{} { return session.done }
+
+// Err reports the terminal transport/protocol failure without consuming events.
+func (session *Session) Err() error {
+	session.termMu.RLock()
+	defer session.termMu.RUnlock()
+	return session.termErr
+}
 
 // Next waits for the next decoded server packet or context cancellation.
 func (session *Session) Next(ctx context.Context) (Event, error) {

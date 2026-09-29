@@ -288,7 +288,10 @@ func TestHTTPConnUsesWebGreetingAndEvents(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/sessions":
 			_ = json.NewEncoder(w).Encode(createSessionResponse{ID: "session", Greeting: base64.StdEncoding.EncodeToString([]byte{'L', 0}), EventAck: true})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/sessions/session/events":
-			_ = json.NewEncoder(w).Encode(eventsResponse{Events: []eventResponse{{Packet: base64.StdEncoding.EncodeToString(packet)}}})
+			if r.URL.Query().Get("ack") != "0" {
+				t.Error("missing initial event ack")
+			}
+			_ = json.NewEncoder(w).Encode(eventsResponse{Acknowledged: true, Events: []eventResponse{{Seq: 1, Ladder: json.RawMessage(`{"revision":1}`), Packet: base64.StdEncoding.EncodeToString(packet)}}})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/sessions/session/send":
 			w.WriteHeader(http.StatusAccepted)
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/sessions/session":

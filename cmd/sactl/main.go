@@ -105,6 +105,10 @@ func serve(args []string) error {
 	configPath := fs.String("config", "", "custom configuration file")
 	profile := fs.String("profile", "", "named player profile")
 	foreground := fs.Bool("foreground", false, "keep daemon in foreground (for supervisors/debugging)")
+	interactive := fs.Bool("interactive", false, "ignore legacy stored credentials (used by login)")
+	socket := fs.String("socket", "", "local session socket")
+	connection := connectionOptions{}
+	connection.bind(fs)
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -114,12 +118,26 @@ func serve(args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("unexpected serve arguments")
 	}
-	config, usedPath, err := sacli.LoadProfileConfig(*profile, *configPath)
+	if *profile == "" && *configPath == "" && *socket == "" {
+		options := clientOptions{}
+		if err := options.resolveProfile(); err != nil {
+			return err
+		}
+		*profile = options.profile
+	}
+	loader := sacli.LoadProfileConfig
+	if *interactive {
+		loader = sacli.LoadClientProfileConfig
+	}
+	config, usedPath, err := loader(*profile, *configPath)
 	if err != nil {
 		return err
 	}
-	if usedPath == "" {
-		return errors.New("no config found; run sactl init first")
+	if err := connection.apply(&config); err != nil {
+		return err
+	}
+	if *socket != "" {
+		config.SocketPath = *socket
 	}
 	if !*foreground {
 		return startBackground(config, usedPath, *profile)
@@ -141,7 +159,7 @@ func serve(args []string) error {
 func run(args []string) error {
 	command := ""
 	commandArgs := make([]string, 0, len(args))
-	options := clientOptions{}
+	options := clientOptions{connection: connectionOptions{}}
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch {
@@ -162,6 +180,12 @@ func run(args []string) error {
 			return nil
 		case arg == "--json":
 			options.json = true
+		case isConnectionFlag(arg):
+			if index+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", arg)
+			}
+			options.connection[strings.TrimPrefix(arg, "--")] = args[index+1]
+			index++
 		case arg == "--socket" || arg == "-socket":
 			if index+1 >= len(args) {
 				return errors.New("--socket requires a path")
@@ -206,6 +230,7 @@ func run(args []string) error {
 	}
 	if command == "serve" || command == "init" {
 		localArgs := append([]string{}, commandArgs...)
+		localArgs = append(localArgs, options.connection.args()...)
 		if options.profile != "" {
 			localArgs = append(localArgs, "--profile", options.profile)
 		}
@@ -221,7 +246,19 @@ func run(args []string) error {
 		return initConfig(localArgs)
 	}
 	if command == "login" {
+		if err := options.resolveProfile(); err != nil {
+			return err
+		}
 		return login(options, commandArgs)
+	}
+	if command == "sessions" || command == "use" {
+		return sessionCommand(command, commandArgs, options.json)
+	}
+	if err := options.resolveProfile(); err != nil {
+		return err
+	}
+	if len(options.connection) != 0 {
+		return errors.New("connection options apply to login or serve; game commands use the active session")
 	}
 	if command == "arena" || command == "ladder" {
 		if err := sacli.ValidateArenaCommand(commandArgs); err != nil {
@@ -252,7 +289,7 @@ func run(args []string) error {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sactl: %v\n", err)
-		fmt.Fprintf(os.Stderr, "sactl: is the daemon running? start it with `sactl serve` using the same --profile or --config\n")
+		fmt.Fprintf(os.Stderr, "sactl: no available session; run `sactl login` using the same --profile or --config\n")
 		os.Exit(exitNoDaemon)
 	}
 	printResponse(response, options.json)
@@ -261,11 +298,12 @@ func run(args []string) error {
 }
 
 type clientOptions struct {
-	profile string
-	socket  string
-	config  string
-	json    bool
-	timeout time.Duration
+	connection connectionOptions
+	profile    string
+	socket     string
+	config     string
+	json       bool
+	timeout    time.Duration
 }
 
 func (options clientOptions) socketPath() (string, error) {
@@ -273,7 +311,7 @@ func (options clientOptions) socketPath() (string, error) {
 		if options.socket != "" {
 			return "", errors.New("--profile and --socket cannot be combined")
 		}
-		config, _, err := sacli.LoadProfileConfig(options.profile, options.config)
+		config, _, err := sacli.LoadClientProfileConfig(options.profile, options.config)
 		return config.SocketPath, err
 	}
 	if options.socket != "" {
@@ -282,7 +320,7 @@ func (options clientOptions) socketPath() (string, error) {
 	if env := os.Getenv("STONEAGE_SACTL_SOCKET"); env != "" {
 		return env, nil
 	}
-	config, _, err := sacli.LoadConfigPath(options.config)
+	config, _, err := sacli.LoadClientProfileConfig("", options.config)
 	if err != nil {
 		return "", err
 	}
@@ -326,7 +364,9 @@ func usage() {
 	fmt.Fprintf(os.Stdout, `sactl - headless StoneAge client
 
 usage:
-  sactl init [--profile <name>]         configure server/profile without saving credentials
+  sactl init [--profile <name>]         optionally save connection preferences
+  sactl sessions                       list local sessions (* = active)
+  sactl use <profile|default>           select the session used by subsequent commands
   sactl completion <bash|zsh>           print shell completion script
   sactl ai <init|check|run|train|evaluate|simulate> [options]  local squad commander
   sactl serve [--profile <name>]        start a background game session
@@ -339,6 +379,14 @@ global flags:
   --config <file>   read socket_path from a sactl config file
   --timeout <dur>   per-command timeout (default %s)
   --json            print the structured result
+
+login/serve connection flags (CLI overrides optional config):
+  --web-base-url <url>  Web endpoint (default https://sa.ichenj.com)
+  --transport <http|tcp>  connection transport (default http)
+  --address <host:port>  direct gateway; implies tcp unless transport is explicit
+  --server-id <id>      game line (default first available)
+  --character <name>    enter after login; failed entry keeps account logged in
+  --map-directory <dir> optional 2.5 navigation data
 
 environment:
   STONEAGE_SACTL_SOCKET   daemon socket path

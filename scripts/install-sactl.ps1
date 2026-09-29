@@ -84,7 +84,7 @@ try {
     }
     Write-Host "Installed: $target"
     Write-Host "Config: $configPath"
-    Write-Host 'Run sactl init, then sactl login. Existing configurations are preserved. No game login was started.'
+    Write-Host 'Run sactl login (no configuration required). Existing configurations are preserved. No game login was started.'
 } finally {
     if ($temporary -and (Test-Path $temporary)) { Remove-Item -Recurse -Force $temporary }
 }

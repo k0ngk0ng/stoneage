@@ -71,6 +71,7 @@ func TestInteractiveLoginPersistsAndLogoutDoesNotReconnect(t *testing.T) {
 		}
 	}()
 	config := DefaultConfig()
+	config.Transport = "tcp"
 	config.Address = listener.Addr().String()
 	config.Character = "Hero"
 	server := NewServer(config)
@@ -80,6 +81,15 @@ func TestInteractiveLoginPersistsAndLogoutDoesNotReconnect(t *testing.T) {
 	cancel()
 	if !response.OK {
 		t.Fatal(response.Error)
+	}
+	if !strings.Contains(string(response.Data), `"Phase":"character-list"`) {
+		t.Fatal("interactive login used stale configured character", string(response.Data))
+	}
+	if response := server.Dispatch(context.Background(), Request{Command: "stop-if-idle"}); response.OK {
+		t.Fatal("idle refresh stopped authenticated session")
+	}
+	if response := server.Dispatch(context.Background(), Request{Command: "login", Args: []string{"another", "another-secret"}}); response.OK {
+		t.Fatal("login replaced existing account")
 	}
 	select {
 	case <-closed:

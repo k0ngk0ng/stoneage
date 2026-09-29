@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
+	"github.com/k0ngk0ng/stoneage/internal/sessionwire"
 )
 
 const (
@@ -122,7 +123,9 @@ func (client *Client) Dial(ctx context.Context, address string) (net.Conn, error
 	if err != nil || len(greeting) != 2 || greeting[0] != 'L' || greeting[1] != 0 {
 		return nil, fmt.Errorf("%w: invalid Web greeting", ErrProtocol)
 	}
-	return newHTTPConn(client, response.ID, serverID, greeting), nil
+	connection := newHTTPConn(client, response.ID, serverID, greeting)
+	connection.reliable = response.EventAck
+	return connection, nil
 }
 
 // Attach claims one existing Web session for this exact identity. Web
@@ -450,18 +453,8 @@ type controlResponse struct {
 	AutomationMode      string          `json:"automation_mode,omitempty"`
 }
 
-type eventsResponse struct {
-	Events       []eventResponse `json:"events"`
-	Closed       bool            `json:"closed"`
-	Control      json.RawMessage `json:"control"`
-	Acknowledged bool            `json:"acknowledged,omitempty"`
-}
-
-type eventResponse struct {
-	Packet string `json:"packet,omitempty"`
-	Closed bool   `json:"closed,omitempty"`
-	Error  string `json:"error,omitempty"`
-}
+type eventsResponse = sessionwire.Events
+type eventResponse = sessionwire.Event
 
 // Session is both the provisioning HeadlessSession and the game session used
 // by aiservice. Login/character selection use the public protocol stream;

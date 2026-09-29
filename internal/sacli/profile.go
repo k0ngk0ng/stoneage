@@ -1,6 +1,7 @@
 package sacli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,8 +29,21 @@ func ProfilePaths(name string) (config, socket string, err error) {
 }
 
 func LoadProfileConfig(name, path string) (Config, string, error) {
+	return loadProfileConfig(name, path, true)
+}
+
+// LoadClientProfileConfig resolves public connection settings without reading
+// legacy password files. Interactive login and queries never need those files.
+func LoadClientProfileConfig(name, path string) (Config, string, error) {
+	return loadProfileConfig(name, path, false)
+}
+
+func loadProfileConfig(name, path string, credentials bool) (Config, string, error) {
+	if name == "default" {
+		name = ""
+	}
 	if name == "" {
-		return LoadConfigPath(path)
+		return loadConfigPath(path, credentials)
 	}
 	if path != "" {
 		return Config{}, "", fmt.Errorf("--profile and --config cannot be combined")
@@ -38,7 +52,10 @@ func LoadProfileConfig(name, path string) (Config, string, error) {
 	if err != nil {
 		return Config{}, "", err
 	}
-	config, err := LoadConfig(path)
+	config, err := loadConfig(path, credentials)
+	if errors.Is(err, os.ErrNotExist) {
+		config, path, err = DefaultConfig(), "", nil
+	}
 	if err != nil {
 		return Config{}, path, err
 	}

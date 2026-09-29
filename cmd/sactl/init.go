@@ -28,6 +28,9 @@ func initConfig(args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("usage: sactl init [--config <file>]")
 	}
+	if *profile == "default" {
+		*profile = ""
+	}
 	if *profile != "" {
 		if *path != "" {
 			return errors.New("--profile and --config cannot be combined")

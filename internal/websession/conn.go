@@ -36,6 +36,8 @@ type httpConn struct {
 	writeMu        sync.Mutex
 	buffer         bytes.Buffer
 	closedByServer bool
+	reliable       bool
+	ack            uint64 // guarded by readMu; advanced after a complete response
 	readDeadline   time.Time
 	writeDeadline  time.Time
 }
@@ -71,7 +73,7 @@ func (connection *httpConn) Read(destination []byte) (int, error) {
 		deadline := connection.readDeadline
 		connection.mu.Unlock()
 
-		response, err := connection.poll(deadline)
+		response, err := connection.pollWithRetry(deadline)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				connection.mu.Lock()
@@ -223,6 +225,25 @@ func (connection *httpConn) requestContext(deadline time.Time) (context.Context,
 	return context.WithCancel(base)
 }
 
+func (connection *httpConn) pollWithRetry(deadline time.Time) ([][]byte, error) {
+	for attempt := 0; ; attempt++ {
+		packets, err := connection.poll(deadline)
+		if err == nil || !connection.reliable || attempt >= 3 || !errors.Is(err, ErrLeaseUnavailable) {
+			return packets, err
+		}
+		ctx, cancel := connection.requestContext(deadline)
+		timer := time.NewTimer(time.Duration(1<<attempt) * 100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			cancel()
+			return nil, ctx.Err()
+		case <-timer.C:
+			cancel()
+		}
+	}
+}
+
 func (connection *httpConn) poll(deadline time.Time) ([][]byte, error) {
 	ctx, cancel := connection.requestContext(deadline)
 	defer cancel()
@@ -231,6 +252,9 @@ func (connection *httpConn) poll(deadline time.Time) ([][]byte, error) {
 		return nil, err
 	}
 	query := request.URL.Query()
+	if connection.reliable {
+		query.Set("ack", strconv.FormatUint(connection.ack, 10))
+	}
 	timeout := connection.client.pollTimeout
 	if !deadline.IsZero() {
 		remaining := time.Until(deadline)
@@ -262,7 +286,20 @@ func (connection *httpConn) poll(deadline time.Time) ([][]byte, error) {
 		return nil, err
 	}
 	packets := make([][]byte, 0, len(payload.Events))
+	ack := connection.ack
 	for _, event := range payload.Events {
+		if connection.reliable {
+			if event.Seq == 0 {
+				return nil, fmt.Errorf("%w: missing event sequence", ErrProtocol)
+			}
+			if event.Seq <= ack {
+				continue
+			}
+			if event.Seq != ack+1 {
+				return nil, fmt.Errorf("%w: event sequence gap", ErrProtocol)
+			}
+			ack = event.Seq
+		}
 		if event.Error != "" {
 			return nil, fmt.Errorf("%w: Web event stream reported an error", ErrProtocol)
 		}
@@ -285,6 +322,7 @@ func (connection *httpConn) poll(deadline time.Time) ([][]byte, error) {
 		connection.closedByServer = true
 		connection.mu.Unlock()
 	}
+	connection.ack = ack
 	return packets, nil
 }
 

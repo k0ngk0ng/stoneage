@@ -23,8 +23,8 @@ func TestConfigTransportValidation(t *testing.T) {
 		}
 		return path
 	}
-	if _, err := LoadConfig(write("account = \"a\"\ntransport = \"http\"\n")); err == nil {
-		t.Error("http transport without web_base_url was accepted")
+	if config, err := LoadConfig(write("transport = \"http\"\n")); err != nil || config.WebBaseURL != "https://sa.ichenj.com" {
+		t.Error("HTTP should default to the public game endpoint", err)
 	}
 	if _, err := LoadConfig(write("account = \"a\"\ntransport = \"carrier-pigeon\"\n")); err == nil {
 		t.Error("unknown transport was accepted")

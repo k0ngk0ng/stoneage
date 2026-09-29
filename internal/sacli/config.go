@@ -26,7 +26,7 @@ type Config struct {
 	SocketPath       string                `toml:"socket_path"`
 	// Transport selects how the game session reaches the server:
 	//
-	//   "tcp"  (default) dials the named-protocol gateway directly
+	//   "tcp" dials the named-protocol gateway directly
 	//   "http" speaks the same protocol through the Web front end, which is
 	//          what lets a client reach a deployment over its normal HTTPS
 	//          address without a tunnel or an exposed game port
@@ -60,6 +60,8 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		SocketPath:   StatePath("sactl.sock"),
+		Transport:    "http",
+		WebBaseURL:   "https://sa.ichenj.com",
 		Address:      "127.0.0.1:9065",
 		MapDirectory: "",
 	}
@@ -105,15 +107,19 @@ func ConfigSearchPaths() []string {
 // LoadConfigPath finds and loads the first config file that exists. With no
 // file it returns the defaults, so a fresh install can still run.
 func LoadConfigPath(explicit string) (Config, string, error) {
+	return loadConfigPath(explicit, true)
+}
+
+func loadConfigPath(explicit string, credentials bool) (Config, string, error) {
 	if strings.TrimSpace(explicit) != "" {
-		config, err := LoadConfig(explicit)
+		config, err := loadConfig(explicit, credentials)
 		return config, explicit, err
 	}
 	for _, path := range ConfigSearchPaths() {
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
-		config, err := LoadConfig(path)
+		config, err := loadConfig(path, credentials)
 		return config, path, err
 	}
 	return DefaultConfig(), "", nil
@@ -122,6 +128,10 @@ func LoadConfigPath(explicit string) (Config, string, error) {
 // LoadConfig reads a TOML file over the defaults. An empty path returns the
 // defaults unchanged.
 func LoadConfig(path string) (Config, error) {
+	return loadConfig(path, true)
+}
+
+func loadConfig(path string, credentials bool) (Config, error) {
 	config := DefaultConfig()
 	if strings.TrimSpace(path) != "" {
 		data, err := os.ReadFile(path)
@@ -131,8 +141,20 @@ func LoadConfig(path string) (Config, error) {
 		if err := toml.Unmarshal(data, &config); err != nil {
 			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 		}
+		// Existing direct-gateway files predate the transport option.
+		var fields map[string]any
+		if err := toml.Unmarshal(data, &fields); err == nil {
+			if _, explicit := fields["transport"]; !explicit {
+				if _, direct := fields["address"]; direct {
+					config.Transport = "tcp"
+				}
+			}
+		}
 	}
-	if config.Password == "" && config.PasswordFile != "" {
+	if !credentials {
+		config.Account, config.Password, config.PasswordFile = "", "", ""
+	}
+	if credentials && config.Password == "" && config.PasswordFile != "" {
 		data, err := os.ReadFile(config.PasswordFile)
 		if err != nil {
 			return Config{}, fmt.Errorf("read password file: %w", err)

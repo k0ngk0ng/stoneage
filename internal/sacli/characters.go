@@ -182,7 +182,7 @@ func (s *Server) commandEnter(ctx context.Context, request Request) Response {
 		if snapshot.Character == name {
 			return Response{OK: true, Text: fmt.Sprintf("already in the world as %q", name), Data: replyJSON(snapshot)}
 		}
-		return actionFailure(fmt.Errorf("already in the world as %q; stop the daemon to switch characters", snapshot.Character))
+		return actionFailure(fmt.Errorf("already in the world as %q; logout and login again to switch characters", snapshot.Character))
 	}
 	if err := game.EnterCharacter(ctx, name); err != nil {
 		return actionFailure(fmt.Errorf("enter character %q: %w", name, err))

@@ -1,10 +1,10 @@
-# 普通玩家推荐直接运行 sactl init，再运行 sactl login。
+# 普通玩家直接运行 sactl login，无需配置文件；init 仅用于保存偏好。
 # 此示例仅配置连接选项，不包含账号密码；已有配置不会被安装器覆盖。
 # 不填写 socket_path 时使用用户状态目录下的默认 socket。
 transport = "http"
 web_base_url = "https://sa.ichenj.com"
 server_id = ""
-character = ""
+# character = ""  # 仅兼容显式 serve 自动化；交互登录用 --character 或 enter
 # 本地开发直连可改 transport = "tcp" 并设置 address = "127.0.0.1:9065"。
 # map_directory 可选；仅本地寻路需要包含 map/ 的服务端数据目录。
 # 自动化兼容旧版 account/password/password_file 字段，但普通玩家请使用交互登录。

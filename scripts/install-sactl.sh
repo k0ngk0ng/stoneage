@@ -2,7 +2,7 @@
 # Install sactl and its Codex/Claude Code skills on macOS or Linux.
 # Usage: install-sactl.sh --download [vX.Y.Z] [--cdn-base https://cdn.example/game]
 #        install-sactl.sh [--prefix DIR] [--no-skills]
-# Account configuration is created interactively by sactl init.
+# Connection preferences can optionally be saved by sactl init.
 set -euo pipefail
 script_dir=""
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
@@ -106,6 +106,6 @@ if [[ $skills == 1 ]]; then
   done
 fi
 printf '\nInstalled: %s\nConfig: %s\n' "$prefix/sactl" "$config_path"
-echo 'Next: run sactl init, then sactl login. Existing configurations are preserved.'
+echo 'Next: run sactl login (no configuration required). Existing configurations are preserved.'
 echo 'Skills are available in a new Codex/Claude Code session; no game login was started.'
 case ":$PATH:" in *":$prefix:"*) ;; *) printf 'Add to your shell PATH: export PATH="%s:$PATH"\n' "$prefix" ;; esac

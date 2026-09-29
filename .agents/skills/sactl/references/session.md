@@ -2,9 +2,11 @@
 
 ## 本地前提
 
-v0.2.2 起，首次配置由用户在终端运行 `sactl init`，只设置服务器及可选角色，不保存账号密码；默认写入用户配置目录，已有文件不会覆盖。用户运行 `sactl login` 交互输入账号及隐藏的密码，自动启动后台进程，凭据仅保留在内存中。Agent 不要求用户在聊天或命令参数里传密码。多会话用 `--profile <name>`，每条命令保持同一 profile；也可使用自定义 `--config`，两者不能混用。
+v0.2.3 起，用户在终端直接执行 `sactl login`，无需先 init 或编写配置，默认使用客户端内置的公开游戏网址。密码隐藏输入且只保留在后台内存；Agent 不要求用户在聊天或命令参数里传密码。登录后用 `chars`、`enter <名称|槽位>` 选择角色，选角失败不破坏账号登录。
 
-需要已安装的 sactl 二进制和用户配置。可通过 `brew install k0ngk0ng/tap/sactl`、Scoop 的 `k0ngk0ng/sactl` 或项目 GitHub Release 安装；安装软件本身须符合当前用户授权。
+`login --profile alt` 创建独立会话并选为当前默认；`sessions` 列出状态，`use <名称|default>` 切换。默认选择跨终端共享，Agent 应显式固定用户授权的 `--profile`。登录失败直接重试 login，不要求用户 stop；login 会更新闲置的旧后台进程，已登录的会话会保留。软件更新后仍在线的旧会话不会强行迁移，用户 logout 后再次 login 即使用新版。
+
+需要已安装的 sactl 二进制，配置可选。可通过 Homebrew、Scoop 或下载区安装，安装行为遵循用户已有授权。
 
 配置查找顺序：`--config` → `STONEAGE_SACTL_CONFIG` → 当前目录 `sactl.toml` → `~/.config/sactl/sactl.toml`。不要读取或输出整份配置来排障。查看 `sactl --help` 确认版本支持的参数。
 
@@ -18,7 +20,7 @@ sactl --config /path/to/sactl.toml --json enter '用户指定的角色'
 sactl --config /path/to/sactl.toml --json observe
 ```
 
-`serve` 默认后台运行，只启动本地进程，不代表已经登录；`login` 才负责交互认证。`serve --foreground` 供排障和外部进程管理器使用，不能无边界等待其退出。尚未登录时请用户在终端执行 login，不索取明文密码。缺少目标角色或连接地址时向用户询问，不猜生产地址。
+`serve` 默认后台运行，只启动本地进程，不代表已经登录；`login` 才负责交互认证。`serve --foreground` 供排障和外部进程管理器使用，不能无边界等待其退出。尚未登录时请用户在终端执行 login，不索取明文密码。目标角色不明确时询问用户；已指定地址时沿用它，否则使用客户端默认地址。连接覆盖参数仅用于 login / serve。
 
 ## JSON 与退出码
 

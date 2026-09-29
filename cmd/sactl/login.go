@@ -13,23 +13,26 @@ import (
 )
 
 func login(options clientOptions, args []string) error {
+	if options.profile != "" && options.socket != "" {
+		return errors.New("--profile and --socket cannot be combined")
+	}
 	if len(args) > 0 {
 		return errors.New("usage: sactl [--profile <name>] login (account/password are prompted, never flags)")
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return errors.New("login requires an interactive terminal; credentials are not accepted in command arguments")
 	}
-	if options.socket != "" {
-		return errors.New("login requires a profile or config, not --socket")
-	}
-	config, path, err := sacli.LoadProfileConfig(options.profile, options.config)
+	config, path, err := sacli.LoadClientProfileConfig(options.profile, options.config)
 	if err != nil {
 		return err
 	}
-	if path == "" {
-		return errors.New("run sactl init first")
+	if err = options.connection.apply(&config); err != nil {
+		return err
 	}
-	if err = startBackgroundTo(config, path, options.profile, os.Stderr); err != nil {
+	if options.socket != "" {
+		config.SocketPath = options.socket
+	}
+	if err = prepareLoginDaemon(config, path, options.profile); err != nil {
 		return err
 	}
 	identity, err := pingDaemon(config.SocketPath)
@@ -37,10 +40,10 @@ func login(options clientOptions, args []string) error {
 		return err
 	}
 	if !identity.InteractiveLogin {
-		return errors.New("running daemon is an older version; stop it and run login again")
+		return errors.New("session process does not support interactive login")
 	}
 	if identity.Endpoint != config.Endpoint() || identity.Transport != config.Transport {
-		return errors.New("running daemon uses a different server; stop this profile before changing servers")
+		return errors.New("session endpoint changed during login; retry login")
 	}
 	account, err := terminalPrompt("游戏账号：", false)
 	if err != nil {
@@ -65,6 +68,20 @@ func login(options clientOptions, args []string) error {
 	}
 	if !response.OK {
 		return fmt.Errorf("login failed: %s", response.Error)
+	}
+	if options.config == "" && options.socket == "" {
+		if err := sacli.SelectProfile(options.profile); err != nil {
+			return fmt.Errorf("logged in, but could not select session: %w", err)
+		}
+	}
+	if character := options.connection["character"]; character != "" {
+		response, err = sacli.Call(ctx, config.SocketPath, sacli.Request{Command: "enter", Args: []string{character}, Timeout: timeout, JSON: options.json})
+		if err != nil {
+			return err
+		}
+		if !response.OK {
+			return fmt.Errorf("account is logged in, but character entry failed: %s; use `sactl chars` then `sactl enter <name|slot>`", response.Error)
+		}
 	}
 	printResponse(response, options.json)
 	return nil

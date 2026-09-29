@@ -10,7 +10,7 @@
 ## 结构
 
 ```text
-sactl init                    首次配置服务器和会话选项，不保存凭据
+sactl init                    可选：保存连接偏好，不保存凭据
 sactl login                   交互登录，自动启动后台进程保持游戏会话
 sactl <命令> [参数]              一次性客户端：连 socket → 发一条请求 → 打印结果 → 退出
 ```
@@ -71,7 +71,6 @@ tar -xzf stoneage-sactl-v0.1.48-darwin-arm64.tar.gz
 cd stoneage-sactl-v0.1.48-darwin-arm64
 install -m 755 sactl ~/.local/bin/sactl
 xattr -d com.apple.quarantine ~/.local/bin/sactl 2>/dev/null   # 见下方 macOS 说明
-sactl init
 sactl login    # 交互输入账号密码，不保存到磁盘
 ```
 
@@ -167,11 +166,11 @@ Windows 可以用 `py -3` 替换 `python3`。无需脚本时，也可把整个 `
 ### 两种传输：直连网关，或走 Web 域名
 
 ```toml
-# 默认：直连网关（本机开发最快）
+# 本机开发可选：直连网关
 transport = "tcp"
 address = "127.0.0.1:9065"
 
-# 或者：走部署的 Web 入口，用日常域名即可，无需隧道或额外端口
+# 默认：走部署的 Web 入口，用日常域名即可，无需隧道或额外端口
 transport = "http"
 web_base_url = "https://sa.ichenj.com"
 server_id = ""        # 留空自动取 Web 服务列表里第一条可用线路
@@ -179,56 +178,70 @@ server_id = ""        # 留空自动取 Web 服务列表里第一条可用线路
 
 `http` 传输把同一套游戏协议跑在站点既有的 HTTP 会话通道上（长轮询收事件、POST 发送），
 因此**只要有网页能打开，sactl 就能连**：不需要 SSH 隧道，也不需要把网关端口暴露出去。
-生产实测：用该传输完成了登录、建角、进世界、寻路、NPC 对话与跨图传送。代价是多一跳
-（会话由 Web 进程代持），延迟略高于直连。
+该通道与网页共用 Web 会话服务，连接及游戏状态仍由真实服务端决定。
 
 配置查找顺序：`--config` 指定的文件 → `$STONEAGE_SACTL_CONFIG` → 当前目录的 `sactl.toml`
 → `~/.config/sactl/sactl.toml`。仓库内的 `runtime/sactl.toml` **不在**隐式查找里（开发脚本
 一律用 `--config` 显式指定），否则从源码目录运行时它会悄悄盖掉你安装的配置。
 socket 路径也可用 `--socket` 或 `STONEAGE_SACTL_SOCKET` 覆盖。
 
-**`map_directory` 必须指向一份 2.5 服务端数据目录的副本**（含 `map/`）。`goto`、`warp`、
+使用高级导航时，`map_directory` 指向一份 2.5 服务端数据目录的副本（含 `map/`）。`goto`、`warp`、
 `exits`、`encounters` 都在本地读这份数据；只做观察和对话可以不配它。
 
 ## 开始使用
 
-从 **v0.2.2** 起，首次运行 `sactl init`，只配置游戏网址和可选角色名，默认生产网址为 `https://sa.ichenj.com`。
-配置中不保存账号密码；`sactl login` 在终端交互输入账号和隐藏的密码，自动启动后台会话，
-凭据仅保存在该进程内存中。`logout` 清除凭据，退出后查询状态不会重新登录。
-默认配置为 `~/.config/sactl/sactl.toml`（遵循 `XDG_CONFIG_HOME` 和 `STONEAGE_SACTL_CONFIG`）；
-已有配置不覆盖。`sactl init --config <file>` 可指定其他位置。
+从 **v0.2.3** 起，无配置即可登录，默认连接 `https://sa.ichenj.com`：
 
 ```bash
-sactl init
-sactl login
+sactl login                 # 交互输入账号与隐藏密码
 sactl chars
-sactl enter '角色名'
+sactl enter '角色名'         # 或 enter 0
 sactl status
 sactl logout
-sactl stop
 ```
 
-多角色用独立 profile，每个有独立配置、socket、日志和后台进程：
+`login` 自动维护后台会话，密码只保存在进程内存，不写入磁盘或进程参数。
+账号认证与选角分开；旧配置中的 `character` 不会影响交互登录。选角失败后可继续 `chars` / `enter`，无需重新认证。
+需要一步选角时用 `sactl login --character '角色名'`。
+登录失败可以直接重试 `login`。升级或改地址后，未登录的旧后台进程由 `login` 自动更新；
+已经登录的会话不会被覆盖。普通登录、退出和重试不需要 `serve` / `stop`。
+
+多个会话分别登录，成功后自动选为当前会话：
 
 ```bash
-sactl init --profile main
-sactl init --profile alt
 sactl login --profile main
+sactl enter '角色一'
 sactl login --profile alt
-sactl --profile main enter '角色一'
-sactl --profile alt enter '角色二'
-sactl --profile main status
-sactl --profile alt status
-sactl --profile main logout
-sactl --profile main stop
+sactl enter '角色二'
+sactl sessions
+sactl use main
+sactl status                # 查询 main
+sactl --profile alt status  # 临时查看 alt，不改变当前选择
+sactl logout               # 只退出 main
 ```
 
-命名配置保存在用户配置目录的 `sactl/profiles/<name>.toml`，运行状态在用户状态目录的
-`sactl/profiles/`。显式 `--profile` 不受默认配置和 `STONEAGE_SACTL_SOCKET` 干扰，
-不能与 `--config` / `--socket` 混用。同一账号能否同时登录多个角色由服务端限制决定。
-`serve` 只启动后台进程，不代表登录成功；`login` 完成认证才报告成功。
-需要排障或交给进程管理器时使用 `sactl serve --foreground`。旧配置的凭据字段保留兼容，
-现有配置不会自动迁移或删除；推荐移除账号密码字段，改用交互登录。
+`use default` 选回默认会话。当前选择保存在用户状态目录，跨终端生效；脚本和并行 Agent 应显式指定 `--profile`，避免受其他终端切换影响。
+命名会话无需配置文件，socket 和日志相互隔离。同一账号能否同时登录多个角色仍由服务端限制。
+`--profile` 不能与 `--config` / `--socket` 混用；显式配置、socket 和环境 socket 优先于当前会话选择。
+
+可选配置仍按 `--config` → `STONEAGE_SACTL_CONFIG` → 当前目录 `sactl.toml` → 用户配置目录查找。
+`init` 仅用于保存偏好，不覆盖已有配置。所有普通连接项都可以在 `login` / `serve` 用参数覆盖：
+
+```bash
+sactl login --web-base-url https://sa.ichenj.com --server-id ''
+sactl login --profile local --address 127.0.0.1:9065
+# 高级导航功能才需要本地 2.5 数据；不是图片目录
+sactl login --map-directory /path/to/gmsv/data
+```
+
+支持 `--transport http|tcp`、`--address`、`--web-base-url`、`--server-id`、`--character`、`--map-directory`、`--socket`。
+指定网址默认使用 HTTP，指定网关地址默认使用 TCP；显式 `--transport` 优先。
+普通登录、观察、竞技场和战斗不需要地图目录；`goto` / `warp` / `exits` / `encounters` 的在线地图下载尚未实现。
+
+`status` 不触发登录。`logout` 清除凭据，后续查询不会自动登录。
+Web 和 sactl 均发送协议保活；HTTP 事件采用序号确认，在短暂请求失败后可安全重试读取，不重发游戏操作。
+`status --json` 的断线状态包含 `LastError`，用于判断实际连接故障。
+`serve --foreground` 和 `stop` 留给调试或外部进程管理；旧配置凭据仅供显式 `serve` 的兼容自动化使用，交互登录不读取密码文件。
 
 ```bash
 sactl serve                                            # 可选：单独启动后台进程
@@ -408,7 +421,7 @@ macOS 的 bash 登录 shell 还需由 `~/.bash_profile` 加载 `~/.bashrc`。
 
 ## 竞技场：普通玩家
 
-`sactl arena` 管理竞技场队伍、匹配和结算；先启动 `sactl serve` 并登录角色。
+`sactl arena` 管理竞技场队伍、匹配和结算；先运行 `sactl login`、`sactl enter <角色>`。
 
 ```sh
 sactl arena create 1

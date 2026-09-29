@@ -282,6 +282,9 @@ func (s *Server) pump(game Game, generation uint64) {
 	if s.generation == generation && s.game == game {
 		s.game = nil
 		s.lastError = "game session closed"
+		if source, ok := game.(interface{ Err() error }); ok && source.Err() != nil {
+			s.lastError = source.Err().Error()
+		}
 	}
 	s.mu.Unlock()
 }

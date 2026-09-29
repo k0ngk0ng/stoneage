@@ -20,6 +20,10 @@ func (s *Server) commandLogin(ctx context.Context, request Request) Response {
 	s.config.Account = request.Args[0]
 	s.config.Password = request.Args[1]
 	s.config.PasswordFile = ""
+	// Interactive login authenticates an account only. A stale configured or
+	// remembered character must never turn valid credentials into a failure.
+	s.config.Character = ""
+	s.character = ""
 	s.mu.Unlock()
 	game, err := s.connectSession(ctx)
 	if err != nil {
@@ -33,5 +37,5 @@ func (s *Server) commandLogin(ctx context.Context, request Request) Response {
 	if err != nil {
 		return sessionFailure(err)
 	}
-	return Response{OK: true, Text: "logged in; session remains active in the background", Data: replyJSON(snapshot)}
+	return Response{OK: true, Text: "logged in; use `sactl chars` and `sactl enter <name|slot>`", Data: replyJSON(snapshot)}
 }

@@ -88,7 +88,20 @@ const CommandHelp = `commands:
 func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 	switch request.Command {
 	case "ping":
-		return Response{OK: true, Text: "pong", Data: replyJSON(map[string]any{"pid": os.Getpid(), "version": BuildVersion, "interactive_login": true, "endpoint": s.config.Endpoint(), "transport": s.config.Transport})}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return Response{OK: true, Text: "pong", Data: replyJSON(map[string]any{"pid": os.Getpid(), "version": BuildVersion, "interactive_login": true, "idle_stop": true, "endpoint": s.config.Endpoint(), "transport": s.config.Transport, "server_id": s.config.ServerID, "map_directory": s.config.MapDirectory})}
+	case "stop-if-idle":
+		s.connectMu.Lock()
+		defer s.connectMu.Unlock()
+		s.mu.Lock()
+		connected := s.game != nil
+		s.mu.Unlock()
+		if connected {
+			return failure(KindSession, "session is logged in; refusing to stop")
+		}
+		s.Stop()
+		return Response{OK: true, Text: "idle session process stopped"}
 	case "help", "commands":
 		return Response{OK: true, Text: CommandHelp}
 	case "login":
@@ -198,9 +211,10 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 func (s *Server) commandStatus(ctx context.Context, request Request) Response {
 	s.mu.Lock()
 	game := s.game
+	endpoint, account, character, lastError := s.config.Endpoint(), s.config.Account, s.character, s.lastError
 	s.mu.Unlock()
 	if game == nil {
-		return Response{OK: true, Text: s.statusReport() + "\nnot logged in; run sactl login", Data: replyJSON(map[string]any{"Connected": false, "Phase": "logged_out", "Endpoint": s.config.Endpoint()})}
+		return Response{OK: true, Text: s.statusReport() + "\nnot logged in; run sactl login", Data: replyJSON(map[string]any{"Connected": false, "Phase": "logged_out", "Endpoint": endpoint, "Account": account, "Character": character, "LastError": lastError})}
 	}
 	snapshot, err := game.Observe(ctx)
 	lines := []string{s.statusReport()}

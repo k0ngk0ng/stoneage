@@ -45,6 +45,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/gameservers"
 	"github.com/k0ngk0ng/stoneage/internal/gamewiki"
 	"github.com/k0ngk0ng/stoneage/internal/ladder"
+	"github.com/k0ngk0ng/stoneage/internal/sessionwire"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
@@ -2776,13 +2777,7 @@ func (handler *Handler) sendPacket(response http.ResponseWriter, request *http.R
 	response.WriteHeader(http.StatusAccepted)
 }
 
-type eventResponse struct {
-	Ladder json.RawMessage `json:"ladder,omitempty"`
-	Packet string          `json:"packet,omitempty"`
-	Closed bool            `json:"closed,omitempty"`
-	Error  string          `json:"error,omitempty"`
-	Seq    uint64          `json:"seq,omitempty"`
-}
+type eventResponse = sessionwire.Event
 
 func parseEventsAck(request *http.Request) (uint64, bool, error) {
 	values, present := request.URL.Query()["ack"]
