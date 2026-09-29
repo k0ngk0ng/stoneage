@@ -132,6 +132,16 @@ func TestNativeSactlIdleLifecycle(t *testing.T) {
 
 			// In-place logout must preserve authoritative coordinates across
 			// immediate authentication/entry, through the real Web EOF path.
+			moved := false
+			for _, direction := range []string{"right", "down", "left", "up"} {
+				if r := call("walk", direction); r.OK {
+					moved = true
+					break
+				}
+			}
+			if !moved {
+				t.Fatal("fixture must move away from its entry point before checking in-place logout")
+			}
 			var before aigame.Snapshot
 			if r := call("observe"); !r.OK {
 				t.Fatal(r.Error)

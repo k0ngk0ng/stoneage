@@ -162,7 +162,7 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return s.commandLadder(ctx, request)
 	case "trade":
 		return s.commandTrade(ctx, request)
-	case "logout":
+	case "logout", "logout-mode":
 		return s.commandLogout(ctx, request)
 	case "alloc":
 		return s.commandAllocate(ctx, request)

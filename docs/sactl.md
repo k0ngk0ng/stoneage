@@ -465,6 +465,6 @@ sactl ai run --config arena-team/team.json --forever
 ## 登出方式
 
 - `sactl logout` 或 `sactl logout --record-point`：回记录点登出。
-- `sactl logout --in-place`（v0.2.6 起）：原地登出，保留服务端实际位置；战斗中须先结束战斗。
+- `sactl logout --in-place`（v0.2.7 起）：原地登出，保留服务端实际位置；战斗中须先结束战斗。
 - 两种方式都关闭游戏会话并清除内存凭据；`stop` 则是结束后台进程。
 - JSON 返回 `data.mode`、`data.confirmed` 和 `data.credentials_cleared`。断开确认失败时返回 `kind="unknown"`，需重新登录核验位置，不能当作已保存成功。

@@ -27,6 +27,7 @@ func TestCompletionContexts(t *testing.T) {
 		{[]string{"--json", "pet", "re"}, []string{"rename"}},
 		{[]string{"auto-battle", "on", "st"}, []string{"stay"}},
 		{[]string{"completion", "z"}, []string{"zsh"}},
+		{[]string{"logout", "--in"}, []string{"--in-place"}},
 		{[]string{"ai", "train", "--epochs", ""}, nil},
 	} {
 		if got := Complete(tc.args); !reflect.DeepEqual(got, tc.want) {

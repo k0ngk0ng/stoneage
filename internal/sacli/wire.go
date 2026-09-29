@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -39,6 +40,12 @@ const (
 
 // Call sends one request to the daemon socket and returns its answer.
 func Call(ctx context.Context, socketPath string, request Request) (Response, error) {
+	// Older daemons ignored logout arguments and would silently perform a
+	// record-point logout. A distinct RPC fails closed on those versions.
+	logoutOptions := request.Command == "logout" && len(request.Args) > 0
+	if logoutOptions {
+		request.Command = "logout-mode"
+	}
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
@@ -62,6 +69,9 @@ func Call(ctx context.Context, socketPath string, request Request) (Response, er
 	var response Response
 	if err := json.Unmarshal(line, &response); err != nil {
 		return Response{}, fmt.Errorf("decode response: %w", err)
+	}
+	if logoutOptions && !response.OK && response.Kind == KindUsage && strings.Contains(response.Error, `unknown command "logout-mode"`) {
+		response.Error = "the running daemon does not support logout modes; no logout was performed; this command requires a session started by the updated client"
 	}
 	return response, nil
 }
