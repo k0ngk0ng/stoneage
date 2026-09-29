@@ -14,7 +14,7 @@
 - `stable_id` / `StableID`：宠物已确认的稳定身份，须同时检查 `IdentityKnown`。
 - `graphic` / `Graphic`：图片资源编号，不是物品或宠物实例 ID。当前背包协议没有物品唯一实例 ID。
 
-物品槽位变化后，旧模板编号会失效；可执行 `sactl query AI` 请求刷新，再等待事件并观察。
+v0.2.8 起在进入角色后自动获取扩展状态，装备/背包变化及宠物更换后自动刷新；`status` / `observe` 会有界等待尚未返回的编号。未返回或服务端确实未知时仍显示 `unknown`。`sactl query AI` 仅是手动请求扩展状态的诊断指令，不调用大模型；通常无需手动执行。装备和背包编号覆盖槽位 0–19，装备编号需要服务端也更新到支持该范围的版本。
 这些编号供 sactl 和结构化接口使用，Web 背包、宠物等常规界面不额外展示编号，包括悬停提示和无障碍标签；战斗面板可按战斗观察需要展示相关信息。聊天文本按 Web 的方式展示原始句子，
 JSON 仍保留 `Channel`、`FromID` 和已确认的 `SpeakerCharacterID`。`P` 前缀同时用于普通聊天和部分系统提示，不能用来识别私聊。
 
@@ -464,7 +464,10 @@ sactl ai run --config arena-team/team.json --forever
 
 ## 登出方式
 
-- `sactl logout` 或 `sactl logout --record-point`：回记录点登出。
-- `sactl logout --in-place`（v0.2.7 起）：原地登出，保留服务端实际位置；战斗中须先结束战斗。
+- `sactl logout` 或 `sactl logout --in-place`：原地登出，保留服务端实际位置；战斗中须先结束战斗。
+- `sactl logout --record-point`：显式回记录点登出。
+- 默认原地登出为v0.2.8 起的行为；已发布的 v0.2.7 默认仍回记录点，使用该版本时须显式传 `--in-place`。新版 CLI 会明确发送原地模式，连接 v0.2.7 后台也不会回记录点；更旧、不支持模式的后台会拒绝请求。
 - 两种方式都关闭游戏会话并清除内存凭据；`stop` 则是结束后台进程。
 - JSON 返回 `data.mode`、`data.confirmed` 和 `data.credentials_cleared`。断开确认失败时返回 `kind="unknown"`，需重新登录核验位置，不能当作已保存成功。
+
+`status` 分别显示 `client version`（当前命令）与 `daemon version`（后台进程）；JSON 对应顶层 `client_version` / `daemon_version`，旧后台可能缺少后者。版本不同不代表安装失败；登录会自动替换闲置旧后台，已连接会话保留。

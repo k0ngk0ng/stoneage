@@ -19,11 +19,13 @@ import (
 // The server remains authoritative: this structure only records packets that
 // have actually arrived on the named-protocol stream.
 type gameState struct {
-	snapshot      Snapshot
-	ladderReplies []ladder.Envelope
-	ladderEvents  []ladder.Envelope
-	ladderFloor   uint64
-	battleStream  battleEventStream
+	identityDirty     uint64
+	identityConfirmed uint64
+	snapshot          Snapshot
+	ladderReplies     []ladder.Envelope
+	ladderEvents      []ladder.Envelope
+	ladderFloor       uint64
+	battleStream      battleEventStream
 
 	characters       []Character
 	actors           map[int32]ActorSnapshot
@@ -123,6 +125,7 @@ func applyEventLocked(state *gameState, event Event) {
 		}
 	case "CharLogin":
 		if strings.EqualFold(eventText(event, 0), "successful") {
+			state.identityDirty++
 			state.snapshot.Ladder = nil
 			state.ladderReplies = nil
 			state.ladderEvents = nil
@@ -494,6 +497,7 @@ func (state *gameState) applyAIObservation(parts []string) {
 		return
 	}
 	state.snapshot.AI = observation
+	state.identityConfirmed = state.identityDirty
 	if observation.StatPointsKnown {
 		state.statPointsEpoch++
 		state.snapshot.Player.UnspentStatPoints = observation.StatPoints
@@ -663,13 +667,24 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 			}
 			observation.SavePoints = parsed
 			observation.SavePointsKnown = true
-		case "items":
-			items, ok := parseAIObservationItems(value)
+		case "items", "equipment":
+			start, end := int32(5), int32(20)
+			if key == "equipment" {
+				start, end = 0, 5
+			}
+			items, ok := parseAIObservationItems(value, start, end)
 			if !ok {
 				return AIObservation{}, false
 			}
-			observation.Items = items
-			observation.ItemsKnown = true
+			if observation.Items == nil {
+				observation.Items = []AIInventoryItem{}
+			}
+			observation.Items = append(observation.Items, items...)
+			if key == "equipment" {
+				observation.EquipmentKnown = true
+			} else {
+				observation.ItemsKnown = true
+			}
 		default:
 			// Unknown fields are ignored after the key/value envelope has been
 			// validated, allowing a newer server to add read-only metadata.
@@ -678,6 +693,7 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 	if !seenVersion || !seenChara || !seenEnd || !seenNow || !seenRide {
 		return AIObservation{}, false
 	}
+	sort.Slice(observation.Items, func(i, j int) bool { return observation.Items[i].Slot < observation.Items[j].Slot })
 	observation.Pets = make([]PetSnapshot, 0, len(petBySlot))
 	for slot, pet := range petBySlot {
 		pet.Slot = slot
@@ -688,15 +704,8 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 	return observation, true
 }
 
-// The legacy character record reserves the first five absolute inventory
-// slots for equipment. The AI observation reports only the backpack range,
-// matching CHAR_STARTITEMARRAY..CHAR_MAXITEMHAVE in the server source.
-const (
-	aiObservationItemSlotStart int32 = 5
-	aiObservationItemSlotEnd   int32 = 20
-)
-
-func parseAIObservationItems(value string) ([]AIInventoryItem, bool) {
+// Slot ranges keep the legacy backpack field compatible with older clients.
+func parseAIObservationItems(value string, firstSlot, endSlot int32) ([]AIInventoryItem, bool) {
 	if value == "none" {
 		return []AIInventoryItem{}, true
 	}
@@ -712,7 +721,7 @@ func parseAIObservationItems(value string) ([]AIInventoryItem, bool) {
 			return nil, false
 		}
 		slot, ok := parseSignedDecimal(parts[0])
-		if !ok || slot < aiObservationItemSlotStart || slot >= aiObservationItemSlotEnd {
+		if !ok || slot < firstSlot || slot >= endSlot {
 			return nil, false
 		}
 		templateID, ok := parseSignedDecimal(parts[1])
@@ -960,12 +969,14 @@ func (state *gameState) applyPetStatus(parts []string) {
 		return
 	}
 	if len(parts) < 2 || wireBase62Int(parts[1], 0) == 0 {
+		state.identityDirty++
 		state.clearPet(slot)
 		return
 	}
 	mask := wireBase62Int(parts[1], 0)
 	current, exists := state.petForSlot(slot)
 	if mask == 1 || !exists {
+		state.identityDirty++
 		// A complete K record has no stable pet ID. Even when the slot was
 		// occupied, it may have been replaced; discard the old identity and
 		// mutable details until a fresh S("AI") response confirms continuity.
@@ -1343,7 +1354,9 @@ func (state *gameState) swapInventory(from, to int32) {
 // Keep unrelated own-state evidence, but require a new complete inventory
 // response before selecting an item by template again.
 func (state *gameState) invalidateAIInventory() {
+	state.identityDirty++
 	state.snapshot.AI.ItemsKnown = false
+	state.snapshot.AI.EquipmentKnown = false
 	state.snapshot.AI.Items = nil
 }
 

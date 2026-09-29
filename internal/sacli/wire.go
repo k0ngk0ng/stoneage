@@ -22,11 +22,13 @@ type Request struct {
 // terminal agents; Data carries the structured form when --json was asked
 // for. Kind classifies failures so the CLI can choose an exit code.
 type Response struct {
-	OK    bool            `json:"ok"`
-	Text  string          `json:"text,omitempty"`
-	Data  json.RawMessage `json:"data,omitempty"`
-	Error string          `json:"error,omitempty"`
-	Kind  string          `json:"kind,omitempty"`
+	ClientVersion string          `json:"client_version,omitempty"`
+	DaemonVersion string          `json:"daemon_version,omitempty"`
+	OK            bool            `json:"ok"`
+	Text          string          `json:"text,omitempty"`
+	Data          json.RawMessage `json:"data,omitempty"`
+	Error         string          `json:"error,omitempty"`
+	Kind          string          `json:"kind,omitempty"`
 }
 
 // Response kinds. The CLI maps these to exit codes; the model reads Text.
@@ -42,9 +44,14 @@ const (
 func Call(ctx context.Context, socketPath string, request Request) (Response, error) {
 	// Older daemons ignored logout arguments and would silently perform a
 	// record-point logout. A distinct RPC fails closed on those versions.
-	logoutOptions := request.Command == "logout" && len(request.Args) > 0
+	logoutOptions := request.Command == "logout"
 	if logoutOptions {
 		request.Command = "logout-mode"
+		// v0.2.7 understands modes but still defaults to record-point.
+		// Always make the new default explicit on the wire.
+		if len(request.Args) == 0 {
+			request.Args = []string{"--in-place"}
+		}
 	}
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)

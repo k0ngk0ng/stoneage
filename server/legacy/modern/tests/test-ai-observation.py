@@ -160,6 +160,9 @@ static void configure(void)
     harness_level[10] = 37;
     harness_level[11] = 8;
     harness_savepoint[0] = 123;
+    harness_item_index[0][3] = 22;
+    harness_item_use[22] = 1;
+    harness_item_id[22] = 701;
     harness_item_index[0][5] = 20;
     harness_item_index[0][6] = 21;
     harness_item_use[20] = 1;
@@ -222,7 +225,7 @@ int main(void)
         expect_text(first, "|sp=123", "save point value");
         expect_text(first, "|stat_points=7", "caller unspent stat points");
         expect_text(first, "|party_mode=0", "caller solo mode");
-        expect_text(first, "|items=5,2415;6,2414", "backpack slot template IDs");
+        expect_text(first, "|items=5,2415;6,2414|equipment=3,701", "equipment extension preserves legacy backpack format");
         expect(count_text(first, "|pet=") == 3, "repeated underlying pet has no repeated slot field");
         expect(strstr(first, "account-secret") == NULL, "account secret is absent");
         expect(strstr(first, "other-role-secret") == NULL, "other role data is absent");
@@ -256,6 +259,7 @@ int main(void)
     observation = StoneAge_AIObservationMake(0);
     expect_text(observation, "|sp=-2147483648", "signed bit31 save point value is emitted");
 
+    harness_item_index[0][3] = -1;
     harness_item_index[0][5] = -1;
     harness_item_index[0][6] = -1;
     observation = StoneAge_AIObservationMake(0);
@@ -268,7 +272,7 @@ int main(void)
     expect(forbidden_cdkey_reads == 0, "CDKEY is never read");
     expect(other_role_reads == 0, "only current role and its pets are read");
     expect(int_reads > 0 && char_reads > 0 && pet_reads >= 5 &&
-               item_slot_reads >= 15 && item_id_reads >= 2,
+               item_slot_reads >= 20 && item_id_reads >= 3,
            "reads stay within the expected observation accessors");
 
     for( i = 0; i < (int)sizeof(long_unique) - 1; i++ ) long_unique[i] = 'x';

@@ -47,7 +47,7 @@ func connect(ctx context.Context, config Config, character string) (*aigame.Sess
 	case "http":
 		session, err = connectWeb(ctx, config)
 	default:
-		session, err = aigame.Connect(ctx, aigame.Config{Address: config.Address},
+		session, err = aigame.Connect(ctx, aigame.Config{Address: config.Address, AutoIdentityRefresh: true},
 			aigame.Credentials{Account: config.Account, Password: config.Password})
 		if err != nil {
 			err = fmt.Errorf("connect %s: %w", config.Address, err)
@@ -82,7 +82,7 @@ func connectWeb(ctx context.Context, config Config) (*aigame.Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open web session on %s: %w", config.WebBaseURL, err)
 	}
-	session := aigame.NewSession(connection, aigame.Config{Address: serverID})
+	session := aigame.NewSession(connection, aigame.Config{Address: serverID, AutoIdentityRefresh: true})
 	if err := session.Authenticate(ctx, aigame.Credentials{Account: config.Account, Password: config.Password}); err != nil {
 		_ = session.Close()
 		return nil, fmt.Errorf("authenticate over %s: %w", config.WebBaseURL, err)

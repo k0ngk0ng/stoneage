@@ -7129,7 +7129,7 @@
   function receiveInventory(text,indexed=true) {
     const tokens=String(text||"").split("|"),items=[],width=indexed?10:9;
     // A native inventory frame can reuse slots; old template evidence expires.
-    if(app.status?.aiObservation){app.status.aiObservation.itemsKnown=false;app.status.aiObservation.items=[];}
+    if(app.status?.aiObservation){app.status.aiObservation.itemsKnown=false;app.status.aiObservation.equipmentKnown=false;app.status.aiObservation.items=[];}
     /* NETPROC.CPP::lssproto_I_recv applies every indexed ten-field record to
        pc.item[i] in place.  GMSV therefore answers DI with a one-record
        tombstone such as `5|||||||||`; replacing the whole browser array here
@@ -8729,7 +8729,7 @@
   function parseAIObservation(data){
     const tokens=String(data??"").split("|"),kind=tokens.shift()||"";
     if(kind!=="AI")return null;
-    const observation={version:null,characterIndex:null,pets:[],endEvent:null,nowEvent:null,learnRide:null,items:[],itemsKnown:false};
+    const observation={version:null,characterIndex:null,pets:[],endEvent:null,nowEvent:null,learnRide:null,items:[],itemsKnown:false,equipmentKnown:false};
     const petsBySlot=new Map();
     let endSeen=false,nowSeen=false,rideSeen=false;
     const strictInteger=(value,fallback=null)=>{
@@ -8744,15 +8744,16 @@
       const key=token.slice(0,separator),raw=token.slice(separator+1);
       if(key==="v")observation.version=strictInteger(raw);
       else if(key==="chara")observation.characterIndex=strictInteger(raw);
-      else if(key==="items"){
-        if(observation.itemsKnown)return null;
+      else if(key==="items"||key==="equipment"){
+        const equipment=key==="equipment",known=equipment?"equipmentKnown":"itemsKnown",firstSlot=equipment?0:5,endSlot=equipment?5:20;
+        if(observation[known])return null;
         const seen=new Set(),items=[];
         if(raw!=="none")for(const record of raw.split(";")){
           const parts=record.split(","),slot=strictInteger(parts[0]),templateId=strictInteger(parts[1]);
-          if(parts.length!==2||slot===null||slot<5||slot>=20||templateId===null||templateId<=0||templateId>2147483647||seen.has(slot))return null;
+          if(parts.length!==2||slot===null||slot<firstSlot||slot>=endSlot||templateId===null||templateId<=0||templateId>2147483647||seen.has(slot))return null;
           seen.add(slot);items.push({slot,templateId});
         }
-        observation.items=items.sort((a,b)=>a.slot-b.slot);observation.itemsKnown=true;
+        observation.items=[...observation.items,...items].sort((a,b)=>a.slot-b.slot);observation[known]=true;
       }else if(key==="pet"){
         const fields=splitAIObservationEscaped(raw),slot=strictInteger(fields[0],-1),level=strictInteger(fields[2]);
         if(slot<0||slot>=5||level===null)continue;

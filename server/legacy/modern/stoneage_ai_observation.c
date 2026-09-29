@@ -127,19 +127,20 @@ static int StoneAge_AIObservationNowEvent( int charaindex, int group )
 
 static int StoneAge_AIObservationAppendItems( int charaindex,
                                               char **cursor,
-                                              size_t *remaining )
+                                              size_t *remaining, const char *field,
+                                              int first_slot, int end_slot )
 {
     int slot;
     int itemindex;
     int item_id;
     int count = 0;
 
-    if( !StoneAge_AIObservationAppend(cursor, remaining, "|items=") ) {
+    if( !StoneAge_AIObservationAppend(cursor, remaining, "|%s=", field) ) {
         return FALSE;
     }
-    /* Inspect only the authenticated character's backpack slots.  In
+    /* Inspect only the authenticated character's equipment and backpack slots.  In
      * particular, do not walk the global item table to infer ownership. */
-    for( slot = CHAR_STARTITEMARRAY; slot < CHAR_MAXITEMHAVE; slot++ ) {
+    for( slot = first_slot; slot < end_slot; slot++ ) {
         itemindex = CHAR_getItemIndex( charaindex, slot );
         if( !ITEM_CHECKINDEX(itemindex) ) continue;
         item_id = ITEM_getInt(itemindex, ITEM_ID);
@@ -243,7 +244,8 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
     if( !StoneAge_AIObservationAppend(
             &cursor, &remaining, "|party_mode=%d",
             CHAR_getWorkInt( charaindex, CHAR_WORKPARTYMODE ) ) ) return NULL;
-    if( !StoneAge_AIObservationAppendItems(charaindex, &cursor, &remaining) ) {
+    if( !StoneAge_AIObservationAppendItems(charaindex, &cursor, &remaining, "items", CHAR_STARTITEMARRAY, CHAR_MAXITEMHAVE) ||
+        !StoneAge_AIObservationAppendItems(charaindex, &cursor, &remaining, "equipment", 0, CHAR_STARTITEMARRAY) ) {
         return NULL;
     }
     return StoneAge_AIObservationBuffer;

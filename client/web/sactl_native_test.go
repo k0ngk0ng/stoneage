@@ -107,6 +107,29 @@ func TestNativeSactlIdleLifecycle(t *testing.T) {
 			if r := call("enter", fmt.Sprintf("LadderQA%02d", i)); !r.OK {
 				t.Fatal(r.Error)
 			}
+			// No manual query AI: a normal observation must obtain identity metadata.
+			var identified aigame.Snapshot
+			r := call("observe")
+			if !r.OK {
+				t.Fatal(r.Error)
+			}
+			if err := json.Unmarshal(r.Data, &identified); err != nil {
+				t.Fatal(err)
+			}
+			if !identified.AI.Received || !identified.AI.ItemsKnown {
+				t.Fatal("automatic identity metadata missing")
+			}
+			for _, item := range identified.Inventory {
+				if !item.TemplateIDKnown {
+					t.Fatalf("item identity missing at slot %d", item.Index)
+				}
+			}
+			for _, pet := range identified.Pets {
+				if !pet.IdentityKnown {
+					t.Fatalf("fixture pet identity missing at slot %d", pet.Slot)
+				}
+			}
+			t.Logf("automatic identities: items=%d pets=%d", len(identified.Inventory), len(identified.Pets))
 			for tick := 0; tick < 17; tick++ {
 				time.Sleep(5 * time.Second)
 				// Control follows the browser's 20-second Echo cadence.
@@ -148,7 +171,7 @@ func TestNativeSactlIdleLifecycle(t *testing.T) {
 			} else if err := json.Unmarshal(r.Data, &before); err != nil {
 				t.Fatal(err)
 			}
-			if r := call("logout", "--in-place"); !r.OK || !strings.Contains(string(r.Data), `"confirmed":true`) {
+			if r := call("logout"); !r.OK || !strings.Contains(string(r.Data), `"confirmed":true`) {
 				t.Fatalf("in-place logout: %+v", r)
 			}
 			if r := call("login", account, strings.TrimSpace(string(password))); !r.OK {
@@ -173,7 +196,7 @@ func TestNativeSactlIdleLifecycle(t *testing.T) {
 				time.Sleep(50 * time.Millisecond)
 			}
 			t.Log("in-place logout and immediate re-entry preserved position")
-			if r := call("logout"); !r.OK {
+			if r := call("logout", "--record-point"); !r.OK {
 				t.Fatal(r.Error)
 			}
 			if r := call("status"); !strings.Contains(string(r.Data), `"Connected":false`) {

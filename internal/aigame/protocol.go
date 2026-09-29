@@ -325,6 +325,9 @@ func (session *Session) authenticate(ctx context.Context, credentials Credential
 	session.state.snapshot.Phase = PhaseCharacterList
 	session.stateMu.Unlock()
 	session.startHeartbeat()
+	if session.cfg.AutoIdentityRefresh {
+		session.startIdentityRefresh()
+	}
 	return nil
 }
 
@@ -971,7 +974,7 @@ func (session *Session) snapshotLocked() Snapshot {
 	snapshot.Pets = clonePetSnapshots(snapshot.Pets)
 	snapshot.Inventory = snapshot.Inventory[:0]
 	for _, item := range session.state.inventory {
-		if snapshot.AI.ItemsKnown {
+		if snapshot.AI.ItemsKnown || snapshot.AI.EquipmentKnown {
 			for _, identity := range snapshot.AI.Items {
 				if identity.Slot == item.Index {
 					item.TemplateID, item.TemplateIDKnown = identity.TemplateID, true

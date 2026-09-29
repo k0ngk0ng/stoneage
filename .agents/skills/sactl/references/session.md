@@ -46,6 +46,8 @@ sactl --config /path/to/sactl.toml --json observe
 
 `wait 30s` 等待下一条事件，并不指定等待某个业务结果；它也不能替代观察。`status` 只观察当前连接，不触发登录。其他游戏命令在有内存凭据或兼容旧配置时可能重连。`logout` 清除内存凭据，之后不会因查询而重新登录。
 
-`auto-battle off` 停止自动战斗策略，`stop` 结束 sactl daemon，`logout`（等同 `logout --record-point`）回记录点并关闭会话，三者含义不同。v0.2.7 起使用 `logout --in-place` 原地登出：要求先离开战斗，等待服务端断开确认；两种登出都会清除内存凭据。JSON `data.mode` 区分 `record-point` / `in-place`，`data.confirmed` 表示是否确认；`kind="unknown"` 时不要宣称位置保存成功，应重登核验。`stop` 不能替代这条正式登出命令。不要为了结束一次任务擅自关闭用户原有会话。
+`auto-battle off` 停止自动战斗策略，`stop` 结束 sactl daemon，v0.2.8 起 `logout`（等同 `logout --in-place`）原地登出并关闭会话，三者含义不同。回记录点必须显式使用 `logout --record-point`。已发布的 v0.2.7 默认仍回记录点，须使用 `logout --in-place` 原地登出：要求先离开战斗，等待服务端断开确认；两种登出都会清除内存凭据。JSON `data.mode` 区分 `record-point` / `in-place`，`data.confirmed` 表示是否确认；`kind="unknown"` 时不要宣称位置保存成功，应重登核验。`stop` 不能替代这条正式登出命令。不要为了结束一次任务擅自关闭用户原有会话。
 
-若当前后台进程来自旧版本，带登出模式的请求会明确拒绝，不会退化成默认回记录点；需使用新版客户端启动的会话。不要自动改成无参数 logout。
+新版 CLI 将无参数 logout 明确发送为原地模式，兼容 v0.2.7 后台；更旧、不支持模式的后台会明确拒绝，不会退化成回记录点。被拒绝时不要改发回记录点来绕过。
+
+新版 `status` 文本区分客户端与后台版本；JSON 顶层提供 `client_version` / `daemon_version`（旧后台可能不返回后者）。编号自动刷新不需要模型配置；手动 `query AI` 仅用于扩展状态诊断。

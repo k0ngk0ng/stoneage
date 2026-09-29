@@ -292,6 +292,14 @@ func run(args []string) error {
 		fmt.Fprintf(os.Stderr, "sactl: no available session; run `sactl login` using the same --profile or --config\n")
 		os.Exit(exitNoDaemon)
 	}
+	if command == "status" {
+		response.ClientVersion = version
+		// Older daemons used an ambiguous version label.
+		if strings.HasPrefix(response.Text, "version: ") {
+			response.Text = "daemon " + response.Text
+		}
+		response.Text = fmt.Sprintf("client version: %s\n%s", version, response.Text)
+	}
 	printResponse(response, options.json)
 	os.Exit(exitCodeFor(response))
 	return nil

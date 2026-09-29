@@ -11,7 +11,7 @@ description: 使用 sactl 命令行客户端在石器时代游戏中观察角色
 
 - 先用 `sactl version`、`sactl --help` 确认实际版本和可用命令。战斗日志要求 v0.1.91 或之后支持该命令的版本。
 - 用户指定 `--profile`、`--config` 或 `--socket` 时，每条命令沿用同一选择。不要自行切换账号、角色、线路或传输地址。
-- v0.2.3 起，用户直接运行 `sactl login` 隐藏输入密码，无需配置文件或 `init`，默认使用客户端内置的公开游戏网址；登录凭据只留在后台进程内存。`status` 不触发登录，`logout` 回记录点并清除凭据；v0.2.7 起 `logout --in-place` 原地登出，保留服务端实际位置。
+- v0.2.3 起，用户直接运行 `sactl login` 隐藏输入密码，无需配置文件或 `init`，默认使用客户端内置的公开游戏网址；登录凭据只留在后台进程内存。`status` 不触发登录，v0.2.8 起 `logout` 默认原地登出并清除凭据，回记录点必须用 `logout --record-point`。已发布的 v0.2.7 仍须显式用 `logout --in-place` 才能原地登出；先核对版本。
 - `sactl --json observe` 获取观察；守护进程未启动时参阅 [连接与结果处理](references/session.md)。`sessions` 查看会话，`use <名称>` 切换默认会话；脚本和并行 Agent 显式固定 `--profile`。
 - sactl 自己持有登录会话，不会接管浏览器会话。同一角色不能同时供浏览器与 sactl 登录。沿用用户授权的角色，不为了接入而抢占其他会话。
 - 不打印配置中的密码，不把凭据放进命令参数、skill 或提交文件。HTTP 传输连接用户提供的 Web 地址，不需要 SSH。
@@ -23,7 +23,7 @@ description: 使用 sactl 命令行客户端在石器时代游戏中观察角色
 3. 用返回的结构化数据和后续观察核验变化。需要服务端事件时用 `sactl --json wait 30s`，之后重新观察；`wait` 超时本身不代表任务失败。
 4. 串行执行同一角色的动作。完成目标就汇报；用户要求持续活动时，循环必须保留停止条件，不能由 skill 擅自增加永久运行目标。
 
-物品操作使用当前 `Inventory[].Index` 槽位，宠物操作使用 `Pets[].Slot`。物品模板编号见 `AI.Items[].TemplateID`；支持合并输出的版本也有 `Inventory[].TemplateID` / `TemplateIDKnown`。宠物跨会话身份使用已确认的 `StableID` / `IdentityKnown`。槽位、图片编号 `Graphic`、场景对象 `ID` 都不能当作唯一实例身份；当前协议不提供背包物品唯一实例 ID。缺少标识时可请求 `query AI` 并等待新观察，不用旧槽位推断。聊天 `Channel="P"` 是原始协议类型，不能据此判断为私聊；文本已包含服务端发送的说话者名称，不再次拼接内部身份 ID。
+物品操作使用当前 `Inventory[].Index` 槽位，宠物操作使用 `Pets[].Slot`。物品模板编号见 `AI.Items[].TemplateID`；支持合并输出的版本也有 `Inventory[].TemplateID` / `TemplateIDKnown`。宠物跨会话身份使用已确认的 `StableID` / `IdentityKnown`。槽位、图片编号 `Graphic`、场景对象 `ID` 都不能当作唯一实例身份；当前协议不提供背包物品唯一实例 ID。v0.2.8 起登录后及物品/宠物身份变化后自动获取扩展状态，装备和背包均纳入编号范围（装备编号需新版服务端）。`query AI` 是诊断用的服务器状态请求，不调用大模型；服务端尚未返回或确实未知时仍保留 unknown，不用旧槽位推断。聊天 `Channel="P"` 是原始协议类型，不能据此判断为私聊；文本已包含服务端发送的说话者名称，不再次拼接内部身份 ID。
 
 读取 JSON 的 `ok`、`kind`、`error`、`data`，不要解析 `text` 来决定动作。遇到 `kind="unknown"` 或提交后连接中断，结果可能已生效：先观察核实，不能直接重发交易、邮件、物品操作等动作。无法核实时报告未知并停止该动作链。具体语义见 [连接与结果处理](references/session.md)。
 

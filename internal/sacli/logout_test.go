@@ -31,10 +31,11 @@ func TestLogoutModesAndFailures(t *testing.T) {
 		mode   string
 		reject bool
 	}{
-		{name: "default", phase: aigame.PhaseWorld, mode: "record-point"},
+		{name: "default", phase: aigame.PhaseWorld, mode: "in-place"},
 		{name: "explicit record", args: []string{"--record-point"}, phase: aigame.PhaseWorld, mode: "record-point"},
 		{name: "in place", args: []string{"--in-place"}, phase: aigame.PhaseWorld, mode: "in-place"},
 		{name: "unknown result", args: []string{"--in-place"}, phase: aigame.PhaseWorld, mode: "in-place", err: errors.New("timeout")},
+		{name: "default in battle", phase: aigame.PhaseBattle, reject: true},
 		{name: "battle", args: []string{"--in-place"}, phase: aigame.PhaseBattle, reject: true},
 		{name: "invalid", args: []string{"--typo"}, phase: aigame.PhaseWorld, reject: true},
 		{name: "conflict", args: []string{"--in-place", "--record-point"}, phase: aigame.PhaseWorld, reject: true},

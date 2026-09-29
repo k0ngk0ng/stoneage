@@ -368,7 +368,7 @@ func (s *Server) statusReport() string {
 	if s.game == nil {
 		state = "not connected"
 	}
-	report := fmt.Sprintf("version: %s\nsession: %s\naccount: %s\ncharacter: %s\nsocket: %s\naddress: %s",
+	report := fmt.Sprintf("daemon version: %s\nsession: %s\naccount: %s\ncharacter: %s\nsocket: %s\naddress: %s",
 		BuildVersion, state, s.config.Account, s.character, s.config.SocketPath, s.config.Endpoint())
 	if s.lastError != "" {
 		report += "\nlast error: " + s.lastError

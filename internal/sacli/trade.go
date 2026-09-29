@@ -109,12 +109,12 @@ func snapshotActorByID(snapshot aigame.Snapshot, id int32) (aigame.ActorSnapshot
 	return aigame.ActorSnapshot{}, false
 }
 
-const logoutHelp = "usage: sactl logout [--record-point|--in-place]\nDefault: return to the record point. --in-place: preserve the server position. Both close the session and clear credentials."
+const logoutHelp = "usage: sactl logout [--record-point|--in-place]\nDefault: preserve the server position (in-place). --record-point: return to the record point. Both close the session and clear credentials."
 
 // commandLogout closes the session and clears credentials. Only an explicit
 // login may authenticate again; observation must not undo a logout.
 func (s *Server) commandLogout(ctx context.Context, request Request) Response {
-	mode := "record-point"
+	mode := "in-place"
 	if len(request.Args) == 1 && (request.Args[0] == "--help" || request.Args[0] == "-h") {
 		return Response{OK: true, Text: logoutHelp}
 	}
@@ -126,6 +126,7 @@ func (s *Server) commandLogout(ctx context.Context, request Request) Response {
 		case "--in-place":
 			mode = "in-place"
 		case "--record-point":
+			mode = "record-point"
 		default:
 			return failure(KindUsage, "%s", logoutHelp)
 		}

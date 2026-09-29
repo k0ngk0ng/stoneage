@@ -130,11 +130,13 @@ func (credentials Credentials) passwordBytes() []byte {
 // named-protocol gateway; it is intentionally not a raw numeric GMSV
 // address.  Dial is primarily useful for deterministic protocol tests.
 type Config struct {
-	Address     string
-	DialTimeout time.Duration
-	PacketLimit int
-	EventBuffer int
-	Dial        func(context.Context, string) (net.Conn, error)
+	// AutoIdentityRefresh keeps owned item/pet identifiers fresh for headless clients.
+	AutoIdentityRefresh bool
+	Address             string
+	DialTimeout         time.Duration
+	PacketLimit         int
+	EventBuffer         int
+	Dial                func(context.Context, string) (net.Conn, error)
 }
 
 // DefaultConfig returns safe local development defaults.  Production callers
@@ -295,7 +297,7 @@ type PetSkillSnapshot struct {
 
 const AIObservationEventGroups = 6
 
-// AIInventoryItem identifies an occupied backpack slot and its server item
+// AIInventoryItem identifies an occupied equipment or backpack slot and its server item
 // template. TemplateID is not a unique instance identity or a display graphic.
 type AIInventoryItem struct {
 	Slot       int32
@@ -325,6 +327,7 @@ type AIObservation struct {
 	SavePointsKnown       bool
 	Items                 []AIInventoryItem
 	ItemsKnown            bool
+	EquipmentKnown        bool
 	Received              bool
 }
 

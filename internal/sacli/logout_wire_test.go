@@ -20,7 +20,7 @@ func TestLogoutOptionsCannotFallBackOnOldDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	for _, args := range [][]string{{"--in-place"}, {"--record-point"}, {"--typo"}, {"--in-place", "--record-point"}} {
+	for _, args := range [][]string{nil, {"--in-place"}, {"--record-point"}, {"--typo"}, {"--in-place", "--record-point"}} {
 		socket := filepath.Join(dir, "s.sock")
 		listener, err := net.Listen("unix", socket)
 		if err != nil {
@@ -55,8 +55,12 @@ func TestLogoutOptionsCannotFallBackOnOldDaemon(t *testing.T) {
 		if response.OK || !strings.Contains(response.Error, "no logout was performed") {
 			t.Fatalf("unsafe old-daemon response: %+v", response)
 		}
-		if request := <-received; request.Command == "logout" {
+		request := <-received
+		if request.Command == "logout" {
 			t.Fatal("old daemon would move player to record point")
+		}
+		if len(args) == 0 && (len(request.Args) != 1 || request.Args[0] != "--in-place") {
+			t.Fatal("v0.2.7 daemon would apply its old default", request)
 		}
 	}
 }

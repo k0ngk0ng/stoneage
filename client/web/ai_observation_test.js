@@ -77,10 +77,10 @@ assert.strictEqual(parser.parseAIObservation("AI|v=2|chara=12|end=0,0,0,0,0,0|no
 
 console.log("AI observation parser and slot rebuild tests passed");
 
-const itemObservation=parser.applyAIObservation(payload+"|items=6,2414;5,2415");
+const itemObservation=parser.applyAIObservation(payload+"|items=6,2414;5,2415|equipment=3,701");
 assert.strictEqual(itemObservation.itemsKnown,true);
-assert.deepStrictEqual(itemObservation.items,[{slot:5,templateId:2415},{slot:6,templateId:2414}]);
-for(const field of ["5,0","4,2415","5,2415;5,2414","5,2415,extra"]){
+assert.deepStrictEqual(itemObservation.items,[{slot:3,templateId:701},{slot:5,templateId:2415},{slot:6,templateId:2414}]);
+for(const field of ["5,0","4,2415","-1,2415","20,2415","5,2415;5,2414","5,2415,extra"]){
   assert.strictEqual(parser.applyAIObservation(payload+"|items="+field),null);
   assert.strictEqual(app.status.aiObservation,itemObservation,"invalid metadata must not replace known identity evidence");
 }

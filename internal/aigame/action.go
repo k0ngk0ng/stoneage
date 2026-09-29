@@ -18,6 +18,15 @@ func (session *Session) Observe(ctx context.Context) (Snapshot, error) {
 	if err := session.ensureOpen(); err != nil {
 		return Snapshot{}, err
 	}
+	if session.cfg.AutoIdentityRefresh {
+		session.waitForIdentityRefresh(ctx)
+	}
+	if err := session.ensureOpen(); err != nil {
+		return Snapshot{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
 	return session.Snapshot(), nil
 }
 
