@@ -7206,11 +7206,6 @@
     if(decimal(app.pc?.level,0)<decimal(item?.level,0))return "#f2695f";
     return ["#f5ecd4","#60ffff","#f2695f","#8b8984","#ffe85d","#6df47c"][Math.max(0,decimal(item?.color,0))]||"#f5ecd4";
   }
-  function inventoryIdentityText(item){
-    const observation=app.status?.aiObservation;
-    const identity=observation?.itemsKnown?observation.items.find(entry=>entry.slot===Number(item.index)):null;
-    return `槽位 ${item.index} · 模板编号 ${identity?identity.templateId:"未知"}`;
-  }
   function setInventoryHover(index){
     app.inventoryHoveredItem=decimal(index,-1);const item=inventoryItem(index),name=$("inventory-item-name"),memo=$("inventory-item-memo");
     if(name){name.textContent=item?.name||"";name.style.color=item?inventoryItemFontColor(item):"";}
@@ -7304,7 +7299,7 @@
   function renderInventoryItems(list){
     for(let index=0;index<INVENTORY_SLOT_CENTERS.length;index++){
       const item=inventoryItem(index),[centerX,centerY]=INVENTORY_SLOT_CENTERS[index],slot=inventoryControl(item?.name||`空物品格 ${index}`,"legacy-item-slot");slot.dataset.itemIndex=String(index);slot.style.left=`${centerX-24}px`;slot.style.top=`${centerY-24}px`;slot.classList.toggle("item-selected",decimal(app.selectedItem,-1)===index);
-      if(item){slot.title=`${item.name||""} · ${inventoryIdentityText(item)}`;slot.setAttribute("aria-label",slot.title);const info=resolveBitmapInfo(item.graphic);if(info?.file)appendInventoryBitmap(slot,info,24,24,"legacy-item-icon");slot.addEventListener("pointerenter",()=>setInventoryHover(index));slot.addEventListener("pointerleave",()=>{if(decimal(app.inventoryHoveredItem,-1)===index)setInventoryHover(-1);});slot.addEventListener("focus",()=>setInventoryHover(index));slot.addEventListener("blur",()=>{if(decimal(app.inventoryHoveredItem,-1)===index)setInventoryHover(-1);});slot.addEventListener("dblclick",event=>{event.preventDefault();inventoryUseItem(index);});}
+      if(item){slot.title=item.name||"";const info=resolveBitmapInfo(item.graphic);if(info?.file)appendInventoryBitmap(slot,info,24,24,"legacy-item-icon");slot.addEventListener("pointerenter",()=>setInventoryHover(index));slot.addEventListener("pointerleave",()=>{if(decimal(app.inventoryHoveredItem,-1)===index)setInventoryHover(-1);});slot.addEventListener("focus",()=>setInventoryHover(index));slot.addEventListener("blur",()=>{if(decimal(app.inventoryHoveredItem,-1)===index)setInventoryHover(-1);});slot.addEventListener("dblclick",event=>{event.preventDefault();inventoryUseItem(index);});}
       slot.addEventListener("pointerdown",event=>beginInventoryDrag(index,event));slot.addEventListener("pointermove",updateInventoryDrag);slot.addEventListener("pointerup",event=>finishInventoryDrag(event));slot.addEventListener("pointercancel",event=>finishInventoryDrag(event,true));slot.addEventListener("contextmenu",event=>{event.preventDefault();if(app.inventoryDrag)finishInventoryDrag({pointerId:app.inventoryDrag.pointerId,clientX:event.clientX,clientY:event.clientY},true);});list.append(slot);
     }
     const name=document.createElement("span");name.id="inventory-item-name";name.className="inventory-item-name";list.append(name);const memo=document.createElement("span");memo.id="inventory-item-memo";memo.className="inventory-item-memo";list.append(memo);setInventoryHover(-1);
@@ -7926,7 +7921,7 @@
     for(let rowIndex=0;rowIndex<entries.length;rowIndex++){
       const {pet,index}=entries[rowIndex],state=petMenuState(index);
       const row=document.createElement("div");row.className=`legacy-pet-row pet-state-${state.key}`;row.style.top=`${rowIndex*51}px`;row.dataset.petSlot=String(index);
-      const name=button(petDisplayName(pet),()=>openPetDetail(index));name.className="pet-name";name.title=`槽位 ${index} · 稳定 ID ${pet.id||"未知"}`;name.setAttribute("aria-label",`查看宠物 ${petDisplayName(pet)||index+1} · ${name.title}`);name.addEventListener("contextmenu",event=>{event.preventDefault();send("DP",[app.position[0],app.position[1],index]).catch(reportError);});row.append(name);
+      const name=button(petDisplayName(pet),()=>openPetDetail(index));name.className="pet-name";name.setAttribute("aria-label",`查看宠物 ${petDisplayName(pet)||index+1}`);name.addEventListener("contextmenu",event=>{event.preventDefault();send("DP",[app.position[0],app.position[1],index]).catch(reportError);});row.append(name);
       for(const [field,value] of [["level",pet.level],["hp",pet.hp],["max-hp",pet.maxHp]]){const stat=document.createElement("span");stat.className=`pet-stat pet-${field}`;stat.textContent=textOr(value,"-");row.append(stat);}
       const stateButton=imageButton(`宠物状态：${state.label}`,state.bitmap,()=>activatePetMenuState(index),56,24);stateButton.classList.add("pet-button");row.append(stateButton);
       const attributes=[["earth",pet.earth],["water",pet.water],["fire",pet.fire],["wind",pet.wind]].filter(([,value])=>Number(value)>0).slice(0,2);
@@ -7938,7 +7933,7 @@
     const close=imageButton("关闭宠物窗口",9134,()=>show(worldScreen),80,16);close.id="pets-close";list.append(close);
   }
   function renderPetDetail(list,pet,index){
-    const root=document.createElement("div");root.className="pet-detail";root.title=`槽位 ${index} · 稳定 ID ${pet.id||"未知"}`;
+    const root=document.createElement("div");root.className="pet-detail";
     appendPetDetailValue(root,"pet-detail-name",petDisplayName(pet));appendPetDetailValue(root,"pet-detail-level",pet.level);appendPetDetailValue(root,"pet-detail-exp",pet.exp);appendPetDetailValue(root,"pet-detail-next",pet.maxExp);
     appendPetDetailValue(root,"pet-detail-hp",pet.hp);appendPetDetailValue(root,"pet-detail-max-hp",pet.maxHp);appendPetDetailValue(root,"pet-detail-atk",pet.atk);appendPetDetailValue(root,"pet-detail-def",pet.def);appendPetDetailValue(root,"pet-detail-quick",pet.quick);appendPetDetailValue(root,"pet-detail-ai",pet.ai);
     for(const kind of ["earth","water","fire","wind"]){const bar=document.createElement("i");bar.className=`pet-detail-attr ${kind}`;bar.style.width=`${Math.max(0,Math.min(80,Number(pet[kind])*.8||0))}px`;root.append(bar);}
