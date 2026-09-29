@@ -109,14 +109,53 @@ func snapshotActorByID(snapshot aigame.Snapshot, id int32) (aigame.ActorSnapshot
 	return aigame.ActorSnapshot{}, false
 }
 
+const logoutHelp = "usage: sactl logout [--record-point|--in-place]\nDefault: return to the record point. --in-place: preserve the server position. Both close the session and clear credentials."
+
 // commandLogout closes the session and clears credentials. Only an explicit
 // login may authenticate again; observation must not undo a logout.
 func (s *Server) commandLogout(ctx context.Context, request Request) Response {
+	mode := "record-point"
+	if len(request.Args) == 1 && (request.Args[0] == "--help" || request.Args[0] == "-h") {
+		return Response{OK: true, Text: logoutHelp}
+	}
+	if len(request.Args) > 1 {
+		return failure(KindUsage, "%s", logoutHelp)
+	}
+	if len(request.Args) == 1 {
+		switch request.Args[0] {
+		case "--in-place":
+			mode = "in-place"
+		case "--record-point":
+		default:
+			return failure(KindUsage, "%s", logoutHelp)
+		}
+	}
 	s.stopAutoBattle()
 	s.connectMu.Lock()
 	defer s.connectMu.Unlock()
 	s.mu.Lock()
 	game := s.game
+	s.mu.Unlock()
+	var inPlace interface{ LogoutInPlace(context.Context) error }
+	var snapshot aigame.Snapshot
+	var observeErr error
+	if game != nil {
+		snapshot, observeErr = game.Observe(ctx)
+		if observeErr != nil {
+			snapshot = aigame.Snapshot{} // Still clear an already broken session.
+		}
+		if mode == "in-place" && inWorld(snapshot.Phase) {
+			if snapshot.Phase != aigame.PhaseWorld {
+				return actionFailure(fmt.Errorf("in-place logout requires leaving battle first"))
+			}
+			var ok bool
+			inPlace, ok = game.(interface{ LogoutInPlace(context.Context) error })
+			if !ok {
+				return actionFailure(fmt.Errorf("this session does not support in-place logout"))
+			}
+		}
+	}
+	s.mu.Lock()
 	s.game = nil
 	s.generation++
 	s.config.Account = ""
@@ -124,38 +163,33 @@ func (s *Server) commandLogout(ctx context.Context, request Request) Response {
 	s.config.PasswordFile = ""
 	s.lastError = ""
 	s.mu.Unlock()
+	result := struct {
+		Mode               string `json:"mode"`
+		Confirmed          bool   `json:"confirmed"`
+		CredentialsCleared bool   `json:"credentials_cleared"`
+	}{mode, true, true}
 	if game == nil {
-		return Response{OK: true, Text: "logged out"}
+		return Response{OK: true, Text: "already logged out; credentials cleared", Data: replyJSON(result)}
 	}
 	defer game.Close()
-	snapshot, err := game.Observe(ctx)
-	if err != nil {
-		return sessionFailure(err)
+	if observeErr != nil {
+		result.Confirmed = false
+		return Response{OK: false, Kind: KindUnknown, Error: "session was already disconnected; credentials cleared; log in again to verify position", Data: replyJSON(result)}
 	}
 	if !inWorld(snapshot.Phase) {
-		return Response{OK: true, Text: fmt.Sprintf("logged out (phase=%s); credentials cleared", snapshot.Phase)}
+		return Response{OK: true, Text: fmt.Sprintf("logged out (phase=%s); credentials cleared", snapshot.Phase), Data: replyJSON(result)}
 	}
-	character := snapshot.Character
-	// The native session closes the socket unconditionally after writing
-	// CharLogout, so a failure here means the server's acknowledgement could
-	// not be read — not that the character stayed in the world. Report what
-	// actually happened instead of guessing.
-	// The reply may never resolve (aigame cannot decode this server's Ringo
-	// acknowledgement), so bound the wait instead of holding the command open
-	// until its own timeout.
-	logoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	logoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	logoutErr := game.Logout(logoutCtx)
-	if logoutErr != nil {
-		return Response{
-			OK:   true,
-			Kind: KindUnknown,
-			Text: fmt.Sprintf("sent CharLogout for %q and closed the session, but the server's acknowledgement could not be read (%v); credentials cleared; use sactl login to log in again",
-				character, logoutErr),
-		}
+	var err error
+	if inPlace != nil {
+		err = inPlace.LogoutInPlace(logoutCtx)
+	} else {
+		err = game.Logout(logoutCtx)
 	}
-	return Response{
-		OK:   true,
-		Text: fmt.Sprintf("logged out %q; credentials cleared; use sactl login to log in again", character),
+	if err != nil {
+		result.Confirmed = false
+		return Response{OK: false, Kind: KindUnknown, Error: fmt.Sprintf("%s logout for %q could not be confirmed (%v); session closed and credentials cleared; log in again to verify position", mode, snapshot.Character, err), Data: replyJSON(result)}
 	}
+	return Response{OK: true, Text: fmt.Sprintf("logged out %q (%s); credentials cleared; use sactl login to log in again", snapshot.Character, mode), Data: replyJSON(result)}
 }

@@ -149,6 +149,27 @@ func (connection *httpConn) Close() error {
 	return nil
 }
 
+// CloseAndWait uses the same acknowledged EOF path as Web in-place logout.
+// Cancel polling without issuing the best-effort DELETE, then wait for the
+// bridge to finish its native close/save sequence. Never retry this mutation.
+func (connection *httpConn) CloseAndWait(ctx context.Context) error {
+	connection.close(true, net.ErrClosed)
+	request, err := connection.client.newPublicRequest(ctx, http.MethodDelete, "/api/sessions/"+url.PathEscape(connection.sessionID), nil)
+	if err != nil {
+		return err
+	}
+	request.URL.RawQuery = "wait=1"
+	response, err := connection.client.web.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return statusError(response.StatusCode)
+	}
+	return nil
+}
+
 func (connection *httpConn) abortPreserve(err error) {
 	if err == nil {
 		err = ErrLeaseRevoked

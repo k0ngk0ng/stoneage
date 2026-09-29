@@ -70,7 +70,7 @@ const CommandHelp = `commands:
   arena invite <slot> <character_id> invite the exact card selected from arena contacts
   trade request|offer-item|offer-gold|offer-pet|lock|confirm|cancel
   login                               interactively log in (credentials stay in memory)
-  logout                              log out and clear in-memory credentials
+  logout [--record-point|--in-place]   return to record point (default), or log out in place; clear credentials
   alloc <0-3>                         spend one stat point
   social <setting> <0|1>              toggle party/duel/trade switches
   ride <slot>|off / title equip|text  riding and titles

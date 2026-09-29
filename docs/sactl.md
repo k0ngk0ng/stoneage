@@ -461,3 +461,10 @@ sactl ai run --config arena-team/team.json --forever
 `train`、`evaluate`、`simulate` 的参数用 `sactl ai <子命令> --help` 查看。
 在线运行无需 Docker 或 Python；本地隔离原生游戏服的模拟采集需要 Docker。
 完整说明与旧配置迁移方法见 [本地竞技场 AI 指挥官](local-arena-agent.md)。
+
+## 登出方式
+
+- `sactl logout` 或 `sactl logout --record-point`：回记录点登出。
+- `sactl logout --in-place`（v0.2.6 起）：原地登出，保留服务端实际位置；战斗中须先结束战斗。
+- 两种方式都关闭游戏会话并清除内存凭据；`stop` 则是结束后台进程。
+- JSON 返回 `data.mode`、`data.confirmed` 和 `data.credentials_cleared`。断开确认失败时返回 `kind="unknown"`，需重新登录核验位置，不能当作已保存成功。

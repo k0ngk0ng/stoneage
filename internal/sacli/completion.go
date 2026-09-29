@@ -124,7 +124,8 @@ func Complete(words []string) []string {
 	}
 	choices := "--json --socket --config --profile --timeout"
 	choices += " " + map[string]string{
-		"say": "--color --range", "warp": "--time", "arena": "--request-id --revision",
+		"logout": "--record-point --in-place --help",
+		"say":    "--color --range", "warp": "--time", "arena": "--request-id --revision",
 		"create-character": "--hometown --slot --image --face --vital --strength --toughness --dexterity --earth --water --fire --wind",
 	}[command]
 	if len(positional) == 1 {

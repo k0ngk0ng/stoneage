@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/sacli"
 )
 
@@ -128,6 +129,40 @@ func TestNativeSactlIdleLifecycle(t *testing.T) {
 			if r := call("ladder", "status"); !r.OK {
 				t.Fatal("arena observation failed", r.Error)
 			}
+
+			// In-place logout must preserve authoritative coordinates across
+			// immediate authentication/entry, through the real Web EOF path.
+			var before aigame.Snapshot
+			if r := call("observe"); !r.OK {
+				t.Fatal(r.Error)
+			} else if err := json.Unmarshal(r.Data, &before); err != nil {
+				t.Fatal(err)
+			}
+			if r := call("logout", "--in-place"); !r.OK || !strings.Contains(string(r.Data), `"confirmed":true`) {
+				t.Fatalf("in-place logout: %+v", r)
+			}
+			if r := call("login", account, strings.TrimSpace(string(password))); !r.OK {
+				t.Fatal("immediate login after in-place logout", r.Error)
+			}
+			if r := call("enter", fmt.Sprintf("LadderQA%02d", i)); !r.OK {
+				t.Fatal(r.Error)
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				var after aigame.Snapshot
+				r := call("observe")
+				if err := json.Unmarshal(r.Data, &after); err != nil {
+					t.Fatal(err)
+				}
+				if after.Position.Floor == before.Position.Floor && after.Position.X == before.Position.X && after.Position.Y == before.Position.Y {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("in-place position changed: before=%+v after=%+v", before.Position, after.Position)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			t.Log("in-place logout and immediate re-entry preserved position")
 			if r := call("logout"); !r.OK {
 				t.Fatal(r.Error)
 			}

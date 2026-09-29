@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -499,6 +500,48 @@ func (session *Session) Logout(ctx context.Context) error {
 		return fmt.Errorf("CharLogout: %w", err)
 	}
 	return nil
+}
+
+// LogoutInPlace sends no CharLogout: native EOF preserves the server's actual
+// position instead of moving to the record point. The headless client has no
+// browser-predicted coordinates to reconcile. Serialize EOF after prior writes.
+func (session *Session) LogoutInPlace(ctx context.Context) error {
+	if err := session.requirePhase(PhaseWorld); err != nil {
+		return err
+	}
+	defer session.Close()
+	session.writeMu.Lock()
+	defer session.writeMu.Unlock()
+	if conn, ok := session.conn.(interface{ CloseAndWait(context.Context) error }); ok {
+		return conn.CloseAndWait(ctx)
+	}
+	conn, ok := session.conn.(interface{ CloseWrite() error })
+	if !ok {
+		return fmt.Errorf("transport does not support acknowledged in-place logout")
+	}
+	if err := conn.CloseWrite(); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-session.done:
+	}
+	session.termMu.RLock()
+	err := session.termErr
+	session.termMu.RUnlock()
+	if !errors.Is(err, io.EOF) {
+		return fmt.Errorf("in-place close: %w", err)
+	}
+	// Match the Web bridge's bounded drain for legacy asynchronous SAAC saves.
+	timer := time.NewTimer(500 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (session *Session) request(ctx context.Context, function string, values []wireValue) (Event, error) {
