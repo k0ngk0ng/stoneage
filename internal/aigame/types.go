@@ -362,17 +362,21 @@ type PetSnapshot struct {
 
 // InventoryItem is one of the twenty absolute legacy inventory slots.
 type InventoryItem struct {
-	Index      int32
-	Name       string
-	Name2      string
-	Memo       string
-	Graphic    int32
-	Color      int32
-	Field      int32
-	Target     int32
-	DeadTarget bool
-	Level      int32
-	Send       int32
+	// TemplateID identifies the item type, not a unique item instance. It is
+	// confirmed by S("AI") and becomes unknown after inventory changes.
+	TemplateID      int32
+	TemplateIDKnown bool
+	Index           int32
+	Name            string
+	Name2           string
+	Memo            string
+	Graphic         int32
+	Color           int32
+	Field           int32
+	Target          int32
+	DeadTarget      bool
+	Level           int32
+	Send            int32
 }
 
 // WindowSnapshot is the latest server-owned WN window.  Data is opaque by

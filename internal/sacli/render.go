@@ -70,11 +70,19 @@ func renderSnapshot(snapshot aigame.Snapshot, floorName string) string {
 	if len(snapshot.Inventory) > 0 {
 		fmt.Fprintf(&builder, "inventory=%d\n", len(snapshot.Inventory))
 		for _, item := range snapshot.Inventory {
-			fmt.Fprintf(&builder, "  - slot=%d %q graphic=%d\n", item.Index, item.Name, item.Graphic)
+			id := "unknown"
+			if item.TemplateIDKnown {
+				id = fmt.Sprint(item.TemplateID)
+			}
+			fmt.Fprintf(&builder, "  - slot=%d %q template_id=%s graphic=%d\n", item.Index, item.Name, id, item.Graphic)
 		}
 	}
 	for _, pet := range snapshot.Pets {
-		fmt.Fprintf(&builder, "pet slot=%d %q hp=%d/%d level=%d\n", pet.Slot, pet.Name, pet.HP, pet.MaxHP, pet.Level)
+		id := "unknown"
+		if pet.IdentityKnown && pet.StableID != "" {
+			id = pet.StableID
+		}
+		fmt.Fprintf(&builder, "pet slot=%d %q stable_id=%q graphic=%d hp=%d/%d level=%d\n", pet.Slot, pet.Name, id, pet.Graphic, pet.HP, pet.MaxHP, pet.Level)
 	}
 	if len(snapshot.Skills) > 0 {
 		parts := make([]string, 0, len(snapshot.Skills))
@@ -130,7 +138,10 @@ func renderSnapshot(snapshot aigame.Snapshot, floorName string) string {
 	if len(snapshot.Chat) > 0 {
 		fmt.Fprintf(&builder, "chat_recent=%d\n", len(snapshot.Chat))
 		for _, message := range snapshot.Chat {
-			fmt.Fprintf(&builder, "  - [%s] %s: %s\n", message.Channel, message.SpeakerCharacterID, message.Text)
+			// Native TK text already contains the sender's display name where
+			// appropriate. Match Web's sentence display; protocol channel and
+			// persistent speaker identity remain available in structured JSON.
+			fmt.Fprintf(&builder, "  - %s\n", message.Text)
 		}
 	}
 	if snapshot.LastError != "" {

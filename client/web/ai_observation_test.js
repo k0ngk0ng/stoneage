@@ -76,3 +76,20 @@ assert.strictEqual(parser.parseAIObservation("AI|v=1|chara=12|end=0,0,0,0,0,0|no
 assert.strictEqual(parser.parseAIObservation("AI|v=2|chara=12|end=0,0,0,0,0,0|now=0,0,0,0,0,0|ride=0"), null, "unsupported version is rejected");
 
 console.log("AI observation parser and slot rebuild tests passed");
+
+const itemObservation=parser.applyAIObservation(payload+"|items=6,2414;5,2415");
+assert.strictEqual(itemObservation.itemsKnown,true);
+assert.deepStrictEqual(itemObservation.items,[{slot:5,templateId:2415},{slot:6,templateId:2414}]);
+for(const field of ["5,0","4,2415","5,2415;5,2414","5,2415,extra"]){
+  assert.strictEqual(parser.applyAIObservation(payload+"|items="+field),null);
+  assert.strictEqual(app.status.aiObservation,itemObservation,"invalid metadata must not replace known identity evidence");
+}
+assert.strictEqual(parser.applyAIObservation(payload).itemsKnown,false,"legacy response clears item ID evidence");
+
+parser.applyAIObservation(payload+"|items=5,2415");
+app.inventory=[{index:5,name:"old"}];
+const inventoryStart=html.indexOf("  function receiveInventory(text,indexed=true)");
+const inventoryEnd=html.indexOf("  const INVENTORY_SLOT_CENTERS",inventoryStart);
+const receiveInventory=new Function("app","decimal","unescapeCharacterOption","$","renderInventory","renderTrade",`${html.slice(inventoryStart,inventoryEnd)};return receiveInventory;`)(app,(value,fallback=0)=>value===""?fallback:Number(value),unescapeCharacterOption,()=>({}),()=>{},()=>{});
+receiveInventory("5|replacement||0||100|0|0|1|0");
+assert.strictEqual(app.status.aiObservation.itemsKnown,false,"slot replacement invalidates old template identity");

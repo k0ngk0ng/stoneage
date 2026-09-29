@@ -928,6 +928,14 @@ func (session *Session) snapshotLocked() Snapshot {
 	snapshot.Pets = clonePetSnapshots(snapshot.Pets)
 	snapshot.Inventory = snapshot.Inventory[:0]
 	for _, item := range session.state.inventory {
+		if snapshot.AI.ItemsKnown {
+			for _, identity := range snapshot.AI.Items {
+				if identity.Slot == item.Index {
+					item.TemplateID, item.TemplateIDKnown = identity.TemplateID, true
+					break
+				}
+			}
+		}
 		snapshot.Inventory = append(snapshot.Inventory, item)
 	}
 	sortInventory(snapshot.Inventory)

@@ -206,8 +206,12 @@ func TestAIObservationItemsStateClearsOnLegacyFrameAndCopies(t *testing.T) {
 	defer peer.Close()
 
 	base := "AI|v=1|chara=17|end=0,0,0,0,0,0|now=0,0,0,0,0,0|ride=0"
+	session.state.inventory[5] = InventoryItem{Index: 5, Name: "item"}
 	session.applyEvent(stringEvent("S", base+"|items=5,2415;6,2414"))
 	first := session.Snapshot()
+	if len(first.Inventory) != 1 || !first.Inventory[0].TemplateIDKnown || first.Inventory[0].TemplateID != 2415 {
+		t.Fatal("template ID missing from inventory projection", first.Inventory)
+	}
 	if !first.AI.ItemsKnown || !reflect.DeepEqual(first.AI.Items, []AIInventoryItem{{Slot: 5, TemplateID: 2415}, {Slot: 6, TemplateID: 2414}}) {
 		t.Fatalf("items were not retained: %+v", first.AI)
 	}
@@ -227,8 +231,16 @@ func TestAIObservationItemsStateClearsOnLegacyFrameAndCopies(t *testing.T) {
 	// stale item requirements.
 	session.applyEvent(stringEvent("S", base))
 	legacy := session.Snapshot()
+	if legacy.Inventory[0].TemplateIDKnown || legacy.Inventory[0].TemplateID != 0 {
+		t.Fatal("legacy response retained stale inventory ID")
+	}
 	if legacy.AI.ItemsKnown || len(legacy.AI.Items) != 0 {
 		t.Fatalf("legacy response did not clear optional items: %+v", legacy.AI)
+	}
+	session.applyEvent(stringEvent("S", base+"|items=5,2415"))
+	session.applyEvent(stringEvent("I", "5|replacement||0||100|0|0|1|0"))
+	if current := session.Snapshot(); current.Inventory[0].TemplateIDKnown {
+		t.Fatal("replacement inherited stale template ID")
 	}
 }
 

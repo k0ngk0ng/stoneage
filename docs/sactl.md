@@ -7,6 +7,17 @@
 
 每条命令只执行一步并立即返回真实结果，便于观察、操作和核对。
 
+### 观察中的编号（v0.2.4 起）
+
+- `slot` / JSON `Inventory[].Index`、`Pets[].Slot`：当前操作槽位，会变化。
+- `template_id` / `TemplateID`：物品种类编号；`TemplateIDKnown=false` 时未知。v0.2.3 的原始字段位于 `AI.Items`，v0.2.4 并入普通背包列表。
+- `stable_id` / `StableID`：宠物已确认的稳定身份，须同时检查 `IdentityKnown`。
+- `graphic` / `Graphic`：图片资源编号，不是物品或宠物实例 ID。当前背包协议没有物品唯一实例 ID。
+
+物品槽位变化后，旧模板编号会失效；可执行 `sactl query AI` 请求刷新，再等待事件并观察。
+Web 物品/宠物提示与 CLI 输出使用相同语义。聊天文本按 Web 的方式展示原始句子，
+JSON 仍保留 `Channel`、`FromID` 和已确认的 `SpeakerCharacterID`。`P` 前缀同时用于普通聊天和部分系统提示，不能用来识别私聊。
+
 ## 结构
 
 ```text

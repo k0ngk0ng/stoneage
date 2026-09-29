@@ -23,6 +23,8 @@ description: 使用 sactl 命令行客户端在石器时代游戏中观察角色
 3. 用返回的结构化数据和后续观察核验变化。需要服务端事件时用 `sactl --json wait 30s`，之后重新观察；`wait` 超时本身不代表任务失败。
 4. 串行执行同一角色的动作。完成目标就汇报；用户要求持续活动时，循环必须保留停止条件，不能由 skill 擅自增加永久运行目标。
 
+物品操作使用当前 `Inventory[].Index` 槽位，宠物操作使用 `Pets[].Slot`。物品模板编号见 `AI.Items[].TemplateID`；支持合并输出的版本也有 `Inventory[].TemplateID` / `TemplateIDKnown`。宠物跨会话身份使用已确认的 `StableID` / `IdentityKnown`。槽位、图片编号 `Graphic`、场景对象 `ID` 都不能当作唯一实例身份；当前协议不提供背包物品唯一实例 ID。缺少标识时可请求 `query AI` 并等待新观察，不用旧槽位推断。聊天 `Channel="P"` 是原始协议类型，不能据此判断为私聊；文本已包含服务端发送的说话者名称，不再次拼接内部身份 ID。
+
 读取 JSON 的 `ok`、`kind`、`error`、`data`，不要解析 `text` 来决定动作。遇到 `kind="unknown"` 或提交后连接中断，结果可能已生效：先观察核实，不能直接重发交易、邮件、物品操作等动作。无法核实时报告未知并停止该动作链。具体语义见 [连接与结果处理](references/session.md)。
 
 ## 战斗
