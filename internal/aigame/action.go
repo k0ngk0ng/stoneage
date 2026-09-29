@@ -714,20 +714,13 @@ func validBattleCommand(command string) (string, error) {
 }
 
 func validStatusRequest(value string) bool {
-	if value == "BTIME" {
-		return true
-	}
 	if strings.HasPrefix(value, "AI:") {
 		return validAIRequestID(strings.TrimPrefix(value, "AI:"))
 	}
-	if value == "" || len(value) > 8 || strings.ContainsAny(value, "| \r\n") {
-		return false
-	}
-	if value == "c" || value == "i" || value == "w" || value == "j" || value == "n" || value == "t" || value == "g" || value == "AI" {
-		return true
-	}
-	if len(value) == 2 && (value[0] == 'k' || value[0] == 'w' || value[0] == 'j' || value[0] == 'n' || value[0] == 'i') && value[1] >= '0' && value[1] <= '9' {
-		return true
+	for _, code := range StatusQueryCodes() {
+		if value == code {
+			return true
+		}
 	}
 	return false
 }

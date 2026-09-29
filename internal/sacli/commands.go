@@ -75,7 +75,7 @@ const CommandHelp = `commands:
   social <setting> <0|1>              toggle party/duel/trade switches
   ride <slot>|off / title equip|text  riding and titles
   click <object-id> / probe <name>    click a map object; send idle probes
-  query <c|i|w|j|n|t|g|AI|BTIME|k0..k9> request one status stream
+  query <code> / query --help         request a status refresh; list codes, meanings and examples
   send <FUNC> [args...] / functions   raw escape hatch with schema validation
   log [count]                         recent server events
   wait [duration]                     block until the next server event

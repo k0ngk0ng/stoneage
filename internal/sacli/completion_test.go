@@ -28,6 +28,8 @@ func TestCompletionContexts(t *testing.T) {
 		{[]string{"auto-battle", "on", "st"}, []string{"stay"}},
 		{[]string{"completion", "z"}, []string{"zsh"}},
 		{[]string{"logout", "--in"}, []string{"--in-place"}},
+		{[]string{"query", "k"}, []string{"k0", "k1", "k2", "k3", "k4"}},
+		{[]string{"query", "B"}, []string{"BTIME"}},
 		{[]string{"ai", "train", "--epochs", ""}, nil},
 	} {
 		if got := Complete(tc.args); !reflect.DeepEqual(got, tc.want) {

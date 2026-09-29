@@ -169,6 +169,10 @@ func run(args []string) error {
 		case arg == "--help" || arg == "-h" || (arg == "help" && command == ""):
 			// Help must work wherever the flags sit: a wrapper script may put
 			// its own flags before the command name.
+			if command == "query" {
+				fmt.Println(sacli.QueryHelp)
+				return nil
+			}
 			if command == "arena" || command == "ladder" {
 				if err := sacli.ValidateArenaCommand(commandArgs); err != nil {
 					return err
@@ -227,6 +231,16 @@ func run(args []string) error {
 	if command == "" {
 		usage()
 		os.Exit(exitUsage)
+	}
+	if command == "query" {
+		if len(commandArgs) == 0 || (len(commandArgs) == 1 && commandArgs[0] == "help") {
+			printResponse(sacli.Response{OK: true, Text: sacli.QueryHelp}, options.json)
+			return nil
+		}
+		if err := sacli.ValidateQueryCommand(commandArgs); err != nil {
+			printResponse(sacli.Response{Kind: sacli.KindUsage, Error: err.Error()}, options.json)
+			os.Exit(exitUsage)
+		}
 	}
 	if command == "serve" || command == "init" {
 		localArgs := append([]string{}, commandArgs...)

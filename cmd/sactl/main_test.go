@@ -142,6 +142,12 @@ func TestAIIntegratedCLI(t *testing.T) {
 	if !strings.Contains(string(invoke("arena", "--help")), "player arena") {
 		t.Fatal("arena help must work without a daemon")
 	}
+	for _, args := range [][]string{{"query"}, {"query", "--help"}, {"query", "help"}} {
+		output := string(invoke(args...))
+		if !strings.Contains(output, "k0..k4") || !strings.Contains(output, "不调用大模型") {
+			t.Fatalf("query help must work offline: %s", output)
+		}
+	}
 	for _, shell := range []string{"bash", "zsh"} {
 		if !strings.Contains(string(invoke("completion", shell)), "__complete") {
 			t.Fatal("missing shell completion", shell)

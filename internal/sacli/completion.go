@@ -115,6 +115,7 @@ func Complete(words []string) []string {
 		return completePrefix("--config --profile --help", prefix)
 	}
 	subcommands := map[string]string{
+		"query": strings.Join(QueryCodes(), " ") + " --help",
 		"arena": "status contacts create mode invite accept decline loadout ready unready queue cancel leave kick leader result ack wait strategy strategies",
 		"item":  "use drop drop-gold move magic pickup", "mail": "list add send remove-contact",
 		"pet": "status standby battle rename drop", "party": "invite leave accept decline",

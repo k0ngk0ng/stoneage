@@ -346,11 +346,14 @@ func (s *Server) commandSocial(ctx context.Context, request Request) Response {
 
 // commandQuery asks the server for one status/projection stream.
 func (s *Server) commandQuery(ctx context.Context, request Request) Response {
-	if len(request.Args) != 1 {
-		return failure(KindUsage, "usage: sactl query <c|i|w|j|n|t|g|AI|k0..k9>")
+	if len(request.Args) == 0 || (len(request.Args) == 1 && (request.Args[0] == "--help" || request.Args[0] == "-h" || request.Args[0] == "help")) {
+		return Response{OK: true, Text: QueryHelp}
+	}
+	if err := ValidateQueryCommand(request.Args); err != nil {
+		return failure(KindUsage, "%v", err)
 	}
 	action := aigame.Action{Kind: aigame.ActionStatus, Command: request.Args[0]}
-	return s.submitSimple(ctx, action, fmt.Sprintf("requested status %q", request.Args[0]))
+	return s.submitSimple(ctx, action, fmt.Sprintf("已发送状态刷新请求 %q；响应异步返回，请稍后用 status / observe 查看，或用 log 查看返回事件", request.Args[0]))
 }
 
 // commandRide mounts or dismounts a pet slot (native FM, -1 dismounts).

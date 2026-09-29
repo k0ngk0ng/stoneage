@@ -471,3 +471,33 @@ sactl ai run --config arena-team/team.json --forever
 - JSON 返回 `data.mode`、`data.confirmed` 和 `data.credentials_cleared`。断开确认失败时返回 `kind="unknown"`，需重新登录核验位置，不能当作已保存成功。
 
 `status` 分别显示 `client version`（当前命令）与 `daemon version`（后台进程）；JSON 对应顶层 `client_version` / `daemon_version`，旧后台可能缺少后者。版本不同不代表安装失败；登录会自动替换闲置旧后台，已连接会话保留。
+
+## query 状态刷新（v0.2.9 起提供完整命令帮助）
+
+`query` 通过 S 协议向服务器请求一类状态，不是查询大模型。无参数 `sactl query`、`sactl query --help` 和 `sactl query help` 的新版说明无需后台进程或登录即可查看；实际刷新需要先登录并进入角色。大小写敏感，槽位从 0 开始。
+
+| 代码 | 用途 |
+| --- | --- |
+| `c` | 当前地图、地图尺寸和服务器坐标 |
+| `i` | 全部装备和背包的基础数据 |
+| `k0`–`k4` | 指定宠物槽位的属性 |
+| `w0`–`w4` | 指定宠物槽位的技能 |
+| `j0`–`j4` | 指定装备槽位的精灵魔法、耗气和目标类型 |
+| `n0`–`n4` | 指定队伍槽位的成员状态 |
+| `t` | 称号列表；目前通过 `log` 查看返回事件，未投影到 `observe` |
+| `AI` | 扩展自身状态，包括物品/装备模板编号、宠物稳定编号和事件标记；不是大模型调用 |
+| `BTIME` | 竞技场战斗回合时钟；不是游戏时间，非竞技场战斗时可能没有有效截止时间 |
+
+```sh
+sactl query i
+sactl query k0
+sactl query w0
+# 等服务器响应后查看
+sactl status
+sactl --json observe
+sactl log 10
+```
+
+成功只表示请求已发送，即时返回的快照可能仍是旧数据；`wait` 收到的是任意事件，不能据此断言该查询完成。v0.2.8 起编号通常会自动获取和刷新，无需手动 `query AI`。高级调用可用 `AI:<16位小写十六进制请求ID>` 关联响应。
+
+旧帮助中的 `g`、不带槽位的 `w/j/n` 和 `k5..k9` 在当前服务端没有对应有效返回，新版在发送前拒绝并提示正确范围。
