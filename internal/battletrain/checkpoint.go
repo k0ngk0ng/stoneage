@@ -532,7 +532,7 @@ func ExportCheckpointCandidateContext(ctx context.Context, root, checkpoint, out
 		return "", e
 	}
 	if output == "" {
-		output = filepath.Join(root, "models", id+".json")
+		output = filepath.Join(root, "models", id+".safetensors")
 	}
 	if e = ctx.Err(); e != nil {
 		return "", e
@@ -540,5 +540,5 @@ func ExportCheckpointCandidateContext(ctx context.Context, root, checkpoint, out
 	if e = os.MkdirAll(filepath.Dir(output), 0700); e != nil {
 		return "", e
 	}
-	return output, writeObject(output, a)
+	return output, battlepolicy.SaveArtifact(output, a)
 }

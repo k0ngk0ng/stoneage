@@ -153,7 +153,7 @@ func Complete(words []string) []string {
 			"build-pool":            "--search-dir --output",
 			"experiment-compare":    "--left-experiment --right-experiment --output",
 			"experiment-mix":        "--experiment --weights --families-per-batch --from-model --output",
-			"export-model":          "--data-dir --checkpoint --output",
+			"export-model":          "--data-dir --checkpoint --output --model",
 			"collect-feedback":      "--environment --data-dir --experiment --model --resume --workers --stop-at-data-bytes --seed --matches --teacher --greedy --opponent",
 			"train-feedback":        "--data-dir --collection --model --resume --epochs --output --stop-at-data-bytes --batch-episodes --sequence-length --learning-rate --gradient-clip --action-weighting",
 			"export-data":           "--records --output --format --mode --equal-points --include-abnormal",

@@ -1,5 +1,16 @@
 # 本地竞技场 AI 指挥官
 
+从 **v0.2.16** 起，神经模型默认导出为 `.safetensors`：权重使用小端 F32 二进制张量，网络配置、特征/动作契约和训练来源保存在同一文件的 JSON 元数据中。Go 直接加载，不需要 Python 或额外推理服务。`run`、`check`、`hybrid`、原生评估和父模型加载均兼容旧 JSON。
+
+已有神经模型可直接无损转换，不启动训练、不改权重或策略身份：
+
+```sh
+sactl ai export-model --model ./model.json --output ./model.safetensors
+sactl ai run --profile bot --strategy learned --model ./model.safetensors --matches 1
+```
+
+转换保留原文件，拒绝覆盖不同内容；不与 `--data-dir` / `--checkpoint` 混用。训练结束及 `export-model --data-dir` 默认生成 safetensors，显式指定 `.json` 输出仅供旧客户端兼容。旧客户端不能加载二进制模型，需先升级。训练检查点、优化器状态及历史冻结证据仍沿用原存储协议，不因推理文件转换而改写；SQLite 线性模型不适用此转换。
+
 从 **v0.2.1** 起，竞技场 AI 指挥功能统一为 **`sactl ai`** 子命令，不再单独安装 `arena-agent`。
 在石器百科的 **下载区** 下载安装包，或升级包管理器中的 `sactl` 即可使用。
 在线登录、组队、匹配、作战、数据记录及旧版 SQLite 线性训练不需要 Python、Go 开发环境或 Docker。
@@ -22,8 +33,8 @@ v0.2.13 `ai collect-feedback` / `ai train-feedback` 可先采集本地模型实�
 sactl login --profile bot
 sactl --profile bot chars
 sactl --profile bot enter '角色名'
-sactl ai check --profile bot --strategy learned --model /absolute/path/model.json
-sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
+sactl ai check --profile bot --strategy learned --model /absolute/path/model.safetensors
+sactl ai run --profile bot --strategy learned --model /absolute/path/model.safetensors --matches 1
 ```
 
 `--model` 是用户本地的外部模型文件，安装包不带模型。v0.2.15 起，推理在本机 Go 客户端运行，检查观察 schema、规则接口版本、特征/动作和人数契约；不要求训练引擎与游戏服 CPU 或程序摘要相同。训练来源原样保留，服务器实际摘要和平台另存于战斗记录；离线训练恢复和受控评估仍核对原环境。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
@@ -40,7 +51,7 @@ LLM/hybrid 的本地配置也可全部用参数提供：
 sactl ai run --profile bot --strategy llm \
   --llm-endpoint https://provider.example/v1/chat/completions \
   --llm-model your-model --llm-api-key-env STONEAGE_ARENA_MODEL_KEY --matches 1
-# hybrid：将策略改为 hybrid，并加 --model /absolute/path/local-model.json。
+# hybrid：将策略改为 hybrid，并加 --model /absolute/path/local-model.safetensors。
 ```
 
 密钥由指定环境变量读取，不作为命令参数。其他参数有 `--llm-timeout`（秒）、`--llm-context-bytes`、`--llm-response-format`。使用 `ai run --help` 查看。`--config` 仍支持既有队伍文件，并可用策略、模型、数据目录和 LLM 参数覆盖；不能与 `--profile` 混用。
@@ -209,8 +220,8 @@ sactl ai simulate --root . --work build/local-arena/eval-2v2-001 \
 
 ```sh
 sactl ai simulate --root . --work build/local-arena/duel-2v2-001 \
-  --mode 2 --matches 2 --strategy learned --model build/models/candidate.json \
-  --opponent-strategy learned --opponent-model build/models/baseline.json
+  --mode 2 --matches 2 --strategy learned --model build/models/candidate.safetensors \
+  --opponent-strategy learned --opponent-model build/models/baseline.safetensors
 ```
 
 两个模型分别固定到各自指挥官，均须符合观察/动作和人数契约；模型路径限仓库 `build/` 内且不含符号链接。双方原始记录分别保存在 `commander-0/`、`commander-1/`，通过证明分别核对两边的实际模型决策。容器内旧工作程序不认识新参数时必须报错，不能静默使用 basic；此入口启动隔离客户端，不向已有玩家后台发送新操作。`--seed` 用于任一方的 explore 决策，不保证整个原生比赛跨运行复现。少量完整链路比赛只验证执行，不替代预先冻结的强度评估。

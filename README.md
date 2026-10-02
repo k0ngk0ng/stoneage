@@ -80,9 +80,11 @@ sactl login --profile bot
 sactl --profile bot enter '角色名'
 sactl ai run --profile bot --strategy basic --matches 1
 # 使用外部模型：
-sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
+sactl ai run --profile bot --strategy learned --model /absolute/path/model.safetensors --matches 1
 # 持续匹配：把 --matches 1 换为 --forever。
 ```
+
+神经模型从 v0.2.16 起默认使用 **safetensors 二进制权重**，结构和训练来源保留为文件内 JSON 元数据。旧 JSON 可用 `sactl ai export-model --model ./model.json --output ./model.safetensors` 无损转换，无需重新训练。
 
 **模型作为本地外部文件加载，不随客户端安装包、Release 附件或 Docker 镜像分发，也不部署到生产。** 使用 `--model` 指定模型路径，也兼容旧 `team.json` 的 `model` 字段；`learned` / `hybrid` 要求模型覆盖对应人数及观察/动作接口版本；训练引擎的 CPU 平台和程序摘要只是来源记录，不限制本地推理。安装或升级客户端不会自动生成强模型。模型权重、训练数据、检查点和评估证据保留在本地目录或本机 Docker volume。
 

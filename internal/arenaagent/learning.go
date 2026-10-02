@@ -170,6 +170,13 @@ func NewLearned(path string, mode int) (*Learned, error) {
 	if len(raw) > 128<<20 {
 		return nil, fmt.Errorf("model file exceeds limit")
 	}
+	if len(raw) >= 8 && raw[7] == 0 {
+		a, e := battlepolicy.DecodeArtifact(raw)
+		if e != nil {
+			return nil, e
+		}
+		return learnedArtifact(a, mode)
+	}
 	var header struct {
 		Schema int `json:"schema_version"`
 	}

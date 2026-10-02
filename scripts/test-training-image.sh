@@ -61,16 +61,16 @@ run_training() {
 run_training experiment --output experiment.json --train-groups 4 --validation-groups 2 --test-groups 2 --seed 751 --pet-skills 1,2,20 > "$stage/experiment.log"
 run_training train --experiment experiment.json --data-dir training --warmup-matches 0 --batch-matches 2 --batches 1 --seed 757 > "$stage/train.log"
 run_training train --data-dir training --resume --batches 1 > "$stage/resume.log"
-run_training export-model --data-dir training --output exported-model.json > "$stage/export.log"
+run_training export-model --data-dir training --output exported-model.safetensors > "$stage/export.log"
 
 # Persisted volume contents must be usable outside the training container.
 docker create --pull never --platform "$platform" --network none --read-only --name "$container" \
   --mount "type=volume,src=$volume,dst=/data,readonly" "$image_id" >/dev/null
-docker cp "$container:/data/exported-model.json" "$stage/model.json"
+docker cp "$container:/data/exported-model.safetensors" "$stage/model.safetensors"
 docker cp "$container:/data/experiment.json" "$stage/experiment.json"
 docker rm "$container" >/dev/null
 "$stage/sactl" ai evaluate --environment "$stage/runtime/environment.json" \
-  --experiment "$stage/experiment.json" --model "$stage/model.json" --split validation \
+  --experiment "$stage/experiment.json" --model "$stage/model.safetensors" --split validation \
   --opponent basic --output "$stage/validation.json" > "$stage/evaluate.log"
 "$stage/sactl" ai verify-evaluation --report "$stage/validation.json" > "$stage/verified.json"
 printf 'Training image CLI, skill, initialization, volume resume and exported-model evaluation passed: %s\n' "$stage"

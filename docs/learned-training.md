@@ -1,5 +1,16 @@
 # learned v0.2.13训练入口
 
+从 **v0.2.16** 起，神经模型默认导出为 `.safetensors`：权重使用小端 F32 二进制张量，网络配置、特征/动作契约和训练来源保存在同一文件的 JSON 元数据中。Go 直接加载，不需要 Python 或额外推理服务。`run`、`check`、`hybrid`、原生评估和父模型加载均兼容旧 JSON。
+
+已有神经模型可直接无损转换，不启动训练、不改权重或策略身份：
+
+```sh
+sactl ai export-model --model ./model.json --output ./model.safetensors
+sactl ai run --profile bot --strategy learned --model ./model.safetensors --matches 1
+```
+
+转换保留原文件，拒绝覆盖不同内容；不与 `--data-dir` / `--checkpoint` 混用。训练结束及 `export-model --data-dir` 默认生成 safetensors，显式指定 `.json` 输出仅供旧客户端兼容。旧客户端不能加载二进制模型，需先升级。训练检查点、优化器状态及历史冻结证据仍沿用原存储协议，不因推理文件转换而改写；SQLite 线性模型不适用此转换。
+
 当前实现了 Go CLI 的原生采集、规则模仿热身、实战示范训练/导出、PPO 批训练、恢复、冻结分组实验、对战评估及固定策略下的整数配点搜索。受控场景覆盖人物/宠物攻击、防御、破防、状态攻击、两种治疗装备、小块肉、多宠切换及忠犬攻击。配点池可以用于下一轮策略训练；这些能力已分别执行验证，不代表模型已掌握有效战术。在线 learned/hybrid 已接入 v2 架构加载和历史推理，learned 已有完整 1v1、2v2、3v3、5v5 执行证据；带实战来源的原生评估会明确保留未知配置重叠。工具包随 v0.2.13 发布；全部游戏动作覆盖与策略强度验收仍未完成。详见 [实现记录](learned-implementation.md)。
 
 ## 混合模式训练
@@ -30,11 +41,11 @@ v0.2.13提供 `sactl ai collect-feedback` 和 `sactl ai train-feedback`，用于
 
 ```sh
 sactl ai collect-feedback --environment ./environment.json \
-  --experiment ./experiment.json --model ./candidate.json \
+  --experiment ./experiment.json --model ./candidate.safetensors \
   --data-dir ./feedback-round1 --matches 32 --teacher sustain \
   --opponent basic --opponent sustain --workers 2
 sactl ai train-feedback --collection ./feedback-round1 \
-  --data-dir ./feedback-training1 --epochs 4 --output ./feedback-model1.json
+  --data-dir ./feedback-training1 --epochs 4 --output ./feedback-model1.safetensors
 ```
 
 采集目录和训练目录都须为新路径、父目录存在。采集需要本地兼容原生 worker；训练和导出只运行 Go，不启动 Docker 或登录游戏。环境参数也接受 `STONEAGE_TRAINING_ENVIRONMENT` 默认值。默认采样网络动作，显式 `--greedy` 才使用贪心；默认 seed=1、teacher=sustain、opponents=basic/sustain、matches=32。场数最多 256，须为实验完整配对家族的倍数并至少覆盖每个对手一个家族，当前实验通常每家族八场；旧实验保持既有方式。
@@ -223,7 +234,7 @@ sactl ai train --data-dir ./demo-training --resume --epochs 2
 完成至少一轮后，使用同一导出命令生成可供本地 learned/hybrid 读取的候选模型：
 
 ```sh
-sactl ai export-model --data-dir ./demo-training --output ./recorded-model.json
+sactl ai export-model --data-dir ./demo-training --output ./recorded-model.safetensors
 # 可选 --checkpoint <已保存的 checkpoint 摘要>，不倒退当前训练进度。
 ```
 
@@ -234,15 +245,15 @@ sactl ai export-model --data-dir ./demo-training --output ./recorded-model.json
 可从示范候选初始化原生 PPO，必须先冻结使用同一父模型的实验。例如目标模式为 5v5：
 
 ```sh
-sactl ai experiment --environment ./environment.json --from-model ./recorded-model.json \
+sactl ai experiment --environment ./environment.json --from-model ./recorded-model.safetensors \
   --mode 5 --train-groups 32 --validation-groups 8 --test-groups 8 --output ./recorded-experiment.json
 sactl ai train --environment ./environment.json --experiment ./recorded-experiment.json \
-  --from-model ./recorded-model.json --data-dir ./native-training --batches 10
+  --from-model ./recorded-model.safetensors --data-dir ./native-training --batches 10
 sactl ai train --environment ./environment.json --data-dir ./native-training --resume --batches 10
-sactl ai export-model --data-dir ./native-training --output ./child-model.json
+sactl ai export-model --data-dir ./native-training --output ./child-model.safetensors
 # validation 供开发选模，不提前消耗 test。
 sactl ai evaluate --environment ./environment.json --experiment ./recorded-experiment.json \
-  --model ./child-model.json --split validation --opponent basic --output ./validation.json
+  --model ./child-model.safetensors --split validation --opponent basic --output ./validation.json
 ```
 
 PPO 从父模型的精确权重和新 Adam 状态开始，之后只使用新引擎采集的 on-policy 轨迹；不会把示范动作补造为 PPO 数据。直接接续的子模型使用文件 schema 4，保留原 recorded_training，同时记录实际原生环境、实验、父模型及原生配置分组。接续、恢复、再导出和下一代实验均核验来源继承；来源不确定性不会因训练几轮自动消失。新客户端 learned/hybrid 支持 schema 2/3/4/5；旧客户端遇到新字段/格式明确拒绝。跨人数初始化不会扩充父模型的可用模式，目标模式须训练和评估其自己的子模型。
@@ -308,7 +319,7 @@ sactl ai compare-evaluations --baseline ./parent-validation.json --candidate ./c
 ```sh
 sactl ai experiment --environment ./environment.json --output ./experiment.json --mode 1 --train-groups 1024 --validation-groups 256 --test-groups 256
 sactl ai train --environment ./environment.json --experiment ./experiment.json --data-dir ./ai-data --seed 1 --batch-matches 32 --batches 10
-sactl ai evaluate --environment ./environment.json --experiment ./experiment.json --split validation --model ./ai-data/models/<摘要>.json --output ./validation.json
+sactl ai evaluate --environment ./environment.json --experiment ./experiment.json --split validation --model ./ai-data/models/<摘要>.safetensors --output ./validation.json
 ```
 
 新清单 `commander-experiment-v2` 保存 pairing、规则/平台、人数、双方人物与宠物配点、等级、采集上限及分组。最多 4,096 个家族，三个集合都必须非空；同一配置家族不能靠改 seed、换边或互换配点归属进入另一集合。`--*-groups` 是配置家族数，每家族八场，256 组即每个对手 2,048 场；旧 v1 清单仍是每家族四场。生成清单只读取引擎元数据，不采集对战。
@@ -318,7 +329,7 @@ sactl ai evaluate --environment ./environment.json --experiment ./experiment.jso
 验证用于选超参数和候选模型。选定后只对最终候选执行：
 
 ```sh
-sactl ai evaluate --environment ./environment.json --experiment ./experiment.json --split test --model ./ai-data/models/<最终候选摘要>.json --output ./test.json
+sactl ai evaluate --environment ./environment.json --experiment ./experiment.json --split test --model ./ai-data/models/<最终候选摘要>.safetensors --output ./test.json
 ```
 
 第一次最终测试在比赛前写入 `experiment.json.test-selection.json`，固定候选完整摘要和对手集合；中断后允许同一选择重新运行，不允许在原清单旁换模型或对手反复选优。保留该文件；它防止误操作，不防手动删除或复制清单后重新测试。最终测试结果不可再用于这轮实验的调参。evaluate 只输出评估；自动更新受控原生冠军使用另行冻结门槛的 champion 流程，完整线上认证仍待验收。
@@ -330,8 +341,8 @@ sactl ai evaluate --environment ./environment.json --experiment ./experiment.jso
 新实验的 `--from-model` 可以用相同规则、平台和特征架构的父模型初始化不同人数模式。这里迁移的是权重，目标人数由新实验固定，优化器重新开始；父模型不改，祖先训练、选择及保留评测家族继续隔离。例如：
 
 ```sh
-sactl ai experiment --environment ./environment.json --from-model ./model-1v1.json --mode 2 --reserve-pets 2 --healing-magic 20 --healing-items 2 --output ./experiment-2v2.json
-sactl ai train --environment ./environment.json --experiment ./experiment-2v2.json --from-model ./model-1v1.json --data-dir ./training-2v2 --warmup-matches 128 --warmup-teacher sustain --warmup-teacher control --batches 10
+sactl ai experiment --environment ./environment.json --from-model ./model-1v1.safetensors --mode 2 --reserve-pets 2 --healing-magic 20 --healing-items 2 --output ./experiment-2v2.json
+sactl ai train --environment ./environment.json --experiment ./experiment-2v2.json --from-model ./model-1v1.safetensors --data-dir ./training-2v2 --warmup-matches 128 --warmup-teacher sustain --warmup-teacher control --batches 10
 ```
 
 子模型仅声明新训练的目标人数，仍是未经完整竞技场认证的 candidate；它不自动继承父模型的适用人数或成绩。1v1 父模型仍不能直接用于 2v2 实战/评估，不允许改其 modes 字段冒充多人模型。多人强度和执行链路必须分别评估。已有同人数训练和恢复语义不变；旧客户端可能拒绝跨人数初始化，应使用支持该功能的v0.2.13。
@@ -386,7 +397,7 @@ docker run --rm -i --pull never --network none --read-only \
 SA_EXPORT_CONTAINER=$(docker create --pull never --network none --read-only \
   --mount type=volume,src=stoneage-ai-data,dst=/data,readonly "$SA_TRAINING_ID")
 # 替换为 export-model 输出的实际模型路径。
-docker cp "$SA_EXPORT_CONTAINER:/data/training/models/<模型摘要>.json" ./model.json
+docker cp "$SA_EXPORT_CONTAINER:/data/training/models/<模型摘要>.safetensors" ./model.safetensors
 docker rm "$SA_EXPORT_CONTAINER"
 ```
 
@@ -444,7 +455,7 @@ Ctrl+C 保留已提交比赛；正在运行的比赛舍弃，未提交的优化�
 ## 对战评估
 
 ```sh
-sactl ai evaluate --environment ./environment.json --model ./ai-data/models/<摘要>.json --output ./evaluation.json --matches 1000 --opponent basic --opponent focus
+sactl ai evaluate --environment ./environment.json --model ./ai-data/models/<摘要>.safetensors --output ./evaluation.json --matches 1000 --opponent basic --opponent focus
 ```
 
 上例用于未绑定实验的探索模型。场数按每个对手计，新评估须为 8 的倍数；`--opponent-model` 可比较另一个冻结网络。完整评估场景在对局前生成，排除所有待比较模型的训练组。它没有事先区分验证与最终测试，不能把多次探索后最好的成绩当独立最终测试。输出真实结算、正常完成局的平均得分和按配置组重采样的区间，截断另外计数；不足 20 个配置组不报告区间。胜率提升还需要预先固定足够规模的评测和完整竞技链路验收，少量测试或 loss 降低不能替代。

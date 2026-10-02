@@ -132,7 +132,7 @@ func ExportFeedbackCandidate(ctx context.Context, root, checkpoint, output strin
 		return "", err
 	}
 	if output == "" {
-		output = filepath.Join(root, "models", artifactID+".json")
+		output = filepath.Join(root, "models", artifactID+".safetensors")
 	}
 	if err := os.MkdirAll(filepath.Dir(output), 0700); err != nil {
 		return "", err
@@ -140,5 +140,5 @@ func ExportFeedbackCandidate(ctx context.Context, root, checkpoint, output strin
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return output, writeObject(output, a)
+	return output, battlepolicy.SaveArtifact(output, a)
 }

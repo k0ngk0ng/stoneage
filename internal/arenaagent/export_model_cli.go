@@ -7,7 +7,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 
+	"github.com/k0ngk0ng/stoneage/internal/battlepolicy"
 	"github.com/k0ngk0ng/stoneage/internal/battletrain"
 )
 
@@ -17,20 +20,35 @@ import (
 func exportModelCommand(ctx context.Context, args []string, out io.Writer) error {
 	f := flag.NewFlagSet("sactl ai export-model", flag.ContinueOnError)
 	f.SetOutput(out)
+	model := f.String("model", "", "convert an existing neural model without training; use --output file.safetensors")
 	root := f.String("data-dir", "", "existing training directory with a completed checkpoint")
 	checkpoint := f.String("checkpoint", "", "saved checkpoint digest to export; default latest committed state; does not rewind training")
-	output := f.String("output", "", "new candidate path; default content-addressed file under data-dir/models")
+	output := f.String("output", "", "new candidate path; default content-addressed .safetensors under data-dir/models; explicit .json for old clients")
 	if e := f.Parse(args); e != nil {
 		if e == flag.ErrHelp {
 			return nil
 		}
 		return e
 	}
-	if *root == "" || f.NArg() != 0 {
-		return fmt.Errorf("export-model requires --data-dir and no positional arguments")
+	if f.NArg() != 0 || (*root == "") == (*model == "") || *model != "" && (*checkpoint != "" || !strings.EqualFold(filepath.Ext(*output), ".safetensors")) {
+		return fmt.Errorf("export-model requires either --data-dir, or --model with --output file.safetensors; --checkpoint is only for --data-dir; no positional arguments")
 	}
 	if e := ctx.Err(); e != nil {
 		return e
+	}
+	if *model != "" {
+		a, err := battlepolicy.LoadArtifact(*model)
+		if err != nil {
+			return err
+		}
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		if err = battlepolicy.SaveArtifact(*output, a); err != nil {
+			return err
+		}
+		_, err = out.Write(append(enc(Object{"event": "model_converted", "model": *output, "format": "safetensors", "weights_digest": a.WeightsDigest, "training_performed": false}), '\n'))
+		return err
 	}
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()

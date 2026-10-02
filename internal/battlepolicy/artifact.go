@@ -197,6 +197,10 @@ func DecodeArtifact(b []byte) (Artifact, error) {
 	if len(b) > 128<<20 {
 		return a, fmt.Errorf("model file exceeds limit")
 	}
+	// A bounded safetensors header length has a zero high byte; JSON does not.
+	if len(b) >= 8 && b[7] == 0 {
+		return decodeTensorArtifact(b)
+	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
 	if e := d.Decode(&a); e != nil {

@@ -77,7 +77,7 @@ elif a[0]=='cp':
  elif src=='/opt/stoneage/skills/sactl':
   shutil.copytree(Path(os.environ['MOCK_ROOT'])/'.agents/skills/sactl',dst)
   if os.environ.get('MOCK_BAD_SKILL'):(dst/'SKILL.md').write_text('wrong version')
- elif src in ['/data/exported-model.json','/data/experiment.json']:dst.write_text('{}')
+ elif src in ['/data/exported-model.safetensors','/data/experiment.json']:dst.write_text('{}')
  else:raise AssertionError(src)
 elif a[0] in ['create','run']:
  assert a[a.index('--pull')+1]=='never'

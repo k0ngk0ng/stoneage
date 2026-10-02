@@ -1,5 +1,7 @@
 # learned v2 初始特征与轨迹契约
 
+推理文件从 v0.2.16 起默认使用标准 safetensors，张量为小端 F32 二维矩阵。`__metadata__` 中的 `stoneage` 保存无权重的模型清单与网络配置，`format` 为 `stoneage-policy-v1`。模型 schema、原权重摘要和逻辑策略身份保持不变；旧 JSON 仍可加载。重复键、非法尺寸/偏移、数据重叠/缺口/截断、非有限值或权重摘要不符均拒绝。
+
 > v0.2.15 修正：本地在线推理按观察 schema、规则接口版本、特征/动作和人数契约校验，不以训练引擎 CPU 或程序摘要作为门槛。模型权重和来源保持原样；下文历史实验中的平台/摘要约束仍适用于离线恢复和受控评估。
 
 当前代码：`internal/battlepolicy`、`internal/battletrain`。这是受控攻击/防御/破防/状态攻击/治疗/有限消耗品场景的初始实现；在线 learned 接入、扩充动作、训练工具产品化和胜率验收仍在进行。完整目标见 [设计](learned-strategy-design.md)，落地范围见 [实现记录](learned-implementation.md)。
