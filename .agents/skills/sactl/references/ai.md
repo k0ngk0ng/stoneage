@@ -12,7 +12,7 @@ sactl ai check --profile bot --strategy learned --model /absolute/path/model.jso
 sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
 ```
 
-`--model` 是用户本地的外部模型文件，安装包不带模型。启动时按游戏服实际规则摘要和引擎平台检查兼容性；不能把旧 ARM 引擎训练模型当作生产 amd64 模型，也不能靠修改 JSON 标签通过检查。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
+`--model` 是用户本地的外部模型文件，安装包不带模型。v0.2.15 起，推理在本机 Go 客户端运行，检查观察 schema、规则接口版本、特征/动作和人数契约；不要求训练引擎与游戏服 CPU 或程序摘要相同。训练来源原样保留，服务器实际摘要和平台另存于战斗记录；离线训练恢复和受控评估仍核对原环境。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
 
 省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic，learned/hybrid 必须指定模型。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
 
@@ -119,13 +119,13 @@ v0.2.13 `sactl ai import-demonstrations --database ./team/state/arena.sqlite3 --
 
 输出 JSONL 和 `.manifest.json` 均须是新路径。只有明确 defeat 结算、完整连续观察/历史、无回退/缺口/未知提交、每条选择都有匹配 written intent 的整场才导入；重复计划不重复计样本，重复比赛同一方拒绝整个导入。written 不是技能生效确认。检查报告的 excluded，旧 basic 未保存规则摘要时记为 missing_rules_metadata，不补造来源。
 
-新指挥官的所有策略均在初始化和逐回合采集时请求 BTRULES，保存实际观察中的规则摘要/平台。非神经策略允许旧服务器不返回此扩展，额外等待约 250ms 后保留缺失字段；查询错误、必需的 BTIME 或整体取消仍返回错误。神经 learned/hybrid 不放宽规则要求。仅发送请求不是收到响应，也不能把旧数据库补上当前服务器的规则。旧本地客户端若不支持 BTRULES 查询，先更新工作程序。
+新指挥官的所有策略均在初始化和逐回合采集时请求 BTRULES，保存实际观察中的规则摘要/平台。非神经策略允许旧服务器不返回此扩展，额外等待约 250ms 后保留缺失字段；查询错误、必需的 BTIME 或整体取消仍返回错误。神经 learned/hybrid 要求元数据存在和接口兼容，不要求训练 CPU/程序摘要与服务器相同。仅发送请求不是收到响应，也不能把旧数据库补上当前服务器的规则。旧本地客户端若不支持 BTRULES 查询，先更新工作程序。
 
 v0.2.13可用 `sactl ai train --demonstrations ./demonstrations.jsonl --data-dir ./demo-training --epochs 2 --batch-episodes 8` 进行本地模仿，不启动 Docker、游戏服务或 Python。训练目录必须新建、父目录存在；人数/特征从数据取得，同次训练要求相同规则/平台/人数/特征。完整冻结数据、模型、Adam 及每轮报告；用 `sactl ai train --data-dir ./demo-training --resume --epochs 2` 额外训练两轮，不再依赖原始输入路径。恢复不能覆盖参数或数据。同目录并发写入、损坏证据或混用原生 PPO/旧 SQLite 参数会拒绝。
 
 Ctrl+C 保留最后一轮已提交状态，输出 demonstration_training_interrupted 并以失败状态退出；初始化未完成则可能尚无可恢复指针，保留现场、换新目录。完成至少一轮后用 `sactl ai export-model --data-dir ./demo-training --output ./recorded-model.json` 导出候选，可选 --checkpoint 固定旧状态而不倒退进度。不能把 demonstration-latest.json 或 learning 文件当作推理产物。胜负不充当价值标签，loss 下降不代表胜率提高。
 
-示范候选为文件 schema 3，网络架构仍是 commander-policy-v2；更新后的 learned/hybrid 能读取，旧客户端会拒绝。配置 model 指向导出文件，仍须实际规则/平台/人数匹配。recorded_training 保存来源摘要和 roster 分组，不伪造合成配置分组或竞技场认证。在线指挥、隔离 simulate 和规则/平台/特征兼容的原生 evaluate 可以加载；评估会在 unverified_source_artifacts 标记候选/对手的未知配置重叠，verify-evaluation 从冻结产物重算标记，不能删除它冒充独立评估。标记非空不允许自动冠军晋级。导出会重新核验数据/报告/权重/优化器进度，损坏或零训练轮时拒绝，不覆盖不同内容的已有模型。
+示范候选为文件 schema 3，网络架构仍是 commander-policy-v2；更新后的 learned/hybrid 能读取，旧客户端会拒绝。配置 model 指向导出文件；在线推理须符合观察/动作/人数契约，训练平台仅为来源记录。recorded_training 保存来源摘要和 roster 分组，不伪造合成配置分组或竞技场认证。在线指挥、隔离 simulate 和规则/平台/特征兼容的原生 evaluate 可以加载；评估会在 unverified_source_artifacts 标记候选/对手的未知配置重叠，verify-evaluation 从冻结产物重算标记，不能删除它冒充独立评估。标记非空不允许自动冠军晋级。导出会重新核验数据/报告/权重/优化器进度，损坏或零训练轮时拒绝，不覆盖不同内容的已有模型。
 
 原生 PPO 接续先用 `experiment --environment ./environment.json --from-model ./recorded-model.json --mode 5 --output ./experiment.json` 固定父模型和目标模式，再用 `train --environment ./environment.json --experiment ./experiment.json --from-model ./recorded-model.json --data-dir ./native-training`。恢复用同目录 --resume，不重复指定父模型或实验。沿用精确权重、重新初始化 Adam；只从新引擎轨迹进行 PPO。导出的 schema 4 子模型保留原实战来源和新的原生训练分组，不能把示范数据改为 PPO schema。用原实验 validation 评估子模型；跨人数初始化不会给父模型增加推理模式。
 
@@ -257,7 +257,7 @@ v0.2.13原生 `ai train` 默认保持单次采样 GAE；实验参数 `--opening-
 
 结束时 `candidate_saved.model` 给出模型路径；不指定 `--output` 时使用内容摘要命名，不覆盖旧模型。训练输出中的 `candidate` 只表示训练产物，尚未证明更强，也不会自动替换正在比赛的模型。支持 v2 的v0.2.13可在队伍配置的 `model` 中显式选择此文件，`learned` / `hybrid` 均按 schema 加载；下载区旧版本不因此自动获得能力。
 
-v2 在排队前通过 `BTRULES` 核对服务端实际规则摘要及平台，缺失或不匹配则拒绝。每场固定模型；同回合轮询不重复推进记忆，部分提交后沿用已保存计划（hybrid 沿用大模型最终批准的计划）。缺少完整历史、事件缺口或场内不支持的观察会明确记录失败原因；只有确认本回合尚无提交或预留时才可回退 basic，不能把回退结果计为模型决策。诊断中的条件动作概率和 `estimated_return` 不是经过校准的胜率。目前有初步完整 1v1、2v2、5v5 执行验证，5v5 已验证原历史观察者离场后的继续规划及保存历史重放；这不代表全部模式、技能、完整竞技场规则一致性或策略强度已经通过验收。
+v0.2.15 起，v2 排队前核对观察 schema 和规则接口版本，并通过 `BTRULES` 采集服务端实际规则摘要及平台；缺失元数据仍拒绝，但训练来源与服务端 CPU/程序摘要不同不阻止本地推理。每场固定模型；同回合轮询不重复推进记忆，部分提交后沿用已保存计划（hybrid 沿用大模型最终批准的计划）。缺少完整历史、事件缺口或场内不支持的观察会明确记录失败原因；只有确认本回合尚无提交或预留时才可回退 basic，不能把回退结果计为模型决策。诊断中的条件动作概率和 `estimated_return` 不是经过校准的胜率。目前有初步完整 1v1、2v2、5v5 执行验证，5v5 已验证原历史观察者离场后的继续规划及保存历史重放；这不代表全部模式、技能、完整竞技场规则一致性或策略强度已经通过验收。
 
 指挥官整体取消时（立即停止或隔离测试总超时），当前决策直接结束，不记录为策略失败、不生成 basic 回退计划；单次策略预算耗尽而指挥官仍运行时，仍须先满足没有提交或预留指令的回退条件。首次 Ctrl-C 仍是等待当前比赛结束后停止，再次 Ctrl-C 才立即取消。
 
@@ -415,7 +415,7 @@ sactl ai train --environment ./environment.json --data-dir ./sustain-training --
 
 `simulate --native-dir build/<原生目录>` 可选择独立的 `gmsv/gmsvjt.exe` / `saac/saacjt.exe`，默认 `build/local-arena/native`；目录限仓库 build 内、路径不含符号链接。数据与配置仍从仓库准备，模型仍须通过实际规则摘要校验。其他工具保持使用 `build/local-arena/bin`。保留旧引擎供旧模型恢复，使用新 work 目录；容器内的旧客户端不支持此参数时必须拒绝，不能忽略后换用默认引擎。
 
-v0.2.13 `simulate --opponent-strategy learned --opponent-model build/models/baseline.json` 可为另一队指定独立的 learned 指挥官，配合主队的 `--strategy learned --model build/models/candidate.json` 做双模型完整链路检查。对手默认为 basic，也可选 explore；只有 learned 对手允许且必须传 opponent-model。两份模型各自验证规则、平台和人数，路径均限仓库 build 内且不得含符号链接；原始记录按 commander-0/commander-1 分开保存。新参数会传给容器工作程序，旧程序必须拒绝，不能忽略后与 basic 对战。这是隔离测试入口，不接管用户已有会话；少量比赛不证明策略更强。双方 explore 使用声明的 seed，但不据此宣称整个引擎可跨运行复现。
+v0.2.13 `simulate --opponent-strategy learned --opponent-model build/models/baseline.json` 可为另一队指定独立的 learned 指挥官，配合主队的 `--strategy learned --model build/models/candidate.json` 做双模型完整链路检查。对手默认为 basic，也可选 explore；只有 learned 对手允许且必须传 opponent-model。两份模型各自验证观察/动作和人数契约，路径均限仓库 build 内且不得含符号链接；原始记录按 commander-0/commander-1 分开保存。新参数会传给容器工作程序，旧程序必须拒绝，不能忽略后与 basic 对战。这是隔离测试入口，不接管用户已有会话；少量比赛不证明策略更强。双方 explore 使用声明的 seed，但不据此宣称整个引擎可跨运行复现。
 
 多人不同配点用重复的 `--member-allocation`（数量等于 `--mode`），双方同位置使用同一配点，每个人物独立满足普通创建角色的 20 点预算。模拟器在开赛前核对公开角色属性并保存 `initial-roster.json`；不完整或不符时停止。旧版模拟器曾把交替分队的账号序号错误映射到配点位置，不同成员配点的旧多人结果须重跑，不能作为对称阵容验收。默认或统一 `--allocation`、离线原生训练数据不受这一问题影响。
 

@@ -84,9 +84,9 @@ sactl ai run --profile bot --strategy learned --model /absolute/path/model.json 
 # 持续匹配：把 --matches 1 换为 --forever。
 ```
 
-**模型作为本地外部文件加载，不随客户端安装包、Release 附件或 Docker 镜像分发，也不部署到生产。** 使用 `--model` 指定模型路径，也兼容旧 `team.json` 的 `model` 字段；`learned` / `hybrid` 要求模型覆盖对应人数、规则版本和引擎平台。安装或升级客户端不会自动生成强模型。模型权重、训练数据、检查点和评估证据保留在本地目录或本机 Docker volume。
+**模型作为本地外部文件加载，不随客户端安装包、Release 附件或 Docker 镜像分发，也不部署到生产。** 使用 `--model` 指定模型路径，也兼容旧 `team.json` 的 `model` 字段；`learned` / `hybrid` 要求模型覆盖对应人数及观察/动作接口版本；训练引擎的 CPU 平台和程序摘要只是来源记录，不限制本地推理。安装或升级客户端不会自动生成强模型。模型权重、训练数据、检查点和评估证据保留在本地目录或本机 Docker volume。
 
-训练与推理由 Go 实现；Mac 的原生战斗引擎环境通过独立 `ai-training` Docker 镜像提供。支持采集、模仿热身、PPO、断点恢复和独立对战评估。在线指挥及调用大模型不要求 Docker；训练镜像的使用方式、volume 持久化和模型导出见 [训练说明](docs/learned-training.md#环境文件)。目标为 Linux amd64 游戏服时，须按训练说明选择匹配的引擎平台。
+训练与推理由 Go 实现；Mac 的原生战斗引擎环境通过独立 `ai-training` Docker 镜像提供。支持采集、模仿热身、PPO、断点恢复和独立对战评估。在线指挥及调用大模型不要求 Docker；训练镜像的使用方式、volume 持久化和模型导出见 [训练说明](docs/learned-training.md#环境文件)。本地模型可以对接不同 CPU 平台的游戏服，无需因此重新训练。
 
 训练轨迹使用压缩分片，支持 `--stop-at-data-bytes` 停止阈值；阈值不是硬磁盘配额，须给镜像、单批写入和日志留余量。已有候选模型尚无稳定优于基线的强度结论，不能将训练完成或接口测试通过视为胜率保证。
 

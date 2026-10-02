@@ -5,7 +5,7 @@ description: 使用 sactl 命令行客户端在石器时代游戏中观察角色
 
 # sactl 游戏会话
 
-配套客户端版本：v0.2.14。四种本地 AI 策略、完整大模型上下文、最终计划恢复与候选模型限制见 [本地 AI](references/ai.md)。升级时同时更新本 skill 和引用文档。
+配套客户端版本：v0.2.15。四种本地 AI 策略、完整大模型上下文、最终计划恢复与候选模型限制见 [本地 AI](references/ai.md)。升级时同时更新本 skill 和引用文档。
 
 通过已安装的 `sactl` 操作用户指定的角色。此 skill 是操作说明，不包含大模型、账号或自主运行服务。
 
@@ -29,7 +29,7 @@ v0.2.13 `train --plan-features target-counts-v1` 可显式训练带计划目标�
 
 ## 接入
 
-v0.2.14 可用 `sactl ai run --profile <已登录会话> --strategy learned --model <本地模型> --matches 1`，无需队伍配置或密码文件。多人重复 `--profile`，默认 basic；LLM 参数也可命令行指定。省略 profile 沿用当前会话，停止 AI 保留用户登录。模型须匹配实际服务器规则/平台；旧 daemon 不支持所需只读会话信息时拒绝，不能忽略参数或自动登出。完整流程和数据目录见 [直接使用已登录角色](references/ai.md#直接使用已登录的角色v0214)。
+v0.2.14 可用 `sactl ai run --profile <已登录会话> --strategy learned --model <本地模型> --matches 1`，无需队伍配置或密码文件。多人重复 `--profile`，默认 basic；LLM 参数也可命令行指定。省略 profile 沿用当前会话，停止 AI 保留用户登录。模型须符合观察/动作/人数契约；训练 CPU 和程序摘要不限制本地在线推理；旧 daemon 不支持所需只读会话信息时拒绝，不能忽略参数或自动登出。完整流程和数据目录见 [直接使用已登录角色](references/ai.md#直接使用已登录的角色v0214)。
 
 v0.2.13 `ai experiment-mix` 与 `ai train --mixed-experiment` 支持同一指挥模型跨模式训练；评估必须逐模式保留完整复合实验，不能改写成单模式产物。`champion init/challenge --mixed-experiment` 共享全部模式的统计预算，全部通过才晋级，完整挑战场数较大。恢复、模型导出、场数及参数约束见 [混合模式训练](references/ai.md#混合模式训练)。
 

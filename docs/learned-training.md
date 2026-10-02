@@ -229,7 +229,7 @@ sactl ai export-model --data-dir ./demo-training --output ./recorded-model.json
 
 导出重新核验冻结数据、每轮报告、权重及 Adam 进度，未完成训练或来源损坏时拒绝。默认输出为训练目录 models 下的内容寻址文件，指定路径不覆盖不同内容。模型包含推理权重及来源摘要，不包含优化器、原始角色阵容和登录凭据。新产物使用文件 schema 3，网络架构仍是 commander-policy-v2；只有更新后的客户端支持。配置中的 strategy 选 learned，model 指向该文件；hybrid 仍需配置本地 Chat Completions 提供商。
 
-规则/平台/人数继续严格检查，模型仅覆盖示范数据对应的模式。recorded_training 保存数据集、训练 checkpoint、源数据库摘要和 recorded-roster-v1 分组；不填写未知的合成场景、不伪造 TrainingGroups/HeldoutGroups 或完整竞技场认证。在线指挥、隔离 simulate 和匹配规则/平台/特征契约的原生 evaluate 均可使用该候选；未知敌方配置导致的源数据重叠会在报告及 CLI 的 `unverified_source_artifacts` 中列出模型摘要。候选和对手都纳入检查。`verify-evaluation` 会从冻结产物重算此字段，删除/篡改标记不会通过核验。已知的原生配置分组继续排除；字段非空时不能声称全部测试数据独立，也不能通过自动冠军晋级。
+模型仅覆盖示范数据对应的模式；在线推理检查观察/动作/人数契约，离线恢复和受控评估继续严格检查规则/平台。recorded_training 保存数据集、训练 checkpoint、源数据库摘要和 recorded-roster-v1 分组；不填写未知的合成场景、不伪造 TrainingGroups/HeldoutGroups 或完整竞技场认证。在线指挥、隔离 simulate 和匹配规则/平台/特征契约的原生 evaluate 均可使用该候选；未知敌方配置导致的源数据重叠会在报告及 CLI 的 `unverified_source_artifacts` 中列出模型摘要。候选和对手都纳入检查。`verify-evaluation` 会从冻结产物重算此字段，删除/篡改标记不会通过核验。已知的原生配置分组继续排除；字段非空时不能声称全部测试数据独立，也不能通过自动冠军晋级。
 
 可从示范候选初始化原生 PPO，必须先冻结使用同一父模型的实验。例如目标模式为 5v5：
 
@@ -355,7 +355,7 @@ sactl ai train --environment ./ai-runtime/environment.json --experiment ./experi
 
 `ai-runtime` 必须是新目录、父目录已存在。初始化检查本地镜像标签和真实工作进程的规则/平台，成功后才生成 `environment.json`；工作进程失败时保留 `worker.log` 与规则档案供诊断。配置固定镜像的本地 `sha256:` ID，后续 tag 更新不会改变这个实验的引擎；不要清理仍被训练引用的镜像。规则档案写入 `ai-runtime/rules`，训练数据另存 `ai-data`。配置保存绝对挂载路径，移动目录或换机器需重新初始化匹配版本，而不是手改模型规则摘要。
 
-模型还绑定引擎平台。Apple Silicon 原生 ARM64 引擎训练的模型不能冒充 amd64 模型；如果目标游戏服是 linux-amd64，安装训练镜像时显式选择该平台（`docker pull --platform linux/amd64 "$SA_TRAINING_IMAGE"`），再初始化并核对输出。Mac 上这会使用仿真，速度须实测；CLI 固定实际检查到的平台，不按本机 CPU 替换。上面的流程只准备环境，不授予模型线上能力或强度认证。
+模型保存实际训练引擎平台用于来源追溯；这不是在线推理的 CPU 限制。Apple Silicon 本地训练的模型可由 Mac 上的 Go 客户端推理并对接 amd64 游戏服，无需重训或修改模型标签。从 v0.2.15 起，在线检查观察/动作/人数契约；离线实验恢复与受控评估仍要求原环境一致以保持可复现性。
 
 如果希望全部训练数据存在 Docker volume，直接运行镜像内的 Go CLI：
 
@@ -390,7 +390,7 @@ docker cp "$SA_EXPORT_CONTAINER:/data/training/models/<模型摘要>.json" ./mod
 docker rm "$SA_EXPORT_CONTAINER"
 ```
 
-不能把 checkpoint 当成推理模型。Mac 原生 learned 加载复制出的模型，仍需匹配实际游戏服的规则摘要、平台与人数模式。若还要在本地评估绑定实验的模型，一并复制对应的 experiment.json；训练恢复则保留整个 volume。
+不能把 checkpoint 当成推理模型。Mac 原生 learned 加载复制出的模型，须符合实际游戏服的观察/动作契约与人数模式，不要求 CPU 或程序摘要相同。若还要在本地评估绑定实验的模型，一并复制对应的 experiment.json；训练恢复则保留整个 volume。
 
 ```json
 {

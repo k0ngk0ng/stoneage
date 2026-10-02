@@ -18,14 +18,18 @@ func (e *neuralFailure) Error() string      { return "learned: " + e.detail }
 func neuralError(code, detail string) error { return &neuralFailure{code, detail} }
 
 // A candidate is usable explicitly, but is never presented as a certified or
-// stronger policy. Rules/platform are compatibility checks, not quality claims.
+// stronger policy. The wire contract gates online inference; the training
+// engine's binary digest and CPU platform are provenance, not model ABI.
 func (l *Learned) validateServer(view Object) error {
 	if l.neural == nil {
 		return nil
 	}
 	clock := obj(obj(view["battle"])["Clock"])
-	if str(clock["RulesVersion"]) != RulesVersion || str(clock["RulesDigest"]) != l.neural.Environment.Rules || str(clock["EnginePlatform"]) != l.neural.Environment.Platform {
-		return neuralError("rules_mismatch", "server must advertise the model's actual rules digest and engine platform")
+	if integer(view["schema_version"]) != 1 || str(clock["RulesVersion"]) != RulesVersion {
+		return neuralError("rules_mismatch", "server battle observation schema or rules contract is unsupported")
+	}
+	if str(clock["RulesDigest"]) == "" || str(clock["EnginePlatform"]) == "" {
+		return neuralError("missing_server_capability", "server must advertise actual rules provenance for battle recording")
 	}
 	return nil
 }

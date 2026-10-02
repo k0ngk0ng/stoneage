@@ -125,6 +125,47 @@ func TestNeuralSchemaRoutingAndJointModes(t *testing.T) {
 	}
 }
 
+func TestNeuralInferenceAcrossServerBuildsAndPlatforms(t *testing.T) {
+	for mode := 1; mode <= 5; mode++ {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			l, path := neuralFixtureModel(t, mode)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			original := string(enc(l.neural))
+			team, history := neuralFixtureTeam(t, mode, 0)
+			baseline, err := l.Decide(context.Background(), team, history)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, platform := range []string{"linux-arm64", "linux-amd64"} {
+				other := clone(team)
+				for _, member := range obj(other["members"]) {
+					clock := obj(obj(obj(member)["battle"])["Clock"])
+					clock["RulesDigest"] = strings.Repeat("f", 64)
+					clock["EnginePlatform"] = platform
+				}
+				observation := string(enc(other))
+				d, err := l.Decide(context.Background(), other, history)
+				if err != nil {
+					t.Fatal(platform, err)
+				}
+				if validatePlan(other, d.Plan) != nil || !reflect.DeepEqual(d.Plan, baseline.Plan) || d.Version != baseline.Version {
+					t.Fatal("provenance changed the local policy or produced an illegal plan")
+				}
+				if string(enc(other)) != observation {
+					t.Fatal("server provenance rewritten")
+				}
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(before) != string(after) || original != string(enc(l.neural)) {
+				t.Fatal("model weights or training provenance changed", err)
+			}
+		})
+	}
+}
+
 func TestNeuralCommanderContinuesAfterHistoryObserverWithdraws(t *testing.T) {
 	l, _ := neuralFixtureModel(t, 2)
 	testNeuralObserverWithdrawal(t, l)
@@ -403,16 +444,20 @@ func TestNeuralStaleUnsubmittedPlanCanReplan(t *testing.T) {
 }
 
 func TestNeuralHistoryAndRuleFailuresAreExplicit(t *testing.T) {
-	for _, kind := range []string{"rules", "platform", "cutoff", "gap", "missing_event", "duplicate_event", "missing_turn", "reconnected"} {
+	for _, kind := range []string{"rules_contract", "schema", "missing_rules", "missing_platform", "cutoff", "gap", "missing_event", "duplicate_event", "missing_turn", "reconnected"} {
 		t.Run(kind, func(t *testing.T) {
 			l, _ := neuralFixtureModel(t, 1)
 			team, h := neuralFixtureTeam(t, 1, 0)
 			v := obj(obj(team["members"])["member-0"])
 			switch kind {
-			case "rules":
-				obj(obj(v["battle"])["Clock"])["RulesDigest"] = strings.Repeat("1", 64)
-			case "platform":
-				obj(obj(v["battle"])["Clock"])["EnginePlatform"] = "linux-arm64"
+			case "rules_contract":
+				obj(obj(v["battle"])["Clock"])["RulesVersion"] = "unsupported"
+			case "schema":
+				v["schema_version"] = 999
+			case "missing_rules":
+				delete(obj(obj(v["battle"])["Clock"]), "RulesDigest")
+			case "missing_platform":
+				delete(obj(obj(v["battle"])["Clock"]), "EnginePlatform")
 			case "cutoff":
 				delete(v, "event_cutoff")
 			case "gap":

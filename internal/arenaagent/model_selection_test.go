@@ -241,7 +241,7 @@ func TestChampionSelectionRejectsWrongServerAndDamagedCache(t *testing.T) {
 	}
 	old := r.strategy.Version()
 	r.loadChampion = fixedChampion(b)
-	view := Object{"schema_version": 1, "battle": Object{"Clock": Object{"RulesVersion": RulesVersion, "RulesDigest": strings.Repeat("f", 64), "EnginePlatform": a.Registry.Environment.Platform}}}
+	view := Object{"schema_version": 1, "battle": Object{"Clock": Object{"RulesVersion": "unsupported", "RulesDigest": strings.Repeat("f", 64), "EnginePlatform": a.Registry.Environment.Platform}}}
 	if err := os.WriteFile(c.Members[0].Config, enc(Object{"ok": true, "data": view}), 0600); err != nil {
 		t.Fatal(err)
 	}
