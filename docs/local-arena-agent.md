@@ -3,16 +3,16 @@
 从 **v0.2.1** 起，竞技场 AI 指挥功能统一为 **`sactl ai`** 子命令，不再单独安装 `arena-agent`。
 在石器百科的 **下载区** 下载安装包，或升级包管理器中的 `sactl` 即可使用。
 在线登录、组队、匹配、作战、数据记录及旧版 SQLite 线性训练不需要 Python、Go 开发环境或 Docker。
-v0.2.11神经网络训练与实际对战评估还需要兼容的 C 战斗引擎；Mac 当前通过 Docker 提供 Linux 引擎环境，Go 训练与推理由 `sactl` 执行。完整隔离游戏服模拟也使用 Docker。
+v0.2.12神经网络训练与实际对战评估还需要兼容的 C 战斗引擎；Mac 当前通过 Docker 提供 Linux 引擎环境，Go 训练与推理由 `sactl` 执行。完整隔离游戏服模拟也使用 Docker。
 
 从零训练的新模型使用 v8 特征，在已有承伤者与保护者历史上加入忠犬攻击，并要求 v8 原生环境。现有 v6/v7 模型仍按原输入规则运行；恢复训练或继承父模型不会自动改版，导出也不重标旧权重。场景、特征和动作分别校验，具体边界见 [特征契约](learned-feature-contract.md)。
 
 每队只有一个指挥官，统一制定人物与宠物的联合计划；成员只观察和执行。
 游戏服拥有全部战斗、匹配、资源和积分规则。本工具不恢复旧 Codex 服务、管理入口或 Web worker。
 
-v0.2.11 `ai train --plan-scope member` 另外提供离线独立成员模型，用于公平比较统一指挥的作用；此模型仅用于训练/评估，本地指挥入口拒绝加载。默认 `team` 行为保持不变，具体信息共享和对照限制见 [训练说明](learned-training.md#独立成员的离线训练对照)。
+v0.2.12 `ai train --plan-scope member` 另外提供离线独立成员模型，用于公平比较统一指挥的作用；此模型仅用于训练/评估，本地指挥入口拒绝加载。默认 `team` 行为保持不变，具体信息共享和对照限制见 [训练说明](learned-training.md#独立成员的离线训练对照)。
 
-v0.2.11 `ai collect-feedback` / `ai train-feedback` 可先采集本地模型实际遇到的局面，再学习单独保存的规则老师建议，支持恢复和历史数据聚合。它们只操作冻结实验的训练场景，原始比赛动作不会被建议覆盖；并非新的在线策略或胜率保证。完整命令与当前规模限制见 [规则反馈训练](learned-training.md#规则反馈采集后再训练)。
+v0.2.12 `ai collect-feedback` / `ai train-feedback` 可先采集本地模型实际遇到的局面，再学习单独保存的规则老师建议，支持恢复和历史数据聚合。它们只操作冻结实验的训练场景，原始比赛动作不会被建议覆盖；并非新的在线策略或胜率保证。完整命令与当前规模限制见 [规则反馈训练](learned-training.md#规则反馈采集后再训练)。
 
 ## 安装和启动
 
@@ -61,7 +61,7 @@ sactl ai run --config arena-team/team.json --forever
 接管前应停止旧指挥官；同一 socket 和同一服务/账号/角色都有文件锁，未完成比赛固定策略版本。
 不要删除 SQLite 检查点来强行重发未知结果。
 
-v0.2.11战斗观察立即返回当前已知状态，不再为可选的物品/宠物编号等待刷新。只读 `AI` 自身状态查询在后台继续；缺失字段仍为未知，策略按既有数据完整性检查决定是否回退。世界观察保留原有短暂等待行为。隔离模拟器每个指挥官首次决策会额外查询 `BTIME` 三次以检查截止时间不被观察操作改变，该校验也计入 `turn_timing` 的决策阶段，不能当作纯模型推理延迟。
+v0.2.12战斗观察立即返回当前已知状态，不再为可选的物品/宠物编号等待刷新。只读 `AI` 自身状态查询在后台继续；缺失字段仍为未知，策略按既有数据完整性检查决定是否回退。世界观察保留原有短暂等待行为。隔离模拟器每个指挥官首次决策会额外查询 `BTIME` 三次以检查截止时间不被观察操作改变，该校验也计入 `turn_timing` 的决策阶段，不能当作纯模型推理延迟。
 
 默认身份锁位于用户缓存目录的 `stoneage-arena/ownership`；可设置 `ownership_dir`，但同一用户所有队伍
 必须使用同一个目录，才能防止同一身份被不同指挥官接管。跨进程名片会合也共用这里的锁。
@@ -78,7 +78,7 @@ v0.2.11战斗观察立即返回当前已知状态，不再为可选的物品/宠
 
 ## 策略
 
-AI 指挥、采集、训练、模型和 Chat Completions 配置仅在本地 `sactl ai` 提供，不增加 Web AI 入口。v0.2.11神经文件还支持 schema 5，用于保留实战模型参与配点搜索的间接来源；即使作战模型从零训练，后续评估也保留未知源配置重叠限制。见 [实战来源的间接影响](learned-build-search.md#实战来源的间接影响)。
+AI 指挥、采集、训练、模型和 Chat Completions 配置仅在本地 `sactl ai` 提供，不增加 Web AI 入口。v0.2.12神经文件还支持 schema 5，用于保留实战模型参与配点搜索的间接来源；即使作战模型从零训练，后续评估也保留未知源配置重叠限制。见 [实战来源的间接影响](learned-build-search.md#实战来源的间接影响)。
 
 | 名称 | 代号 | 行为 |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ AI 指挥、采集、训练、模型和 Chat Completions 配置仅在本地 `sac
 | 推演指挥 | `llm` | 将全队观察、历史和候选动作交给兼容 Chat Completions 的大模型 |
 | 联合参谋 | `hybrid` | 本地模型先建议，大模型再定案；失败时尝试本地建议，尚无部分提交时可最终回退 basic |
 
-在 `team.json` 修改 `strategy`。`learned` / `hybrid` 还需 `model` 文件路径；v0.2.11也支持 schema_version=2 的 `champion_directory`，与 model 二选一，见[逐场选模](learned-champion.md#队伍逐场选模)。
+在 `team.json` 修改 `strategy`。`learned` / `hybrid` 还需 `model` 文件路径；v0.2.12也支持 schema_version=2 的 `champion_directory`，与 model 二选一，见[逐场选模](learned-champion.md#队伍逐场选模)。
 模型未覆盖该人数模式、规则版本不匹配时拒绝启动；现场动作超出训练覆盖时，按下述提交状态限制决定是否回退。
 每场固定模型内容哈希；训练可在另一进程进行，评估后等当前比赛结束并重启以切换模型。
 
@@ -115,7 +115,7 @@ HTTP 请求由 Go 的 context 限时取消，禁止重定向转发密钥。`cont
 
 默认数据位置是队伍目录的 `data/arena.sqlite3`，即配置里的 `state_dir/arena.sqlite3`。
 
-v0.2.11在 `records` 中增加 `kind=turn_timing`：每次进入决策的尝试保存观察采集、历史读库、策略计算、计划落盘和并发提交五段 `durations_ms`，以及 `total_ms`、实际策略、计划摘要、复用标记和结果。计时使用本机单调时钟，从本次 battle 处理开始，到提交阶段返回或失败为止；不含外层排队/轮询等待、服务端结算及计时记录自身落盘。`dispatch_complete` 仅表示提交函数返回，是否写入仍须检查 `submission` 与意图状态；`canceled`、`late_decision`、`error` 不能混入正常完成样本。尚未进入决策的观察失败沿用 `observation_failure`；进程被强制终止、存储故障或旧版本可能缺少计时，不能补成零。计时不进入模型历史或 PPO 特征。
+v0.2.12在 `records` 中增加 `kind=turn_timing`：每次进入决策的尝试保存观察采集、历史读库、策略计算、计划落盘和并发提交五段 `durations_ms`，以及 `total_ms`、实际策略、计划摘要、复用标记和结果。计时使用本机单调时钟，从本次 battle 处理开始，到提交阶段返回或失败为止；不含外层排队/轮询等待、服务端结算及计时记录自身落盘。`dispatch_complete` 仅表示提交函数返回，是否写入仍须检查 `submission` 与意图状态；`canceled`、`late_decision`、`error` 不能混入正常完成样本。尚未进入决策的观察失败沿用 `observation_failure`；进程被强制终止、存储故障或旧版本可能缺少计时，不能补成零。计时不进入模型历史或 PPO 特征。
 使用 WAL 和事务保存事件、整队观察、联合计划、策略/模型版本、提交意图及回执、终局和积分。
 网络断线、事件游标缺口和未知写入结果都有明确标识；未知结果不重复提交。
 
@@ -150,7 +150,7 @@ Go 和 Python 的随机序列及模型序列化可能不同，不承诺相同种
 旧的 10,000 条裸人物同点数 1v1 加点样本不是出招策略模型，不能直接用于本训练接口。
 开发烟测模型只覆盖 1v1 和 5v5，不能当作 2v2–4v4 模型；也不随安装包作为强策略发布。
 
-工作区新增的 v2 原生环境训练使用 `--environment` / `--data-dir`，支持规则模仿热身、PPO、恢复和对战评估，见 [v0.2.11训练入口](learned-training.md)。`learned` / `hybrid` 支持旧线性模型及 commander-policy-v2 神经架构；神经模型文件 schema 2/3/4 分别保留原生、实战示范及两者接续的来源。神经策略要求服务端通过 `BTRULES` 返回匹配的规则摘要及平台。所有策略采集均请求这项元数据，非神经策略允许旧服务器缺失，但记录不能据此补造训练来源。带实战来源的评估保留 unverified_source_artifacts，不冒称已经排除未知训练配置重叠。候选模型可显式选用，但不代表已证明更强。已有受控 1v1、2v2、5v5 的执行验证及独立 5v5 离场、42 回合重放证据，覆盖范围见 [实施记录](learned-implementation.md)；完整规则一致性与策略强度验收仍待完成，工具随 v0.2.11 发布到下载区。
+工作区新增的 v2 原生环境训练使用 `--environment` / `--data-dir`，支持规则模仿热身、PPO、恢复和对战评估，见 [v0.2.12训练入口](learned-training.md)。`learned` / `hybrid` 支持旧线性模型及 commander-policy-v2 神经架构；神经模型文件 schema 2/3/4 分别保留原生、实战示范及两者接续的来源。神经策略要求服务端通过 `BTRULES` 返回匹配的规则摘要及平台。所有策略采集均请求这项元数据，非神经策略允许旧服务器缺失，但记录不能据此补造训练来源。带实战来源的评估保留 unverified_source_artifacts，不冒称已经排除未知训练配置重叠。候选模型可显式选用，但不代表已证明更强。已有受控 1v1、2v2、5v5 的执行验证及独立 5v5 离场、42 回合重放证据，覆盖范围见 [实施记录](learned-implementation.md)；完整规则一致性与策略强度验收仍待完成，工具随 v0.2.12 发布到下载区。
 
 离线规则对照另可显式选择 `independent-control`（如 `evaluate --opponent independent-control`）：各成员获得相同完整公共观察，仅协调自己与宠物，不共享本回合队友的治疗和控制预留。它与集中式 `control` 在 1v1 相同，多人时可能重复选择目标；仍可看到并治疗队友。它是规则对手/教师，不是第五种线上策略，也不等于独立训练模型。默认教师与对手不变，已冻结验证不能事后追加它；比较需另行预定，规则数据不进入 PPO 在策略更新。
 所有对局通过正常竞技场完成，使用真实 C 战斗引擎；容器内同样不需要 Python。
@@ -174,7 +174,7 @@ sactl ai simulate --root . --work build/local-arena/eval-2v2-001 \
   --model build/local-arena/models/2v2-v1.json
 ```
 
-对手默认是 `basic`。v0.2.11可用 `--opponent-strategy basic|learned|explore` 指定另一队的独立指挥官；选择 `learned` 时必须同时给出 `--opponent-model`，其他策略不能带该模型参数。例如比较两个模型的完整登录、匹配和执行链路：
+对手默认是 `basic`。v0.2.12可用 `--opponent-strategy basic|learned|explore` 指定另一队的独立指挥官；选择 `learned` 时必须同时给出 `--opponent-model`，其他策略不能带该模型参数。例如比较两个模型的完整登录、匹配和执行链路：
 
 ```sh
 sactl ai simulate --root . --work build/local-arena/duel-2v2-001 \
@@ -237,15 +237,15 @@ Web 会话的 battle-state/battle-events 接口复用 Go 公共层，动作仍�
 
 覆盖特定边界时可加 `--require-withdrawal`（仅多人，要求己方原历史观察者被击飞离场后，指定策略至少产生一次新的计划，不能靠计划复用凑数）及 `--min-battle-turns 20`（至少一场已结算比赛达到 20 个决策回合）。未实际触发就报错，不生成 `commander-passed.json`；这两项不改变游戏伤害、击飞、回合时限或决策。通过产物包含 `observer_withdrawn_decisions` 和每场 `decision_turns`。高等级不保证击飞或长局，仍以实际记录为准，也不作为策略强度认证。容器内工作程序必须同时更新，旧程序会拒绝新增参数。
 
-正式训练比较可先用 `sactl ai experiment` 冻结训练、验证、最终测试家族，再让 `train/evaluate --experiment` 复用清单；v0.2.11新训练默认按近期训练弱点调整类别内对手权重，`sactl ai league --data-dir` 可复核训练矩阵。这些训练成绩不等于独立评测或自动晋级。原生评估同时保留报告及同名 `.data` 目录，`sactl ai verify-evaluation --report` 核对模型、赛程、原始轨迹和策略动作。详细流程、恢复兼容及最终测试限制见 [learned 训练说明](learned-training.md)。
+正式训练比较可先用 `sactl ai experiment` 冻结训练、验证、最终测试家族，再让 `train/evaluate --experiment` 复用清单；v0.2.12新训练默认按近期训练弱点调整类别内对手权重，`sactl ai league --data-dir` 可复核训练矩阵。这些训练成绩不等于独立评测或自动晋级。原生评估同时保留报告及同名 `.data` 目录，`sactl ai verify-evaluation --report` 核对模型、赛程、原始轨迹和策略动作。详细流程、恢复兼容及最终测试限制见 [learned 训练说明](learned-training.md)。
 
-v0.2.11可用 `sactl ai compare-evaluations --baseline ./before.json --candidate ./after.json` 比较同一冻结验证集、相同完整对手集合的两份原生报告。命令先核验双方 `.data`，再按配置家族比较相同场景/阵营/对手的得分变化；保留截断不确定性，输出区间而不自动选择冠军。它是本地只读分析，不调用游戏服务器或大模型。
+v0.2.12可用 `sactl ai compare-evaluations --baseline ./before.json --candidate ./after.json` 比较同一冻结验证集、相同完整对手集合的两份原生报告。命令先核验双方 `.data`，再按配置家族比较相同场景/阵营/对手的得分变化；保留截断不确定性，输出区间而不自动选择冠军。它是本地只读分析，不调用游戏服务器或大模型。
 
 `sactl ai champion` 提供固定门槛的本地受控原生晋级、失败保留和历史回退，详见 [冠军流程](learned-champion.md)。队伍显式配置 `champion_directory` 后，新排队前重验并选择当前原生冠军，整场和重启恢复保持模型固定；不会改动用户配置，也不把原生晋级称为完整线上认证。
 
 `sactl ai build-search` 固定战斗模型或规则策略，在隔离原生引擎中搜索同预算整数配点，保存双方轨迹并给出原生复验报告。支持中断恢复，只生成建议，不给线上角色洗点/加点。`build-pool` 冻结多个完整阵容，配合 `experiment/train --from-model` 开始下一轮战斗训练；用法、来源隔离和恢复限制见 [配点搜索说明](learned-build-search.md)。
 
-v0.2.11 `sactl ai build-validate init|run|verify|compare` 进一步比较父子模型分别使用均衡/已选配点时的表现，分开报告配点和决策收益。它沿同一补充清单执行并支持显式恢复，报告不替代原实验最终测试或冠军认证；固定五项统计、截断处理及完整命令见 [联合配点验证](learned-build-search.md#分开验证配点收益与决策收益)。
+v0.2.12 `sactl ai build-validate init|run|verify|compare` 进一步比较父子模型分别使用均衡/已选配点时的表现，分开报告配点和决策收益。它沿同一补充清单执行并支持显式恢复，报告不替代原实验最终测试或冠军认证；固定五项统计、截断处理及完整命令见 [联合配点验证](learned-build-search.md#分开验证配点收益与决策收益)。
 敌方隐藏数值不填猜测值，未知战斗包保留 raw 和未知标识。现有 Web 按钮尚未全部迁入候选接口，不宣称所有客户端能力完全对等。
 
 正式用户直接运行 `sactl ai`，无需仓库、`bin/` 前缀或编译器。
