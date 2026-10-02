@@ -94,7 +94,7 @@ static int parity_target(int side,int pets_first)
 static void recipient_probe(void)
 {
     const char *names[]={"ordinary","guardian","reflection","guardian_reflection","absorb","vanish","counter_reflection"};
-    int kind,attempt,i,c,b,changed,expected,damage,flags,target,guardian;
+    int kind,attempt,i,c,b,changed,expected,damage,flags,target,guardian,counter_luck;
     int before[20],after[20];
     char movie[8192],*hit;
     assert(environment_enter(1,42));b=env_battle;
@@ -134,7 +134,14 @@ static void recipient_probe(void)
             BATTLE_Attack(b,0,10);
             if(kind==6) {
                 CHAR_setWorkInt(BATTLE_No2Index(b,0),CHAR_WORKDAMAGEREFLEC,1);
+                /* This probes reflection attribution, not counter frequency.
+                 * Native libc seed sequences differ; give this synthetic
+                 * counterattacker sufficient luck to exercise the real gate. */
+                c=BATTLE_No2Index(b,10);
+                counter_luck=CHAR_getWorkInt(c,CHAR_WORKFIXLUCK);
+                CHAR_setWorkInt(c,CHAR_WORKFIXLUCK,100);
                 BATTLE_Counter(b,10,0);
+                CHAR_setWorkInt(c,CHAR_WORKFIXLUCK,counter_luck);
                 if(!strstr(movie,"counter"))continue;
             }
             BATTLESTR_ADD("FF|");
@@ -167,6 +174,7 @@ static void recipient_probe(void)
             printf("],\"after\":[");for(i=0;i<20;i++)printf("%s%d",i?",":"",after[i]);
             puts("]}");break;
         }
+        if(attempt==100)fprintf(stderr,"recipient scenario exhausted: %s\n",names[kind]);
         assert(attempt<100);
     }
     environment_dispose();
