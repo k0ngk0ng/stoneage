@@ -164,9 +164,9 @@ jobs:
           if-no-files-found: error
 
   images:
-    name: Image (${{ matrix.image }})
+    name: Image (${{ matrix.id }})
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -174,18 +174,40 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: control-plane
+          - id: control-plane
+            image: control-plane
+            runner: ubuntu-latest
+            suffix: ""
+            cache: buildcache
             file: deploy/linux/Dockerfile
             target: control-plane
             platforms: linux/amd64,linux/arm64
-          - image: legacy-runtime
+          - id: legacy-runtime
+            image: legacy-runtime
+            runner: ubuntu-latest
+            suffix: ""
+            cache: buildcache
             file: deploy/linux/legacy-runtime.Dockerfile
             target: legacy-runtime
             platforms: linux/amd64
-          - image: ai-training
+          # Native C probes and Go training must run on their own CPU, rather
+          # than spending most of the release in QEMU. Merge indexes below.
+          - id: ai-training-amd64
+            image: ai-training
+            runner: ubuntu-latest
+            suffix: -amd64
+            cache: buildcache-amd64
             file: deploy/linux/legacy-runtime.Dockerfile
             target: ai-training
-            platforms: linux/amd64,linux/arm64
+            platforms: linux/amd64
+          - id: ai-training-arm64
+            image: ai-training
+            runner: ubuntu-24.04-arm
+            suffix: -arm64
+            cache: buildcache-arm64
+            file: deploy/linux/legacy-runtime.Dockerfile
+            target: ai-training
+            platforms: linux/arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -196,6 +218,7 @@ jobs:
             !/client/web/assets/
             !/reference/
       - uses: docker/setup-qemu-action@v3
+        if: matrix.id == 'control-plane'
         with:
           platforms: arm64
       - name: Fix native compilation timestamp to the source commit
@@ -219,33 +242,71 @@ jobs:
             RELEASE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
             SOURCE_DATE_EPOCH=${{ steps.source.outputs.epoch }}
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}${{ matrix.suffix }}
           provenance: true
           # Registry caches cross tag boundaries; separate refs prevent the
           # two Dockerfiles from replacing each other's cache records.
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/${{ matrix.image }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/${{ matrix.image }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ matrix.cache }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ matrix.cache }},mode=max,image-manifest=true,oci-mediatypes=true
       - name: Record immutable image reference
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          IMAGE_REF: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
+          IMAGE_REF: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}${{ matrix.suffix }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           mkdir -p dist
           test -n "$IMAGE_DIGEST"
-          printf '%s@%s\n' "$IMAGE_REF" "$IMAGE_DIGEST" > 'dist/digest-${{ matrix.image }}'
+          printf '%s@%s\n' "$IMAGE_REF" "$IMAGE_DIGEST" > 'dist/digest-${{ matrix.id }}'
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          name: release-digest-${{ matrix.image }}
+          name: release-digest-${{ matrix.id }}
           path: dist/digest-*
+          retention-days: 2
+          if-no-files-found: error
+
+  training-manifest:
+    name: Publish multi-platform training index
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-digest-ai-training-*
+          merge-multiple: true
+          path: build/training-digests
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge immutable native architecture images
+        env:
+          IMAGE_REF: ghcr.io/${{ github.repository }}/ai-training:${{ github.ref_name }}
+        run: |
+          amd64=$(cat build/training-digests/digest-ai-training-amd64)
+          arm64=$(cat build/training-digests/digest-ai-training-arm64)
+          docker buildx imagetools create --tag "$IMAGE_REF" "$amd64" "$arm64"
+          digest=$(docker buildx imagetools inspect "$IMAGE_REF" --format '{{.Manifest.Digest}}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          mkdir -p dist
+          printf '%s@%s\n' "$IMAGE_REF" "$digest" > dist/digest-ai-training
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-digest-ai-training
+          path: dist/digest-ai-training
           retention-days: 2
           if-no-files-found: error
 
   training-toolkit:
     name: Verify training toolkit (${{ matrix.arch }})
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: images
+    needs: [images, training-manifest]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -285,7 +346,7 @@ jobs:
   training-compatibility:
     name: Match training and game engine rules
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: images
+    needs: [images, training-manifest]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -361,7 +422,7 @@ jobs:
         working-directory: dist
         run: |
           cat digest-control-plane digest-legacy-runtime digest-ai-training > IMAGE-DIGESTS
-          rm digest-control-plane digest-legacy-runtime digest-ai-training
+          rm digest-control-plane digest-legacy-runtime digest-ai-training digest-ai-training-amd64 digest-ai-training-arm64
           sha256sum ./* > SHA256SUMS
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

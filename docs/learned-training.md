@@ -340,7 +340,7 @@ sactl ai train --environment ./environment.json --experiment ./experiment-2v2.js
 
 v0.2.12新增 `sactl ai environment init/check` 与独立 `ai-training` 镜像构建目标。从 v0.2.12 发布该镜像，须先显式下载；旧 `legacy-runtime` 或任意基础镜像不能冒充训练镜像。初始化不会自动下载，发布流水线须先完成 amd64/arm64 实际引擎与采集训练测试。
 
-发布流程为 amd64 和 arm64 分别使用原生 Linux 托管 runner，检查匿名下载、镜像与 CLI 版本、镜像内 skill、volume 恢复与导出模型评估；两种架构都通过后才发布 Release。构建时的短训练检查不代替这些镜像发布后的验证。另行比较 ai-training 与 legacy-runtime 的 amd64 默认规则摘要。原生编译时间固定为源码提交时间，避免同源码因 `__DATE__` / `__TIME__` 不同而产生不同二进制摘要。此比较不覆盖生产自行修改的配置和表；上线时仍以游戏服返回的实际规则元数据为准。
+构建与发布验收均由 amd64 和 arm64 各自的原生 Linux 托管 runner 执行；两个训练镜像按不可变摘要合并为统一多架构索引，然后检查匿名下载、镜像与 CLI 版本、镜像内 skill、volume 恢复与导出模型评估；两种架构都通过后才发布 Release。构建时的短训练检查不代替这些镜像发布后的验证。另行比较 ai-training 与 legacy-runtime 的 amd64 默认规则摘要。原生编译时间固定为源码提交时间，避免同源码因 `__DATE__` / `__TIME__` 不同而产生不同二进制摘要。此比较不覆盖生产自行修改的配置和表；上线时仍以游戏服返回的实际规则元数据为准。
 
 Mac 原生 Go 训练、Docker 仅运行 Linux 引擎：
 
