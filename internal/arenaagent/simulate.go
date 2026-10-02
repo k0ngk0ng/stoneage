@@ -17,9 +17,17 @@ import (
 
 type Simulation struct {
 	Root, Work, Image, Strategy, Model string
+	OpponentStrategy, OpponentModel    string
+	NativeDirectory                    string
+	Allocation                         string
+	MemberAllocations                  []string
 	Mode, Matches                      int
+	FixtureLevel                       int
+	RequireWithdrawal                  bool
+	MinBattleTurns                     int
 	Seed                               int64
 	Reconnect                          bool
+	Timeout                            time.Duration
 	Output                             io.Writer
 }
 
@@ -33,22 +41,55 @@ func (s Simulation) validate() (Simulation, error) {
 	if s.Mode < 1 || s.Mode > 5 || s.Matches < 1 {
 		return s, fmt.Errorf("mode must be 1–5 and matches positive")
 	}
+	if s.FixtureLevel == 0 {
+		s.FixtureLevel = 1
+	}
+	if s.FixtureLevel < 1 || s.FixtureLevel > 140 || s.MinBattleTurns < 0 || s.MinBattleTurns > 200 || s.RequireWithdrawal && s.Mode == 1 {
+		return s, fmt.Errorf("fixture-level must be 1..140, min-battle-turns 0..200, and withdrawal requires multiplayer")
+	}
+	if s.Timeout < 0 {
+		return s, fmt.Errorf("simulation timeout cannot be negative")
+	}
+	if s.Timeout == 0 {
+		// Login, queueing and intentional reconnection share this budget with
+		// actual server-paced turns. The former 2-minute-per-match floor cut
+		// off valid multi-player matches while commands were still progressing.
+		const perMatch = 2 * time.Minute
+		if int64(s.Matches) > (1<<63-1)/int64(perMatch) {
+			return s, fmt.Errorf("simulation matches exceed duration range")
+		}
+		s.Timeout = max(10*time.Minute, time.Duration(s.Matches)*perMatch)
+	}
+	for seat := 0; seat < s.Mode; seat++ {
+		if _, e = s.creationArgs("fixture", seat); e != nil {
+			return s, e
+		}
+	}
 	if s.Strategy != "basic" && s.Strategy != "learned" && s.Strategy != "explore" {
 		return s, fmt.Errorf("simulation strategy must be basic, learned or explore")
 	}
 	if s.Strategy == "learned" && s.Model == "" {
 		return s, fmt.Errorf("learned simulation requires model")
 	}
-	for _, path := range []string{s.Work, s.Model} {
+	if s.OpponentStrategy == "" {
+		s.OpponentStrategy = "basic"
+	}
+	if s.OpponentStrategy != "basic" && s.OpponentStrategy != "learned" && s.OpponentStrategy != "explore" {
+		return s, fmt.Errorf("opponent-strategy must be basic, learned or explore")
+	}
+	if (s.OpponentStrategy == "learned") != (s.OpponentModel != "") {
+		return s, fmt.Errorf("opponent-model is required exactly when opponent-strategy is learned")
+	}
+	for _, path := range []string{s.Work, s.Model, s.OpponentModel, s.NativeDirectory} {
 		if path == "" {
 			continue
 		}
 		p := absolute(s.Root, path)
 		relative, e := filepath.Rel(filepath.Join(s.Root, "build"), p)
 		if e != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return s, fmt.Errorf("work and model must be inside repository build/")
+			return s, fmt.Errorf("work, model and native-dir must be inside repository build/")
 		}
-		parent := filepath.Dir(p)
+		parent := p
 		for {
 			if info, e := os.Lstat(parent); e == nil && info.Mode()&os.ModeSymlink != 0 {
 				return s, fmt.Errorf("simulation paths cannot contain symlinks")
@@ -69,11 +110,122 @@ func (s Simulation) validate() (Simulation, error) {
 	if s.Model != "" {
 		s.Model = absolute(s.Root, s.Model)
 	}
+	if s.OpponentModel != "" {
+		s.OpponentModel = absolute(s.Root, s.OpponentModel)
+	}
+	if s.NativeDirectory != "" {
+		s.NativeDirectory = absolute(s.Root, s.NativeDirectory)
+	}
 	if s.Output == nil {
 		s.Output = io.Discard
 	}
 	return s, nil
 }
+
+func (s Simulation) nativeRoot() string {
+	if s.NativeDirectory != "" {
+		return absolute(s.Root, s.NativeDirectory)
+	}
+	return filepath.Join(s.Root, "build/local-arena/native")
+}
+
+// Use the normal character creation API, never modify a running character or
+// synthetic server memory. Native new characters have a 20-point budget.
+func (s Simulation) creationArgs(name string, seat int) ([]string, error) {
+	args := []string{"create-character", name}
+	allocation := s.Allocation
+	if len(s.MemberAllocations) > 0 {
+		if allocation != "" || len(s.MemberAllocations) != s.Mode || seat < 0 || seat >= s.Mode {
+			return nil, fmt.Errorf("use either --allocation or exactly --mode member allocations, one per team seat")
+		}
+		allocation = s.MemberAllocations[seat]
+		if allocation == "" {
+			return nil, fmt.Errorf("member allocation cannot be empty")
+		}
+	}
+	if allocation == "" {
+		return args, nil
+	}
+	values := strings.Split(allocation, ",")
+	if len(values) != 4 {
+		return nil, fmt.Errorf("--allocation requires vital,strength,toughness,dexterity totaling 20")
+	}
+	total := 0
+	for i, flag := range []string{"--vital", "--strength", "--toughness", "--dexterity"} {
+		n, err := strconv.Atoi(strings.TrimSpace(values[i]))
+		if err != nil || n < 0 || n > 20 {
+			return nil, fmt.Errorf("--allocation requires four integers in 0..20")
+		}
+		total += n
+		args = append(args, flag, strconv.Itoa(n))
+	}
+	if total != 20 {
+		return nil, fmt.Errorf("--allocation must total the native creation budget of 20")
+	}
+	return args, nil
+}
+
+// Fixture accounts alternate commanders: 0/2/4/... versus 1/3/5/....
+// The position within either roster is index/2, not index%mode.
+func (s Simulation) memberCreationArgs(name string, index int) ([]string, error) {
+	if index < 0 || index >= 2*s.Mode {
+		return nil, fmt.Errorf("invalid fixture member index")
+	}
+	return s.creationArgs(name, index/2)
+}
+
+// Check the public post-login attributes before starting either commander.
+// A symmetric command line is insufficient evidence that the actual teams
+// received the intended roster. Preserve this observation with the run.
+func (s Simulation) initialRosterEvidence(before map[int]Object) ([]Object, error) {
+	if len(before) != 2*s.Mode {
+		return nil, fmt.Errorf("incomplete initial fixture roster")
+	}
+	var evidence []Object
+	for seat := 0; seat < s.Mode; seat++ {
+		var previous [4]int
+		for side := 0; side < 2; side++ {
+			index := 2*seat + side
+			player := obj(before[index]["Player"])
+			if !yes(player["CombatStatsKnown"]) {
+				return nil, fmt.Errorf("fixture member %d has incomplete initial attributes", index)
+			}
+			var actual [4]int
+			for j, key := range []string{"Vital", "Strength", "Toughness", "Dexterity"} {
+				if _, ok := player[key]; !ok {
+					return nil, fmt.Errorf("fixture member %d missing %s", index, key)
+				}
+				actual[j] = integer(player[key])
+			}
+			args, err := s.creationArgs("fixture", seat)
+			if err != nil {
+				return nil, err
+			}
+			if len(args) > 2 {
+				var requested [4]int
+				for j := range requested {
+					requested[j], _ = strconv.Atoi(args[3+2*j])
+				}
+				requested = scaledFixtureBuild(requested, s.fixtureBudget())
+				for j := range actual {
+					if actual[j] != requested[j] {
+						return nil, fmt.Errorf("fixture member %d allocation differs from requested seat %d", index, seat)
+					}
+				}
+			}
+			if s.FixtureLevel > 1 && (integer(player["Level"]) != s.FixtureLevel || actual[0]+actual[1]+actual[2]+actual[3] != s.fixtureBudget()) {
+				return nil, fmt.Errorf("fixture member %d did not load requested level/budget", index)
+			}
+			if side == 1 && actual != previous {
+				return nil, fmt.Errorf("fixture teams have different initial allocations at seat %d", seat)
+			}
+			previous = actual
+			evidence = append(evidence, Object{"member_index": index, "commander": side, "seat": seat, "attributes": actual, "level": player["Level"]})
+		}
+	}
+	return evidence, nil
+}
+
 func Simulate(ctx context.Context, s Simulation) error {
 	s, e := s.validate()
 	if e != nil {
@@ -82,30 +234,92 @@ func Simulate(ctx context.Context, s Simulation) error {
 	if s.Image == "" {
 		s.Image = "gcc:13-bookworm"
 	}
-	for _, name := range []string{"bin/sactl", "bin/stoneage-gateway", "bin/seed-network", "native/gmsv/gmsvjt.exe", "native/saac/saacjt.exe"} {
-		if info, e := os.Stat(filepath.Join(s.Root, "build/local-arena", name)); e != nil || !info.Mode().IsRegular() {
-			return fmt.Errorf("missing prepared Linux binary: build/local-arena/%s", name)
+	paths := []string{}
+	for _, name := range []string{"sactl", "stoneage-gateway", "seed-network"} {
+		paths = append(paths, filepath.Join(s.Root, "build/local-arena/bin", name))
+	}
+	paths = append(paths, filepath.Join(s.nativeRoot(), "gmsv/gmsvjt.exe"), filepath.Join(s.nativeRoot(), "saac/saacjt.exe"))
+	for _, path := range paths {
+		if info, e := os.Stat(path); e != nil || !info.Mode().IsRegular() {
+			return fmt.Errorf("missing prepared Linux binary: %s", path)
 		}
 	}
 	if e = os.MkdirAll(filepath.Dir(s.Work), 0700); e != nil {
 		return e
 	}
+	cmd := exec.CommandContext(ctx, "docker", s.containerArguments()...)
+	cmd.Stdout = s.Output
+	cmd.Stderr = s.Output
+	cmd.WaitDelay = time.Second
+	return cmd.Run()
+}
+
+func (s Simulation) containerArguments() []string {
 	containerPath := func(path string) string {
 		rel, _ := filepath.Rel(s.Root, path)
 		return "/repo/" + filepath.ToSlash(rel)
 	}
 	args := []string{"run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--cpus", "2", "--memory", "2g", "--tmpfs", "/tmp:rw,size=128m", "--mount", "type=bind,src=" + s.Root + ",dst=/repo,readonly", "--mount", "type=bind,src=" + filepath.Join(s.Root, "build") + ",dst=/repo/build", "-e", "STONEAGE_ARENA_ISOLATED=1", "--entrypoint", "/repo/build/local-arena/bin/sactl", s.Image, "ai", "native-simulate", "--root", "/repo", "--work", containerPath(s.Work), "--mode", strconv.Itoa(s.Mode), "--matches", strconv.Itoa(s.Matches), "--strategy", s.Strategy, "--seed", strconv.FormatInt(s.Seed, 10)}
+	args = append(args, "--timeout", s.Timeout.String())
+	if s.FixtureLevel > 1 {
+		args = append(args, "--fixture-level", strconv.Itoa(s.FixtureLevel))
+	}
+	if s.RequireWithdrawal {
+		args = append(args, "--require-withdrawal")
+	}
+	if s.MinBattleTurns > 0 {
+		args = append(args, "--min-battle-turns", strconv.Itoa(s.MinBattleTurns))
+	}
 	if s.Model != "" {
 		args = append(args, "--model", containerPath(s.Model))
+	}
+	// Preserve the existing basic-opponent invocation. Any opt-in opponent
+	// setting is forwarded explicitly so an old worker rejects unknown flags.
+	if s.OpponentStrategy != "" && s.OpponentStrategy != "basic" {
+		args = append(args, "--opponent-strategy", s.OpponentStrategy)
+	}
+	if s.OpponentModel != "" {
+		args = append(args, "--opponent-model", containerPath(s.OpponentModel))
+	}
+	if s.NativeDirectory != "" {
+		args = append(args, "--native-dir", containerPath(s.NativeDirectory))
+	}
+	if s.Allocation != "" {
+		args = append(args, "--allocation", s.Allocation)
+	}
+	for _, allocation := range s.MemberAllocations {
+		args = append(args, "--member-allocation", allocation)
 	}
 	if s.Reconnect {
 		args = append(args, "--reconnect")
 	}
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = s.Output
-	cmd.Stderr = s.Output
-	cmd.WaitDelay = time.Second
-	return cmd.Run()
+	return args
+}
+
+func (s Simulation) newCommander(side int, c Config) (*Runner, error) {
+	if side < 0 || side > 1 {
+		return nil, fmt.Errorf("invalid simulation commander side")
+	}
+	strategy, model := s.Strategy, s.Model
+	if side == 1 {
+		strategy, model = s.OpponentStrategy, s.OpponentModel
+	}
+	c.Strategy, c.Model = "basic", ""
+	switch strategy {
+	case "", "basic", "explore":
+	case "learned":
+		c.Strategy, c.Model = strategy, model
+	default:
+		return nil, fmt.Errorf("unsupported simulation strategy %q", strategy)
+	}
+	r, err := NewRunner(c)
+	if err != nil {
+		return nil, err
+	}
+	if strategy == "explore" {
+		r.strategy = &Explore{Seed: s.Seed}
+	}
+	return r, nil
 }
 
 type fixtureProcess struct {
@@ -171,7 +385,7 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 	if e != nil {
 		return e
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(max(180, s.Matches*120))*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 	if e = os.Mkdir(s.Work, 0700); e != nil {
 		return e
@@ -231,6 +445,18 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 	}
 	env := append(os.Environ(), "TMPDIR="+filepath.Join(s.Work, "tmp"), "XDG_STATE_HOME="+filepath.Join(s.Work, "state"), "XDG_CONFIG_HOME="+filepath.Join(s.Work, "state"), "STONEAGE_PLAYER_ADMIN_DIR="+filepath.Join(s.Work, "admin"), "STONEAGE_LADDER_DB="+filepath.Join(s.Work, "ladder.db"), "STONEAGE_GMSV_TRUSTED_GATEWAY_HOST=127.0.0.1", "STONEAGE_GATEWAY_ROUTES=", "STONEAGE_GATEWAY_TRUSTED_PROXY_HOSTS=")
 	binaries := filepath.Join(s.Root, "build/local-arena")
+	rulesCommand := exec.CommandContext(ctx, "sh", filepath.Join(s.Root, "server/legacy/modern/prepare-battle-rules.sh"), "setup.cf", "--digest-only")
+	rulesCommand.Dir = filepath.Join(s.Work, "gmsv")
+	rulesCommand.Env = append(append([]string(nil), env...), "STONEAGE_BATTLE_BINARY="+filepath.Join(s.nativeRoot(), "gmsv/gmsvjt.exe"))
+	rulesOutput, e := rulesCommand.Output()
+	if e != nil {
+		return fmt.Errorf("prepare simulation rule digest: %w", e)
+	}
+	rules := strings.TrimSpace(string(rulesOutput))
+	if len(rules) != 64 || strings.Trim(rules, "0123456789abcdef") != "" {
+		return fmt.Errorf("invalid simulation rule digest")
+	}
+	env = append(env, "STONEAGE_BATTLE_RULESET_ID="+rules)
 	seed := exec.CommandContext(ctx, filepath.Join(binaries, "bin/seed-network"), s.Work)
 	seed.Env = env
 	if e = seed.Run(); e != nil {
@@ -261,13 +487,16 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 			return e == nil
 		})
 	}
-	if e = launch("saac", filepath.Join(s.Work, "saac"), ports[0], filepath.Join(binaries, "native/saac/saacjt.exe")); e != nil {
-		return e
+	startServers := func() error {
+		if e := launch("saac", filepath.Join(s.Work, "saac"), ports[0], filepath.Join(s.nativeRoot(), "saac/saacjt.exe")); e != nil {
+			return e
+		}
+		if e := launch("gmsv", filepath.Join(s.Work, "gmsv"), ports[1], filepath.Join(s.nativeRoot(), "gmsv/gmsvjt.exe"), "-f", "setup.cf"); e != nil {
+			return e
+		}
+		return launch("gateway", s.Work, ports[2], filepath.Join(binaries, "bin/stoneage-gateway"), "-listen", fmt.Sprintf("127.0.0.1:%d", ports[2]), "-upstream", fmt.Sprintf("127.0.0.1:%d", ports[1]), "-auth-db", filepath.Join(s.Work, "auth.db"), "-auth-required")
 	}
-	if e = launch("gmsv", filepath.Join(s.Work, "gmsv"), ports[1], filepath.Join(binaries, "native/gmsv/gmsvjt.exe"), "-f", "setup.cf"); e != nil {
-		return e
-	}
-	if e = launch("gateway", s.Work, ports[2], filepath.Join(binaries, "bin/stoneage-gateway"), "-listen", fmt.Sprintf("127.0.0.1:%d", ports[2]), "-upstream", fmt.Sprintf("127.0.0.1:%d", ports[1]), "-auth-db", filepath.Join(s.Work, "auth.db"), "-auth-required"); e != nil {
+	if e = startServers(); e != nil {
 		return e
 	}
 	before := map[int]Object{}
@@ -300,7 +529,11 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 				return e
 			}
 			name := fmt.Sprintf("LadderQA%02d", i)
-			if _, e := m.request(ctx, "create-character", name); e != nil {
+			create, e := s.memberCreationArgs(name, i)
+			if e != nil {
+				return e
+			}
+			if _, e := m.request(ctx, create...); e != nil {
 				return e
 			}
 			if _, e := m.request(ctx, "enter", name); e != nil {
@@ -308,7 +541,7 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 			}
 			if e := waitUntil(ctx, "world status", func() bool {
 				v, e := m.data(ctx, "observe")
-				if e == nil && yes(obj(v["Player"])["HasStatus"]) {
+				if e == nil && yes(obj(v["Player"])["CombatStatsKnown"]) {
 					before[i] = v
 					return true
 				}
@@ -328,19 +561,55 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 		}
 		configs = append(configs, mc)
 	}
+	if s.FixtureLevel > 1 {
+		// All creation clients have exited. Stop the isolated servers before
+		// preparing saved profiles; never patch a live player or engine memory.
+		for i := len(processes) - 1; i >= 0; i-- {
+			processes[i].close()
+		}
+		if e = s.prepareSavedRoster(before); e != nil {
+			return e
+		}
+		if e = startServers(); e != nil {
+			return e
+		}
+		for i, mc := range configs {
+			m := &member{cfg: mc, binary: filepath.Join(binaries, "bin/sactl"), ownership: ownership, store: setupStore}
+			e = func() error {
+				defer m.close()
+				if e := m.start(ctx); e != nil {
+					return e
+				}
+				return waitUntil(ctx, "prepared fixture login", func() bool {
+					v, err := m.data(ctx, "observe")
+					if err == nil && yes(obj(v["Player"])["CombatStatsKnown"]) {
+						before[i] = v
+						return true
+					}
+					return false
+				})
+			}()
+			if e != nil {
+				return e
+			}
+		}
+	}
+	roster, e := s.initialRosterEvidence(before)
+	if e != nil {
+		return e
+	}
+	if e = writePrivate(filepath.Join(s.Work, "initial-roster.json"), append(enc(Object{"mode": s.Mode, "members": roster}), '\n')); e != nil {
+		return e
+	}
 	runners := []*Runner{}
 	for side := 0; side < 2; side++ {
 		c := Config{Schema: 1, Sactl: filepath.Join(binaries, "bin/sactl"), StateDir: filepath.Join(s.Work, fmt.Sprintf("commander-%d", side)), OwnershipDir: ownership, Mode: s.Mode, Strategy: "basic", Fallback: "basic", Members: []MemberConfig{}}
-		if side == 0 && s.Strategy == "learned" {
-			c.Strategy = "learned"
-			c.Model = s.Model
-		}
 		for i, m := range configs {
 			if i%2 == side {
 				c.Members = append(c.Members, m)
 			}
 		}
-		r, e := NewRunner(c)
+		r, e := s.newCommander(side, c)
 		if e != nil {
 			for _, r := range runners {
 				r.Close()
@@ -348,9 +617,6 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 			return e
 		}
 		r.Output = s.Output
-		if side == 0 && s.Strategy == "explore" {
-			r.strategy = &Explore{Seed: s.Seed}
-		}
 		r.strategy = &clockChecked{runner: r, inner: r.strategy}
 		runners = append(runners, r)
 	}
@@ -431,7 +697,7 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 				wins++
 			}
 		}
-		var turns, written, restarted int
+		var turns, written, restarted, modelDecisions, withdrawnDecisions, observerWithdrawn int
 		queries := []struct {
 			q string
 			p *int
@@ -442,11 +708,64 @@ func NativeSimulate(ctx context.Context, s Simulation) error {
 				return e
 			}
 		}
+		if e = store.DB.QueryRow(`SELECT count(*) FROM records WHERE kind='turn' AND EXISTS
+ (SELECT 1 FROM json_each(records.body,'$.team.members') AS member WHERE json_extract(member.value,'$.withdrawn')=1)`).Scan(&withdrawnDecisions); e != nil {
+			store.DB.Close()
+			return e
+		}
+		if e = store.DB.QueryRow(`SELECT count(*) FROM records WHERE kind='turn' AND json_extract(body,'$.version')=?
+ AND COALESCE(json_extract(body,'$.diagnostics.reused_plan'),0)=0 AND EXISTS
+ (SELECT 1 FROM json_each(records.body,'$.team.members') AS member WHERE json_extract(member.value,'$.withdrawn')=1
+ AND json_extract(member.value,'$.battle.MyNo')%10=0)`, r.strategy.Version()).Scan(&observerWithdrawn); e != nil {
+			store.DB.Close()
+			return e
+		}
+		fallbacks, e := readObjects(store.DB, "SELECT body FROM records WHERE kind='strategy_fallback'")
+		if e != nil {
+			store.DB.Close()
+			return e
+		}
+		if e = store.DB.QueryRow("SELECT count(*) FROM records WHERE kind='turn' AND json_extract(body,'$.version')=?", r.strategy.Version()).Scan(&modelDecisions); e != nil {
+			store.DB.Close()
+			return e
+		}
+		perMatch, e := readObjects(store.DB, `SELECT json_object(
+ 'match_id', results.match_id,
+ 'policy_decisions', (SELECT count(*) FROM records WHERE records.match_id=results.match_id AND kind='turn' AND json_extract(body,'$.version')=?),
+ 'decision_turns', (SELECT COALESCE(max(json_extract(body,'$.turn'))+1,0) FROM records WHERE records.match_id=results.match_id AND kind='turn'),
+ 'fallbacks', (SELECT count(*) FROM records WHERE records.match_id=results.match_id AND kind='strategy_fallback'),
+ 'event_gaps', (SELECT count(*) FROM records WHERE records.match_id=results.match_id AND kind='event_gap'))
+ FROM results ORDER BY rowid`, r.strategy.Version())
+		if e != nil {
+			store.DB.Close()
+			return e
+		}
 		store.DB.Close()
 		if turns == 0 || written == 0 || s.Reconnect && side == 0 && restarted == 0 {
 			return fmt.Errorf("missing decision/recovery evidence")
 		}
-		evidence = append(evidence, Object{"commander": side, "strategy": r.strategy.ID(), "version": r.strategy.Version(), "results": len(values), "wins": wins, "decisions": turns, "written": written})
+		if local := localModel(r.strategy); local != nil && local.neural != nil {
+			if modelDecisions == 0 {
+				return fmt.Errorf("neural simulation only used fallback: %s", string(enc(fallbacks)))
+			}
+			for _, match := range perMatch {
+				// An intentionally interrupted match can lose observations and
+				// must fall back honestly. Subsequent complete matches must use
+				// the model again, not remain poisoned by an earlier gap.
+				if s.Reconnect && side == 0 && integer(match["event_gaps"]) > 0 {
+					continue
+				}
+				if integer(match["policy_decisions"]) == 0 || integer(match["fallbacks"]) != 0 || integer(match["event_gaps"]) != 0 {
+					return fmt.Errorf("uninterrupted neural match lacks complete model execution: %s", string(enc(match)))
+				}
+			}
+		}
+		if side == 0 {
+			if e := s.checkScenarioCoverage(observerWithdrawn, perMatch); e != nil {
+				return e
+			}
+		}
+		evidence = append(evidence, Object{"commander": side, "strategy": r.strategy.ID(), "version": r.strategy.Version(), "results": len(values), "wins": wins, "decisions": turns, "written": written, "policy_decisions": modelDecisions, "withdrawn_decisions": withdrawnDecisions, "observer_withdrawn_decisions": observerWithdrawn, "fallbacks": fallbacks, "matches": perMatch})
 	}
 	for i, mc := range configs {
 		m := &member{cfg: mc, binary: filepath.Join(binaries, "bin/sactl"), ownership: ownership, store: setupStore}
@@ -489,8 +808,9 @@ type clockChecked struct {
 	checked bool
 }
 
-func (c *clockChecked) ID() string      { return c.inner.ID() }
-func (c *clockChecked) Version() string { return c.inner.Version() }
+func (c *clockChecked) ID() string             { return c.inner.ID() }
+func (c *clockChecked) Version() string        { return c.inner.Version() }
+func (c *clockChecked) learnedModel() *Learned { return localModel(c.inner) }
 func (c *clockChecked) Decide(ctx context.Context, t Object, h []Object) (Decision, error) {
 	if !c.checked {
 		m := c.runner.members[0]

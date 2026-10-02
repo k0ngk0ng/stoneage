@@ -17,8 +17,9 @@ with tempfile.TemporaryDirectory(dir=root / 'build', prefix='skill-install-') as
     assert not (base / 'project').exists()
     module.install(source, destinations)
     for destination in destinations:
-        assert (destination / 'SKILL.md').read_bytes() == (source / 'SKILL.md').read_bytes()
-        assert (destination / 'references/session.md').is_file()
+        for bundled in source.rglob('*'):
+            if bundled.is_file():
+                assert (destination / bundled.relative_to(source)).read_bytes() == bundled.read_bytes(), bundled
     module.install(source, destinations)  # Idempotent.
     edited = destinations[1] / 'SKILL.md'
     edited.write_text('user customization')

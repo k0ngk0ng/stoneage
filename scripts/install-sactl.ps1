@@ -63,6 +63,9 @@ try {
         Copy-Item -Force (Join-Path $bundle 'arena-agent.example.json') $Prefix
         Write-Host 'Arena commander included. Use: sactl ai init --directory <new-directory>'
     }
+    Get-ChildItem -Path $bundle -Filter 'learned-*.md' -File | ForEach-Object {
+        Copy-Item -Force $_.FullName $Prefix
+    }
     # Match sactl.ConfigSearchPaths and StatePath, including explicit XDG overrides.
     $configBase = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $userHome '.config' }
     $stateBase = if ($env:XDG_STATE_HOME) { $env:XDG_STATE_HOME } else { Join-Path $userHome '.local\state' }

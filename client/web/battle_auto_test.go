@@ -71,10 +71,12 @@ func seedWebBattle(t *testing.T, session *tcpSession) {
 	session.applyAuthoritativePacket(webServerPacket(t, 12, "B", webBattleRoster))
 }
 
-// openWebTurn is the server opening the next command window.
+// openWebTurn is the server opening the next command window with a fresh
+// roster. Arena clients must not decide using the previous turn's roster.
 func openWebTurn(t *testing.T, session *tcpSession, id uint32) {
 	t.Helper()
 	session.applyAuthoritativePacket(webServerPacket(t, id, "B", "BP|0|0|10"))
+	session.applyAuthoritativePacket(webServerPacket(t, id+1, "B", webBattleRoster))
 }
 
 // readWebBattleCommand decodes the next battle command the session wrote to

@@ -31,6 +31,8 @@ static int harness_pet[INDEX_MAX][5];
 static int harness_level[INDEX_MAX];
 static int harness_savepoint[INDEX_MAX];
 static int harness_party_mode[INDEX_MAX];
+static int harness_standby_mask[INDEX_MAX];
+static int harness_summon[INDEX_MAX][5];
 static int harness_item_index[INDEX_MAX][20];
 static int harness_item_use[64];
 static int harness_item_id[64];
@@ -65,6 +67,8 @@ int CHAR_getInt(int index, int element)
 int CHAR_getWorkInt(int index, int element)
 {
     if( index != 0 ) other_role_reads++;
+    if( element >= CHAR_WORK_PET0_STAT && element < CHAR_WORK_PET0_STAT+5 ) return harness_summon[index][element-CHAR_WORK_PET0_STAT];
+    if( element == CHAR_WORKSTANDBYPET ) return harness_standby_mask[index];
     if( element != CHAR_WORKPARTYMODE ) return -1;
     return harness_party_mode[index];
 }
@@ -93,7 +97,7 @@ int harness_item_check(int index)
 int harness_item_get_int(int index, int element)
 {
     item_id_reads++;
-    if( element != ITEM_ID || index < 0 || index >= 64 ||
+    if( (element != ITEM_ID && element != ITEM_MAGICID) || index < 0 || index >= 64 ||
         !harness_item_use[index] ) return 0;
     return harness_item_id[index];
 }
@@ -225,6 +229,8 @@ int main(void)
         expect_text(first, "|sp=123", "save point value");
         expect_text(first, "|stat_points=7", "caller unspent stat points");
         expect_text(first, "|party_mode=0", "caller solo mode");
+        expect_text(first, "|active_pet=0", "caller battle pet selection");
+        expect_text(first, "|standby_pet_mask=0", "known empty standby list");
         expect_text(first, "|items=5,2415;6,2414|equipment=3,701", "equipment extension preserves legacy backpack format");
         expect(count_text(first, "|pet=") == 3, "repeated underlying pet has no repeated slot field");
         expect(strstr(first, "account-secret") == NULL, "account secret is absent");
@@ -254,6 +260,20 @@ int main(void)
     observation = StoneAge_AIObservationMake(0);
     expect_text(observation, "|party_mode=1", "caller party leader mode");
     harness_data[0][CHAR_SKILLUPPOINT] = 7;
+    harness_standby_mask[0] = 5;
+    harness_summon[0][0] = 1;harness_summon[0][3] = 1;harness_summon[0][4] = 2;
+    observation = StoneAge_AIObservationMake(0);
+    expect_text(observation, "|standby_pet_mask=5", "caller standby mask is refreshed");
+    expect(harness_standby_mask[0] == 5, "standby selection remains read-only");
+    expect_text(observation, "|summon_pet_mask=9", "only actual PET_STAT_SELECT flags are summonable");
+    expect(harness_summon[0][0] == 1 && harness_summon[0][3] == 1 && harness_summon[0][4] == 2, "summon status remains read-only");
+    harness_data[0][CHAR_DEFAULTPET] = -1;
+    observation = StoneAge_AIObservationMake(0);
+    expect_text(observation, "|active_pet=-1", "no battle pet is explicit");
+    harness_data[0][CHAR_DEFAULTPET] = 2;
+    observation = StoneAge_AIObservationMake(0);
+    expect_text(observation, "|active_pet=2", "changed battle pet is refreshed");
+    harness_data[0][CHAR_DEFAULTPET] = 0;
 
     harness_savepoint[0] = -2147483648;
     observation = StoneAge_AIObservationMake(0);
@@ -299,6 +319,24 @@ int main(void)
     expect_text(observation, "|character_id=pc1_0123456789abcdef0123456789abcdef",
                 "loaded identity observed without account disclosure");
     loaded_identity = NULL;
+
+    {
+        char spell[128]="J1|1|8|0|1|name|memo|";
+        char small[32]="J1|1|8|0|1|name|memo|";
+        size_t used=strlen(small);
+        harness_item_index[0][1]=1;
+        harness_item_use[1]=1;
+        harness_item_id[1]=10;
+        StoneAge_MagicObservationAppend(0,1,spell,sizeof(spell));
+        expect_text(spell,"|id=10|","owned spell ID appended to same J packet");
+        StoneAge_MagicObservationAppend(0,1,small,used+4);
+        expect(strlen(small)==used,"truncated spell ID omitted completely");
+        strcpy(spell,"J1|1|8|0|1|name|memo|");
+        StoneAge_MagicObservationAppend(0,5,spell,sizeof(spell));
+        expect(strstr(spell,"id=")==NULL,"backpack slot cannot identify equipment spell");
+        StoneAge_MagicObservationAppend(-1,1,spell,sizeof(spell));
+        expect(strstr(spell,"id=")==NULL,"invalid character cannot identify spell");
+    }
 
     harness_use[0] = 0;
     expect(StoneAge_AIObservationMake(0) == NULL,
@@ -350,6 +388,10 @@ enum {
     CHAR_SAVEPOINT = 15,
     CHAR_SKILLUPPOINT = 16,
     CHAR_WORKPARTYMODE = 17,
+    CHAR_DEFAULTPET = 18,
+    CHAR_WORKSTANDBYPET = 19,
+    CHAR_WORK_PET0_STAT = 20,
+    PET_STAT_SELECT = 1,
     CHAR_CDKEY = 90
 };
 enum { CHAR_UNIQUECODE = 1 };
@@ -367,6 +409,7 @@ int CHAR_getItemIndex(int, int);
             """#ifndef OBSERVATION_TEST_ITEM_H
 #define OBSERVATION_TEST_ITEM_H
 #define ITEM_ID 0
+#define ITEM_MAGICID 1
 int harness_item_check(int);
 int harness_item_get_int(int, int);
 #define ITEM_CHECKINDEX(index) harness_item_check(index)

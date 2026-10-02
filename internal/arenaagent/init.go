@@ -31,7 +31,7 @@ func Init(directory string, mode int) (Object, error) {
 		return nil, e
 	}
 	binary := exe
-	c := Config{Schema: 1, Sactl: binary, StateDir: filepath.Join(dir, "data"), Mode: mode, Strategy: "basic", Fallback: "basic", Members: []MemberConfig{}, LLM: Object{"endpoint": "http://127.0.0.1:8000/v1/chat/completions", "model": "your-model-name", "api_key_env": "STONEAGE_ARENA_MODEL_KEY", "timeout_seconds": 12, "context_bytes": 180000, "response_format": "json_object"}}
+	c := Config{Schema: 1, Sactl: binary, StateDir: filepath.Join(dir, "data"), Mode: mode, Strategy: "basic", Fallback: "basic", Members: []MemberConfig{}, LLM: Object{"endpoint": "http://127.0.0.1:8000/v1/chat/completions", "model": "your-model-name", "api_key_env": "STONEAGE_ARENA_MODEL_KEY", "timeout_seconds": 12, "context_bytes": 8388608, "response_format": "json_object"}}
 	for i := 0; i < mode; i++ {
 		id := fmt.Sprintf("member-%d", i+1)
 		socket := filepath.Join(dir, id+".sock")

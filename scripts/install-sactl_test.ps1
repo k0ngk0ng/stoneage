@@ -12,6 +12,7 @@ try {
     Copy-Item "$root\docs\local-arena-agent.md" $bundle
     Copy-Item "$root\config\arena-agent\example.json" (Join-Path $bundle 'arena-agent.example.json')
     Copy-Item "$root\config\sactl\sactl.toml.example" $bundle
+    Copy-Item "$root\docs\learned-*.md" $bundle
     Copy-Item -Recurse "$root\.agents\skills\sactl" (Join-Path $bundle 'skills')
     $archive = 'stoneage-sactl-v0.1.99-windows-amd64.zip'
     Compress-Archive $bundle (Join-Path $fixture $archive)
@@ -28,6 +29,9 @@ try {
     $env:XDG_STATE_HOME = Join-Path $testStage 'state'
     $prefix = Join-Path $testStage 'bin'
     & "$PSScriptRoot\install-sactl.ps1" -Download -Version v0.1.99 -CdnBase https://cdn.example/game -Prefix $prefix
+    Get-ChildItem "$root\docs\learned-*.md" | ForEach-Object {
+        if ((Get-Content -Raw (Join-Path $prefix $_.Name)) -cne (Get-Content -Raw $_.FullName)) { throw 'Training guide mismatch' }
+    }
     if (Test-Path (Join-Path $prefix 'arena-agent.exe')) { throw 'Unexpected standalone arena executable' }
     if (-not (Test-Path (Join-Path $prefix 'local-arena-agent.md'))) { throw 'Missing arena instructions' }
     foreach ($agent in @('.agents','.claude')) {

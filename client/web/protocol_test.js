@@ -3453,7 +3453,7 @@ for(const expected of [
 ]) if(!expected.test(battlePetPopupSource))throw new Error(`native standby-pet popup regression: ${expected}`);
 const makeBattlePetSwitchHarness=new Function("petSlots","mask","selectedPet",`
   const state={choiceDeadline:666666,commandLocked:false,petCommandLocked:false,pendingAction:{kind:"sentinel"}};
-  const app={battle:true,phase:"battle",battleState:state,battlePopup:{kind:"pet"},petSlots,status:{standbyPetMask:mask},selectedPet};
+  const app={battle:true,phase:"battle",battleState:state,battlePopup:{kind:"pet"},pc:{ridePet:-1},petSlots,status:{standbyPetMask:mask,summonPetMask:mask},selectedPet};
   const sends=[],tones=[];
   function playSoundEffect(tone,x,y){tones.push([tone,x,y]);}
   function battleCommandAllowed(){return true;}
@@ -3478,6 +3478,16 @@ const makeBattlePetSwitchHarness=new Function("petSlots","mask","selectedPet",`
   };
 `);
 const switchPets=Array.from({length:5},(_,index)=>({index,useFlag:1,name:`pet${index}`,hp:100,maxHp:100}));
+for(const summon of [1,undefined,null]){
+  const h=makeBattlePetSwitchHarness(switchPets.map(p=>({...p})),3,0);
+  h.app.status.summonPetMask=summon;
+  if(h.battleSwitchPet(1)!==false||h.counts().sends.length)throw new Error("non-summonable or unknown PETST slot reached the wire");
+}
+for(const riding of [1,undefined,null]){
+  const h=makeBattlePetSwitchHarness(switchPets.map(p=>({...p})),3,0);
+  h.app.pc.ridePet=riding;
+  if(h.battleSwitchPet(1)!==false||h.counts().sends.length||h.state.commandLocked)throw new Error("riding/unknown pet switch must be rejected before submission");
+}
 const invalidSwitchHarness=makeBattlePetSwitchHarness(switchPets.map(pet=>({...pet})),0b00011,0),switchDeadline=invalidSwitchHarness.state.choiceDeadline,sentinel=invalidSwitchHarness.state.pendingAction;
 if(invalidSwitchHarness.listed().join(",")!=="0,1")throw new Error(`standby mask must hide rest/mail pets: ${invalidSwitchHarness.listed()}`);
 if(invalidSwitchHarness.battleSwitchPet(4)!==false||invalidSwitchHarness.battleSwitchPet(0)!==false){
@@ -3665,7 +3675,7 @@ if(nativeBattleItemStart<0||nativeBattleItemEnd<=nativeBattleItemStart||nativeBa
 const battleItemFieldStart=script.indexOf("  function battleFieldAllowed(entry)");
 const battleItemFieldEnd=script.indexOf("  function battlePetCapacityFull()",battleItemFieldStart);
 const battleItemHelperStart=script.indexOf("  function battleUsableItem(entry)");
-const battleItemHelperEnd=script.indexOf("  function battleUsablePetSkill(entry)",battleItemHelperStart);
+const battleItemHelperEnd=script.indexOf("  function battlePetSkillSlotAllowed(",battleItemHelperStart);
 const battleItemPopupStart=script.indexOf("  function setBattleItemInspection(entry)");
 const battleItemPopupEnd=script.indexOf("  function battleTargetPromptPlacement",battleItemPopupStart);
 if(battleItemFieldStart<0||battleItemFieldEnd<=battleItemFieldStart||battleItemHelperStart<0||battleItemHelperEnd<=battleItemHelperStart||battleItemPopupStart<0||battleItemPopupEnd<=battleItemPopupStart){

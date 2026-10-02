@@ -41,4 +41,24 @@ func TestBattleJournalRequiresExistingSession(t *testing.T) {
 			}
 		}
 	}
+	// Feed the existing session's shared observer, then read the actual HTTP
+	// endpoint. This adds structured data only, without changing Web UI labels.
+	session, ok := handler.sessions.get(created.ID)
+	if !ok {
+		t.Fatal("created session disappeared")
+	}
+	session.applyAuthoritativePacket(webServerIntPacket(t, 1, "EN", 1, 218))
+	session.applyAuthoritativePacket(webServerPacket(t, 2, "B", "BP|0|0|14"))
+	session.applyAuthoritativePacket(webServerPacket(t, 3, "B", "BH|a0|rA|f602|dA|gF|FF|"))
+	r := httptest.NewRecorder()
+	handler.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/api/sessions/"+created.ID+"/battle-log", nil))
+	var journal aigame.BattleJournal
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &journal) != nil || len(journal.Battles) != 1 {
+		t.Fatalf("journal: %s", r.Body.String())
+	}
+	logs := journal.Battles[0].Logs
+	entry := logs[len(logs)-1]
+	if entry.Recipient == nil || *entry.Recipient != 0 || entry.Guardian == nil || *entry.Guardian != 15 {
+		t.Fatalf("recipient not exposed: %+v", entry)
+	}
 }

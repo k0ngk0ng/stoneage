@@ -27,6 +27,22 @@
 
 static char StoneAge_AIObservationBuffer[STONEAGE_AI_OBSERVATION_BUFFER_SIZE];
 
+void StoneAge_MagicObservationAppend(int charaindex, int slot, char *buffer, size_t size)
+{
+    int itemindex, id, written;
+    size_t used;
+    if (!CHAR_CHECKINDEX(charaindex) || slot < 0 || slot >= CHAR_STARTITEMARRAY || !buffer || !size) return;
+    itemindex = CHAR_getItemIndex(charaindex, slot);
+    if (!ITEM_CHECKINDEX(itemindex)) return;
+    id = ITEM_getInt(itemindex, ITEM_MAGICID);
+    if (id < 0) return;
+    used = strnlen(buffer, size);
+    if (!used || used >= size || buffer[used-1] != '|') return;
+    written = snprintf(buffer+used, size-used, "id=%d|", id);
+    /* Never leave a truncated ID that could identify a different spell. */
+    if (written < 0 || (size_t)written >= size-used) buffer[used] = '\0';
+}
+
 static int StoneAge_AIObservationAppend( char **cursor, size_t *remaining,
                                          const char *format, ... )
 {
@@ -170,7 +186,7 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
     char escaped_unique[STONEAGE_AI_OBSERVATION_UNIQUE_BUFFER_SIZE];
     int slot;
     int petindex;
-    int group;
+    int group, summon_mask = 0;
     const char *persistent_id;
 
     if( request != NULL ) {
@@ -244,6 +260,24 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
     if( !StoneAge_AIObservationAppend(
             &cursor, &remaining, "|party_mode=%d",
             CHAR_getWorkInt( charaindex, CHAR_WORKPARTYMODE ) ) ) return NULL;
+    /* The same own-character selection sent by KS at login. A read-only
+       refresh must also expose it: skill lists alone do not identify which
+       owned pet is selected for battle. This is not a command acknowledgement. */
+    if( !StoneAge_AIObservationAppend(
+            &cursor, &remaining, "|active_pet=%d",
+            CHAR_getInt( charaindex, CHAR_DEFAULTPET ) ) ) return NULL;
+    /* Same five-bit own-character selection list as SPET. A reconnect or
+       offline client must not infer summon eligibility from occupied K slots. */
+    if( !StoneAge_AIObservationAppend(
+            &cursor, &remaining, "|standby_pet_mask=%d",
+            CHAR_getWorkInt( charaindex, CHAR_WORKSTANDBYPET ) & 31 ) ) return NULL;
+    /* PETST eligibility is independent of SPET membership. The battle
+       executor checks it before summoning, after recalling the old pet. */
+    for( slot = 0; slot < STONEAGE_AI_OBSERVATION_PET_SLOTS; slot++ )
+        if( CHAR_getWorkInt(charaindex, CHAR_WORK_PET0_STAT + slot) == PET_STAT_SELECT )
+            summon_mask |= 1 << slot;
+    if( !StoneAge_AIObservationAppend(
+            &cursor, &remaining, "|summon_pet_mask=%d", summon_mask ) ) return NULL;
     if( !StoneAge_AIObservationAppendItems(charaindex, &cursor, &remaining, "items", CHAR_STARTITEMARRAY, CHAR_MAXITEMHAVE) ||
         !StoneAge_AIObservationAppendItems(charaindex, &cursor, &remaining, "equipment", 0, CHAR_STARTITEMARRAY) ) {
         return NULL;

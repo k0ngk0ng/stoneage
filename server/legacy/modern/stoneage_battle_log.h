@@ -2,7 +2,8 @@
 #define STONEAGE_BATTLE_LOG_H
 
 /* Single game-thread producer. The worker only sees immutable JSON, never
- * character pointers. Submission is bounded and never waits for disk I/O. */
+ * character pointers. Online submission is bounded and never waits for disk
+ * I/O. Explicit offline generators enable backpressure before initialization. */
 #define BATTLE_LOG_JSON_MAX 3584
 enum { BATTLE_LOG_BEGIN = 1, BATTLE_LOG_EVENT = 2, BATTLE_LOG_END = 3 };
 int StoneAge_BattleLogInit(int slots);

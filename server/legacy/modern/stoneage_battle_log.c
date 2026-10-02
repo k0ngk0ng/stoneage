@@ -164,7 +164,10 @@ static void status(void)
     char path[BATTLE_PATH_MAX + 64], final[BATTLE_PATH_MAX + 64], json[512];
     int fd;
     if (!directory(root)) return;
-    snprintf(path, sizeof(path), "%s/status.json.tmp", root);
+    /* Multiple offline workers may share one archive root. Their temporary
+     * status files must not collide; the final file remains an atomic snapshot
+     * of the most recently reporting worker, not an aggregate health report. */
+    snprintf(path, sizeof(path), "%s/status.%s.tmp", root, session);
     snprintf(final, sizeof(final), "%s/status.json", root);
     snprintf(json, sizeof(json), "{\"schema_version\":1,\"session\":\"%s\","
              "\"updated_at\":%ld,\"events_written\":%lu,\"matches_closed\":%lu,"

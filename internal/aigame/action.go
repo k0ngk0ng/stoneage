@@ -3,6 +3,7 @@ package aigame
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -104,6 +105,21 @@ func (session *Session) execute(ctx context.Context, action Action, expectedRevi
 	packet, err := session.buildPacket(function, values)
 	if err != nil {
 		return err
+	}
+	if action.Kind == ActionPet {
+		// PETST has no reliable acknowledgement. Even an uncertain write
+		// invalidates selection evidence; the existing own-state refresher
+		// will read the actual server masks after this attempt completes.
+		defer func() {
+			session.stateMu.Lock()
+			defer session.stateMu.Unlock()
+			if action.Command == "standby" {
+				session.state.snapshot.Player.StandbyPetMaskKnown = false
+			} else {
+				session.state.snapshot.Player.SummonPetMaskKnown = false
+			}
+			session.state.identityDirty++
+		}()
 	}
 	if action.Kind == ActionParty {
 		// Invalidate before the write, including uncertain delivery. A later
@@ -458,8 +474,26 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 			if !state.snapshot.Battle.PetCommandReady() || (state.snapshot.Battle.BPFlags&(BattlePetMenuOff|BattleEnemySurprise) != 0 && command != "W|FF|FF") {
 				return nil, "", ErrBattleNotReady
 			}
+			// The same gate protects raw CLI and typed Web actions as well
+			// as structured candidates. An unavailable skill must not silently
+			// become a native wait. W|FF|FF remains the explicit default.
+			if command != "W|FF|FF" && state.snapshot.Player.BattlePetSlotKnown {
+				if pet, ok := state.petForSlot(state.snapshot.Player.BattlePetSlot); ok {
+					index, _ := strconv.ParseInt(strings.Split(command, "|")[1], 16, 32)
+					if !pet.BattleSkillIndexAllowed(int32(index)) {
+						return nil, "", fmt.Errorf("%w: pet skill slot exceeds observed capacity", ErrInvalidAction)
+					}
+				}
+			}
 		} else if !state.snapshot.Battle.PlayerCommandReady() || (state.snapshot.Battle.BPFlags&(BattlePlayerMenuOff|BattleEnemySurprise) != 0 && command != "N") {
 			return nil, "", ErrBattleNotReady
+		}
+		if strings.HasPrefix(command, "S|") {
+			slot, _ := strconv.ParseInt(strings.TrimPrefix(command, "S|"), 10, 32)
+			pet, _ := state.petForSlot(int32(slot))
+			if !BattlePetSwitchAllowed(state.snapshot.Player, &pet, int32(slot)) {
+				return nil, "", fmt.Errorf("%w: pet switch requires a known, living standby pet that is neither active nor ridden; recall requires a known active pet", ErrInvalidAction)
+			}
 		}
 		return []wireValue{{kind: wireString, text: []byte(command)}}, "B", nil
 
@@ -612,7 +646,10 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 		return []wireValue{{kind: wireInt, integer: action.Index}}, "SKUP", nil
 
 	case ActionStatus:
-		if !(battle && action.Command == "BTIME") {
+		// Own-state identity refresh is read-only and the server supports it
+		// during battle. Keep world-only status commands restricted and still
+		// validate the correlated AI request ID below.
+		if !(battle && (action.Command == "BTIME" || action.Command == "BTRULES" || action.Command == "AI" || strings.HasPrefix(action.Command, "AI:"))) {
 			if err := requireWorld(); err != nil {
 				return nil, "", err
 			}
@@ -699,7 +736,13 @@ func validBattleCommand(command string) (string, error) {
 		return strings.Join(parts, "|"), nil
 	}
 	switch parts[0] {
-	case "H", "T", "C", "S":
+	case "S":
+		// Unlike attack/skill targets, native S parses a decimal owned slot.
+		// Reject malformed slots before native code can turn them into recall.
+		if len(parts) != 2 || !(parts[1] == "-1" || len(parts[1]) == 1 && parts[1][0] >= '0' && parts[1][0] <= '4') {
+			return "", fmt.Errorf("%w: pet switch slot must be -1 (recall) or 0..4", ErrInvalidAction)
+		}
+	case "H", "T", "C":
 		if len(parts) != 2 || !token(parts[1]) {
 			return "", fmt.Errorf("%w: invalid %s battle target", ErrInvalidAction, parts[0])
 		}

@@ -21,6 +21,7 @@
 #include "stoneage_character_identity.h"
 #include "stoneage_ai_observation.h"
 #include "stoneage_battle_record.h"
+#include "stoneage_battle_dataset.h"
 #include "stoneage_ladder_core.h"
 #include "stoneage_ladder.h"
 
@@ -536,8 +537,39 @@ void StoneAge_LadderTick(void)
         offline_save(c);
     }
 }
+void StoneAge_BattleRulesChanged(void)
+{
+    int c,fd;
+    if(!getenv("STONEAGE_BATTLE_RULESET_ID"))return;
+    unsetenv("STONEAGE_BATTLE_RULESET_ID");
+    /* Clear cached client metadata too: a commander already in battle must
+     * not continue inferring against an obsolete startup digest. */
+    for(c=0;c<CHAR_getPlayerMaxNum();c++)if(valid_player(c)) {
+        fd=CHAR_getWorkInt(c,CHAR_WORKFD);
+        if(fd>=0 && CONNECT_isCLI(fd) && CONNECT_isLOGIN(fd))
+            lssproto_S_send(fd,"BTRULES||");
+    }
+}
+
 int StoneAge_LadderRequest(int fd,const char *category)
 {
+	/* Additive capability query: do not change the legacy BTIME shape. */
+	if(category && !strcmp(category,"BTRULES")) {
+		const char *rules=getenv("STONEAGE_BATTLE_RULESET_ID");
+		char reply[128];
+#if defined(__aarch64__)
+		const char *platform="linux-arm64";
+#elif defined(__x86_64__)
+		const char *platform="linux-amd64";
+#else
+		const char *platform="linux-other";
+#endif
+		if(!CONNECT_isCLI(fd) || !CONNECT_isLOGIN(fd) || !valid_player(CONNECT_getCharaindex(fd)))return 1;
+		if(!rules || strlen(rules)!=64 || strspn(rules,"0123456789abcdef")!=64)rules="";
+		snprintf(reply,sizeof(reply),"BTRULES|%s|%s",rules,platform);
+		lssproto_S_send(fd,reply);
+		return 1;
+	}
     /* Optional observer-only clock. Never initialize/extend a command timer:
      * that remains exclusively owned by StoneAge_LadderCommandWait. */
     if(category && !strcmp(category,"BTIME")) {
@@ -559,7 +591,7 @@ int StoneAge_LadderRequest(int fd,const char *category)
     if(CONNECT_isCLI(fd) && CONNECT_isLOGIN(fd))Ladder_Request(CONNECT_getCharaindex(fd),category);
     return 1;
 }
-int StoneAge_LadderIsBattle(int b){return native_battle(b)!=NULL;}
+int StoneAge_LadderIsBattle(int b){return native_battle(b)!=NULL || StoneAge_BattleEnvironmentIsBattle(b);}
 int StoneAge_LadderEntryAllowed(int c,int b)
 {
     int p=owner(c),slot;
@@ -591,9 +623,10 @@ int StoneAge_LadderGuard(int fd,const char *op)
     /* EO from a death watchdog must never detach a ladder seat. The engine
      * finishes the whole match and the separate ladder ack closes its result. */
     if(!strcmp(op,"EO") && Ladder_Reserved(c))return 1;
-    /* M only reads a map rectangle. A battle reconnect may still need its
-     * tiles at settlement; reserving a seat must not block map observation. */
-    if(!strcmp(op,"B") || !strcmp(op,"EO") || !strcmp(op,"S") || !strcmp(op,"AB") || !strcmp(op,"M"))return 0;
+    /* M only reads a map rectangle. Echo is transport keepalive: blocking it
+     * while queued/in battle makes clients time out and reconnect, even when
+     * other observations keep flowing. Neither mutates reserved resources. */
+    if(!strcmp(op,"B") || !strcmp(op,"EO") || !strcmp(op,"S") || !strcmp(op,"AB") || !strcmp(op,"M") || !strcmp(op,"Echo"))return 0;
     if(Ladder_Reserved(c)){Ladder_Rejected(c);return 1;}
     /* An ordinary party leader cannot move/rescue/enter battle with a member
      * reserved by a different ladder room. */
@@ -706,10 +739,56 @@ int StoneAge_LadderFinish(int b)
     }
     BATTLE_DeleteBattle(b);release_actors(m);m->used=0;return 1;
 }
+/* A flying knockout removes an engine entry, not the player's membership in
+ * the match. Keep those players observing the same public battle until the
+ * authoritative arena settlement. Training uses this exact observer path. */
+static int observation_members(int b,int *members)
+{
+    NativeMatch *m=native_battle(b);
+    if(m){memcpy(members,m->characters,sizeof(int)*m->count);return m->count;}
+    return StoneAge_BattleEnvironmentMembers(b,members,10);
+}
+void StoneAge_LadderRemovedObservation(int b,const char *roster,const char *vitals)
+{
+    int members[10],count=observation_members(b,members),i,c,side,slot,actor,accepted=0;
+    char bp[64],ba[64];
+    if(!count || !BATTLE_CHECKINDEX(b))return;
+    for(side=0;side<2;side++)for(slot=0;slot<BATTLE_ENTRY_MAX;slot++) {
+        actor=BattleArray[b].Side[side].Entry[slot].charaindex;
+        if(CHAR_CHECKINDEX(actor) && CHAR_getWorkInt(actor,CHAR_WORKBATTLEMODE)==BATTLE_CHARMODE_C_OK)
+            accepted|=1<<(side*BATTLE_ENTRY_MAX+slot);
+    }
+    snprintf(ba,sizeof(ba),"BA|%X|%X|",accepted,BattleArray[b].turn);
+    for(i=0;i<count;i++) {
+        c=members[i];
+        if(!valid_player(c) || BATTLE_Index2No(b,c)>=0 || !StoneAge_LadderSendRecipient(c))continue;
+        snprintf(bp,sizeof(bp),"BP|%X|%X|%X",i/(count/2)*10+i%(count/2),
+            BP_FLG_PLAYER_MENU_OFF|BP_FLG_PET_MENU_OFF,CHAR_getInt(c,CHAR_MP));
+        BATTLE_CommandSend(c,bp);
+        BATTLE_CommandSend(c,(char*)roster);
+        BATTLE_CommandSend(c,(char*)vitals);
+        BATTLE_CommandSend(c,ba);
+    }
+}
+void StoneAge_LadderRemovedMovie(int b,const char *movie,const int *delivered,int sent)
+{
+    int members[10],count=observation_members(b,members),i,j,c;
+    if(!count || !BATTLE_CHECKINDEX(b))return;
+    for(i=0;i<count;i++) {
+        c=members[i];
+        if(!valid_player(c) || BATTLE_Index2No(b,c)>=0)continue;
+        /* Newly knocked-out entries are in this round's original EntryList
+         * and already received the movie. Never duplicate their effects. */
+        for(j=0;j<sent && delivered[j]!=c;j++);
+        if(j==sent)BATTLE_CommandSend(c,(char*)movie);
+    }
+}
 int StoneAge_LadderKnockout(int b,int c)
 {
-    NativeMatch *m=native_battle(b);int side,i,actor;
-    if(!m)return 0;
+    int side,i,actor;
+    /* Training must observe the same dead/removed actors as the arena. Normal
+     * PvP's post-overkill revival to 1 HP is not an arena combat rule. */
+    if(!StoneAge_LadderIsBattle(b))return 0;
     for(side=0;side<2;side++)for(i=0;i<BATTLE_ENTRY_MAX;i++) {
         actor=BattleArray[b].Side[side].Entry[i].charaindex;
         if(!CHAR_CHECKINDEX(actor))continue;
@@ -757,9 +836,9 @@ int StoneAge_LadderEscape(int b,int bid)
 }
 int StoneAge_LadderCommandAllowed(int c,const char *command)
 {
-    NativeMatch *m=native_character(c);int actor=c,slot;
-    if(!m)return 1;
-    if(Ladder_CharacterBattle(c)<0 || !command || !*command)return 0;
+    NativeMatch *m=native_character(c);int actor=c,slot,pet;
+    if(!m && (!CHAR_CHECKINDEX(c) || !StoneAge_BattleEnvironmentIsBattle(CHAR_getWorkInt(c,CHAR_WORKBATTLEINDEX))))return 1;
+    if((m && Ladder_CharacterBattle(c)<0) || !command || !*command)return 0;
     /* Parameterized legacy handlers read command+2; J/I even match only
      * their first byte. Reject truncated packets before entering any parser. */
     if(strchr("HTSWJI",command[0]) && (command[1]!='|' || !command[2]))return 0;
@@ -771,6 +850,15 @@ int StoneAge_LadderCommandAllowed(int c,const char *command)
             if(slot<0 || slot>=CHAR_MAXPETHAVE || command[3])return 0;
         }
         if(!Ladder_PetAllowed(c,slot))return 0;
+        /* The legacy handler silently converts invalid standby/riding slots
+         * to recall. Reject before dispatch in arena and training alike. */
+        if(slot>=0) {
+            pet=CHAR_getCharPet(c,slot);
+            if(slot==CHAR_getInt(c,CHAR_DEFAULTPET) || slot==CHAR_getInt(c,CHAR_RIDEPET) ||
+               !(CHAR_getWorkInt(c,CHAR_WORKSTANDBYPET)&(1<<slot)) ||
+               CHAR_getWorkInt(c,CHAR_WORK_PET0_STAT+slot)!=PET_STAT_SELECT ||
+               !CHAR_CHECKINDEX(pet) || CHAR_getInt(pet,CHAR_HP)<=0)return 0;
+        } else if(CHAR_getInt(c,CHAR_DEFAULTPET)<0)return 0;
     }
     /* A command belongs to a single currently open actor menu. Reconnects
      * and duplicate packets cannot replace a previously accepted action. */

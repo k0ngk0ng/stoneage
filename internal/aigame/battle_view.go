@@ -12,15 +12,20 @@ import (
 // server still validates effects, resources and hidden status; this is not an
 // oracle claiming that every candidate will take effect.
 type BattleCandidate struct {
-	ID      string `json:"id"`
-	Actor   string `json:"actor"`
-	Kind    string `json:"kind"`
-	Index   int32  `json:"index"`
-	Target  int32  `json:"target"`
-	SkillID int32  `json:"skill_id,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Ready   bool   `json:"ready"`
-	Command string `json:"-"`
+	ItemTemplateID      int32  `json:"item_template_id,omitempty"`
+	ItemTemplateIDKnown bool   `json:"item_template_id_known,omitempty"`
+	MagicID             int32  `json:"magic_id,omitempty"`
+	MagicIDKnown        bool   `json:"magic_id_known,omitempty"`
+	MPCost              int32  `json:"mp_cost,omitempty"`
+	ID                  string `json:"id"`
+	Actor               string `json:"actor"`
+	Kind                string `json:"kind"`
+	Index               int32  `json:"index"`
+	Target              int32  `json:"target"`
+	SkillID             int32  `json:"skill_id,omitempty"`
+	Name                string `json:"name,omitempty"`
+	Ready               bool   `json:"ready"`
+	Command             string `json:"-"`
 }
 
 // BattleView excludes accounts, chat, world state and opponents' private data.
@@ -33,11 +38,13 @@ type BattleView struct {
 	MatchID            string            `json:"match_id"`
 	Turn               int32             `json:"turn"`
 	Mode               int               `json:"mode"`
+	Withdrawn          bool              `json:"withdrawn"`
 	Battle             BattleSnapshot    `json:"battle"`
 	Own                PlayerSnapshot    `json:"own"`
 	Magic              []MagicSnapshot   `json:"magic"`
 	Pets               []PetSnapshot     `json:"pets"`
 	Inventory          []InventoryItem   `json:"inventory"`
+	InventoryKnown     bool              `json:"inventory_known"`
 	Candidates         []BattleCandidate `json:"candidates"`
 	CandidateSemantics string            `json:"candidate_semantics"`
 }
@@ -53,9 +60,10 @@ type BattleSelection struct {
 // modifies either the original snapshot or the established combat mechanism.
 func NewBattleView(s Snapshot) BattleView {
 	v := BattleView{SchemaVersion: 1, Revision: s.Revision, CharacterID: s.AI.PersistentCharacterID,
-		MatchID: s.Battle.LadderID, Turn: s.Battle.Turn, Battle: s.Battle, Own: s.Player,
+		Withdrawn: s.Battle.Withdrawn(),
+		MatchID:   s.Battle.LadderID, Turn: s.Battle.Turn, Battle: s.Battle, Own: s.Player,
 		Magic: append([]MagicSnapshot{}, s.Magic...), Pets: clonePetSnapshots(s.Pets),
-		Inventory: append([]InventoryItem{}, s.Inventory...), Candidates: []BattleCandidate{},
+		Inventory: append([]InventoryItem{}, s.Inventory...), InventoryKnown: s.AI.ItemsKnown, Candidates: []BattleCandidate{},
 		CandidateSemantics: "observed_client_conditions; server_validates_final_effect"}
 	v.Battle.Participants = append([]BattleParticipant{}, s.Battle.Participants...)
 	if s.Ladder != nil && s.Ladder.Snapshot.Match != nil && s.Ladder.Snapshot.Match.ID == v.MatchID {
@@ -95,13 +103,12 @@ func NewBattleView(s Snapshot) BattleView {
 			// Native G is guard; T is capture, not defense.
 			add("player", "guard", "G", -1, b.MyNo, 0, "")
 			if s.Player.BattlePetSlotKnown {
-				if s.Player.BattlePetSlot >= 0 {
+				if BattlePetSwitchAllowed(s.Player, nil, -1) {
 					add("player", "switch_pet", "S|-1", -1, b.MyNo, 0, "")
 				}
 				if s.Player.StandbyPetMaskKnown {
 					for _, pet := range v.Pets {
-						if pet.Slot >= 0 && pet.Slot < 5 && pet.Slot != s.Player.BattlePetSlot && pet.UseFlag != 0 &&
-							pet.HP > 0 && s.Player.StandbyPetMask&(1<<uint(pet.Slot)) != 0 {
+						if BattlePetSwitchAllowed(s.Player, &pet, pet.Slot) {
 							add("player", "switch_pet", fmt.Sprintf("S|%d", pet.Slot), pet.Slot, b.MyNo, 0, pet.Name)
 						}
 					}
@@ -113,6 +120,8 @@ func NewBattleView(s Snapshot) BattleView {
 				}
 				for _, target := range BattleTargets(b, "magic", m.Target, m.DeadTarget) {
 					add("player", "magic", fmt.Sprintf("J|%X|%X", m.Index, target), m.Index, target, 0, m.Name)
+					c := &v.Candidates[len(v.Candidates)-1]
+					c.MagicID, c.MagicIDKnown, c.MPCost = m.ID, m.IDKnown, m.MP
 				}
 			}
 			for _, item := range v.Inventory {
@@ -121,6 +130,8 @@ func NewBattleView(s Snapshot) BattleView {
 				}
 				for _, target := range BattleTargets(b, "item", item.Target, item.DeadTarget) {
 					add("player", "item", fmt.Sprintf("I|%X|%X", item.Index, target), item.Index, target, 0, item.Name)
+					c := &v.Candidates[len(v.Candidates)-1]
+					c.ItemTemplateID, c.ItemTemplateIDKnown = item.TemplateID, item.TemplateIDKnown
 				}
 			}
 		}
@@ -143,7 +154,7 @@ func NewBattleView(s Snapshot) BattleView {
 						continue
 					}
 					for _, skill := range pet.Skills {
-						if skill.Index < 0 || skill.Index >= 7 || skill.Field < 0 || skill.Field > 1 {
+						if !pet.BattleSkillIndexAllowed(skill.Index) || skill.Field < 0 || skill.Field > 1 {
 							continue
 						}
 						for _, target := range BattleTargets(b, "pet", skill.Target, skill.DeadTarget) {

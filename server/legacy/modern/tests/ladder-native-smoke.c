@@ -35,6 +35,7 @@
 
 static long long test_clock=1000000;
 static char last[32][24000];
+static char capabilities[32][256];
 static int packets[64],request_serial,saved_request,save_count,login_ok;
 static int social_flags[64];
 static int snapshot_allocations_before_failure=-1;
@@ -54,6 +55,7 @@ static void smoke_send(int fd,char *wire)
 {
     int c=CONNECT_getCharaindex(fd);
     if(c>=0 && c<32 && !strncmp(wire,"LADDER|",7))snprintf(last[c],sizeof(last[c]),"%s",wire);
+    if(c>=0 && c<32 && !strncmp(wire,"BTRULES|",8))snprintf(capabilities[c],sizeof(capabilities[c]),"%s",wire);
 }
 static void smoke_login(int fd,char *result,char *data)
 { (void)fd;(void)data;login_ok=!strcmp(result,SUCCESSFUL); }
@@ -173,7 +175,7 @@ static void request(int c,const char *op,const char *arg)
     assert(StoneAge_LadderRequest(fd,wire));
     if(!strstr(last[c],"\"code\":\"ok\"")){fprintf(stderr,"request %s failed: %s\n",op,last[c]);abort();}
 }
-static void team(int *characters,int n)
+static void team_loadout(int *characters,int n,int mask)
 {
     int i;char arg[65];
     snprintf(arg,sizeof(arg),"%d",n);request(characters[0],"create",arg);
@@ -189,10 +191,13 @@ static void team(int *characters,int n)
         len=strcspn(start,"\"");assert(len<sizeof(arg));memcpy(arg,start,len);arg[len]=0;
         request(characters[i],"accept",arg);
     }
-    for(i=0;i<n;i++)if(CHAR_getInt(characters[i],CHAR_DEFAULTPET)>=0)request(characters[i],"loadout","1");
+    snprintf(arg,sizeof(arg),"%d",mask);
+    for(i=0;i<n;i++)if(CHAR_getInt(characters[i],CHAR_DEFAULTPET)>=0)request(characters[i],"loadout",arg);
     for(i=0;i<n;i++)request(characters[i],"ready","");
     request(characters[0],"queue","");
+    for(i=0;i<n;i++)assert(!StoneAge_LadderGuard(CHAR_getWorkInt(characters[i],CHAR_WORKFD),"Echo"));
 }
+static void team(int *characters,int n){team_loadout(characters,n,1);}
 static int start_match(int *c,int n,int pets)
 {
     int i,b,pet;
@@ -219,6 +224,19 @@ static void reconnect_test(void)
     b=start_match(c,1,0);
     fd=CHAR_getWorkInt(c[0],CHAR_WORKFD);
     assert(!StoneAge_LadderGuard(fd,"M"));
+    assert(!StoneAge_LadderGuard(fd,"Echo"));
+    {
+        const char *rules="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        LadderTime deadline=native_battle(b)->deadline;
+        setenv("STONEAGE_BATTLE_RULESET_ID",rules,1);
+        assert(StoneAge_LadderRequest(fd,"BTRULES"));
+        assert(strstr(capabilities[c[0]],rules) && !strncmp(capabilities[c[0]],"BTRULES|",8));
+        assert(native_battle(b)->deadline==deadline);
+        StoneAge_BattleRulesChanged();
+        assert(!getenv("STONEAGE_BATTLE_RULESET_ID"));
+        assert(!strcmp(capabilities[c[0]],"BTRULES||") && !strcmp(capabilities[c[1]],"BTRULES||"));
+        assert(native_battle(b)->deadline==deadline);
+    }
     assert(StoneAge_LadderGuard(fd,"W"));
     assert(StoneAge_LadderGuard(fd,"PI"));
     assert(StoneAge_LadderGuard(fd,"EO"));
@@ -228,7 +246,7 @@ static void reconnect_test(void)
     /* Public battle packets can be truncated. The ladder guard must reject
      * them before its own parser or the legacy dispatch reads command+2. */
     {
-        static const char *invalid[]={"S","J","I","W","H","T","S|","S|1junk","S|999999999999999999999999","S|-2","S|5"};
+        static const char *invalid[]={"S","J","I","W","H","T","S|","S|1junk","S|999999999999999999999999","S|-2","S|5","S|A","S|FF","S|01","S|+1","S|-1"};
         int i,mode=CHAR_getWorkInt(c[0],CHAR_WORKBATTLEMODE),mp=CHAR_getInt(c[0],CHAR_MP);
         for(i=0;i<(int)(sizeof(invalid)/sizeof(invalid[0]));i++) {
             char *packet=strdup(invalid[i]);assert(packet);
@@ -237,7 +255,9 @@ static void reconnect_test(void)
             assert(CHAR_getWorkInt(c[0],CHAR_WORKBATTLEMODE)==mode);
             assert(CHAR_getInt(c[0],CHAR_MP)==mp);
         }
-        assert(StoneAge_LadderCommandAllowed(c[0],"S|-1"));
+        /* This fixture has no active pet: even a syntactically valid recall
+         * must not consume the player's open command menu. */
+        assert(!StoneAge_LadderCommandAllowed(c[0],"S|-1"));
         assert(!StoneAge_LadderCommandAllowed(c[0],"S|0")); /* Not registered. */
     }
     BattleCommandDispach(CHAR_getWorkInt(c[0],CHAR_WORKFD),"G");
@@ -266,12 +286,53 @@ static void reconnect_test(void)
     assert(strstr(last[c[0]],"\"rating_delta\":-16"));
     assert(StoneAge_LadderGuard(CHAR_getWorkInt(c[0],CHAR_WORKFD),"EO"));
     assert(!StoneAge_LadderGuard(CHAR_getWorkInt(c[0],CHAR_WORKFD),"M"));
+    assert(!StoneAge_LadderGuard(CHAR_getWorkInt(c[0],CHAR_WORKFD),"Echo"));
     assert(StoneAge_LadderGuard(CHAR_getWorkInt(c[0],CHAR_WORKFD),"W"));
     assert(CHAR_getInt(c[0],CHAR_HP)==CHAR_getWorkInt(c[0],CHAR_WORKMAXHP)-7);
     request(c[0],"ack","");request(c[1],"ack","");
     assert(!StoneAge_LadderGuard(CHAR_getWorkInt(c[0],CHAR_WORKFD),"EO"));
     assert(!StoneAge_LadderGuard(CHAR_getWorkInt(c[0],CHAR_WORKFD),"W"));
     fprintf(stderr,"\nnative reconnect: retained slot, accepted action, timeout guard and cumulative deadline passed\n");
+}
+static void pet_switch_test(void)
+{
+    int c[2],b,p,turn,loops,phase,i;
+    for(i=0;i<2;i++) {
+        c[i]=fixture(960+i,-1);p=fixture(970+i,c[i]);CHAR_setCharPet(c[i],0,p);
+        CHAR_setInt(c[i],CHAR_DEFAULTPET,0);CHAR_setPetSkill(p,0,1);
+        /* Establish both native pre-battle selections through the real world
+         * handlers; assigning DEFAULTPET alone does not mark a standby pet. */
+        lssproto_SPET_recv(CHAR_getWorkInt(c[i],CHAR_WORKFD),1);
+        lssproto_PETST_recv(CHAR_getWorkInt(c[i],CHAR_WORKFD),0,PET_STAT_SELECT);
+        assert(CHAR_getWorkInt(c[i],CHAR_WORKSTANDBYPET)==1);
+        assert(CHAR_getWorkInt(c[i],CHAR_WORK_PET0_STAT)==PET_STAT_SELECT);
+    }
+    team(c,1);team(c+1,1);tick(0);tick(10000);
+    b=Ladder_CharacterBattle(c[0]);assert(b>=0);BATTLE_Loop();p=CHAR_getCharPet(c[0],0);
+    for(phase=0;phase<2;phase++) {
+        char *command=phase?"S|0":"S|-1";
+        fprintf(stderr,"switch gate: phase=%d active=%d mask=%d ride=%d hp=%d mode=%d registered=%d\n",phase,
+            CHAR_getInt(c[0],CHAR_DEFAULTPET),CHAR_getWorkInt(c[0],CHAR_WORKSTANDBYPET),CHAR_getInt(c[0],CHAR_RIDEPET),
+            CHAR_getInt(p,CHAR_HP),CHAR_getWorkInt(c[0],CHAR_WORKBATTLEMODE),Ladder_PetAllowed(c[0],0));
+        assert(StoneAge_LadderCommandAllowed(c[0],command));
+        assert(!StoneAge_LadderCommandAllowed(c[0],phase?"S|-1":"S|0"));
+        assert(!StoneAge_LadderCommandAllowed(c[0],"S|1"));
+        turn=BattleArray[b].turn;
+        lssproto_B_recv(CHAR_getWorkInt(c[0],CHAR_WORKFD),command);
+        /* The old pet remains active until settlement of the recall turn. */
+        assert(CHAR_getInt(c[0],CHAR_DEFAULTPET)==(phase?-1:0));
+        if(!phase)lssproto_B_recv(CHAR_getWorkInt(c[0],CHAR_WORKFD),"W|FF|FF");
+        lssproto_B_recv(CHAR_getWorkInt(c[1],CHAR_WORKFD),"G");
+        lssproto_B_recv(CHAR_getWorkInt(c[1],CHAR_WORKFD),"W|FF|FF");
+        for(loops=0;loops<8 && BattleArray[b].turn==turn;loops++)BATTLE_Loop();
+        assert(BattleArray[b].turn==turn+1);
+        assert(CHAR_getInt(c[0],CHAR_DEFAULTPET)==(phase?0:-1));
+        assert(phase?BATTLE_No2Index(b,5)==p:BATTLE_No2Index(b,5)<0);
+    }
+    force_finish(b,0,"defeat");BATTLE_Loop();assert(!native_battle(b));
+    assert(CHAR_getInt(c[0],CHAR_DEFAULTPET)==0);
+    for(i=0;i<2;i++){request(c[i],"ack","");request(c[i],"leave","");smoke_delete(c[i]);}
+    fprintf(stderr,"native pet switching: actual arena B entry, recall/resummon turns, old pet command and selected-pet restoration passed\n");
 }
 static void combat_test(void)
 {
@@ -979,6 +1040,11 @@ int main(int argc,char **argv)
     assert(ITEM_readItemConfFile(getItemfile()) && ITEM_initExistItemsArray(128));
     assert(initFunctionTable() && PETSKILL_initPetskill(getPetskillfile()));
     assert(lssproto_InitServer(sink,65536)>=0 && saacproto_InitClient(sink,65536,0)>=0 && BATTLE_initBattleArray(8));
-    tick(0);assert(enabled);contact_identity_test();window_test();external_warp_test();multiplayer_statistics_test();ride_statistics_test();loadout_test();power_configuration_test();countdown_configuration_test();resistance_configuration_test();external_interaction_test();external_petmail_test();pet_archive_compatibility_test();snapshot_failure_test();checkpoint_test();srand(42);reconnect_test();combat_test();statistics_test();resources_test();offline_save_test();
+    /* Execute the actual reload hooks, not just the invalidation callback. */
+    setenv("STONEAGE_BATTLE_RULESET_ID","test-startup-digest",1);
+    assert(readconfigfile(argv[1]));assert(!getenv("STONEAGE_BATTLE_RULESET_ID"));
+    setenv("STONEAGE_BATTLE_RULESET_ID","test-startup-digest",1);
+    assert(PETSKILL_initPetskill(getPetskillfile()));assert(!getenv("STONEAGE_BATTLE_RULESET_ID"));
+    tick(0);assert(enabled);contact_identity_test();window_test();external_warp_test();multiplayer_statistics_test();ride_statistics_test();loadout_test();power_configuration_test();countdown_configuration_test();resistance_configuration_test();external_interaction_test();external_petmail_test();pet_archive_compatibility_test();snapshot_failure_test();checkpoint_test();pet_switch_test();srand(42);reconnect_test();combat_test();statistics_test();resources_test();offline_save_test();
     StoneAge_BattleLogShutdown();Ladder_Shutdown();return 0;
 }

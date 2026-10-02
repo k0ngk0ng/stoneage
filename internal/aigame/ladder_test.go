@@ -164,6 +164,10 @@ func TestLadderReconnectRestoresAcceptedCommands(t *testing.T) {
 		t.Fatalf("acknowledgement reopened submitted commands: %+v", b)
 	}
 	s.applyEvent(stringEvent("B", "BP|0|0|64"))
+	if s.Snapshot().Battle.PlayerCommandReady() {
+		t.Fatal("new BP reused the previous arena roster")
+	}
+	s.applyEvent(stringEvent("B", "BC|0|0|self||186A0|23|64|64|4|0||0|0|0|A|enemy||186A0|23|64|64|4|0||0|0|0|"))
 	s.applyEvent(stringEvent("B", "BA|0|1|"))
 	if b := s.Snapshot().Battle; b.PlayerSubmitted || b.PetSubmitted || !b.PlayerCommandReady() {
 		t.Fatalf("next round did not reopen commands: %+v", b)

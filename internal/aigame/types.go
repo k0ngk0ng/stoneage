@@ -254,11 +254,16 @@ type PlayerSnapshot struct {
 	RidePetKnown      bool
 	BaseImage         int32
 	HasStatus         bool
+	// CombatStatsKnown requires a complete valid P1 combat prefix. HasStatus
+	// alone may also describe a partial/masked packet on a fresh connection.
+	CombatStatsKnown bool
 	// KS(slot,1) confirms the selected combat pet; zero is a real slot.
 	BattlePetSlot       int32
 	BattlePetSlotKnown  bool
 	StandbyPetMask      int32
 	StandbyPetMaskKnown bool
+	SummonPetMask       int32
+	SummonPetMaskKnown  bool
 }
 
 // SkillSnapshot is one server-owned character skill. Skill IDs and levels
@@ -272,6 +277,8 @@ type SkillSnapshot struct {
 // MagicSnapshot is an observed J slot, including the native field/target
 // restrictions. It describes an owned spell, never an opponent's abilities.
 type MagicSnapshot struct {
+	ID         int32
+	IDKnown    bool
 	Index      int32
 	UseFlag    int32
 	MP         int32
@@ -310,6 +317,12 @@ type AIInventoryItem struct {
 // and inventory fields carry separate Known markers so an older response
 // cannot imply a zero mask or an empty backpack.
 type AIObservation struct {
+	StandbyPetMask      int32
+	StandbyPetMaskKnown bool
+	SummonPetMask       int32
+	SummonPetMaskKnown  bool
+	BattlePetSlot       int32
+	BattlePetSlotKnown  bool
 	// PersistentCharacterID is present only after native persisted-load validation.
 	PersistentCharacterID string
 	PartyMode             int32
@@ -339,28 +352,49 @@ type AIObservation struct {
 // after a slot is emptied/reused or a full K replacement is observed. A
 // visible PME actor may additionally have a transient server object ID.
 type PetSnapshot struct {
-	StableID      string
-	Identity      string
-	IdentityKnown bool
-	IdentityEpoch uint64
-	ID            int32
-	Slot          int32
-	Name          string
-	FreeName      string
-	Graphic       int32
-	HP            int32
-	MaxHP         int32
-	MP            int32
-	MaxMP         int32
-	EXP           int32
-	MaxEXP        int32
-	Level         int32
-	Attack        int32
-	Defense       int32
-	Quick         int32
-	UseFlag       int32
-	Alive         bool
-	Skills        []PetSkillSnapshot
+	CombatStatsKnown bool
+	// SkillSlots is native CHAR_SLOT, not the owned-pet Slot (0..4).
+	SkillSlots          int32
+	SkillSlotsKnown     bool
+	Transmigration      int32
+	TransmigrationKnown bool
+	Loyalty             int32
+	Earth               int32
+	Water               int32
+	Fire                int32
+	Wind                int32
+	ChangeNameFlag      int32
+	StableID            string
+	Identity            string
+	IdentityKnown       bool
+	IdentityEpoch       uint64
+	ID                  int32
+	Slot                int32
+	Name                string
+	FreeName            string
+	Graphic             int32
+	HP                  int32
+	MaxHP               int32
+	MP                  int32
+	MaxMP               int32
+	EXP                 int32
+	MaxEXP              int32
+	Level               int32
+	Attack              int32
+	Defense             int32
+	Quick               int32
+	UseFlag             int32
+	Alive               bool
+	Skills              []PetSkillSnapshot
+}
+
+// BattleSkillIndexAllowed applies the native _PETSKILLBUG capacity gate.
+// Unknown metadata never means zero capacity or zero transmigrations.
+func (p PetSnapshot) BattleSkillIndexAllowed(index int32) bool {
+	if index < 0 || index >= 7 {
+		return false
+	}
+	return !p.SkillSlotsKnown || !p.TransmigrationKnown || p.Transmigration > 0 || index < p.SkillSlots
 }
 
 // InventoryItem is one of the twenty absolute legacy inventory slots.
@@ -461,12 +495,14 @@ type BattleParticipant struct {
 // while CommandReady is true.  BA is retained separately because it is the
 // animation/turn marker, not the menu acknowledgement.
 type BattleClock struct {
-	RulesVersion string
-	Known        bool
-	ServerTurn   int32
-	DeadlineMS   int64
-	ServerNowMS  int64
-	ReceivedAtMS int64
+	RulesVersion   string
+	RulesDigest    string
+	EnginePlatform string
+	Known          bool
+	ServerTurn     int32
+	DeadlineMS     int64
+	ServerNowMS    int64
+	ReceivedAtMS   int64
 }
 
 type BattleSnapshot struct {

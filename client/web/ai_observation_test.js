@@ -19,13 +19,14 @@ const app = {
   petSlots: [
     null,
     { id: "old-slot-one", name: "保留显示资料" },
-    { id: "old-slot-two", name: "旧稳定身份" },
+    { id: "old-slot-two", name: "旧稳定身份", maxSkill:7, maxSkillKnown:true, transmigration:1, transmigrationKnown:true },
     null,
     null,
   ],
   status: {},
   serverState: {},
   pc: {},
+  petSkills:[[],[],[{index:6,name:"old"}]],
 };
 const parser = new Function(
   "app",
@@ -55,6 +56,9 @@ assert.strictEqual(app.petSlots[0].id, undefined, "unknown unique does not creat
 assert.strictEqual(app.petSlots[0].level, 4);
 assert.strictEqual(app.petSlots[1], null, "unreported old slot is cleared");
 assert.strictEqual(app.petSlots[2].id, "latest", "new stable identity replaces old identity");
+assert.strictEqual(app.petSlots[2].maxSkillKnown,false,"replacement cannot inherit old skill capacity");
+assert.strictEqual(app.petSlots[2].transmigrationKnown,false,"replacement cannot inherit old transmigration");
+assert.deepStrictEqual(app.petSkills[2],[],"replacement cannot inherit old skills");
 assert.deepStrictEqual(app.petSlots.map(pet => pet?.slot ?? null), [0, null, 2, null, null]);
 assert.deepStrictEqual(app.status.aiEndEvent, [1, 2, 3, 4, 5, 6]);
 assert.deepStrictEqual(app.status.aiNowEvent, [7, 8, 9, 10, 11, 12]);
@@ -77,6 +81,17 @@ assert.strictEqual(parser.parseAIObservation("AI|v=2|chara=12|end=0,0,0,0,0,0|no
 
 console.log("AI observation parser and slot rebuild tests passed");
 
+for(const slot of [0,4,-1,2]){
+  parser.applyAIObservation(payload+"|active_pet="+slot);
+  assert.strictEqual(app.selectedPet,slot,"own-state query refreshes battle selection");
+}
+for(const value of ["", "-2", "5", "1.5", "2147483648", "x", "0|active_pet=1"]){
+  assert.strictEqual(parser.applyAIObservation(payload+"|active_pet="+value),null);
+  assert.strictEqual(app.selectedPet,2,"invalid selection must not mutate state");
+}
+parser.applyAIObservation(payload);
+assert.strictEqual(app.selectedPet,2,"legacy response preserves KS selection");
+
 const itemObservation=parser.applyAIObservation(payload+"|items=6,2414;5,2415|equipment=3,701");
 assert.strictEqual(itemObservation.itemsKnown,true);
 assert.deepStrictEqual(itemObservation.items,[{slot:3,templateId:701},{slot:5,templateId:2415},{slot:6,templateId:2414}]);
@@ -93,3 +108,37 @@ const inventoryEnd=html.indexOf("  const INVENTORY_SLOT_CENTERS",inventoryStart)
 const receiveInventory=new Function("app","decimal","unescapeCharacterOption","$","renderInventory","renderTrade",`${html.slice(inventoryStart,inventoryEnd)};return receiveInventory;`)(app,(value,fallback=0)=>value===""?fallback:Number(value),unescapeCharacterOption,()=>({}),()=>{},()=>{});
 receiveInventory("5|replacement||0||100|0|0|1|0");
 assert.strictEqual(app.status.aiObservation.itemsKnown,false,"slot replacement invalidates old template identity");
+
+for(const mask of [3,0,31,5]){
+  parser.applyAIObservation(payload+"|standby_pet_mask="+mask);
+  assert.strictEqual(app.status.standbyPetMask,mask);
+}
+for(const value of ["","-1","32","1.5","2147483648","x","0|standby_pet_mask=1"]){
+  assert.strictEqual(parser.applyAIObservation(payload+"|standby_pet_mask="+value),null);
+  assert.strictEqual(app.status.standbyPetMask,5);
+}
+parser.applyAIObservation(payload);
+assert.strictEqual(app.status.standbyPetMask,5,"legacy response preserves SPET mask");
+
+for(const mask of [0,9,31]){parser.applyAIObservation(payload+"|summon_pet_mask="+mask);assert.strictEqual(app.status.summonPetMask,mask);}
+for(const value of ["","-1","32","1.5","x","0|summon_pet_mask=1"]){assert.strictEqual(parser.applyAIObservation(payload+"|summon_pet_mask="+value),null);assert.strictEqual(app.status.summonPetMask,31);}
+
+// Exercise the production send helper: PETST has no reliable ACK, so a
+// successful write queues a read-only refresh, and failure leaves it unknown.
+(async()=>{
+  const begin=html.indexOf('  function send(functionName,values)'),end=html.indexOf('  function decodeValue',begin);
+  assert(begin>=0&&end>begin);
+  for(const name of ['PETST','SPET']){
+    for(const fail of [false,true]){
+      const sent=[],state={messageID:1,connectionToken:7,status:{summonPetMask:3,standbyPetMask:3}};
+      state.transport={send(packet){sent.push(packet);return fail?Promise.reject(new Error('uncertain write')):Promise.resolve('written');}};
+      const protocol={CLIENT_FIELDS:{PETST:[],SPET:[],S:[]},packetMessage(id,name,values){return {id,name,values};}};
+      const send=new Function('app','Protocol','addEvent','addWire',html.slice(begin,end)+';return send;')(state,protocol,()=>{},()=>{});
+      if(fail)await assert.rejects(send(name,[0,0]),/uncertain write/);else await send(name,[0,0]);
+      assert.strictEqual(state.status[name==='PETST'?'summonPetMask':'standbyPetMask'],undefined);
+      assert.deepStrictEqual(sent.map(p=>p.name),fail?[name]:[name,'S']);
+      if(!fail)assert.deepStrictEqual(sent[1].values,['AI']);
+    }
+  }
+  console.log('Pet selection writes refresh actual masks; uncertain writes keep eligibility unknown');
+})().catch(error=>{console.error(error);process.exitCode=1;});

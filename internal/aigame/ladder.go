@@ -25,6 +25,7 @@ type LadderCommandView struct {
 	MyNo            int32 `json:"my_no"`
 	PlayerSubmitted bool  `json:"player_submitted"`
 	PetSubmitted    bool  `json:"pet_submitted"`
+	Withdrawn       bool  `json:"withdrawn"`
 }
 
 func (state *gameState) ladderPacketView(event Event, previous *ladder.Envelope) *LadderPacketView {
@@ -43,6 +44,7 @@ func (state *gameState) ladderPacketView(event Event, previous *ladder.Envelope)
 		return &LadderPacketView{MatchID: battle.LadderID, Commands: &LadderCommandView{
 			Turn: battle.Turn, MyNo: battle.MyNo,
 			PlayerSubmitted: battle.PlayerSubmitted, PetSubmitted: battle.PetSubmitted,
+			Withdrawn: battle.Withdrawn(),
 		}}
 	}
 	return nil

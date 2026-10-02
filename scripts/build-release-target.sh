@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Build one release platform. CI fans these out onto separate runners.
 set -euo pipefail
+# macOS tar otherwise adds AppleDouble (._*) entries for extended attributes.
+# Release payloads must contain the same files on every build host.
+export COPYFILE_DISABLE=1
 cd "$(dirname "$0")/.."
 : "${RELEASE_TAG:?RELEASE_TAG is required}"
 [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release tag' >&2; exit 2; }
@@ -92,6 +95,7 @@ package_sactl_skill() {
 }
 package_arena_docs() {
   cp docs/local-arena-agent.md "$1/"
+  cp docs/learned-*.md "$1/"
   cp config/arena-agent/example.json "$1/arena-agent.example.json"
 }
 package_sactl_skill "$sactl_root"

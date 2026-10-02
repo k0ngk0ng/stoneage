@@ -40,6 +40,14 @@ func cloneBattleLogEntries(entries []BattleLogEntry) []BattleLogEntry {
 			value := *out[i].Delta
 			out[i].Delta = &value
 		}
+		if out[i].Recipient != nil {
+			value := *out[i].Recipient
+			out[i].Recipient = &value
+		}
+		if out[i].Guardian != nil {
+			value := *out[i].Guardian
+			out[i].Guardian = &value
+		}
 	}
 	return out
 }
@@ -47,7 +55,8 @@ func cloneBattleLogEntries(entries []BattleLogEntry) []BattleLogEntry {
 func battleEventBytes(e BattleEvent) int {
 	n := len(e.Raw) + 128
 	for _, effect := range e.Effects {
-		n += len(effect.Raw) + len(effect.Text) + 160
+		// Include the entry and optional scalar allocations in the estimate.
+		n += len(effect.Raw) + len(effect.Text) + 224
 	}
 	return n
 }

@@ -7,6 +7,11 @@ import tarfile
 import tempfile
 import zipfile
 
+
+def assert_no_appledouble(names):
+    assert not any(part.startswith('._') for name in names for part in Path(name).parts), names
+
+
 root = Path(__file__).resolve().parent.parent
 (root / 'build').mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(dir=root / 'build', prefix='release-layout-') as temporary:
@@ -49,6 +54,7 @@ target.write_text('mock package')
         else:
             with tarfile.open(dist / f'{prefix}.tar.gz') as archive:
                 names = archive.getnames()
+        assert_no_appledouble(names)
         for command in ['stoneage-admin', 'stoneage-gateway', 'stoneage-operator', 'stoneage-assets-sync']:
             assert f'{prefix}/bin/{command}{suffix}' in names
         assert (f'{prefix}/bin/stoneage-web' in names) == (target_os == 'linux')
@@ -75,6 +81,9 @@ target.write_text('mock package')
                         relative = source.relative_to(root / '.agents/skills/sactl')
                         assert archive.extractfile(f'{sactl_prefix}/skills/sactl/{relative}').read() == source.read_bytes()
         assert payload == f'{target_os}/{arch}', payload
+        assert_no_appledouble(sactl_names)
+        for guide in (root / 'docs').glob('learned-*.md'):
+            assert f'{sactl_prefix}/{guide.name}' in sactl_names, guide.name
         assert f'{sactl_prefix}/arena-agent{suffix}' not in sactl_names
         for entry in ['completions/sactl.bash', 'completions/_sactl']:
             assert f'{sactl_prefix}/{entry}' in sactl_names, entry
@@ -84,6 +93,7 @@ target.write_text('mock package')
         assert archive.extractfile('VERSION').read() == b'v0.2.1\n'
         assert archive.extractfile('bin/stoneage-assets-sync').read() == b'linux/amd64'
     with tarfile.open(dist / 'stoneage-sactl-v0.2.1-linux-arm64.tar.gz') as archive:
+        assert_no_appledouble(archive.getnames())
         assert 'stoneage-sactl-v0.2.1-linux-arm64/arena-agent' not in archive.getnames()
         assert archive.extractfile('stoneage-sactl-v0.2.1-linux-arm64/skills/sactl/SKILL.md')
         assert archive.extractfile('stoneage-sactl-v0.2.1-linux-arm64/install-sactl-skill.py')

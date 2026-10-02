@@ -199,6 +199,9 @@ func validatePlan(t Object, p Plan) error {
 }
 func parsePlan(raw []byte, t Object) (Plan, error) {
 	var p Plan
+	if uniqueJSON(raw) != nil {
+		return p, fmt.Errorf("invalid or duplicate plan JSON field")
+	}
 	var m Object
 	if err := decode(raw, &m); err != nil {
 		return p, fmt.Errorf("invalid plan JSON")

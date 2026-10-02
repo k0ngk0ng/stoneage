@@ -218,6 +218,13 @@ def transform(name, data):
     elif name == "lssproto_serv.c":
         data = entry(data, "lssproto_WN_send", "StoneAge_LadderWindowSent(CONNECT_getCharaindex(fd), windowtype, seqno, objindex, data);")
     elif name == "battle/battle.c":
+        data = entry(data, "BATTLE_Battling", "int stoneage_delivered[BATTLE_ENTRY_MAX*2], stoneage_delivered_count=0;")
+        data = replace(data,
+                       b"\t\tif( BATTLE_CommandSend( charaindex, szAllBattleString ) == TRUE ){\n\t\t}\n\t}\n\tpWatchBattle = pBattle->pNext;",
+                       b"\t\tif( BATTLE_CommandSend( charaindex, szAllBattleString ) == TRUE ){\n"
+                       b"            stoneage_delivered[stoneage_delivered_count++]=charaindex;\n\t\t}\n\t}\n"
+                       b"    StoneAge_LadderRemovedMovie(battleindex,szAllBattleString,stoneage_delivered,stoneage_delivered_count);\n"
+                       b"\tpWatchBattle = pBattle->pNext;")
         data = entry(data, "BATTLE_GetProfit", "if (StoneAge_LadderIsBattle(battleindex)) return 0;")
         data = entry(data, "BATTLE_UltimateExtra", "if (StoneAge_LadderKnockout(battleindex, enemyindex)) return;")
         data = entry(data, "BATTLE_NewEntry",
@@ -245,7 +252,8 @@ def transform(name, data):
         data = within(data, "BATTLE_CharSendAll", b'\t\t\tsprintf( szBp, "BP|%X|%X|%X",',
                        b'\t\t\tflg = StoneAge_LadderResumeFlags(charaindex, flg);\n\t\t\tsprintf( szBp, "BP|%X|%X|%X",')
         data = within(data, "BATTLE_CharSendAll", b"pBattle = BattleArray[battleindex].pNext;",
-                       b"if (!StoneAge_LadderSendRecipient(-1)) return;\n\tpBattle = BattleArray[battleindex].pNext;")
+                       b"StoneAge_LadderRemovedObservation(battleindex,szAllBattleString,szAllBattleVitals);\n"
+                       b"    if (!StoneAge_LadderSendRecipient(-1)) return;\n\tpBattle = BattleArray[battleindex].pNext;")
     elif name == "battle/battle_event.c":
         data = entry(data, "BATTLE_Escape", "if (StoneAge_LadderEscape(battleindex, attackNo)) return TRUE;")
         # Pass the actual physical attacker, including counters/combos. At a

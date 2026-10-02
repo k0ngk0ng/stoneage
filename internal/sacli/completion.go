@@ -30,9 +30,9 @@ func Complete(words []string) []string {
 	if len(args) > 0 {
 		previous := args[len(args)-1]
 		switch previous {
-		case "--config", "-config", "--socket", "-socket", "--model", "--database", "--output":
+		case "--config", "-config", "--socket", "-socket", "--model", "--database", "--demonstrations", "--output", "--report", "--environment", "--manifest", "--experiment", "--mixed-experiment", "--validation-comparison", "--left-experiment", "--right-experiment", "--opponent-model", "--from-model", "--build-pool", "--baseline", "--candidate":
 			return []string{"@files"}
-		case "--directory", "--root", "--work":
+		case "--directory", "--root", "--work", "--native-dir", "--data-dir", "--search-dir", "--records", "--collection":
 			return []string{"@dirs"}
 		case "--profile", "use":
 			return completePrefix(strings.Join(KnownProfiles(), " "), prefix)
@@ -40,17 +40,40 @@ func Complete(words []string) []string {
 			return completePrefix("http tcp", prefix)
 		case "--map-directory":
 			return []string{"@dirs"}
-		case "--web-base-url", "--address", "--server-id", "--character":
+		case "--web-base-url", "--address", "--server-id", "--character", "--checkpoint", "--opponent-mix", "--initial-policy-scale":
 			return nil
 		case "--mode":
+			if len(args) >= 3 && args[0] == "ai" && args[1] == "export-data" {
+				return completePrefix("all pve pvp pvp-1v1", prefix)
+			}
 			return completePrefix("1 2 3 4 5", prefix)
-		case "--strategy":
+		case "--format":
+			if len(args) >= 3 && args[0] == "ai" && args[1] == "export-data" {
+				return completePrefix("builds transitions", prefix)
+			}
+			return nil
+		case "--strategy", "--opponent-strategy":
 			return completePrefix("basic learned explore", prefix)
+		case "--opponent-sampling":
+			return completePrefix("uniform weakness-v1", prefix)
+		case "--plan-features":
+			return completePrefix("none target-counts-v1", prefix)
+		case "--plan-scope":
+			return completePrefix("team member", prefix)
+		case "--action-weighting", "--warmup-action-weighting":
+			return completePrefix("none sqrt-action-frequency-v1", prefix)
+		case "--features":
+			return completePrefix("commander-observed-v6 commander-observed-v7 commander-observed-v8", prefix)
+		case "--split":
+			return completePrefix("validation test", prefix)
+		case "--opponent", "--warmup-teacher", "--policy", "--rule-opponent", "--teacher":
+			return completePrefix("basic focus guard-break defensive sustain control independent-control", prefix)
 		case "--time":
 			return completePrefix("M A N", prefix)
-		case "--matches", "--epochs", "--seed", "--image", "--timeout", "-timeout",
+		case "--matches", "--epochs", "--seed", "--image", "--timeout", "-timeout", "--to", "--reason", "--min-groups", "--groups", "--alpha", "--rule-score", "--champion-margin",
 			"--request-id", "--revision", "--color", "--range", "--hometown", "--slot", "--face",
-			"--vital", "--strength", "--toughness", "--dexterity", "--earth", "--water", "--fire", "--wind":
+			"--vital", "--strength", "--toughness", "--dexterity", "--earth", "--water", "--fire", "--wind",
+			"--weights", "--families-per-batch", "--allocation", "--member-allocation", "--fixture-level", "--min-battle-turns", "--batches", "--workers", "--stop-at-data-bytes", "--batch-matches", "--batch-episodes", "--gradient-clip", "--points", "--pet-points", "--reserve-pets", "--pet-skills", "--healing-items", "--healing-magic", "--level", "--max-turns", "--sequence-length", "--learning-rate", "--target-kl", "--gae-lambda", "--entropy-weight", "--opening-rollouts", "--policy-advantage", "--warmup-matches", "--warmup-epochs", "--warmup-batch-episodes", "--warmup-learning-rate", "--pool-train-groups", "--train-groups", "--validation-groups", "--test-groups", "--initial-candidates", "--generations", "--proposals", "--native-candidates", "--finalists", "--fit-epochs", "--search-groups":
 			return nil
 		}
 	}
@@ -84,12 +107,57 @@ func Complete(words []string) []string {
 	command := positional[0]
 	if command == "ai" {
 		if len(positional) == 1 {
-			return completePrefix("init check run train evaluate simulate version --help", prefix)
+			return completePrefix("init check run environment experiment experiment-mix experiment-compare train collect-feedback train-feedback evaluate verify-evaluation compare-evaluations build-search build-pool build-validate export-data import-demonstrations export-model league champion simulate version --help", prefix)
+		}
+		if positional[1] == "environment" {
+			if len(positional) == 2 {
+				return completePrefix("init check --help", prefix)
+			}
+			if positional[2] == "init" {
+				return completePrefix("--image --directory --help", prefix)
+			}
+			return completePrefix("--environment --help", prefix)
+		}
+		if positional[1] == "build-validate" {
+			if len(positional) == 2 {
+				return completePrefix("init run verify compare --help", prefix)
+			}
+			options := map[string]string{
+				"init":   "--experiment --from-model --output --seed --groups",
+				"run":    "--manifest --model --environment --output --resume",
+				"verify": "--report", "compare": "--baseline --candidate",
+			}
+			return completePrefix("--search-dir --help "+options[positional[2]], prefix)
+		}
+		if positional[1] == "champion" {
+			if len(positional) == 2 {
+				return completePrefix("init challenge status rollback abandon --help", prefix)
+			}
+			options := map[string]string{
+				"init":      "--experiment --mixed-experiment --min-groups --alpha --rule-score --champion-margin",
+				"challenge": "--experiment --mixed-experiment --model --environment",
+				"rollback":  "--to --reason", "abandon": "--reason", "status": "",
+			}
+			return completePrefix("--directory --help "+options[positional[2]], prefix)
 		}
 		flags := map[string]string{
 			"init": "--directory --mode", "check": "--config", "run": "--config --matches --forever",
-			"train": "--database --output --seed --epochs", "evaluate": "--database --model",
-			"simulate": "--root --work --mode --matches --strategy --model --seed --image --reconnect",
+			"experiment":            "--environment --output --build-pool --pool-train-groups --from-model --seed --mode --points --pet-points --reserve-pets --pet-skills --healing-items --healing-magic --level --max-turns --train-groups --validation-groups --test-groups",
+			"build-pool":            "--search-dir --output",
+			"experiment-compare":    "--left-experiment --right-experiment --output",
+			"experiment-mix":        "--experiment --weights --families-per-batch --from-model --output",
+			"export-model":          "--data-dir --checkpoint --output",
+			"collect-feedback":      "--environment --data-dir --experiment --model --resume --workers --stop-at-data-bytes --seed --matches --teacher --greedy --opponent",
+			"train-feedback":        "--data-dir --collection --model --resume --epochs --output --stop-at-data-bytes --batch-episodes --sequence-length --learning-rate --gradient-clip --action-weighting",
+			"export-data":           "--records --output --format --mode --equal-points --include-abnormal",
+			"import-demonstrations": "--database --output --features",
+			"league":                "--data-dir",
+			"verify-evaluation":     "--report",
+			"compare-evaluations":   "--baseline --candidate",
+			"build-search":          "--environment --data-dir --resume --model --policy --opponent --opponent-model --seed --mode --points --pet-points --reserve-pets --pet-skills --healing-items --healing-magic --level --max-turns --initial-candidates --generations --proposals --native-candidates --finalists --fit-epochs --search-groups --validation-groups --test-groups",
+			"train":                 "--environment --data-dir --demonstrations --batch-episodes --gradient-clip --action-weighting --experiment --mixed-experiment --from-model --initial-policy-scale --resume --batches --workers --stop-at-data-bytes --output --seed --epochs --batch-matches --mode --points --pet-points --reserve-pets --pet-skills --healing-items --healing-magic --level --max-turns --sequence-length --learning-rate --target-kl --gae-lambda --entropy-weight --opening-rollouts --policy-advantage --plan-scope --plan-features --warmup-matches --warmup-epochs --warmup-batch-episodes --warmup-learning-rate --warmup-action-weighting --warmup-teacher --rule-opponent --opponent-sampling --opponent-mix --database",
+			"evaluate":              "--environment --model --output --resume --experiment --mixed-experiment --validation-comparison --split --seed --mode --points --pet-points --reserve-pets --pet-skills --healing-items --healing-magic --level --max-turns --matches --opponent --opponent-model --database",
+			"simulate":              "--root --work --mode --matches --strategy --model --opponent-strategy --opponent-model --native-dir --allocation --member-allocation --fixture-level --require-withdrawal --min-battle-turns --seed --image --reconnect --timeout",
 		}
 		return completePrefix(flags[positional[1]]+" --help", prefix)
 	}

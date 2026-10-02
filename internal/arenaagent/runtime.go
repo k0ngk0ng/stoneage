@@ -2,6 +2,7 @@ package arenaagent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -12,27 +13,44 @@ import (
 )
 
 type Runner struct {
-	config    Config
-	store     *Store
-	members   []*member
-	strategy  Strategy
-	ids       map[string]string
-	completed map[string]bool
-	Stop      atomic.Bool
-	Output    io.Writer
-	outputMu  sync.Mutex
+	config         Config
+	store          *Store
+	members        []*member
+	strategy       Strategy
+	selection      *modelSelection
+	selectionSaved bool
+	loadChampion   championLoader
+	ids            map[string]string
+	completed      map[string]bool
+	Stop           atomic.Bool
+	Output         io.Writer
+	outputMu       sync.Mutex
 }
 
 func NewRunner(c Config) (*Runner, error) {
-	strategy, e := makeStrategy(c)
-	if e != nil {
+	return newRunner(context.Background(), c)
+}
+
+func newRunner(ctx context.Context, c Config) (*Runner, error) {
+	if e := c.validateModelSource(); e != nil {
 		return nil, e
 	}
 	store, e := OpenStore(c.StateDir)
 	if e != nil {
 		return nil, e
 	}
-	r := &Runner{config: c, store: store, strategy: strategy, ids: map[string]string{}, completed: map[string]bool{}, Output: io.Discard}
+	// Inspect a persisted selection even if the config was edited to a fixed
+	// model/basic. Otherwise a restart while queued could bypass its version.
+	strategy, selection, e := store.restoreSelection(c)
+	saved := selection != nil
+	if e == nil && strategy == nil {
+		strategy, selection, e = configuredStrategy(ctx, c)
+	}
+	if e != nil {
+		store.DB.Close()
+		return nil, e
+	}
+	r := &Runner{config: c, store: store, strategy: strategy, selection: selection, selectionSaved: saved, ids: map[string]string{}, completed: map[string]bool{}, Output: io.Discard}
 	for _, m := range c.Members {
 		r.members = append(r.members, &member{cfg: m, binary: c.Sactl, ownership: c.OwnershipDir, store: store})
 	}
@@ -98,19 +116,31 @@ func (r *Runner) initialize(ctx context.Context) error {
 			return fmt.Errorf("missing authoritative character ID")
 		}
 		if match := obj(status["match"]); match != nil {
-			if e = r.store.Pin(str(match["id"]), r.strategy.ID()+":"+r.strategy.Version()); e != nil {
+			if e = r.pinMatch(str(match["id"])); e != nil {
 				return e
 			}
+		}
+		if str(status["phase"]) == "queued" && r.selection != nil && !r.selectionSaved {
+			return fmt.Errorf("queued team has no saved model selection; cancel the existing queue before using champion_directory")
 		}
 		if _, e = m.request(ctx, "query", "BTIME"); e != nil {
 			return e
 		}
-		view, e := m.data(ctx, "battle-state")
+		local := localModel(r.strategy)
+		if _, e = m.request(ctx, "query", "BTRULES"); e != nil {
+			return e
+		}
+		view, e := waitBattleMetadata(ctx, local != nil && local.neural != nil, 250*time.Millisecond, func(ctx context.Context) (Object, error) { return m.data(ctx, "battle-state") })
 		if e != nil {
 			return e
 		}
 		if integer(view["schema_version"]) != 1 || str(obj(obj(view["battle"])["Clock"])["RulesVersion"]) != RulesVersion {
 			return fmt.Errorf("server does not advertise compatible BTIME rules; update server before queueing")
+		}
+		if local != nil {
+			if e = local.validateServer(view); e != nil {
+				return e
+			}
 		}
 		if _, e = m.request(ctx, "auto-battle", "off"); e != nil {
 			return e
@@ -182,10 +212,17 @@ func (r *Runner) validateMatch(s Object) (string, error) {
 		}
 	}
 	id := str(m["id"])
-	return id, r.store.Pin(id, r.strategy.ID()+":"+r.strategy.Version())
+	return id, r.pinMatch(id)
 }
 func (r *Runner) collect(ctx context.Context, m *member) (Object, error) {
 	if _, e := m.call(ctx, 3*time.Second, true, "query", "BTIME"); e != nil {
+		return nil, e
+	}
+	if _, e := m.call(ctx, 3*time.Second, true, "query", "BTRULES"); e != nil {
+		return nil, e
+	}
+	local := localModel(r.strategy)
+	if _, e := waitBattleMetadata(ctx, local != nil && local.neural != nil, 250*time.Millisecond, func(ctx context.Context) (Object, error) { return m.data(ctx, "battle-state") }); e != nil {
 		return nil, e
 	}
 	stream, cursor := r.store.Cursor(m.cfg.ID)
@@ -199,6 +236,10 @@ func (r *Runner) collect(ctx context.Context, m *member) (Object, error) {
 	if v == nil {
 		return nil, fmt.Errorf("missing battle observation")
 	}
+	// Keep the atomic event/observation cutoff in each recorded team view.
+	// Later polls may ingest more events before a decision is reconstructed;
+	// a recurrent strategy must never read those future events into this turn.
+	v["event_cutoff"] = Object{"stream": batch["stream"], "cursor": batch["cursor"], "gap": batch["gap"]}
 	reserved := Object{}
 	for _, actor := range []string{"player", "pet"} {
 		if intent := r.store.Intent(m.cfg.ID, str(v["match_id"]), integer(v["turn"]), actor); intent != "" {
@@ -213,6 +254,11 @@ func (r *Runner) acknowledge(ctx context.Context, statuses map[string]Object) er
 		result := obj(statuses[m.cfg.ID]["result"])
 		if result == nil {
 			continue
+		}
+		if r.selection != nil {
+			if e := r.pinMatch(str(result["id"])); e != nil {
+				return e
+			}
 		}
 		stream, cursor := r.store.Cursor(m.cfg.ID)
 		reply, e := m.call(ctx, 3*time.Second, true, "battle-events", strconv.FormatInt(cursor, 10), stream)
@@ -237,7 +283,8 @@ func remainingMS(view Object) float64 {
 	}
 	return num(clock["DeadlineMS"]) - num(clock["ServerNowMS"]) - max(0, float64(time.Now().UnixMilli())-num(clock["ReceivedAtMS"]))
 }
-func (r *Runner) battle(ctx context.Context, statuses map[string]Object) error {
+func (r *Runner) battle(ctx context.Context, statuses map[string]Object) (returnErr error) {
+	started := time.Now()
 	matchID := ""
 	for _, s := range statuses {
 		if obj(s["match"]) == nil || str(s["phase"]) != "battle" {
@@ -304,24 +351,38 @@ func (r *Runner) battle(ctx context.Context, statuses map[string]Object) error {
 	deadline := time.Now().Add(time.Duration(min(15000, remaining-2000)) * time.Millisecond)
 	decisionCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	history := r.store.History(matchID)
+	timing := newTurnTiming(started, team, r.strategy.ID(), remaining, deadline)
+	defer func() {
+		if ctx.Err() != nil {
+			timing.Outcome = "canceled"
+		}
+		timing.finish()
+		// Keep timing out of model history and preserve the original error. A
+		// failed store cannot promise that its final diagnostic was persisted.
+		r.store.Record("turn_timing", timing, matchID, "")
+		if returnErr == nil {
+			returnErr = r.store.Err()
+		}
+	}()
+	history, recordCutoff := r.store.HistorySnapshot(matchID)
+	team["history_record_cutoff"] = recordCutoff
 	if e = r.store.Err(); e != nil {
 		return e
 	}
-	decision, e := r.strategy.Decide(decisionCtx, team, history)
-	if e == nil {
-		e = validatePlan(team, decision.Plan)
-	}
+	timing.next("decision")
+	decision, e := r.decideForTurn(ctx, decisionCtx, team, history)
+	timing.DecisionDeadlineExceeded = time.Now().After(deadline)
 	if e != nil {
-		r.store.Record("strategy_fallback", Object{"strategy": r.strategy.ID(), "kind": "decision_failed"}, matchID, "")
-		decision, e = (Basic{}).Decide(ctx, team, history)
-		if e != nil {
-			return e
-		}
+		return e
 	}
+	timing.DecisionStrategy, timing.DecisionVersion = decision.Strategy, decision.Version
+	timing.Plan, timing.Orders = hash(decision.Plan), len(decision.Plan.Orders)
+	timing.ReusedPlan = yes(decision.Diagnostics["reused_plan"])
 	if time.Now().After(deadline.Add(time.Second)) {
+		timing.Outcome = "late_decision"
 		return nil
 	}
+	timing.next("plan_persistence")
 	summary := Object{}
 	for member, value := range groups[newest] {
 		parts := []Object{}
@@ -334,14 +395,75 @@ func (r *Runner) battle(ctx context.Context, statuses map[string]Object) error {
 	if e = r.store.Err(); e != nil {
 		return e
 	}
+	timing.next("dispatch")
 	var wg sync.WaitGroup
 	for _, m := range r.members {
 		wg.Add(1)
 		go func(m *member) { defer wg.Done(); r.dispatch(ctx, m, team, decision.Plan) }(m)
 	}
 	wg.Wait()
+	if r.store.Err() == nil {
+		timing.Outcome = "dispatch_complete"
+	}
 	return r.store.Err()
 }
+
+// A strategy's own deadline may trigger a fallback while the commander still
+// has time to submit. Stopping the commander (including a fixture timeout)
+// must instead stop this turn, without fabricating a strategy failure/plan.
+func (r *Runner) decideForTurn(ctx, decisionCtx context.Context, team Object, history []Object) (Decision, error) {
+	if err := ctx.Err(); err != nil {
+		return Decision{}, err
+	}
+	decision, err := r.strategy.Decide(decisionCtx, team, history)
+	if stop := ctx.Err(); stop != nil {
+		return Decision{}, stop
+	}
+	if err == nil {
+		err = validatePlan(team, decision.Plan)
+	}
+	if err == nil {
+		return decision, nil
+	}
+	kind := "decision_failed"
+	var failure *neuralFailure
+	if errors.As(err, &failure) {
+		kind = failure.code
+	}
+	var providerFailure *llmFailure
+	if errors.As(err, &providerFailure) {
+		kind = providerFailure.code
+	}
+	// A fallback is a new team decision. After any written/uncertain order,
+	// only a validated continuation of the saved final plan may be submitted.
+	// Returning the original error preserves the runner's normal lifecycle:
+	// continuity errors stop it; an isolated deadline remains retryable.
+	partial, observationErr := teamHasSubmittedOrReservedOrders(team)
+	if partial || observationErr != nil {
+		reason := "partial_submission"
+		if observationErr != nil {
+			reason = "invalid_submission_state"
+		}
+		r.store.Record("strategy_rejected", Object{"strategy": r.strategy.ID(), "kind": kind, "reason": reason}, str(team["match_id"]), "")
+		if stored := r.store.Err(); stored != nil {
+			return Decision{}, stored
+		}
+		if observationErr != nil {
+			return Decision{}, observationErr
+		}
+		return Decision{}, err
+	}
+	decision, err = (Basic{}).Decide(ctx, team, history)
+	if stop := ctx.Err(); stop != nil {
+		return Decision{}, stop
+	}
+	r.store.Record("strategy_fallback", Object{"strategy": r.strategy.ID(), "kind": kind}, str(team["match_id"]), "")
+	if stored := r.store.Err(); stored != nil {
+		return Decision{}, stored
+	}
+	return decision, err
+}
+
 func (r *Runner) dispatch(ctx context.Context, m *member, t Object, p Plan) {
 	for _, actor := range []string{"player", "pet"} {
 		for _, order := range p.Orders {
@@ -609,9 +731,12 @@ func (r *Runner) prepare(ctx context.Context, statuses map[string]Object) error 
 			return e
 		}
 	}
+	if e := r.selectForQueue(ctx); e != nil {
+		return e
+	}
 	_, e := leader.mutate(ctx, "queue")
 	if e == nil {
-		r.report("queued", Object{"mode": r.config.Mode, "strategy": r.strategy.ID()})
+		r.report("queued", Object{"mode": r.config.Mode, "strategy": r.strategy.ID(), "version": r.strategy.Version()})
 	}
 	return e
 }

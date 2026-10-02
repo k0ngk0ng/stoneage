@@ -58,6 +58,9 @@ func renderSnapshot(snapshot aigame.Snapshot, floorName string) string {
 	if battle := snapshot.Battle; battle.Active {
 		fmt.Fprintf(&builder, "battle active turn=%d command_ready=%t player_submitted=%t pet_submitted=%t",
 			battle.Turn, battle.CommandReady, battle.PlayerSubmitted, battle.PetSubmitted)
+		if battle.Withdrawn() {
+			builder.WriteString(" withdrawn=true (spectating until arena settlement)")
+		}
 		if battle.Ended {
 			fmt.Fprintf(&builder, " ended result=%q", battle.Result)
 		}

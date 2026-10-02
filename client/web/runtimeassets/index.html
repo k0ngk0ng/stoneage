@@ -1729,10 +1729,8 @@
     [2,"graphic","图形"],[4,"hp","生命"],[8,"maxHp","生命上限"],[16,"mp","魔法"],[32,"maxMp","魔法上限"],
     [64,"exp","经验"],[128,"maxExp","经验上限"],[256,"level","等级"],[512,"atk","攻击"],[1024,"def","防御"],
     [2048,"quick","敏捷"],[4096,"ai","AI"],[8192,"earth","地"],[16384,"water","水"],[32768,"fire","火"],
-    // In server/legacy/source/2.5 CHAR_K_STRING_SLOT occupies 0x20000.
-    // The upstream executable labels the same bit maxSkill, but 2.5 sends
-    // the pet's storage slot here; do not import the newer interpretation.
-    [131072,"slot","槽位"],[262144,"changeNameFlag","可改名"],
+    // CHAR_SLOT is skill capacity; the owned slot comes from K<slot>.
+    [65536,"wind","风"],[131072,"maxSkill","技能容量"],[262144,"changeNameFlag","可改名"],
     [524288,"name","名称","string"],[1048576,"freeName","显示名","string"]
   ]);
   const PARTY_FIELDS=Object.freeze([[2,"id","编号"],[4,"level","等级"],[8,"maxHp","生命上限"],[16,"hp","生命"],[32,"mp","魔法"],[64,"name","姓名","string"]]);
@@ -5146,7 +5144,7 @@
     if(slot<0||rememberedSlot!==slot)return null;
     const match=command.match(/^W\|([0-9A-F]+)\|/i);if(!match||match[1].toUpperCase()==="FF")return null;
     const index=parseInt(match[1],16),skill=(app.petSkills[slot]||[]).find(entry=>Number(entry.index??entry.skillId??0)===index);
-    if(!battleUsablePetSkill(skill)||Number(skill.target??5)===5)return null;
+    if(!battleUsablePetSkill(skill,state)||Number(skill.target??5)===5)return null;
     return {kind:"pet",index,targetType:Number(skill.target??5),field:skill.field,allowDead:skill.deadTarget,remembered:true};
   }
   function battleCommitPetMenuStage(state=app.battleState,command=""){
@@ -5739,7 +5737,15 @@
     if(app.messageID>0xffffffff)app.messageID=1;
     addWire(`→ ${functionName}`);
     const transport=app.transport,token=app.connectionToken;
-    return transport.send(packet).catch(error=>{
+    const petSelection=functionName==="PETST"||functionName==="SPET";
+    if(petSelection){
+      app.status=app.status||{};
+      delete app.status[functionName==="PETST"?"summonPetMask":"standbyPetMask"];
+    }
+    return transport.send(packet).then(result=>{
+      if(petSelection&&app.transport===transport&&app.connectionToken===token)return send("S",["AI"]).then(()=>result);
+      return result;
+    }).catch(error=>{
       const failure=new Error(error?.message||String(error));
       failure.sourceTransport=transport;failure.sourceToken=token;
       throw failure;
@@ -7142,7 +7148,7 @@
       if(index<0||index>=20)continue;
       const name=tokens[base]||"";
       if(!name){if(indexed)merged.delete(index);continue;}
-      const targetRaw=decimal(tokens[base+6]),item={index,name:unescapeCharacterOption(name),name2:unescapeCharacterOption(tokens[base+1]||""),color:decimal(tokens[base+2]),memo:unescapeCharacterOption(tokens[base+3]||""),graphic:decimal(tokens[base+4]),field:decimal(tokens[base+5]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,level:decimal(tokens[base+7]),send:decimal(tokens[base+8])};
+      const targetRaw=decimal(tokens[base+6]),item={index,name:unescapeCharacterOption(name,{stripSentinel:false}),name2:unescapeCharacterOption(tokens[base+1]||"",{stripSentinel:false}),color:decimal(tokens[base+2]),memo:unescapeCharacterOption(tokens[base+3]||"",{stripSentinel:false}),graphic:decimal(tokens[base+4]),field:decimal(tokens[base+5]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,level:decimal(tokens[base+7]),send:decimal(tokens[base+8])};
       if(indexed)merged.set(index,item);else items.push(item);
     }
     app.inventory=indexed?[...merged.values()].filter(item=>decimal(item?.index,-1)>=0).sort((left,right)=>decimal(left.index)-decimal(right.index)):items;
@@ -8770,6 +8776,18 @@
         const points=strictInteger(raw);
         if(points===null||points<0||points>2147483647||observation.statPoints!==undefined)return null;
         observation.statPoints=points;
+      }else if(key==="summon_pet_mask"){
+        const mask=strictInteger(raw);
+        if(mask===null||mask<0||mask>31||observation.summonPetMask!==undefined)return null;
+        observation.summonPetMask=mask;
+      }else if(key==="standby_pet_mask"){
+        const mask=strictInteger(raw);
+        if(mask===null||mask<0||mask>31||observation.standbyPetMask!==undefined)return null;
+        observation.standbyPetMask=mask;
+      }else if(key==="active_pet"){
+        const slot=strictInteger(raw);
+        if(slot===null||slot< -1||slot>=5||observation.activePet!==undefined)return null;
+        observation.activePet=slot;
       }
     }
     if(observation.version!==1||observation.characterIndex===null||!endSeen||!nowSeen||!rideSeen)return null;
@@ -8783,6 +8801,11 @@
     for(const entry of (observation.pets||[]).slice().sort((left,right)=>Number(left.slot)-Number(right.slot))){
       const slot=Number(entry.slot);if(!Number.isInteger(slot)||slot<0||slot>=5||next[slot])continue;
       const prior=previous[slot],pet=prior&&typeof prior==="object"?{...prior}:{};
+      if(prior?.id&&String(entry.unique||"")!=="unknown"&&String(prior.id)!==String(entry.unique)){
+        // A proven replacement cannot inherit the old pet's skill limits.
+        pet.maxSkill=0;pet.maxSkillKnown=false;pet.transmigration=0;pet.transmigrationKnown=false;
+        if(Array.isArray(app.petSkills))app.petSkills[slot]=[];
+      }
       /* S("AI") is the authoritative stable identity refresh.  Remove every
          old identity alias before applying this response so a missing unique
          value cannot silently retain an ID from a previous pet or slot. */
@@ -8792,6 +8815,11 @@
       next[slot]=pet;
     }
     app.petSlots=next;
+    // Read-only own-state refresh, also available after reconnect. Older
+    // servers omit this field; preserve their existing KS-based selection.
+    if(Number.isInteger(observation.activePet)&&observation.activePet>=-1&&observation.activePet<5)app.selectedPet=observation.activePet;
+    if(Number.isInteger(observation.summonPetMask))app.status.summonPetMask=observation.summonPetMask;
+    if(Number.isInteger(observation.standbyPetMask))app.status.standbyPetMask=observation.standbyPetMask;
     app.status.aiObservation=observation;
     app.status.aiCharacterIndex=observation.characterIndex;
     app.status.aiEndEvent=observation.endEvent.slice();
@@ -8923,22 +8951,34 @@
       }
       case "M": app.pc.hp=stateNumber(kind.slice(1),app.pc.hp);app.pc.mp=stateNumber(parts[1],app.pc.mp);app.pc.exp=stateNumber(parts[2],app.pc.exp);break;
       case "K": {
-        const slot=decimal(kind.slice(1),0),target=app.petSlots[slot]||{slot,index:slot};
+        const slot=decimal(kind.slice(1),0);let target=app.petSlots[slot]||{slot,index:slot};
         if(Protocol.base62(parts[1]||"0")===0){
           app.petSlots[slot]=null;
         }else if(Protocol.base62(parts[1]||"0")===1){
           // Login/status K records are made by CHAR_makeStatusString("Kx")
           // and contain the 2.5-only transmigration value before the two
           // names.  This is not the same layout as a masked K update.
-          const full=["graphic","hp","maxHp","mp","maxMp","exp","maxExp","level","atk","def","quick","ai","earth","water","fire","wind","slot","changeNameFlag","transmigration"];
+          target={slot,index:slot};
+          if(Array.isArray(app.petSkills))app.petSkills[slot]=[];
+          const full=["graphic","hp","maxHp","mp","maxMp","exp","maxExp","level","atk","def","quick","ai","earth","water","fire","wind","maxSkill","changeNameFlag","transmigration"];
+          target.maxSkill=0;target.maxSkillKnown=false;target.transmigration=0;target.transmigrationKnown=false;
           full.forEach((key,index)=>{if(index+2<parts.length)target[key]=stateNumber(parts[index+2]);});
+          target.maxSkillKnown=/^[+-]?\d+$/.test(parts[18]||"")&&Number.isInteger(target.maxSkill)&&target.maxSkill>=0&&target.maxSkill<=7;
+          target.transmigrationKnown=/^[+-]?\d+$/.test(parts[20]||"")&&Number.isInteger(target.transmigration)&&target.transmigration>=0&&target.transmigration<=2147483647;
           target.name=unescapeCharacterOption(parts[21]||target.name||"");
           target.freeName=unescapeCharacterOption(parts[22]||target.freeName||"");
-          target.userPetName=target.freeName;target.index=slot;target.slot=target.slot??slot;
+          target.userPetName=target.freeName;target.index=slot;target.slot=slot;
           app.petSlots[slot]=target;
         }else{
           applyMaskedFields(parts,target,PET_FIELDS);
-          target.slot=target.slot??slot;target.index=slot;target.graphic=target.graphic??target.graNo;
+          const mask=Protocol.base62(parts[1]||"0");
+          if(mask&524288)target.name=unescapeCharacterOption(target.name||"");
+          if(mask&1048576)target.freeName=unescapeCharacterOption(target.freeName||"");
+          if(mask&131072){
+            const offset=2+PET_FIELDS.filter(field=>field[0]<131072&&(mask&field[0])).length,raw=parts[offset]||"";
+            target.maxSkillKnown=/^[+-]?\d+$/.test(raw)&&Number.isInteger(target.maxSkill)&&target.maxSkill>=0&&target.maxSkill<=7;
+          }
+          target.slot=slot;target.index=slot;target.graphic=target.graphic??target.graNo;
           if(target.freeName!==undefined)target.userPetName=target.freeName;
           app.petSlots[slot]=target;
         }
@@ -8953,7 +8993,15 @@
            top of the authoritative server roll. */
         app.status.encounterMin=stateNumber(parts[1]);app.status.encounterMax=stateNumber(parts[2]);break;
       }
-      case "J": { const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:unescapeCharacterOption(parts[5]||""),memo:unescapeCharacterOption(parts[6]||"")};app.magic[slot]=entry;break; }
+      case "J": {
+        const slot=decimal(kind.slice(1),0),targetRaw=stateNumber(parts[4]),entry={index:slot,useFlag:stateNumber(parts[1]),mp:stateNumber(parts[2]),field:stateNumber(parts[3]),target:targetRaw>=100?targetRaw%100:targetRaw,deadTarget:targetRaw>=100,name:unescapeCharacterOption(parts[5]||""),memo:unescapeCharacterOption(parts[6]||""),magicId:0,magicIdKnown:false};
+        const ids=parts.slice(7).filter(part=>part.startsWith("id="));
+        if(entry.useFlag&&ids.length===1){
+          const raw=ids[0].slice(3),id=Number(raw);
+          if(/^[+-]?\d+$/.test(raw)&&Number.isInteger(id)&&id>=0&&id<=2147483647){entry.magicId=id;entry.magicIdKnown=true;}
+        }
+        app.magic[slot]=entry;break;
+      }
       case "N": { const slot=decimal(kind.slice(1),0),target=app.party[slot]||{slot};if(Protocol.base62(parts[1]||"0")===0){app.party[slot]=null;}else{applyMaskedFields(parts,target,PARTY_FIELDS);target.slot=slot;app.party[slot]=target;}syncPartyFollowMembership();break; }
       case "I": receiveInventory([kind.slice(1),...parts.slice(1)].join("|"),false);break;
       case "W": { const slot=decimal(kind.slice(1),0);app.petSkills[slot]=parsePetSkillStatusTokens(parts.slice(1));break; }
@@ -9355,7 +9403,12 @@
     if(!battleLevelAllowed(entry))return "level";
     return "";
   }
-  function battleUsablePetSkill(entry){ return Boolean(entry?.name||entry?.skillId!==undefined)&&battleFieldAllowed(entry)&&battleLevelAllowed(entry); }
+  function battlePetSkillSlotAllowed(index,state=app.battleState){
+    if(!Number.isInteger(index)||index<0||index>=7)return false;
+    const slot=battleActivePetSlot(state),pet=app.petSlots?.[slot];
+    return !pet?.maxSkillKnown||!pet?.transmigrationKnown||Number(pet.transmigration)>0||index<Number(pet.maxSkill);
+  }
+  function battleUsablePetSkill(entry,state=app.battleState){ return Boolean(entry?.name||entry?.skillId!==undefined)&&battleFieldAllowed(entry)&&battleLevelAllowed(entry)&&battlePetSkillSlotAllowed(Number(entry.index??entry.skillId??0),state); }
   function battleMagicEntry(action){
     const index=Number(action?.index);if(!Number.isInteger(index)||index<0)return null;
     const direct=app.magic?.[index];if(direct&&Number(direct.index??index)===index)return direct;
@@ -9433,16 +9486,16 @@
        BATTLEMENU.CPP.  A populated K slot is not sufficient: rest/mail pets
        deliberately remain in petSlots but must not produce S|n. */
     const listed=Boolean(validSlot&&pet&&Number(pet.useFlag??1)!==0&&(mask&(1<<slot)));
-    return {slot,pet,listed,alive:Boolean(listed&&Number(pet.hp??0)>0),current:Boolean(listed&&slot===Number(app.selectedPet))};
+    return {slot,pet,listed,summonable:Number.isInteger(app.status?.summonPetMask)&&Boolean(app.status.summonPetMask&(1<<slot)),alive:Boolean(listed&&Number(pet.hp??0)>0),current:Boolean(listed&&slot===Number(app.selectedPet)),rideKnown:Number.isInteger(app.pc?.ridePet),riding:slot===Number(app.pc?.ridePet)};
   }
   function rejectUnavailableBattlePetSwitch(index){
     const value=Number(index);
     if(value===-1){
-      if(Number.isInteger(Number(app.selectedPet))&&Number(app.selectedPet)>=0)return false;
+      if(Number.isInteger(app.selectedPet)&&app.selectedPet>=0&&app.selectedPet<5)return false;
       playSoundEffect(220,320,240);return true;
     }
     const entry=battlePetSwitchEntry(value);
-    if(entry.listed&&entry.alive&&!entry.current)return false;
+    if(entry.listed&&entry.summonable&&entry.alive&&!entry.current&&entry.rideKnown&&!entry.riding&&Number.isInteger(app.selectedPet)&&app.selectedPet>=-1&&app.selectedPet<5)return false;
     /* The server does not reject an out-of-mask S|n: battle_command.c turns
        it into BATTLE_COM_PETIN, consuming the master's whole turn.  Reject
        locally before any lock/pending mutation and leave the popup plus the
@@ -9598,7 +9651,7 @@
       setBattleItemInspection(null);
       for(let slot=5;slot<20;slot++)list.append(battleItemPopupRow(slot,inventoryItem(slot)));
     }else if(kind==="pet-skill"){
-      const slot=battleActivePetSlot(),entries=(slot>=0?app.petSkills[slot]||[]:[]).filter(battleUsablePetSkill).slice(0,8);
+      const slot=battleActivePetSlot(),entries=(slot>=0?app.petSkills[slot]||[]:[]).filter(entry=>battleUsablePetSkill(entry)).slice(0,8);
       for(const skill of entries){
         const index=Number(skill.index??skill.skillId??0),targetType=Number(skill.target??5);
         list.append(battlePopupRow(skill.name||`技能 ${index}`,skill.memo||"",()=>beginBattleAction({kind:"pet",index,targetType,field:skill.field,allowDead:skill.deadTarget},{closePopup:{skipDefault:true,preserveChoiceTimer:true}}),"",false));
@@ -9951,6 +10004,13 @@
     const wasWaiting=state.ladderAwaitingCommands;
     state.lastLadderCommands=view;
     state.ladderAwaitingCommands=false;
+    state.ladderWithdrawn=Boolean(commands.withdrawn);
+    if(state.ladderWithdrawn){
+      state.commandLocked=true;state.petCommandLocked=true;
+      state.petAfterPlayerReady=false;state.petAfterPlayerPending=false;
+      battleClearCommandPending(state);clearBattleChoiceTimer(state);battleCancelPendingUi(state);
+      return;
+    }
     // A delayed BA cannot retract a local write still crossing the bridge.
     state.ladderPlayerSubmitted=Boolean(state.ladderPlayerSubmitted||commands.player_submitted);
     state.ladderPetSubmitted=Boolean(state.ladderPetSubmitted||commands.pet_submitted);
@@ -10018,7 +10078,7 @@
   function battleCommandAllowed(command,state=app.battleState){
     const text=String(command||"");
     if(!app.battle||!state)return false;
-    if(state.ladderAwaitingCommands||state.ladderSettling)return false;
+    if(state.ladderAwaitingCommands||state.ladderSettling||state.ladderWithdrawn)return false;
     if(battleHelpCommand(text)&&state.noHelp)return false;
     const flags=Number(state.bpFlags)||0;
     /* BP is the server's turn/menu gate.  Keep the same gate on the command
@@ -10039,11 +10099,11 @@
   }
   function battleActionAllowed(action,state=app.battleState){
     if(!app.battle||!state)return false;
-    if(state.ladderAwaitingCommands||state.ladderSettling)return false;
+    if(state.ladderAwaitingCommands||state.ladderSettling||state.ladderWithdrawn)return false;
     if(state.ladderID&&(action?.kind==="pet"?state.ladderPetSubmitted:state.ladderPlayerSubmitted))return false;
     const flags=Number(state.bpFlags)||0;
     if(state.movieActive||battleChoiceExpired(state)||battleLocalDeath(state))return false;
-    if(action?.kind==="pet")return !(flags&BATTLE_BP_PET_MENU_NON)&&!state.petCommandLocked;
+    if(action?.kind==="pet")return !(flags&BATTLE_BP_PET_MENU_NON)&&!state.petCommandLocked&&(action.index===undefined||battlePetSkillSlotAllowed(Number(action.index),state));
     return !(flags&BATTLE_BP_PLAYER_MENU_NON)&&!state.commandLocked;
   }
   // Fast battle is presentation only. The server-side owner still handles
@@ -11385,7 +11445,7 @@
      repeated BP/BC packets cannot submit them twice. */
   function submitBattleUnavailableDefaults(state,turnKey=state?.turn){
     if(!state||app.battleState!==state||!app.battle||state.movieActive||battleEntryPending(state))return;
-    if(state.ladderID&&(state.ladderAwaitingCommands||state.ladderSettling||state.ladderPlayerSubmitted))return;
+    if(state.ladderID&&(state.ladderAwaitingCommands||state.ladderSettling||state.ladderPlayerSubmitted||state.ladderWithdrawn))return;
     const flags=Number(state.bpFlags)||0;
     /* Enemy surprise already has its own two-command path above.  Do not race
        it with a second N/W pair while the opening surprise banner is active. */
@@ -15227,8 +15287,9 @@
   }
   // LOGIN.CPP serverWindowType6: catalog -> pet -> slot -> confirmation.
   // Keep the actual sparse pet/skill indices; WN expects all three one-based.
-  // 2.5 has seven skill slots; K.slot is a storage position, not capacity.
-  function petTrainingSlots(pet){return pet?Math.min(7,Math.max(0,decimal(pet.maxSkill??7,7))):0;}
+  // 2.5 has seven skill slots. K<slot> identifies the owned pet; maxSkill
+  // is the capacity decoded from CHAR_SLOT, not that owned-pet index.
+  function petTrainingSlots(pet){return pet?Math.min(7,Math.max(0,decimal(pet.maxSkillKnown===false?7:pet.maxSkill??7,7))):0;}
   function renderPetSkillTraining(wnd,shop,state={page:0,step:"catalog"}){
     if(app.activeWindow!==wnd)return;
     const screen=$("server-window-screen"),body=$("server-window-body"),options=$("server-window-options");
@@ -16403,7 +16464,7 @@
        protocol string: | is written as \\z and \\ as \\y.  The outer
        LSSPROTO decoder has already removed its own backslash quoting by the
        time this function runs. */
-    let decoded=String(value||"").replace(/\\y/g,"\\").replace(/\\z/g,"|").replace(/\\n/g,"\n").replace(/\\c/g,",");
+    let decoded=String(value||"").replace(/\\[yznc]/g,token=>({"\\y":"\\","\\z":"|","\\n":"\n","\\c":","})[token]);
     /* A few old SAAC records end the option with the historical \\z0
        sentinel after the place name.  It is not a second field. */
     if(options.stripSentinel!==false&&decoded.endsWith("|0"))decoded=decoded.slice(0,-2);

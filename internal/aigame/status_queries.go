@@ -22,6 +22,7 @@ func StatusQueryGroups() []StatusQueryGroup {
 		{"t", "称号列表；当前通过 log 查看返回事件，尚未投影到 observe", []string{"t"}},
 		{"AI", "扩展自身状态：物品/装备模板编号、宠物稳定编号、事件标记等；不调用大模型", []string{"AI"}},
 		{"BTIME", "竞技场战斗回合时钟；不是游戏时间，非竞技场战斗时可能无有效截止时间", []string{"BTIME"}},
+		{"BTRULES", "战斗规则摘要与引擎平台，用于本地 learned 模型兼容检查；需要支持此扩展的服务器", []string{"BTRULES"}},
 	}
 }
 

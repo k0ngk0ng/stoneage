@@ -151,6 +151,8 @@ func TestMagicProjectionSlotsEscapesAndLifecycle(t *testing.T) {
 
 func TestStandbyPetCandidatesAndSubmittedBroadcast(t *testing.T) {
 	s := decisionFixture()
+	s.Player.RidePet, s.Player.RidePetKnown = -1, true
+	s.Player.SummonPetMask, s.Player.SummonPetMaskKnown = 3, true
 	s.Player.StandbyPetMaskKnown = true
 	s.Player.StandbyPetMask = 3
 	s.Pets = append(s.Pets, PetSnapshot{Slot: 1, UseFlag: 1, HP: 30, Name: "reserve"}, PetSnapshot{Slot: 2, UseFlag: 1, HP: 50, Name: "rest"})

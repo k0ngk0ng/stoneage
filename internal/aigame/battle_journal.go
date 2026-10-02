@@ -23,6 +23,10 @@ type BattleLogEntry struct {
 	Resource  string `json:"resource,omitempty"`
 	Delta     *int   `json:"delta,omitempty"`
 	Status    *int   `json:"status,omitempty"`
+	// Recipient and Guardian are battle slots (0..19), never persistent IDs.
+	// Nil means absent/unresolved; slot zero is a valid observed participant.
+	Recipient *int `json:"recipient,omitempty"`
+	Guardian  *int `json:"guardian,omitempty"`
 }
 type BattleLogPerson struct {
 	ID       int    `json:"id"`
@@ -60,6 +64,11 @@ type battleJournal struct {
 }
 
 func journalNumber(s string) int { n, _ := strconv.ParseInt(s, 16, 32); return int(n) }
+
+func journalSlot(s string) (int, bool) {
+	n, err := strconv.ParseUint(s, 16, 8)
+	return int(n), err == nil && n < 20
+}
 func (s *Session) BattleJournal() BattleJournal {
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
@@ -233,20 +242,54 @@ func (j *battleJournal) record(e Event) {
 	for i := 0; i < len(p); {
 		m := p[i]
 		i++
-		if m == "BP" {
+		if m == "BP" || m == "" || m == "FF" {
 			continue
 		}
 		start := i
-		for i < len(p) && p[i] != "FF" {
-			i++
+		fixed := map[string]int{"BD": 4, "BM": 2, "BG": 1, "bg": 1, "bn": 1}[m]
+		if m == "BS" && start+1 < len(p) {
+			if p[start+1] == "f0" {
+				fixed = 2
+			}
+			if p[start+1] == "f1" {
+				fixed = 7
+			}
+		}
+		if fixed > 0 {
+			// Native BD/BM/bg are concatenated without FF. Consume their
+			// defined positional fields, never search numeric payloads for
+			// marker-looking hex values such as BE or BD.
+			for i < len(p) && i < start+fixed {
+				i++
+			}
+			if i-start != fixed {
+				m = "unknown"
+			}
+			if m == "BD" {
+				for i < len(p) && (strings.HasPrefix(p[i], "p") || strings.HasPrefix(p[i], "m")) {
+					i++
+				}
+			}
+		} else {
+			for i < len(p) && p[i] != "FF" {
+				i++
+			}
 		}
 		v := p[start:i]
-		if i < len(p) {
+		if i < len(p) && p[i] == "FF" {
 			i++
 		}
 		segment := strings.Join(append([]string{m}, v...), "|")
 		j.movie(m, v, segment)
-		if m == "BJ" || m == "B$" {
+		extended := m == "B$"
+		if m == "BJ" {
+			for _, value := range v {
+				if strings.HasPrefix(value, "i") {
+					extended = true
+				}
+			}
+		}
+		if extended {
 			break
 		}
 	}
@@ -263,14 +306,23 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 	}
 	if strings.Contains("|BH|BI|BB|Bb|Bd|Bh|Bp|", "|"+m+"|") {
 		type hit struct {
-			target, flags, damage, pet, guardian int
-			counter                              bool
+			target, flags, damage, pet, guardian   int
+			counter                                bool
+			targetKnown, flagsKnown, guardianKnown bool
 		}
 		var hits []hit
 		actor := field("a")
+		actorKnown := false
+		for _, s := range v {
+			if strings.HasPrefix(s, "a") {
+				_, actorKnown = journalSlot(s[1:])
+				break
+			}
+		}
 		for _, s := range v {
 			if strings.HasPrefix(s, "r") {
-				hits = append(hits, hit{target: n(s[1:]), guardian: -1})
+				_, known := journalSlot(s[1:])
+				hits = append(hits, hit{target: n(s[1:]), targetKnown: known, guardian: -1})
 				continue
 			}
 			if len(hits) == 0 {
@@ -283,12 +335,15 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 				h.damage = n(s[7:])
 			case strings.HasPrefix(s, "f"):
 				h.flags = n(s[1:])
+				_, err := strconv.ParseUint(s[1:], 16, 31)
+				h.flagsKnown = err == nil
 			case strings.HasPrefix(s, "d"):
 				h.damage = n(s[1:])
 			case strings.HasPrefix(s, "p"):
 				h.pet = n(s[1:])
 			case strings.HasPrefix(s, "g"):
 				h.guardian = n(s[1:])
+				_, h.guardianKnown = journalSlot(s[1:])
 			}
 		}
 		count := 0
@@ -298,18 +353,22 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 			}
 		}
 		previous := actor
+		previousKnown := actorKnown
 		for i, h := range hits {
 			a := actor
+			aKnown := actorKnown
 			kind, action := "attack", "攻击"
 			if count > 1 {
 				action = fmt.Sprintf("攻击 · 第 %d/%d 段", i+1, count)
 			}
 			if h.counter {
 				a = previous
+				aKnown = previousKnown
 				kind = "counter"
 				action = "反击"
 			}
 			previous = h.target
+			previousKnown = h.targetKnown
 			sign := "−"
 			if h.flags&2048 != 0 {
 				sign = "+"
@@ -339,7 +398,25 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 			if len(tags) > 0 {
 				out += "（" + strings.Join(tags, "、") + "）"
 			}
-			j.add(BattleLogEntry{Kind: kind, Actor: a, Target: h.target, Damage: h.damage, PetDamage: h.pet, Flags: h.flags, Hit: i + 1, Hits: count, Raw: raw, Text: fmt.Sprintf("%s → %s：%s，%s", j.name(a), j.name(h.target), action, out)})
+			entry := BattleLogEntry{Kind: kind, Actor: a, Target: h.target, Damage: h.damage, PetDamage: h.pet, Flags: h.flags, Hit: i + 1, Hits: count, Raw: raw, Text: fmt.Sprintf("%s → %s：%s，%s", j.name(a), j.name(h.target), action, out)}
+			if h.flagsKnown && h.flags&512 != 0 && h.guardianKnown {
+				guardian := h.guardian
+				entry.Guardian = &guardian
+			}
+			if h.flagsKnown && h.flags&(32|4096) == 0 {
+				recipient, known := h.target, h.targetKnown
+				// BATTLE_Attack redirects to the guardian first. DamageSub may
+				// reflect back to this hit's attacker (also for a counter).
+				if h.flags&1024 != 0 {
+					recipient, known = a, aKnown
+				} else if h.flags&512 != 0 {
+					recipient, known = h.guardian, h.guardianKnown
+				}
+				if known {
+					entry.Recipient = &recipient
+				}
+			}
+			j.add(entry)
 			if h.flags&(32|4096) == 0 {
 				target := h.target
 				if h.flags&1024 != 0 {
@@ -363,17 +440,60 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 	}
 	e := BattleLogEntry{Kind: m, Raw: raw, Actor: -1, Target: -1}
 	switch m {
-	case "BD":
-		var pos []string
-		for _, s := range v {
-			if s != "" && !strings.ContainsRune("rdpm", rune(s[0])) {
-				pos = append(pos, s)
+	case "bn":
+		if len(v) == 1 {
+			actor, err := strconv.ParseUint(v[0], 16, 8)
+			if err == nil && actor < 20 {
+				e.Kind, e.Actor, e.Text = "wait", int(actor), j.name(int(actor))+"：等待"
 			}
 		}
-		if len(pos) < 2 {
+	case "BS":
+		if len(v) != 2 && len(v) != 7 || !strings.HasPrefix(v[0], "s") {
 			break
 		}
-		target, kind, sign, amount, pet := field("r"), n(pos[0]), n(pos[1]), field("d"), field("p")
+		actor, err := strconv.ParseUint(v[0][1:], 16, 8)
+		if err != nil || actor >= 15 || actor%10 >= 5 {
+			break
+		}
+		if len(v) == 2 && v[1] == "f0" {
+			e.Kind, e.Actor, e.Target, e.Text = "pet_recall", int(actor), int(actor)+5, j.name(int(actor))+"：收回宠物"
+		} else if len(v) == 7 && v[1] == "f1" {
+			valid := true
+			for _, field := range []struct {
+				index  int
+				prefix string
+			}{{2, "g"}, {3, "l"}, {4, "h"}, {6, "m"}} {
+				value := v[field.index]
+				if !strings.HasPrefix(value, field.prefix) {
+					valid = false
+					break
+				}
+				if _, err := strconv.ParseUint(value[1:], 16, 32); err != nil {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				e.Kind, e.Actor, e.Target, e.Text = "pet_summon", int(actor), int(actor)+5, j.name(int(actor))+"：召唤宠物"
+			}
+		}
+	case "BD":
+		if len(v) < 4 || !strings.HasPrefix(v[0], "r") {
+			break
+		}
+		// Poison/periodic native records can omit the d prefix. Signs 2..6
+		// describe other mechanics, not ordinary positive HP recovery.
+		values := []string{strings.TrimPrefix(v[0], "r"), v[1], v[2], strings.TrimPrefix(v[3], "d")}
+		valid := true
+		for _, value := range values {
+			if _, err := strconv.ParseUint(value, 16, 32); err != nil {
+				valid = false
+			}
+		}
+		target, kind, sign, amount, pet := n(values[0]), n(values[1]), n(values[2]), n(values[3]), field("p")
+		if !valid || target < 0 || target >= 20 || kind > 1 || sign > 1 {
+			break
+		}
 		key := fmt.Sprint(target, ":", kind, ":", sign, ":", amount, ":", pet)
 		for i, k := range j.pending {
 			if key == k {

@@ -143,8 +143,10 @@ func applyEventLocked(state *gameState, event Event) {
 			state.snapshot.Magic = nil
 			state.snapshot.Player.BattlePetSlotKnown = false
 			state.snapshot.Player.StandbyPetMaskKnown = false
+			state.snapshot.Player.SummonPetMaskKnown = false
 			state.snapshot.Player.RidePetKnown = false
 			state.snapshot.Player.StatPointsKnown = false
+			state.snapshot.Player.CombatStatsKnown = false
 			state.snapshot.Player.SocialFlagsKnown = false
 		}
 	case "CharLogout":
@@ -160,6 +162,7 @@ func applyEventLocked(state *gameState, event Event) {
 			state.snapshot.Magic = nil
 			state.snapshot.Player.RidePetKnown = false
 			state.snapshot.Player.StandbyPetMaskKnown = false
+			state.snapshot.Player.SummonPetMaskKnown = false
 			state.snapshot.AI.PersistentCharacterID = ""
 			clear(state.actors)
 			clear(state.party)
@@ -371,12 +374,22 @@ func parseCharacterList(value string) []Character {
 }
 
 func (state *gameState) applySystem(value string) {
+	if strings.HasPrefix(value, "BTRULES|") {
+		state.applyBattleRules(value)
+		return
+	}
 	if strings.HasPrefix(value, "BTIME|") {
 		state.applyBattleClock(value)
 		return
 	}
 	if strings.HasPrefix(value, "J") {
 		state.applyMagic(value)
+		return
+	}
+	if strings.HasPrefix(value, "K") {
+		// Names may contain escaped delimiters. Keep their wire field
+		// boundaries intact, just as for J and W status records.
+		state.applyPetStatus(strings.Split(value, "|"))
 		return
 	}
 	// Split the native five-field skill records before unescaping their
@@ -390,6 +403,12 @@ func (state *gameState) applySystem(value string) {
 	// normal legacyText pass so an escaped "\\z" remains part of its field.
 	if strings.HasPrefix(value, "AI|") {
 		state.applyAIObservation(strings.Split(value, "|"))
+		return
+	}
+	if strings.HasPrefix(value, "I") {
+		// Item strings have their own escape layer. Split records before
+		// decoding names/memos, exactly as for pet skills and identities.
+		state.applyUnindexedInventory(value[1:])
 		return
 	}
 	parts := splitPipe(legacyText(value))
@@ -435,15 +454,8 @@ func (state *gameState) applySystem(value string) {
 		}
 		state.snapshot.Player.HasStatus = true
 		return
-	case 'K':
-		state.applyPetStatus(parts)
-		return
 	case 'N':
 		state.applyPartyStatus(parts)
-		return
-	case 'I':
-		inventoryParts := append([]string{parts[0][1:]}, parts[1:]...)
-		state.applyUnindexedInventory(strings.Join(inventoryParts, "|"))
 		return
 	}
 }
@@ -504,6 +516,20 @@ func (state *gameState) applyAIObservation(parts []string) {
 		state.snapshot.Player.StatPointsKnown = true
 	}
 	state.mergeAIObservation(observation)
+	// Merge may remove/reidentify an owned slot. Apply the current selection
+	// afterwards; an older server that omits it must not overwrite a KS reply.
+	if observation.BattlePetSlotKnown {
+		state.snapshot.Player.BattlePetSlot = observation.BattlePetSlot
+		state.snapshot.Player.BattlePetSlotKnown = true
+	}
+	if observation.SummonPetMaskKnown {
+		state.snapshot.Player.SummonPetMask = observation.SummonPetMask
+		state.snapshot.Player.SummonPetMaskKnown = true
+	}
+	if observation.StandbyPetMaskKnown {
+		state.snapshot.Player.StandbyPetMask = observation.StandbyPetMask
+		state.snapshot.Player.StandbyPetMaskKnown = true
+	}
 	// applyEvent increments Revision immediately after applyEventLocked. Use
 	// the revision that will be visible with this packet, including when the
 	// parser is exercised directly by package tests.
@@ -616,6 +642,24 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 				return AIObservation{}, false
 			}
 			observation.PartyMode, observation.PartyModeKnown = parsed, true
+		case "active_pet":
+			parsed, ok := parseSignedDecimal(value)
+			if !ok || parsed < -1 || parsed >= 5 {
+				return AIObservation{}, false
+			}
+			observation.BattlePetSlot, observation.BattlePetSlotKnown = parsed, true
+		case "summon_pet_mask":
+			parsed, ok := parseSignedDecimal(value)
+			if !ok || parsed < 0 || parsed > 31 {
+				return AIObservation{}, false
+			}
+			observation.SummonPetMask, observation.SummonPetMaskKnown = parsed, true
+		case "standby_pet_mask":
+			parsed, ok := parseSignedDecimal(value)
+			if !ok || parsed < 0 || parsed > 31 {
+				return AIObservation{}, false
+			}
+			observation.StandbyPetMask, observation.StandbyPetMaskKnown = parsed, true
 		case "v":
 			parsed, ok := parseSignedDecimal(value)
 			if !ok || parsed != 1 {
@@ -805,6 +849,7 @@ func (state *gameState) applyPlayerStatus(parts []string) {
 	marker := strings.TrimPrefix(parts[0], "P")
 	if marker == "1" {
 		values := parts[1:]
+		state.snapshot.Player.CombatStatsKnown = completeCombatPrefix(values, 20)
 		numericCount := len(values)
 		for index := 27; index < len(values); index++ {
 			if !isSignedDecimal(values[index]) {
@@ -863,6 +908,9 @@ func (state *gameState) applyPlayerStatus(parts []string) {
 	values := parts[1:]
 	position := 0
 	takeInt := func(target *int32) {
+		if position >= len(values) || !completeCombatPrefix(values[position:position+1], 1) {
+			state.snapshot.Player.CombatStatsKnown = false
+		}
 		if position < len(values) {
 			*target = base62Int(values[position], *target)
 		}
@@ -984,6 +1032,7 @@ func (state *gameState) applyPetStatus(parts []string) {
 	}
 	if mask == 1 {
 		values := parts[2:]
+		current.CombatStatsKnown = completeCombatPrefix(values, 11)
 		set := func(index int, target *int32) {
 			if index < len(values) {
 				*target = base62Int(values[index], *target)
@@ -1000,8 +1049,19 @@ func (state *gameState) applyPetStatus(parts []string) {
 		set(8, &current.Attack)
 		set(9, &current.Defense)
 		set(10, &current.Quick)
+		set(11, &current.Loyalty)
+		set(12, &current.Earth)
+		set(13, &current.Water)
+		set(14, &current.Fire)
+		set(15, &current.Wind)
+		set(17, &current.ChangeNameFlag)
 		if len(values) > 16 {
-			current.Slot = base62Int(values[16], slot)
+			v, ok := parseSignedDecimal(values[16])
+			current.SkillSlots, current.SkillSlotsKnown = v, ok && v >= 0 && v <= 7
+		}
+		if len(values) > 18 {
+			v, ok := parseSignedDecimal(values[18])
+			current.Transmigration, current.TransmigrationKnown = v, ok && v >= 0
 		}
 		if len(values) > 19 {
 			current.Name = legacyText(values[19])
@@ -1013,6 +1073,9 @@ func (state *gameState) applyPetStatus(parts []string) {
 		values := parts[2:]
 		position := 0
 		takeInt := func(target *int32) {
+			if position >= len(values) || !completeCombatPrefix(values[position:position+1], 1) {
+				current.CombatStatsKnown = false
+			}
 			if position < len(values) {
 				*target = base62Int(values[position], *target)
 			}
@@ -1040,7 +1103,16 @@ func (state *gameState) applyPetStatus(parts []string) {
 			{512, func(v *int32) { current.Attack = *v }, nil},
 			{1024, func(v *int32) { current.Defense = *v }, nil},
 			{2048, func(v *int32) { current.Quick = *v }, nil},
-			{8192, func(v *int32) { current.Slot = *v }, nil},
+			{4096, func(v *int32) { current.Loyalty = *v }, nil},
+			{8192, func(v *int32) { current.Earth = *v }, nil},
+			{16384, func(v *int32) { current.Water = *v }, nil},
+			{32768, func(v *int32) { current.Fire = *v }, nil},
+			{65536, func(v *int32) { current.Wind = *v }, nil},
+			{131072, func(v *int32) {
+				current.SkillSlots = *v
+				current.SkillSlotsKnown = position <= len(values) && completeCombatPrefix(values[position-1:position], 1) && *v >= 0 && *v <= 7
+			}, nil},
+			{262144, func(v *int32) { current.ChangeNameFlag = *v }, nil},
 			{524288, nil, func(v *string) { current.Name = *v }},
 			{1048576, nil, func(v *string) { current.FreeName = *v }},
 		}
@@ -1070,6 +1142,20 @@ func (state *gameState) applyPetStatus(parts []string) {
 	} else {
 		state.upsertPet(slot, current)
 	}
+}
+
+// Full native P/K packets carry decimal combat attributes. A short/malformed
+// full packet cannot prove that a default zero is an observed value.
+func completeCombatPrefix(values []string, count int) bool {
+	if len(values) < count {
+		return false
+	}
+	for _, s := range values[:count] {
+		if _, ok := parseSignedDecimal(s); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (state *gameState) applyPartyStatus(parts []string) {
@@ -1129,7 +1215,9 @@ func (state *gameState) applyPartyStatus(parts []string) {
 }
 
 func (state *gameState) applyUnindexedInventory(value string) {
-	tokens := splitPipe(legacyText(value))
+	tokens := splitPipe(value)
+	clear(state.inventory)
+	state.invalidateAIInventory()
 	for offset := 0; offset+9 <= len(tokens); offset += 9 {
 		index := int32(offset / 9)
 		state.setInventoryRecord(index, tokens[offset:offset+9])
@@ -1137,7 +1225,7 @@ func (state *gameState) applyUnindexedInventory(value string) {
 }
 
 func (state *gameState) applyIndexedInventory(value string) {
-	tokens := splitPipe(legacyText(value))
+	tokens := splitPipe(value)
 	for offset := 0; offset+10 <= len(tokens); offset += 10 {
 		index := base62Int(tokens[offset], -1)
 		if index < 0 || index >= 20 {
@@ -1403,6 +1491,9 @@ func (state *gameState) applyBattlePacket(value string) {
 			battle.BPFlags = battleNumber(values[1])
 			battle.MyMP = battleNumber(values[2])
 			battle.BPReceived = true
+			if battle.LadderID != "" {
+				battle.BCReceived = false // Require this turn's complete arena roster.
+			}
 			battle.PlayerSubmitted = false
 			battle.PetSubmitted = false
 			battle.LastCommand = ""
@@ -1474,7 +1565,13 @@ func (state *gameState) applyBattleRoster(value string) {
 	if len(body) > 0 && len(body)%13 != 0 && len(body)%8 == 0 {
 		width = 8
 	}
+	// BC is a complete roster. A truncated/duplicate roster must never be
+	// interpreted as authoritative removal of a controlled arena member.
+	if battle.LadderID != "" && (len(body)%width != 0 || len(body)/width > 20) {
+		return
+	}
 	participants := make([]BattleParticipant, 0, len(body)/width)
+	seen := map[int32]bool{}
 	for offset := 0; offset+7 < len(body) && len(participants) < 20; offset += width {
 		item := BattleParticipant{
 			BattleID: battleNumber(body[offset]), Name: legacyText(body[offset+1]), Title: legacyText(body[offset+2]),
@@ -1482,6 +1579,10 @@ func (state *gameState) applyBattleRoster(value string) {
 			MaxHP: battleNumber(body[offset+6]), Flags: battleNumber(body[offset+7]),
 		}
 		item.Player = item.Flags&(1<<2) != 0
+		if battle.LadderID != "" && (item.BattleID < 0 || item.BattleID >= 20 || seen[item.BattleID]) {
+			return
+		}
+		seen[item.BattleID] = true
 		item.Dead = item.Flags&(1<<1) != 0
 		if width == 13 && offset+12 < len(body) {
 			item.RideFlag = battleSignedNumber(body[offset+8])

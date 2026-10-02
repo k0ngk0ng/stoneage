@@ -46,6 +46,8 @@ func OpenStore(directory string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS pending_ladder(member TEXT PRIMARY KEY,body TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS results(match_id TEXT PRIMARY KEY,body TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS match_policies(match_id TEXT PRIMARY KEY,policy TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS commander_models(artifact TEXT PRIMARY KEY,body BLOB NOT NULL);
+ CREATE TABLE IF NOT EXISTS commander_selection(id INTEGER PRIMARY KEY CHECK(id=1),body TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS records_match ON records(match_id,id);`)
 	if e != nil {
 		db.Close()
@@ -128,6 +130,9 @@ func (s *Store) Reserve(member string, selection Object, actor string) bool {
 			e = x
 			ok = n == 1
 		}
+		if e == nil && ok {
+			e = record(tx, "submission_intent", Object{"selection": selection, "actor": actor}, str(selection["match_id"]), member)
+		}
 		return e
 	})
 	return ok && s.Err() == nil
@@ -192,10 +197,21 @@ func (s *Store) Result(v Object) {
 	})
 }
 func (s *Store) Pin(match, policy string) error {
+	return s.pinSelection(match, policy, nil)
+}
+func (s *Store) pinSelection(match, policy string, selection *modelSelection) error {
 	var actual string
 	s.tx(func(tx *sql.Tx) error {
-		if _, e := tx.Exec("INSERT OR IGNORE INTO match_policies VALUES(?,?)", match, policy); e != nil {
+		inserted, e := tx.Exec("INSERT OR IGNORE INTO match_policies VALUES(?,?)", match, policy)
+		if e != nil {
 			return e
+		}
+		if n, e := inserted.RowsAffected(); e != nil {
+			return e
+		} else if n != 0 && selection != nil {
+			if e = record(tx, "match_model", selection, match, ""); e != nil {
+				return e
+			}
 		}
 		return tx.QueryRow("SELECT policy FROM match_policies WHERE match_id=?", match).Scan(&actual)
 	})
@@ -208,26 +224,42 @@ func (s *Store) Pin(match, policy string) error {
 	return nil
 }
 func (s *Store) History(match string) []Object {
+	history, _ := s.HistorySnapshot(match)
+	return history
+}
+
+// HistorySnapshot captures append-only command records and public events in
+// one database transaction. The cutoff survives later writes and clock changes.
+func (s *Store) HistorySnapshot(match string) (out []Object, cutoff int64) {
 	type item struct {
 		at   int64
 		body Object
 	}
 	items := []item{}
 	s.tx(func(tx *sql.Tx) error {
-		rows, e := tx.Query("SELECT at_ms,body FROM records WHERE match_id=? AND kind='turn' ORDER BY id", match)
+		if e := tx.QueryRow("SELECT COALESCE(MAX(id),0) FROM records").Scan(&cutoff); e != nil {
+			return e
+		}
+		rows, e := tx.Query("SELECT id,at_ms,kind,member,body FROM records WHERE match_id=? AND id<=? AND kind IN ('turn','event_gap','submission_intent','submission') ORDER BY id", match, cutoff)
 		if e != nil {
 			return e
 		}
 		for rows.Next() {
-			var at int64
-			var body string
+			var id, at int64
+			var kind, member, body string
 			var v Object
-			if e = rows.Scan(&at, &body); e != nil {
+			if e = rows.Scan(&id, &at, &kind, &member, &body); e != nil {
 				break
 			}
 			if e = decode([]byte(body), &v); e != nil {
 				break
 			}
+			if kind == "event_gap" {
+				v = Object{"kind": kind, "member": member, "event_gap": v}
+			} else if kind == "submission" || kind == "submission_intent" {
+				v = Object{"member": member, kind: v}
+			}
+			v["record_id"], v["record_kind"] = id, kind
 			items = append(items, item{at, v})
 		}
 		re := rows.Err()
@@ -238,28 +270,28 @@ func (s *Store) History(match string) []Object {
 		if re != nil {
 			return re
 		}
-		rows, e = tx.Query("SELECT member,body FROM events WHERE match_id=? ORDER BY sequence", match)
+		rows, e = tx.Query("SELECT member,stream,body FROM events WHERE match_id=? ORDER BY member,stream,sequence", match)
 		if e != nil {
 			return e
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var member, body string
+			var member, stream, body string
 			var v Object
-			if e = rows.Scan(&member, &body); e != nil {
+			if e = rows.Scan(&member, &stream, &body); e != nil {
 				return e
 			}
 			if e = decode([]byte(body), &v); e != nil {
 				return e
 			}
-			items = append(items, item{int64(num(v["at_ms"])), Object{"turn": v["turn"], "member": member, "event": v, "summary": v["effects"]}})
+			items = append(items, item{int64(num(v["at_ms"])), Object{"turn": v["turn"], "member": member, "stream": stream, "event": v, "summary": v["effects"]}})
 		}
 		return rows.Err()
 	})
 	sort.SliceStable(items, func(i, j int) bool { return items[i].at < items[j].at })
-	out := []Object{}
+	out = []Object{}
 	for _, v := range items {
 		out = append(out, v.body)
 	}
-	return out
+	return out, cutoff
 }

@@ -45,12 +45,24 @@ else
 fi
 
 cd "$game_root/gmsv"
+# Hash the executable we actually launch, regardless of inherited test options.
+STONEAGE_BATTLE_BINARY=./gmsvjt.exe
+export STONEAGE_BATTLE_BINARY
+unset STONEAGE_BATTLE_RULESET_ID
 if [ -n "${STONEAGE_BATTLE_RECORD_DIR:-}" ]; then
     if STONEAGE_BATTLE_RULESET_ID="$(/opt/stoneage/bin/prepare-battle-rules.sh "$config_file")"; then
         export STONEAGE_BATTLE_RULESET_ID
     else
         echo "Battle recorder: rule archive failed; recording disabled for this process" >&2
         unset STONEAGE_BATTLE_RECORD_DIR
+    fi
+fi
+if [ -z "${STONEAGE_BATTLE_RULESET_ID:-}" ]; then
+    if STONEAGE_BATTLE_RULESET_ID="$(/opt/stoneage/bin/prepare-battle-rules.sh "$config_file" --digest-only)"; then
+        export STONEAGE_BATTLE_RULESET_ID
+    else
+        echo "Battle rules digest unavailable; learned compatibility cannot be established" >&2
+        unset STONEAGE_BATTLE_RULESET_ID
     fi
 fi
 exec ./gmsvjt.exe -f "$config_file" >"$log_root/gmsv.log" 2>&1

@@ -1,0 +1,1 @@
+{"schema_version":1,"command":["sh","/opt/stoneage/bin/start-training-worker.sh"]}

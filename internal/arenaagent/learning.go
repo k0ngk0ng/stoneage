@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/k0ngk0ng/stoneage/internal/battlepolicy"
 )
 
 const FeatureVersion = "joint-observed-v1"
@@ -144,12 +147,41 @@ type Learned struct {
 	Weights map[string]float64
 	mode    int
 	version string
+	neural  *battlepolicy.Artifact
 }
 
 func NewLearned(path string, mode int) (*Learned, error) {
-	raw, e := os.ReadFile(path)
+	f, e := os.Open(path)
 	if e != nil {
 		return nil, e
+	}
+	defer f.Close()
+	info, e := f.Stat()
+	if e != nil {
+		return nil, e
+	}
+	if !info.Mode().IsRegular() || info.Size() > 128<<20 {
+		return nil, fmt.Errorf("model file exceeds limit or is not regular")
+	}
+	raw, e := io.ReadAll(io.LimitReader(f, (128<<20)+1))
+	if e != nil {
+		return nil, e
+	}
+	if len(raw) > 128<<20 {
+		return nil, fmt.Errorf("model file exceeds limit")
+	}
+	var header struct {
+		Schema int `json:"schema_version"`
+	}
+	if e = decode(raw, &header); e != nil {
+		return nil, fmt.Errorf("invalid model JSON")
+	}
+	if header.Schema == 2 || header.Schema == 3 || header.Schema == 4 || header.Schema == 5 || header.Schema == 6 {
+		a, e := battlepolicy.DecodeArtifact(raw)
+		if e != nil {
+			return nil, e
+		}
+		return learnedArtifact(a, mode)
 	}
 	var m Object
 	if decode(raw, &m) != nil {
@@ -172,11 +204,27 @@ func NewLearned(path string, mode int) (*Learned, error) {
 	if len(weights) == 0 || len(arr(m["action_support"])) == 0 {
 		return nil, fmt.Errorf("model weights and action support required")
 	}
-	return &Learned{m, weights, mode, hash(m)}, nil
+	return &Learned{Model: m, Weights: weights, mode: mode, version: hash(m)}, nil
+}
+
+// The caller supplies a validated artifact loaded from immutable bytes.
+func learnedArtifact(a battlepolicy.Artifact, mode int) (*Learned, error) {
+	if a.Network == nil || a.Network.Config.PlanScope != "" || a.Architecture != battlepolicy.NetworkArchitecture(a.Network.Config) {
+		return nil, fmt.Errorf("independent member models are offline evaluation baselines, not local team commanders")
+	}
+	for _, supported := range a.Modes {
+		if mode == supported {
+			return &Learned{mode: mode, version: a.Architecture + ":" + hash(a), neural: &a}, nil
+		}
+	}
+	return nil, fmt.Errorf("model has no training coverage for %dv%d", mode, mode)
 }
 func (l *Learned) ID() string      { return "learned" }
 func (l *Learned) Version() string { return l.version }
 func (l *Learned) Decide(ctx context.Context, t Object, h []Object) (Decision, error) {
+	if l.neural != nil {
+		return l.decideNeural(ctx, t, h)
+	}
 	if integer(t["mode"]) != l.mode || str(t["rules_version"]) != str(l.Model["rules"]) {
 		return Decision{}, fmt.Errorf("model mode or server rules mismatch")
 	}

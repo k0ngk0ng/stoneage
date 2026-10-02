@@ -33,6 +33,19 @@ function fixture(){
   return {c,app,state,timers,sent,presented,calls,advance(ms){now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.callback();}}};
 }
 const accepted=(player=true,pet=true,turn=3)=>({match_id:'m1',commands:{turn,my_no:10,player_submitted:player,pet_submitted:pet}});
+
+test('withdrawn arena member keeps observing without player, pet or default commands',()=>{
+  const f=fixture(),s=f.state;
+  const view=accepted(false,false);view.commands.withdrawn=true;
+  f.c.applyBattleLadderCommands(s,view);
+  assert.equal(s.ladderWithdrawn,true);assert.equal(s.commandLocked,true);assert.equal(s.petCommandLocked,true);
+  for(const command of ['H|0','G','N','W|FF|FF'])assert.equal(f.c.battleCommandAllowed(command),false);
+  for(const kind of ['attack','pet'])assert.equal(f.c.battleActionAllowed({kind}),false);
+  vm.runInContext(fn('submitBattleUnavailableDefaults'),f.c);
+  f.c.submitBattleUnavailableDefaults(s);
+  assert.deepEqual(f.sent,[]);assert.equal(f.app.battle,true);assert.equal(f.app.phase,'battle');
+  assert.equal(f.presented.length,0,'withdrawal is not settlement');
+});
 const result=(id='m1',revision=20)=>({revision,snapshot:{phase:'result',result:{id}}});
 
 test('restored player and pet submissions survive entrance release and forced defaults',()=>{

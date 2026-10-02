@@ -12,6 +12,23 @@ const (
 	BattleEnemySurprise int32 = 1 << 4
 )
 
+// BattlePetSwitchAllowed describes the observed native menu restrictions.
+// An invalid S slot is dangerous: the engine converts it to recall. Require
+// actual own-state evidence before submitting; effects remain server-owned.
+func BattlePetSwitchAllowed(player PlayerSnapshot, pet *PetSnapshot, slot int32) bool {
+	if !player.BattlePetSlotKnown || player.BattlePetSlot < -1 || player.BattlePetSlot >= 5 {
+		return false
+	}
+	if slot == -1 {
+		return player.BattlePetSlot >= 0
+	}
+	return slot >= 0 && slot < 5 && slot != player.BattlePetSlot &&
+		player.RidePetKnown && player.RidePet != slot &&
+		player.StandbyPetMaskKnown && player.StandbyPetMask&(1<<uint(slot)) != 0 &&
+		player.SummonPetMaskKnown && player.SummonPetMask&(1<<uint(slot)) != 0 &&
+		pet != nil && pet.Slot == slot && pet.UseFlag != 0 && pet.HP > 0
+}
+
 // HasActivePet uses the battle roster, not the five field pet slots. A
 // standby pet is not necessarily participating in this battle.
 func (b BattleSnapshot) HasActivePet() bool {
@@ -67,13 +84,48 @@ func (b BattleSnapshot) commandPhaseReady() bool {
 	// RS/RD and a successful local escape are terminal result boundaries. The
 	// server may keep the battle socket active until EO, but no further B
 	// command is legal in that interval.
-	return b.Active && b.BPReceived && b.BCReceived && !b.Movie && !b.Ended && b.Result == "" && b.LastCommand != "EO"
+	return b.Active && b.BPReceived && b.BCReceived && !b.Movie && !b.Ended && b.Result == "" && b.LastCommand != "EO" && !b.Withdrawn()
+}
+
+// Withdrawn means an arena member's original player slot is absent from the
+// complete public roster. Incapacitated/dead entries that remain in the roster
+// are different: their pet may still require an action. A withdrawn member
+// receives spectator snapshots until settlement but has no command menu.
+func (b BattleSnapshot) Withdrawn() bool {
+	if b.LadderID == "" || !b.Active || !b.BPReceived || !b.BCReceived || !b.MyNoKnown || b.MyNo < 0 || b.MyNo >= 15 || b.MyNo%10 >= 5 {
+		return false
+	}
+	for _, p := range b.Participants {
+		if p.BattleID == b.MyNo {
+			return false
+		}
+	}
+	return true
 }
 
 // PlayerCommandReady includes the mandatory N default when the player menu
 // is unavailable. It does not imply that an attack or escape is allowed.
 func (b BattleSnapshot) PlayerCommandReady() bool {
 	return b.commandPhaseReady() && !b.PlayerSubmitted
+}
+
+// DeadPlayerCommandComplete identifies a rostered dead player whose action bit
+// is already set by the server. Native command waiting skips dead entries; BA
+// can therefore contain their C_OK bit without a local command this turn. This
+// is not evidence that a living player's partial plan may be replaced. Pets
+// remain independent: a surviving pet can still need its owner's command slot.
+func (b BattleSnapshot) DeadPlayerCommandComplete() bool {
+	if !b.commandPhaseReady() || !b.MyNoKnown || b.MyNo < 0 || b.MyNo >= 15 || b.MyNo%10 >= 5 ||
+		b.LadderID == "" || !b.BAReceived || !b.PlayerSubmitted || b.LastCommand != "" ||
+		b.BPFlags&BattlePlayerMenuOff == 0 || b.AnimationFlags&(1<<uint(b.MyNo)) == 0 {
+		return false
+	}
+	for _, p := range b.Participants {
+		if p.BattleID == b.MyNo {
+			return p.Dead && p.HP == 0
+		}
+	}
+	return false
 }
 
 // PetCommandReady becomes true after the player's command. Native battles

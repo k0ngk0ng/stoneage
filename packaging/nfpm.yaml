@@ -32,6 +32,15 @@ contents:
     dst: /usr/share/zsh/site-functions/_sactl
   - src: ${NFPM_DOC_DIR}/local-arena-agent.md
     dst: /usr/share/doc/sactl/local-arena-agent.md
+  - src: ${NFPM_DOC_DIR}/learned-*.md
+    dst: /usr/share/doc/sactl/
+  - src: ${NFPM_DOC_DIR}/skills/sactl/
+    dst: /usr/share/sactl/skills/sactl/
+    type: tree
+  - src: ${NFPM_DOC_DIR}/install-sactl-skill.py
+    dst: /usr/share/sactl/install-sactl-skill.py
+    file_info:
+      mode: 0755
   - src: ${NFPM_DOC_DIR}/arena-agent.example.json
     dst: /usr/share/doc/sactl/arena-agent.example.json
   - src: ${NFPM_BIN}

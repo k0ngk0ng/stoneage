@@ -45,6 +45,9 @@ jobs:
           node client/web/mobile_interaction_test.js
           node client/web/npc_interaction_test.js
           node client/web/pet_training_test.js
+          node client/web/pet_capacity_test.js
+          node client/web/magic_identity_test.js
+          node client/web/inventory_records_test.js
           node client/web/resource_loading_test.js
           node client/web/loading_diagnostics_test.js
           node client/web/resource_progress_test.js
@@ -92,6 +95,7 @@ jobs:
           STONEAGE_NATIVE_PERSON_FIXTURE="$PWD/build/ai/person-identity/native-fixture.json" go test -mod=readonly ./internal/aigame -run '^TestNativePersonIdentityFixture$'
       - name: Verify production deployment tools
         run: |
+          python3 scripts/test-training-image_test.py
           python3 scripts/modernize-object-cstring_test.py
           python3 scripts/aliyun-certificate_test.py
           bash scripts/runtime-entrypoint_test.sh
@@ -178,6 +182,10 @@ jobs:
             file: deploy/linux/legacy-runtime.Dockerfile
             target: legacy-runtime
             platforms: linux/amd64
+          - image: ai-training
+            file: deploy/linux/legacy-runtime.Dockerfile
+            target: ai-training
+            platforms: linux/amd64,linux/arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -190,6 +198,9 @@ jobs:
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
+      - name: Fix native compilation timestamp to the source commit
+        id: source
+        run: echo "epoch=$(git show -s --format=%ct HEAD)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -206,6 +217,7 @@ jobs:
           platforms: ${{ matrix.platforms }}
           build-args: |
             RELEASE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
+            SOURCE_DATE_EPOCH=${{ steps.source.outputs.epoch }}
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.ref_name }}
           provenance: true
@@ -229,6 +241,83 @@ jobs:
           path: dist/digest-*
           retention-days: 2
           if-no-files-found: error
+
+  training-toolkit:
+    name: Verify training toolkit (${{ matrix.arch }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: images
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: amd64, runner: ubuntu-latest}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            .agents/skills/sactl
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-digest-ai-training
+          path: build/image-digests
+      - name: Verify anonymous download and native persistent-data workflow
+        env:
+          TRAINING_ARCH: ${{ matrix.arch }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          training_image=$(cat build/image-digests/digest-ai-training)
+          mkdir -p "$RUNNER_TEMP/training-anonymous-docker"
+          DOCKER_CONFIG="$RUNNER_TEMP/training-anonymous-docker" docker pull --platform "linux/$TRAINING_ARCH" "$training_image"
+          bash scripts/test-training-image.sh "$training_image" "$TRAINING_ARCH" "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-image-validation-${{ matrix.arch }}
+          path: build/training-image.*/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  training-compatibility:
+    name: Match training and game engine rules
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-digest-*
+          merge-multiple: true
+          path: build/image-digests
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compare actual published amd64 rule digests
+        run: |
+          game_image=$(cat build/image-digests/digest-legacy-runtime)
+          training_image=$(cat build/image-digests/digest-ai-training)
+          docker pull --platform linux/amd64 "$game_image"
+          docker pull --platform linux/amd64 "$training_image"
+          bash scripts/test-training-rules.sh "$game_image" "$training_image" build/training-rules
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-rules-validation
+          path: build/training-rules/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Package-manager distribution runs after the release exists, because the
   # formula and manifest carry the checksums of the published archives. The
@@ -258,7 +347,7 @@ jobs:
   publish:
     name: Publish verified release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [verify, binaries, images, windows-installer]
+    needs: [verify, binaries, images, windows-installer, training-toolkit, training-compatibility]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -271,8 +360,8 @@ jobs:
       - name: Assemble image digests and checksums
         working-directory: dist
         run: |
-          cat digest-control-plane digest-legacy-runtime > IMAGE-DIGESTS
-          rm digest-control-plane digest-legacy-runtime
+          cat digest-control-plane digest-legacy-runtime digest-ai-training > IMAGE-DIGESTS
+          rm digest-control-plane digest-legacy-runtime digest-ai-training
           sha256sum ./* > SHA256SUMS
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

@@ -286,13 +286,8 @@ func TestChatCompletionsAndDeadline(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		history = append(history, Object{"turn": i, "raw": strings.Repeat("x", 10000), "summary": "old"})
 	}
-	payload, e := l.payload(team, history, nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	messages := payload["messages"].([]Object)
-	if !strings.Contains(str(messages[1]["content"]), "omitted_records") {
-		t.Fatal("silent truncation")
+	if _, e := l.payload(team, history, nil); e == nil {
+		t.Fatal("oversized full history was silently shortened")
 	}
 }
 func TestPluginHelper(t *testing.T) {

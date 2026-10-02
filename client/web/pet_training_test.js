@@ -246,6 +246,7 @@ app.petSlots = [null, {name: "无槽宠物", maxSkill: 0}, null, {name: "第四�
 assert.equal(context.petTrainingSlots(app.petSlots[1]), 0, "maxSkill=0 must expose no slots");
 assert.equal(context.petTrainingSlots(app.petSlots[3]), 7, "2.5 storage position must not determine skill capacity");
 assert.equal(context.petTrainingSlots({slot: 0}), 7, "first pet must have seven skill slots without maxSkill");
+assert.equal(context.petTrainingSlots({slot: 0,maxSkill:0,maxSkillKnown:false}),7,"unknown capacity must not become a known zero");
 assert.equal(context.petTrainingSlots({maxSkill: 9}), 7, "explicit capacity must be capped at seven");
 assert.equal(context.petTrainingSlots(null), 0, "missing pets have no slots");
 app.petSkills[3] = [{index: 6, name: "防御"}];

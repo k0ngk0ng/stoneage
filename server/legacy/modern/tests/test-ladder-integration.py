@@ -19,12 +19,16 @@ BUILD.mkdir(parents=True, exist_ok=True)
 spec = importlib.util.spec_from_file_location("ladder_integration", MODERN / "integrate-ladder.py")
 integration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(integration)
+spec = importlib.util.spec_from_file_location("battle_environment_integration", MODERN / "integrate-battle-environment.py")
+environment = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(environment)
+extra_sources = ("configfile.c", "battle/pet_skill.c", "magic/magic_base.c", "char/enemy.c", "char/char_data.c")
 
 with tempfile.TemporaryDirectory(dir=BUILD) as temporary:
     work = Path(temporary)
     env = dict(os.environ, TMPDIR=str(work), CLANG_MODULE_CACHE_PATH=str(BUILD / "module-cache"))
     originals = {}
-    for name in (*integration.SOURCES, "makefile"):
+    for name in (*integration.SOURCES, *extra_sources, "makefile"):
         data = (ARCHIVE / name).read_bytes()
         originals[name] = hashlib.sha256(data).digest()
         target = work / name
@@ -35,6 +39,34 @@ with tempfile.TemporaryDirectory(dir=BUILD) as temporary:
         shutil.copyfile(header, work / "include" / header.name)
     with (MODERN / "patches/0032-battle-records.patch").open("rb") as patch:
         subprocess.run(["patch", "-p1", "-d", str(work)], stdin=patch, check=True, capture_output=True)
+    # Follow the actual build order: environment/reload hooks before ladder.
+    # A failure in a late rule loader must not leave earlier files modified.
+    enemy = work / "char/enemy.c"
+    original_enemy = enemy.read_bytes()
+    enemy.write_bytes(original_enemy.replace(b"ENEMY_initEnemy(", b"UnknownEnemyLoader("))
+    untouched = {p: p.read_bytes() for p in work.rglob("*") if p.is_file()}
+    try:
+        environment.integrate(work)
+    except SystemExit:
+        assert all(p.read_bytes() == data for p, data in untouched.items())
+    else:
+        raise AssertionError("rule loader source drift was silently accepted")
+    enemy.write_bytes(original_enemy)
+    environment.integrate(work)
+    applied = {p: p.read_bytes() for p in work.rglob("*") if p.is_file()}
+    environment.integrate(work)
+    assert all(p.read_bytes() == data for p, data in applied.items())
+    char = work / "char/char.c"
+    assert char.read_bytes().count(b'StoneAge_MagicObservationAppend(index, num,') == 1
+    char.write_bytes(char.read_bytes().replace(b'#include "stoneage_ai_observation.h"\n', b''))
+    broken = {p: p.read_bytes() for p in applied}
+    try:
+        environment.integrate(work)
+    except SystemExit:
+        assert all(p.read_bytes() == data for p, data in broken.items())
+    else:
+        raise AssertionError("partial magic observation integration accepted")
+    char.write_bytes(applied[char])
     # Detect missing anchors before writing any file, even ones already read.
     original_main = (work / "main.c").read_bytes()
     battle = work / "battle/battle.c"
@@ -51,6 +83,8 @@ with tempfile.TemporaryDirectory(dir=BUILD) as temporary:
     first = {p: p.read_bytes() for p in work.rglob("*") if p.is_file()}
     integration.integrate(work)
     assert all(p.read_bytes() == data for p, data in first.items()), "integration is not idempotent"
+    environment.integrate(work)
+    assert all(p.read_bytes() == data for p, data in first.items()), "ladder changed environment integration"
     # A previous transformed build must fail, not silently skip newly added
     # resource/save hooks. Check the whole operation remains write-free.
     battle.write_bytes(first[battle].replace(integration.MARKER, b"/* STONEAGE_LADDER_INTEGRATION_V1 */\n"))
@@ -63,7 +97,7 @@ with tempfile.TemporaryDirectory(dir=BUILD) as temporary:
     else:
         raise AssertionError("outdated integration was silently accepted")
     battle.write_bytes(first[battle])
-    for name in integration.SOURCES:
+    for name in (*integration.SOURCES, *extra_sources):
         if name.endswith(".h"):
             continue  # compiled through the actual callers below
         source = work / name
@@ -79,4 +113,4 @@ with tempfile.TemporaryDirectory(dir=BUILD) as temporary:
                        env=env, check=True)
     for name, digest in originals.items():
         assert hashlib.sha256((ARCHIVE / name).read_bytes()).digest() == digest, "historical source changed"
-print("Ladder build integration: checked anchors, idempotence and native call-site compilation passed")
+print("Ladder/environment build integration: checked anchors, atomicity, build ordering, idempotence and native call-site compilation passed")

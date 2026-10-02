@@ -10,6 +10,8 @@ with tempfile.TemporaryDirectory(dir=root/'build',prefix='sactl-cdn-install-') a
     shutil.copy(root/'config/arena-agent/example.json',bundle/'arena-agent.example.json')
     shutil.copy(root/'docs/local-arena-agent.md',bundle)
     shutil.copy(root/'config/sactl/sactl.toml.example',bundle)
+    for guide in (root/'docs').glob('learned-*.md'):
+        shutil.copy(guide,bundle)
     shutil.copytree(root/'.agents/skills/sactl',bundle/'skills/sactl')
     shutil.copytree(root/'internal/sacli/completions',bundle/'completions')
     archive=fixture/(bundle.name+'.tar.gz')
@@ -29,6 +31,8 @@ shutil.copy(pathlib.Path(os.environ['TEST_CDN'])/url.rsplit('/',1)[1],args[args.
     assert (home/'.local/share/bash-completion/completions/sactl').read_bytes()==(bundle/'completions/sactl.bash').read_bytes()
     assert (home/'.local/share/zsh/site-functions/_sactl').read_bytes()==(bundle/'completions/_sactl').read_bytes()
     assert (home/'.config/sactl/examples/local-arena-agent.md').is_file()
+    for guide in (root/'docs').glob('learned-*.md'):
+        assert (home/'.config/sactl/examples'/guide.name).read_bytes()==guide.read_bytes()
     for agent in ['.agents','.claude']:assert (home/agent/'skills/sactl/references/battle.md').is_file()
     config=home/'.config/sactl/sactl.toml'
     assert not config.exists(), 'installer must leave first configuration to init'

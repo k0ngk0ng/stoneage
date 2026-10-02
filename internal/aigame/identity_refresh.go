@@ -51,11 +51,17 @@ func (session *Session) startIdentityRefresh() {
 	}()
 }
 
-// Give an ordinary status/observe call a bounded chance to include the pending
-// identifiers. Unsupported servers remain usable and unknown stays explicit.
+// Give a world status/observe call a bounded chance to include pending IDs.
+// Battle observations and action revision checks must not spend their command
+// deadline waiting for optional metadata. The background refresher still runs
+// in battle; unknown identifiers stay unknown until a valid response arrives.
 func (session *Session) waitForIdentityRefresh(ctx context.Context) {
-	needed, _ := session.identityRefreshState()
-	if !needed {
+	waitNeeded := func() bool {
+		session.stateMu.RLock()
+		defer session.stateMu.RUnlock()
+		return session.state.snapshot.Phase == PhaseWorld && session.state.identityDirty != session.state.identityConfirmed
+	}
+	if !waitNeeded() {
 		return
 	}
 	deadline := time.NewTimer(750 * time.Millisecond)
@@ -71,8 +77,7 @@ func (session *Session) waitForIdentityRefresh(ctx context.Context) {
 		case <-deadline.C:
 			return
 		case <-ticker.C:
-			needed, _ = session.identityRefreshState()
-			if !needed {
+			if !waitNeeded() {
 				return
 			}
 		}

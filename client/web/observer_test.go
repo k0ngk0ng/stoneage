@@ -156,6 +156,57 @@ func TestAutomationSessionObservesExistingTCPStreamAndExecutesOnIt(t *testing.T)
 	}
 }
 
+func TestAutomationBattleIdentityQueryUsesSharedValidation(t *testing.T) {
+	left, right := net.Pipe()
+	session := newTCPSession("observer", left, 64*1024)
+	defer right.Close()
+	defer session.close()
+
+	// The browser's existing login response is fed to the shared parser. No
+	// second socket or credentials are involved in creating the observer.
+	session.applyAuthoritativePacket(webServerPacket(t, 1, "CharLogin", "successful", ""))
+	session.applyAuthoritativePacket(webServerIntPacket(t, 2, "EN", 1, 218))
+	state, _, err := session.gate.Switch(1, aicontrol.Quest, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	automation := &AutomationSession{ID: session.id, session: session, mode: aicontrol.Quest, generation: state.Generation}
+
+	observation, err := automation.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Phase != aigame.PhaseBattle || observation.Revision == 0 {
+		t.Fatalf("shared observer did not apply existing packet: %+v", observation)
+	}
+
+	if err := automation.ExecuteExpected(context.Background(), observation.Revision, aigame.Action{Kind: aigame.ActionStatus, Command: "AI:invalid"}); !errors.Is(err, aigame.ErrInvalidAction) {
+		t.Fatal("Web accepted malformed correlated identity query", err)
+	}
+
+	writeResult := make(chan error, 1)
+	go func() {
+		writeResult <- automation.ExecuteExpected(context.Background(), observation.Revision, aigame.Action{Kind: aigame.ActionStatus, Command: "AI"})
+	}()
+	if err := right.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	packet, err := bufio.NewReader(right).ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := decodeWebPacket(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Function != "S" || len(event.Fields) != 1 || event.Fields[0] != "AI" {
+		t.Fatalf("typed automation action was not written on existing socket: %+v", event)
+	}
+	if err := <-writeResult; err != nil {
+		t.Fatal(err)
+	}
+}
+
 type decodedWebPacket struct {
 	Function string
 	Fields   []string

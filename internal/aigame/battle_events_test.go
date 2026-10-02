@@ -1,9 +1,37 @@
 package aigame
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestBattleEffectsPreserveWireOrderAndSuppressDamageEcho(t *testing.T) {
+	s := &Session{}
+	s.applyEvent(stringEvent("CharLogin", "successful"))
+	s.applyEvent(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}, {Kind: FieldInt, Int: 0}}})
+	s.applyEvent(stringEvent("B", "BP|0|0|14"))
+	s.applyEvent(stringEvent("B", "BC|0|0|Hero||1|1|64|64|4|A|Enemy||1|1|64|64|0|"))
+	before := s.BattleEvents("", 0)
+	s.applyEvent(stringEvent("B", "BD|r0|0|1|d14|p0|FF|BH|aA|r0|f0|dA|p0|FF|BM|0|3|FF|"))
+	// This is the hit's matching resource echo, not a second damage effect.
+	s.applyEvent(stringEvent("B", "BD|r0|0|0|dA|p0|FF|"))
+	s.applyEvent(stringEvent("B", "BD|r0|0|1|d5|p0|FF|"))
+	batch := s.BattleEvents(before.Stream, before.Cursor)
+	var kinds []string
+	var delta []int
+	for _, event := range batch.Events {
+		for _, effect := range event.Effects {
+			kinds = append(kinds, effect.Kind)
+			if effect.Delta != nil {
+				delta = append(delta, *effect.Delta)
+			}
+		}
+	}
+	if !reflect.DeepEqual(kinds, []string{"BD", "attack", "BM", "BD"}) || !reflect.DeepEqual(delta, []int{20, 5}) {
+		t.Fatal("public effect order or resource echo changed", kinds, delta)
+	}
+}
 
 func TestBattleEventCursorPrivacyAndReconnect(t *testing.T) {
 	s := &Session{}

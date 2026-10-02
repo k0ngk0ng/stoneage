@@ -127,3 +127,82 @@ func TestIdentityRefreshLegacyAndMalformedResponsesAreBounded(t *testing.T) {
 		})
 	}
 }
+
+func TestBattleObservationDoesNotWaitForOptionalIdentities(t *testing.T) {
+	s, queries := identityRefreshFixture(t, "AI|v=1|items=none|equipment=3,0")
+	s.applyEvent(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}, {Kind: FieldInt, Int: 218}}})
+	needed, _ := s.identityRefreshState()
+	if !needed {
+		t.Fatal("fixture must have pending identities in battle")
+	}
+	for i := 0; i < 4; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		snapshot, err := s.Observe(ctx)
+		cancel()
+		if err != nil || snapshot.Phase != PhaseBattle || len(snapshot.Inventory) != 1 || snapshot.Inventory[0].TemplateIDKnown {
+			t.Fatal("optional metadata delayed battle or invented an identifier", err)
+		}
+	}
+	deadline := time.Now().Add(time.Second)
+	for queries.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if queries.Load() != 1 {
+		t.Fatal("battle observation disabled background refresh", queries.Load())
+	}
+}
+
+func TestBattleBackgroundIdentityRefreshStillAppliesResponse(t *testing.T) {
+	s, queries := identityRefreshFixture(t, "AI|v=1|chara=1|end=0,0,0,0,0,0|now=0,0,0,0,0,0|ride=0|items=none|equipment=3,701|pet=0,fixture-pet,8")
+	s.applyEvent(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}, {Kind: FieldInt, Int: 218}}})
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		snapshot := s.Snapshot()
+		if len(snapshot.Inventory) == 1 && snapshot.Inventory[0].TemplateIDKnown && snapshot.Inventory[0].TemplateID == 701 && len(snapshot.Pets) == 1 && snapshot.Pets[0].IdentityKnown && snapshot.Pets[0].StableID == "fixture-pet" {
+			if queries.Load() != 1 || snapshot.Phase != PhaseBattle {
+				t.Fatal("unexpected background refresh or phase change")
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("battle background refresh never applied valid identities")
+}
+
+func TestEnteringBattleReleasesPendingWorldIdentityWait(t *testing.T) {
+	s, _ := identityRefreshFixture(t, "AI|v=1|items=none|equipment=3,0")
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := s.Observe(ctx); done <- err }()
+	select {
+	case err := <-done:
+		t.Fatal("world observation did not wait for pending identities", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	s.applyEvent(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}, {Kind: FieldInt, Int: 218}}})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal("entering battle exhausted observation deadline", err)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("world identity wait continued after entering battle")
+	}
+}
+
+func TestBattleIdentityQueriesKeepStatusValidation(t *testing.T) {
+	s := gameState{snapshot: decisionFixture()}
+	s.snapshot.Connected = true
+	for _, command := range []string{"AI", "AI:0123456789abcdef"} {
+		values, function, err := validateActionLocked(&s, Action{Kind: ActionStatus, Command: command})
+		if err != nil || function != "S" || len(values) != 1 || string(values[0].text) != command {
+			t.Fatal("read-only identity query unavailable during combat", command, err)
+		}
+	}
+	for _, command := range []string{"AI:", "AI:not-an-id", "AI:0123456789ABCDEf", "AI:0123456789abcdef|i", "i", "k0"} {
+		if _, _, err := validateActionLocked(&s, Action{Kind: ActionStatus, Command: command}); err == nil {
+			t.Fatal("malformed or world-only status admitted during combat", command)
+		}
+	}
+}

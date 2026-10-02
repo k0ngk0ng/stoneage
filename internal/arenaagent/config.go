@@ -14,17 +14,18 @@ type MemberConfig struct {
 	PetMask *int   `json:"pet_mask,omitempty"`
 }
 type Config struct {
-	Schema       int            `json:"schema_version"`
-	Sactl        string         `json:"sactl"`
-	StateDir     string         `json:"state_dir"`
-	OwnershipDir string         `json:"ownership_dir,omitempty"`
-	Mode         int            `json:"mode"`
-	Strategy     string         `json:"strategy"`
-	Fallback     string         `json:"fallback"`
-	Model        string         `json:"model,omitempty"`
-	Members      []MemberConfig `json:"members"`
-	LLM          Object         `json:"llm,omitempty"`
-	Plugins      []Object       `json:"plugins,omitempty"`
+	Schema            int            `json:"schema_version"`
+	Sactl             string         `json:"sactl"`
+	StateDir          string         `json:"state_dir"`
+	OwnershipDir      string         `json:"ownership_dir,omitempty"`
+	Mode              int            `json:"mode"`
+	Strategy          string         `json:"strategy"`
+	Fallback          string         `json:"fallback"`
+	Model             string         `json:"model,omitempty"`
+	ChampionDirectory string         `json:"champion_directory,omitempty"`
+	Members           []MemberConfig `json:"members"`
+	LLM               Object         `json:"llm,omitempty"`
+	Plugins           []Object       `json:"plugins,omitempty"`
 }
 
 func absolute(base, path string) string {
@@ -46,8 +47,8 @@ func LoadConfig(path string) (Config, error) {
 	if e != nil {
 		return c, e
 	}
-	if c.Schema != 1 || c.Mode < 1 || c.Mode > 5 || len(c.Members) != c.Mode || c.StateDir == "" {
-		return c, fmt.Errorf("schema_version=1, state_dir and exactly 1–5 members matching mode are required")
+	if (c.Schema != 1 && c.Schema != 2) || c.Mode < 1 || c.Mode > 5 || len(c.Members) != c.Mode || c.StateDir == "" {
+		return c, fmt.Errorf("schema_version=1 or 2, state_dir and exactly 1–5 members matching mode are required")
 	}
 	if c.Strategy == "" {
 		c.Strategy = "basic"
@@ -95,11 +96,24 @@ func LoadConfig(path string) (Config, error) {
 			return c, fmt.Errorf("pet_mask must be 0–31")
 		}
 	}
-	if c.Strategy == "learned" || c.Strategy == "hybrid" {
-		if c.Model == "" {
-			return c, fmt.Errorf("strategy requires model")
-		}
+	if e = c.validateModelSource(); e != nil {
+		return c, e
+	}
+	if c.Model != "" {
 		c.Model = absolute(base, c.Model)
 	}
+	if c.ChampionDirectory != "" {
+		c.ChampionDirectory = absolute(base, c.ChampionDirectory)
+	}
 	return c, nil
+}
+
+func (c Config) validateModelSource() error {
+	if c.ChampionDirectory != "" && (c.Schema != 2 || (c.Strategy != "learned" && c.Strategy != "hybrid") || c.Model != "") {
+		return fmt.Errorf("champion_directory requires schema_version=2, learned/hybrid and no model path")
+	}
+	if (c.Strategy == "learned" || c.Strategy == "hybrid") && c.Model == "" && c.ChampionDirectory == "" {
+		return fmt.Errorf("strategy requires model or champion_directory")
+	}
+	return nil
 }

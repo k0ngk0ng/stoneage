@@ -65,6 +65,7 @@ else
   cp "$root/docs/local-arena-agent.md" "$bundle/local-arena-agent.md"
   cp -R "$root/internal/sacli/completions" "$bundle/completions"
   cp "$root/config/sactl/sactl.toml.example" "$bundle/sactl.toml.example"
+  cp "$root"/docs/learned-*.md "$bundle/"
   cp -R "$root/.agents/skills/sactl" "$bundle/skills/sactl"
 fi
 [[ -f "$bundle/sactl" && -f "$bundle/sactl.toml.example" ]] || { echo 'Incomplete client package' >&2; exit 1; }
@@ -96,6 +97,12 @@ if [[ -f "$bundle/arena-agent.example.json" && -f "$bundle/local-arena-agent.md"
   cp "$bundle/arena-agent.example.json" "$bundle/local-arena-agent.md" "$config_dir/examples/"
   echo "Arena commander included: sactl ai init --directory <new-directory>"
 fi
+for guide in "$bundle"/learned-*.md; do
+  if [[ -f "$guide" ]]; then
+    mkdir -p "$config_dir/examples"
+    cp "$guide" "$config_dir/examples/"
+  fi
+done
 if command -v xattr >/dev/null 2>&1; then xattr -d com.apple.quarantine "$prefix/sactl" 2>/dev/null || true; fi
 config_path="$config_dir/sactl.toml"
 if [[ $skills == 1 ]]; then

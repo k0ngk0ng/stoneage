@@ -1,6 +1,6 @@
 # 战斗记录与同点数 PK 数据生成
 
-目标是学习 **相同总点数下的加点方案和 PK 决策**。本版交付数据采集、真实引擎批量对战和训练导出，尚不训练或部署模型。
+目标是学习 **相同总点数下的加点方案和 PK 决策**。本文说明服务端记录、真实引擎批量对战与旧格式样本导出；Go 模型训练和当前开发状态见 [learned 训练说明](learned-training.md)。数据生成本身不代表模型已经训练或通过强度验收。
 
 ## 生产记录
 
@@ -24,6 +24,10 @@ battle-records/
 
 完整对局同时满足：`trajectory_complete=true`、`storage_complete=true`、
 `dropped_events=0`，且 metadata、events、result 的序号连续。导出器逐局重新验证这些条件，不能仅信任完整性标志。存储不可写时游戏继续运行，应检查 GMSV 日志及 status 心跳；规则归档失败时明确禁用本次进程的记录。
+
+开发中的离线入口 `--battle-dataset` 与 `--battle-environment` 在日志队列满时等待写入，避免高速模拟丢事件；生产在线战斗仍采用上述非阻塞行为。交互式离线环境达到回合上限时记录 `turn_limit`；正常退出会排空写入队列，配置了记录目录但写入失败时返回非零退出码。调用程序必须等待原生进程正常退出并检查退出码，强制终止不能保证尾部记录完整。
+
+开发版 Go 原生环境适配器会发送 EOF 并等待最多 10 秒，关闭失败会传回训练、评估等调用方；取消、异常或超时仍可能留下不完整归档。Go 训练分片与底层 `battle-records` 是独立数据，须分别校验。多个 worker 共用目录时采用各自的状态临时文件；最终 `status.json` 是最后报告的单个进程状态，并非汇总。修复不会补全旧数据，也不会自动更新已安装的 CLI、原生 worker 或冻结实验。
 
 ## 字段与训练语义
 
@@ -61,6 +65,18 @@ bin/stoneage battle-dataset --output ./data/battle-training \
 实验记录 seed、对局/组合编号、重复次数、交换位置、点数预算、等级、策略编号、生成器版本。给定相同二进制、规则表和完整参数可重新运行基准；跨 libc/架构不保证 rand 序列相同。
 
 ## 导出训练样本
+
+支持 `export-data` 的开发版 sactl 已提供 Go 入口，原始记录只读，无需 Python：
+
+```sh
+sactl ai export-data --records ./data/battle-training --format builds --output ./builds.jsonl
+sactl ai export-data --records ./data/battle-training --equal-points --output ./transitions.jsonl
+sactl ai export-data --records ./data/battle-records --mode pve --output ./pve-transitions.jsonl
+```
+
+输出必须是新文件、父目录已存在；stdout 是含排除计数及 SHA-256 的报告。旧 JSONL schema、分组与标签继续保留，输入校验更严格；没有可用样本会失败，不发布空文件。该数据缺少现代策略轨迹所需的完整候选与行为概率，不能直接传入 PPO。详见 [开发版训练说明](learned-training.md#旧战斗记录)。新命令尚未发布，先检查安装版本帮助。
+
+下列旧仓库入口继续保留兼容，依赖 Python；新 sactl 命令不调用它：
 
 ```sh
 # 加点方案 → 胜负标签：自动要求同点数、相同已记录外部条件的 1V1。

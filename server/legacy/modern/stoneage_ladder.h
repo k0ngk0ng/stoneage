@@ -5,6 +5,8 @@
 /* Integration boundary for the preserved native server. */
 void StoneAge_LadderTick(void);
 int StoneAge_LadderRequest(int fd,const char *category);
+/* A live rule reload invalidates the startup digest until a verified restart. */
+void StoneAge_BattleRulesChanged(void);
 int StoneAge_LadderGuard(int fd,const char *operation);
 int StoneAge_LadderInteractionAllowed(int character,int target);
 int StoneAge_LadderReserved(int character);
@@ -31,6 +33,8 @@ int StoneAge_LadderRetainsItem(int item);
 int StoneAge_LadderAppendPetItems(int character,char *data,size_t capacity);
 int StoneAge_LadderParsePetItem(void *character,const char *key,char *value);
 int StoneAge_LadderKnockout(int battle,int character);
+void StoneAge_LadderRemovedObservation(int battle,const char *roster,const char *vitals);
+void StoneAge_LadderRemovedMovie(int battle,const char *movie,const int *delivered,int count);
 void StoneAge_LadderExecuting(int battle,int bid);
 void StoneAge_LadderExecutionEnd(void);
 void StoneAge_LadderHPChanged(int character,int before,int after);

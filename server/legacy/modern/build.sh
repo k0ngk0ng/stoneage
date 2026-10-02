@@ -298,6 +298,9 @@ if ! grep -q 'stoneage_battle_record.h' /src/gmsv/battle/battle.c; then
   sed -i '/^$(CLIRPCSRC) $(SERVRPCSRC)/s/$/ stoneage_battle_log.c stoneage_battle_record.c stoneage_battle_dataset.c/' /src/gmsv/makefile
 fi
 
+# The local training CLI observes the same B packets as normal clients.
+python3 /modern/integrate-battle-environment.py /src/gmsv
+
 # Ladder reservations, native battles and reconnections share the GMSV loop.
 # The checked rewriter preserves all unrelated bytes of the archived source.
 for module in stoneage_ladder stoneage_ladder_core; do

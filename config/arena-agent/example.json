@@ -11,7 +11,7 @@
     "model": "your-model-name",
     "api_key_env": "STONEAGE_ARENA_MODEL_KEY",
     "timeout_seconds": 12,
-    "context_bytes": 180000,
+    "context_bytes": 8388608,
     "response_format": "json_object"
   }
 }

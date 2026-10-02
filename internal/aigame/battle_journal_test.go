@@ -77,3 +77,65 @@ func TestJournalUnknownMagicDoesNotInventEscape(t *testing.T) {
 		t.Fatal(j.battles)
 	}
 }
+
+func TestJournalNativeConcatenatedEffects(t *testing.T) {
+	j := battleJournal{}
+	j.record(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}}})
+	// Native ordinary spells terminate BJ with FF, but BD, bg and BM have
+	// positional boundaries. BE is also a valid hexadecimal damage amount.
+	j.record(stringEvent("B", "BJ|a0|m5C|e188F8|e188F9|r0|FF|BD|r0|0|1|d41|p0|bg|a|"+
+		"BJ|a1|m5C|r1|FF|BD|r1|0|1|d32|p0|BM|A|1|BM|B|4|"+
+		"BD|rA|0|0|BE|BD|rB|0|0|FF|BH|a0|rA|f2|d10|p0|FF|BD|rA|0|0|d10|p0|"))
+	logs := j.battles[0].Logs[1:]
+	want := []string{"unknown", "BD", "bg", "unknown", "BD", "BM", "BM", "BD", "BD", "attack"}
+	if len(logs) != len(want) {
+		t.Fatalf("effects swallowed or duplicated: %+v", logs)
+	}
+	for i, kind := range want {
+		if logs[i].Kind != kind {
+			t.Fatalf("effect %d: %+v, want %s", i, logs[i], kind)
+		}
+	}
+	if *logs[1].Delta != 65 || *logs[4].Delta != 50 || *logs[7].Delta != -190 || *logs[8].Delta != -255 || logs[7].Target != 10 || *logs[6].Status != 4 {
+		t.Fatal("incorrect native effect values", logs)
+	}
+}
+
+func TestJournalUnsupportedResourceModesRemainUnknown(t *testing.T) {
+	for _, raw := range []string{"BD|r0|0|2|d41|", "BD|r0|2|1|d41|", "BD|r0|0|1|dZZ|", "BD|r14|0|1|d41|"} {
+		j := battleJournal{}
+		j.record(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}}})
+		j.record(stringEvent("B", raw))
+		if logs := j.battles[0].Logs; len(logs) != 2 || logs[1].Kind != "unknown" || logs[1].Delta != nil {
+			t.Fatalf("invented resource change from %q: %+v", raw, logs)
+		}
+	}
+}
+
+func TestJournalNativePetSwitchSequence(t *testing.T) {
+	j := battleJournal{}
+	j.record(Event{Function: "EN", Fields: []Field{{Kind: FieldInt, Int: 1}}})
+	// bn and BS have positional tails, with no FF separator. A summon name
+	// itself can be a valid marker; do not search inside the record for one.
+	j.record(stringEvent("B", "bn|f|BH|a5|rA|fA|d0|p0|FF|bg|a|BS|s0|f0|BS|s0|f1|g187AA|l23|hD2|FF|mD2|BH|aA|r0|f2|dA|p0|FF|"))
+	want := []string{"wait", "attack", "bg", "pet_recall", "pet_summon", "attack"}
+	logs := j.battles[0].Logs[1:]
+	if len(logs) != len(want) {
+		t.Fatalf("native effects swallowed: %+v", logs)
+	}
+	for i, kind := range want {
+		if logs[i].Kind != kind {
+			t.Fatal(i, logs[i], kind)
+		}
+	}
+	if logs[0].Actor != 15 || logs[1].Actor != 5 || logs[3].Actor != 0 || logs[3].Target != 5 || logs[4].Target != 5 || logs[5].Damage != 10 {
+		t.Fatal(logs)
+	}
+	for _, packet := range []string{"BS|sF|f0|", "BS|s0|f1|g0|l1|h2|name|mZZ|", "BS|s0|f1|g0|l1|h2|name|", "BS|s0|f2|", "bn|ZZ|"} {
+		j.record(stringEvent("B", packet))
+		logs = j.battles[0].Logs
+		if logs[len(logs)-1].Kind != "unknown" {
+			t.Fatal("malformed switch invented an effect", packet, logs[len(logs)-1])
+		}
+	}
+}
