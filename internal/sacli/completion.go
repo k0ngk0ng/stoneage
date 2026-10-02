@@ -32,7 +32,7 @@ func Complete(words []string) []string {
 		switch previous {
 		case "--config", "-config", "--socket", "-socket", "--model", "--database", "--demonstrations", "--output", "--report", "--environment", "--manifest", "--experiment", "--mixed-experiment", "--validation-comparison", "--left-experiment", "--right-experiment", "--opponent-model", "--from-model", "--build-pool", "--baseline", "--candidate":
 			return []string{"@files"}
-		case "--directory", "--root", "--work", "--native-dir", "--data-dir", "--search-dir", "--records", "--collection":
+		case "--directory", "--root", "--work", "--native-dir", "--data-dir", "--search-dir", "--records", "--collection", "--state-dir":
 			return []string{"@dirs"}
 		case "--profile", "use":
 			return completePrefix(strings.Join(KnownProfiles(), " "), prefix)
@@ -53,7 +53,14 @@ func Complete(words []string) []string {
 			}
 			return nil
 		case "--strategy", "--opponent-strategy":
+			if len(args) >= 2 && args[0] == "ai" && (args[1] == "run" || args[1] == "check") {
+				return completePrefix("basic learned llm hybrid", prefix)
+			}
 			return completePrefix("basic learned explore", prefix)
+		case "--llm-response-format":
+			return completePrefix("json_object json_schema none", prefix)
+		case "--llm-endpoint", "--llm-model", "--llm-api-key-env", "--llm-timeout", "--llm-context-bytes", "--pet-mask":
+			return nil
 		case "--opponent-sampling":
 			return completePrefix("uniform weakness-v1", prefix)
 		case "--plan-features":
@@ -141,7 +148,7 @@ func Complete(words []string) []string {
 			return completePrefix("--directory --help "+options[positional[2]], prefix)
 		}
 		flags := map[string]string{
-			"init": "--directory --mode", "check": "--config", "run": "--config --matches --forever",
+			"init": "--directory --mode", "check": "--config --profile --strategy --model --mode --state-dir --pet-mask --llm-endpoint --llm-model --llm-api-key-env --llm-response-format --llm-timeout --llm-context-bytes", "run": "--config --profile --strategy --model --mode --state-dir --pet-mask --llm-endpoint --llm-model --llm-api-key-env --llm-response-format --llm-timeout --llm-context-bytes --matches --forever",
 			"experiment":            "--environment --output --build-pool --pool-train-groups --from-model --seed --mode --points --pet-points --reserve-pets --pet-skills --healing-items --healing-magic --level --max-turns --train-groups --validation-groups --test-groups",
 			"build-pool":            "--search-dir --output",
 			"experiment-compare":    "--left-experiment --right-experiment --output",

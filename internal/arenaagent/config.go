@@ -9,6 +9,7 @@ import (
 
 type MemberConfig struct {
 	ID      string `json:"id"`
+	Profile string `json:"-"` // Existing logged-in session selected by CLI.
 	Config  string `json:"config"`
 	Socket  string `json:"socket"`
 	PetMask *int   `json:"pet_mask,omitempty"`

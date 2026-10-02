@@ -138,11 +138,16 @@ func Main(ctx context.Context, args []string, version string, out io.Writer) err
 	config := f.String("config", "", "team JSON")
 	matches := f.Int("matches", 1, "number of matches")
 	forever := f.Bool("forever", false, "continuous matchmaking")
+	online := onlineFlags{}
+	online.bind(f)
 	if e := f.Parse(args[1:]); e != nil {
 		if e == flag.ErrHelp {
 			return nil
 		}
 		return e
+	}
+	if f.NArg() != 0 {
+		return fmt.Errorf("unexpected arguments: %v", f.Args())
 	}
 	emit := func(v any, e error) error {
 		if e != nil {
@@ -153,10 +158,7 @@ func Main(ctx context.Context, args []string, version string, out io.Writer) err
 	}
 	switch command {
 	case "check", "run":
-		if *config == "" {
-			return fmt.Errorf("--config required")
-		}
-		c, e := LoadConfig(*config)
+		c, e := online.config(*config, f)
 		if e != nil {
 			return e
 		}

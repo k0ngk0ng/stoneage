@@ -451,10 +451,12 @@ sactl arena status
 从 v0.2.1 起，组队指挥、对局采集、训练和评估统一在本客户端中，不需要另装工具：
 
 ```sh
-sactl ai init --directory arena-team --mode 2
-# 填写各成员 TOML 的账号、角色及对应 password 文件
-sactl ai check --config arena-team/team.json
-sactl ai run --config arena-team/team.json --forever
+# v0.2.14 起，可直接复用普通登录会话，无需编辑配置。
+sactl login --profile bot
+sactl --profile bot enter '角色名'
+sactl ai run --profile bot --strategy basic --matches 1
+sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
+# 多人队伍重复 --profile；持续匹配使用 --forever。
 ```
 
 每队一个指挥官统一决定所有人物与宠物的行动，支持 1v1–5v5。默认 basic 无需模型。

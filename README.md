@@ -76,14 +76,15 @@ sactl arena status
 | 联合参谋 | `hybrid` | 本地模型先建议，大模型据此定案 |
 
 ```sh
-sactl ai init --directory arena-team --mode 1
-# 按生成的说明填写成员账号、密码文件和 team.json。
-sactl ai check --config arena-team/team.json
-sactl ai run --config arena-team/team.json --matches 10
-# 持续匹配：把 --matches 10 换为 --forever。
+sactl login --profile bot
+sactl --profile bot enter '角色名'
+sactl ai run --profile bot --strategy basic --matches 1
+# 使用外部模型：
+sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
+# 持续匹配：把 --matches 1 换为 --forever。
 ```
 
-**模型作为本地外部文件加载，不随客户端安装包、Release 附件或 Docker 镜像分发，也不部署到生产。** 在 `team.json` 的 `model` 字段指定自己的模型路径；`learned` / `hybrid` 要求模型覆盖对应人数、规则版本和引擎平台。安装或升级客户端不会自动生成强模型。模型权重、训练数据、检查点和评估证据保留在本地目录或本机 Docker volume。
+**模型作为本地外部文件加载，不随客户端安装包、Release 附件或 Docker 镜像分发，也不部署到生产。** 使用 `--model` 指定模型路径，也兼容旧 `team.json` 的 `model` 字段；`learned` / `hybrid` 要求模型覆盖对应人数、规则版本和引擎平台。安装或升级客户端不会自动生成强模型。模型权重、训练数据、检查点和评估证据保留在本地目录或本机 Docker volume。
 
 训练与推理由 Go 实现；Mac 的原生战斗引擎环境通过独立 `ai-training` Docker 镜像提供。支持采集、模仿热身、PPO、断点恢复和独立对战评估。在线指挥及调用大模型不要求 Docker；训练镜像的使用方式、volume 持久化和模型导出见 [训练说明](docs/learned-training.md#环境文件)。目标为 Linux amd64 游戏服时，须按训练说明选择匹配的引擎平台。
 

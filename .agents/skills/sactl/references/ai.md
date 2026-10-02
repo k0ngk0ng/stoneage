@@ -1,5 +1,37 @@
 # 本地 AI 训练与评估
 
+## 直接使用已登录的角色（v0.2.14）
+
+日常在线对战无需初始化队伍目录或编辑配置。先用普通客户端交互登录，密码只留在后台进程内存：
+
+```sh
+sactl login --profile bot
+sactl --profile bot chars
+sactl --profile bot enter '角色名'
+sactl ai check --profile bot --strategy learned --model /absolute/path/model.json
+sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
+```
+
+`--model` 是用户本地的外部模型文件，安装包不带模型。启动时按游戏服实际规则摘要和引擎平台检查兼容性；不能把旧 ARM 引擎训练模型当作生产 amd64 模型，也不能靠修改 JSON 标签通过检查。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
+
+省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic，learned/hybrid 必须指定模型。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
+
+同一组 profile 默认复用 `~/.local/state/sactl/ai/<队伍摘要>/arena.sqlite3`（尊重 XDG_STATE_HOME），可以通过 `--state-dir` 指定。启动会输出实际数据目录。旧目录绑定原服务器、账号和角色，换角色时须使用另一 profile 或新的数据目录，不能混用未完成的指令状态。显式 `--state-dir` 不应由两个队伍共用。
+
+这些会话由普通 `sactl login/logout` 管理；AI 退出保留已有登录，不写账号密码文件，不自动替换或启动后台进程。后台已退出时先重新登录。首次 Ctrl-C 在本场结束后停止，第二次立即退出。`--matches 1` 完成一场即停止，`--forever` 持续匹配。
+
+LLM/hybrid 的本地配置也可全部用参数提供：
+
+```sh
+sactl ai run --profile bot --strategy llm \
+  --llm-endpoint https://provider.example/v1/chat/completions \
+  --llm-model your-model --llm-api-key-env STONEAGE_ARENA_MODEL_KEY --matches 1
+# hybrid：将策略改为 hybrid，并加 --model /absolute/path/local-model.json。
+```
+
+密钥由指定环境变量读取，不作为命令参数。其他参数有 `--llm-timeout`（秒）、`--llm-context-bytes`、`--llm-response-format`。使用 `ai run --help` 查看。`--config` 仍支持既有队伍文件，并可用策略、模型、数据目录和 LLM 参数覆盖；不能与 `--profile` 混用。
+
+
 v0.2.13 同时提供 `basic`、`learned`、`llm`、`hybrid`，均在本地运行。LLM 使用可配置 Chat Completions，密钥由 `api_key_env` 指定的环境变量读取。`context_bytes` 默认 8388608，按完整请求 JSON 字节计量；超限报 `context_limit`，不丢弃早期回合。完整公共历史遵守各观察者事件游标与本地记录截点，不把后到事件传入旧决策。
 
 LLM/hybrid 恢复先复用观察、策略及完整版本一致的最终计划，不重新调用服务商。已有写入/未知预留时不改策略重算。hybrid 保留 `local_proposal`、`proposal_id`、`final_plan_id` 和失败原因；服务商失败可回退本地建议，取消请求则停止。返回的多选、重复 JSON 键、拒答、截断和非法候选都会被拒绝。配置详见随包 `local-arena-agent.md`。现有 learned 产物仍为候选，功能测试不证明策略强度。

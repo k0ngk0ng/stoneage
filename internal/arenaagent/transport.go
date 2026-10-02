@@ -68,7 +68,11 @@ func (m *member) call(ctx context.Context, timeout time.Duration, check bool, ar
 	defer m.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	argv := append([]string{"--config", m.cfg.Config, "--socket", m.cfg.Socket, "--json"}, args...)
+	base := []string{"--socket", m.cfg.Socket, "--json"}
+	if m.cfg.Profile == "" {
+		base = append([]string{"--config", m.cfg.Config}, base...)
+	}
+	argv := append(base, args...)
 	cmd := exec.CommandContext(ctx, m.binary, argv...)
 	cmd.WaitDelay = 200 * time.Millisecond
 	out := &limitedBuffer{limit: 16 << 20}
@@ -108,6 +112,9 @@ func (m *member) exited() bool {
 	}
 }
 func (m *member) start(ctx context.Context) error {
+	if m.cfg.Profile != "" {
+		return m.attachProfile(ctx)
+	}
 	raw, e := os.ReadFile(m.cfg.Config)
 	if e != nil {
 		return e

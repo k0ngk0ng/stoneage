@@ -14,7 +14,38 @@ v0.2.13 `ai train --plan-scope member` 另外提供离线独立成员模型，�
 
 v0.2.13 `ai collect-feedback` / `ai train-feedback` 可先采集本地模型实际遇到的局面，再学习单独保存的规则老师建议，支持恢复和历史数据聚合。它们只操作冻结实验的训练场景，原始比赛动作不会被建议覆盖；并非新的在线策略或胜率保证。完整命令与当前规模限制见 [规则反馈训练](learned-training.md#规则反馈采集后再训练)。
 
-## 安装和启动
+## 直接使用已登录的角色（v0.2.14）
+
+日常在线对战无需初始化队伍目录或编辑配置。先用普通客户端交互登录，密码只留在后台进程内存：
+
+```sh
+sactl login --profile bot
+sactl --profile bot chars
+sactl --profile bot enter '角色名'
+sactl ai check --profile bot --strategy learned --model /absolute/path/model.json
+sactl ai run --profile bot --strategy learned --model /absolute/path/model.json --matches 1
+```
+
+`--model` 是用户本地的外部模型文件，安装包不带模型。启动时按游戏服实际规则摘要和引擎平台检查兼容性；不能把旧 ARM 引擎训练模型当作生产 amd64 模型，也不能靠修改 JSON 标签通过检查。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
+
+省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic，learned/hybrid 必须指定模型。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
+
+同一组 profile 默认复用 `~/.local/state/sactl/ai/<队伍摘要>/arena.sqlite3`（尊重 XDG_STATE_HOME），可以通过 `--state-dir` 指定。启动会输出实际数据目录。旧目录绑定原服务器、账号和角色，换角色时须使用另一 profile 或新的数据目录，不能混用未完成的指令状态。显式 `--state-dir` 不应由两个队伍共用。
+
+这些会话由普通 `sactl login/logout` 管理；AI 退出保留已有登录，不写账号密码文件，不自动替换或启动后台进程。后台已退出时先重新登录。首次 Ctrl-C 在本场结束后停止，第二次立即退出。`--matches 1` 完成一场即停止，`--forever` 持续匹配。
+
+LLM/hybrid 的本地配置也可全部用参数提供：
+
+```sh
+sactl ai run --profile bot --strategy llm \
+  --llm-endpoint https://provider.example/v1/chat/completions \
+  --llm-model your-model --llm-api-key-env STONEAGE_ARENA_MODEL_KEY --matches 1
+# hybrid：将策略改为 hybrid，并加 --model /absolute/path/local-model.json。
+```
+
+密钥由指定环境变量读取，不作为命令参数。其他参数有 `--llm-timeout`（秒）、`--llm-context-bytes`、`--llm-response-format`。使用 `ai run --help` 查看。`--config` 仍支持既有队伍文件，并可用策略、模型、数据目录和 LLM 参数覆盖；不能与 `--profile` 混用。
+
+## 配置文件方式（可选）
 
 Mac 也可以通过 Homebrew 安装（已有用户执行 `brew upgrade sactl`）：
 
