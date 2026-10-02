@@ -9,6 +9,14 @@ import sys
 
 binary, config, output = sys.argv[1:]
 output = Path(output)
+
+def require_native_success(result, folder):
+    if result.returncode:
+        # The image build discards its filesystem on failure; surface the
+        # native assertion here rather than only naming an inaccessible log.
+        detail = (folder / "stderr.log").read_bytes()[-8000:].decode("utf-8", errors="replace")
+        raise AssertionError(f"native probe failed ({result.returncode}): {folder}\n{detail}")
+
 cases = []
 for mode in (1, 2, 5):
     for seed in (1, 42):
@@ -24,7 +32,7 @@ for mode in (1, 2, 5):
             with (folder / "stdout.log").open("wb") as stdout, (folder / "stderr.log").open("wb") as stderr:
                 result = subprocess.run([binary, config, route, str(mode), "1", str(seed), "0", "0", "0", "131"],
                                         env=env, stdout=stdout, stderr=stderr, timeout=40)
-            assert result.returncode == 0, f"native failure: {folder}"
+            require_native_success(result, folder)
             lines = (folder / "stdout.log").read_bytes().splitlines()
             frames = [json.loads(line[7:]) for line in lines if line.startswith(b"PARITY|")]
             assert frames and frames[-1]["ended"], f"incomplete guardian battle: {folder}"

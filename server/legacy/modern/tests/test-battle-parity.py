@@ -13,6 +13,14 @@ switch_only = sys.argv[4:] == ["switch"]
 recipient_only = sys.argv[4:] == ["recipient"]
 assert not sys.argv[4:] or switch_only or recipient_only
 output = Path(output)
+
+def require_native_success(result, folder):
+    if result.returncode:
+        # The image build discards its filesystem on failure; surface the
+        # native assertion here rather than only naming an inaccessible log.
+        detail = (folder / "stderr.log").read_bytes()[-8000:].decode("utf-8", errors="replace")
+        raise AssertionError(f"native probe failed ({result.returncode}): {folder}\n{detail}")
+
 checked = []
 if not switch_only:
     recipient = output / "recipient"
@@ -22,7 +30,7 @@ if not switch_only:
                                 stdout=stdout, stderr=stderr, timeout=40,
                                 env=dict(os.environ, STONEAGE_BATTLE_RECORD_DIR=str(recipient / "records"),
                                          STONEAGE_LADDER_DB=str(recipient / "arena.sqlite3"), STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES="0"))
-    assert result.returncode == 0, f"native recipient probe failed: {recipient}"
+    require_native_success(result, recipient)
     recipient_cases = [json.loads(line[10:]) for line in (recipient / "stdout.log").read_bytes().splitlines()
                        if line.startswith(b"RECIPIENT|")]
     assert [case["case"] for case in recipient_cases] == ["ordinary", "guardian", "reflection", "guardian_reflection", "absorb", "vanish", "counter_reflection"]
@@ -37,7 +45,7 @@ with (switch / "stdout.log").open("wb") as stdout, (switch / "stderr.log").open(
                             stdout=stdout, stderr=stderr, timeout=40,
                             env=dict(os.environ, STONEAGE_BATTLE_RECORD_DIR=str(switch / "records"),
                                      STONEAGE_LADDER_DB=str(switch / "arena.sqlite3"), STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES="0"))
-assert result.returncode == 0, f"native switch probe failed: {switch}"
+require_native_success(result, switch)
 lines = (switch / "stdout.log").read_bytes().splitlines()
 switch_results = [json.loads(line[7:]) for line in lines if line.startswith(b"SWITCH|")]
 switch_frames = [json.loads(line[12:]) for line in lines if line.startswith(b"SWITCHFRAME|")]
@@ -55,7 +63,7 @@ with (capacity / "stdout.log").open("wb") as stdout, (capacity / "stderr.log").o
                             stdout=stdout, stderr=stderr, timeout=40,
                             env=dict(os.environ, STONEAGE_BATTLE_RECORD_DIR=str(capacity / "records"),
                                      STONEAGE_LADDER_DB=str(capacity / "arena.sqlite3"), STONEAGE_BATTLE_RECORD_MIN_FREE_BYTES="0"))
-assert result.returncode == 0, f"native capacity gate failed: {capacity}"
+require_native_success(result, capacity)
 capacity_cases = [json.loads(line[9:]) for line in (capacity / "stdout.log").read_bytes().splitlines()
                   if line.startswith(b"CAPACITY|")]
 assert len(capacity_cases) == 6
@@ -79,7 +87,7 @@ for mode, pets, seed, healing, items, reserves in scenarios:
         with (folder / "stdout.log").open("wb") as stdout, (folder / "stderr.log").open("wb") as stderr:
             result = subprocess.run([binary, config, route, str(mode), str(pets), str(seed), str(healing), str(items), str(reserves)],
                                     env=env, stdout=stdout, stderr=stderr, timeout=40)
-        assert result.returncode == 0, f"{name}: native failure; inspect {folder}"
+        require_native_success(result, folder)
         lines = (folder / "stdout.log").read_bytes().splitlines()
         frames = [json.loads(line[7:]) for line in lines if line.startswith(b"PARITY|")]
         assert frames and frames[-1]["ended"], f"{name}: no complete battle"
