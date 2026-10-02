@@ -339,7 +339,16 @@ jobs:
         if: always()
         with:
           name: training-image-validation-${{ matrix.arch }}
-          path: build/training-image.*/
+          # Archive reports only: Docker owns private runtime directories.
+          # Candidate weights and training records stay outside release evidence.
+          path: |
+            build/training-image.*/*.log
+            build/training-image.*/image.json
+            build/training-image.*/client-version.txt
+            build/training-image.*/environment-created.json
+            build/training-image.*/environment-checked.json
+            build/training-image.*/validation.json
+            build/training-image.*/verified.json
           retention-days: 7
           if-no-files-found: ignore
 
