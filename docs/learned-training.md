@@ -1,12 +1,12 @@
-# learned 开发版训练入口
+# learned v0.2.10训练入口
 
-当前实现了 Go CLI 的原生采集、规则模仿热身、实战示范训练/导出、PPO 批训练、恢复、冻结分组实验、对战评估及固定策略下的整数配点搜索。受控场景覆盖人物/宠物攻击、防御、破防、状态攻击、两种治疗装备、小块肉、多宠切换及忠犬攻击。配点池可以用于下一轮策略训练；这些能力已分别执行验证，不代表模型已掌握有效战术。在线 learned/hybrid 已接入 v2 架构加载和历史推理，learned 已有完整 1v1、2v2、3v3、5v5 执行证据；带实战来源的原生评估会明确保留未知配置重叠。全部动作与多人链路覆盖、强度验收、正式工具包仍在进行。尚未发布，不把工作区二进制当成下载区现有版本。详见 [实现记录](learned-implementation.md)。
+当前实现了 Go CLI 的原生采集、规则模仿热身、实战示范训练/导出、PPO 批训练、恢复、冻结分组实验、对战评估及固定策略下的整数配点搜索。受控场景覆盖人物/宠物攻击、防御、破防、状态攻击、两种治疗装备、小块肉、多宠切换及忠犬攻击。配点池可以用于下一轮策略训练；这些能力已分别执行验证，不代表模型已掌握有效战术。在线 learned/hybrid 已接入 v2 架构加载和历史推理，learned 已有完整 1v1、2v2、3v3、5v5 执行证据；带实战来源的原生评估会明确保留未知配置重叠。工具包随 v0.2.10 发布；全部游戏动作覆盖与策略强度验收仍未完成。详见 [实现记录](learned-implementation.md)。
 
-## 混合模式训练（开发中）
+## 混合模式训练
 
 模仿阶段另提供实验性动作频次加权：原生热身参数为 `--warmup-action-weighting sqrt-action-frequency-v1`，示范和反馈训练为 `--action-weighting sqrt-action-frequency-v1`，默认均为 `none`。对完整冻结训练集的角色/动作类别计数 n，以 `sqrt(N/n)` 为原始权重，再归一化到所有示范动作的平均权重为 1。权重不读取胜负、验证/测试集或当前小批次；模型结构、输入和 PPO 目标均不变。报告区分普通交叉熵与加权目标，并保留计数和权重。恢复不允许覆盖，数据或报告不一致则拒绝；未开启热身、混合 PPO 和旧 SQLite 入口拒绝不适用参数。固定 5v5 对照已完成：六规则对手的校正差值区间均含零，加权模型直接对普通模型为 112 胜 / 256 场，尚不支持将该方法作为强度改进采用；低频动作拟合改善不能作为晋级依据。完整范围与恢复流程的状态快照例外见 [实现记录](learned-implementation.md)。详细入口见配套 skill 的“动作频次加权”。
 
-混合模式训练使用单一网络与 Adam 状态，每批对各模式重新采集，再按显式模式权重更新。开发版入口为 `experiment-mix`、`train --mixed-experiment`、自动识别目录的 `train --resume` / `export-model`。评估用 `evaluate --mixed-experiment ... --mode N`，每份报告保留完整复合实验及当前模式子实验，`verify-evaluation` 重放双方策略；`compare-evaluations` 只比较同一复合实验、同一模式。具体可执行示例见配套 skill 的混合模式训练说明。
+混合模式训练使用单一网络与 Adam 状态，每批对各模式重新采集，再按显式模式权重更新。v0.2.10入口为 `experiment-mix`、`train --mixed-experiment`、自动识别目录的 `train --resume` / `export-model`。评估用 `evaluate --mixed-experiment ... --mode N`，每份报告保留完整复合实验及当前模式子实验，`verify-evaluation` 重放双方策略；`compare-evaluations` 只比较同一复合实验、同一模式。具体可执行示例见配套 skill 的混合模式训练说明。
 
 不同来源的混合候选若故意共享完全相同的家族、顺序和 train/validation/test 划分，使用 `experiment-compare --left-experiment LEFT --right-experiment RIGHT --output comparison.json` 明确声明，再用 `evaluate --validation-comparison comparison.json --mode N --model LEFT_MODEL --opponent-model RIGHT_MODEL --environment environment.json --output report.json` 比较。仅支持 validation 和唯一右侧模型对手；模型须分别匹配各自实验，不能改写实验编号、互换模型、覆盖场景或释放最终 test。训练/选型来源仍排除，报告及原始证据绑定完整声明；`verify-evaluation` 重放双方，配对报告还须使用相同的比较声明。这是显式共同验证集，不是同等训练预算、协同优势或晋级证明。普通评估继续排除其他实验的留出家族。
 
@@ -20,11 +20,11 @@
 
 开发中的原生环境适配器在正常关闭时发送 EOF，等待 worker 排空归档并退出，最多等待 10 秒；超时或非零退出码会使调用失败，多采集进程分别等待并汇总关闭错误。取消或失败的战斗请求仍会终止对应进程，不能把这种退出当作归档完整。训练已提交的 checkpoint、分片及评估记录保留，关闭失败不会自动删除、重跑或发布候选；须分别核验 Go 训练数据与底层战斗归档。
 
-这一行为需要匹配的开发版 CLI 和原生 worker：新 worker 的离线日志队列会等待写入，多个 worker 共用目录时各用自己的状态临时文件。`status.json` 只代表最后报告的进程，并非全部 worker 的健康汇总。旧 worker 可能忽略写入失败，旧 CLI 可能直接终止进程；更新源码不等于现有安装或正在跑的实验已更新。
+这一行为需要匹配的v0.2.10 CLI 和原生 worker：新 worker 的离线日志队列会等待写入，多个 worker 共用目录时各用自己的状态临时文件。`status.json` 只代表最后报告的进程，并非全部 worker 的健康汇总。旧 worker 可能忽略写入失败，旧 CLI 可能直接终止进程；更新源码不等于现有安装或正在跑的实验已更新。
 
 对于直接的 `docker run` 引擎配置（包括 `environment init` 生成的配置），每次启动还会分配唯一的容器归属标记。关闭时用独立的最多 5 秒清理窗口核对并移除本次启动的容器，避免只结束 Mac 上的 Docker 命令、却留下容器继续运行；不会删除 volume 或清理其他容器。归属不明或 Docker 检查失败会明确报错。标记 `org.stoneage.training.worker` 保留给程序使用，不能在配置中覆盖。自定义 shell、SSH 或带全局参数的 Docker 包装命令须自行处理远端进程生命周期，本地程序不会猜测其容器归属。
 
-开发版提供 `sactl ai collect-feedback` 和 `sactl ai train-feedback`，用于在模型实际遇到的局面上学习规则老师建议。真实执行的动作、概率、价值、奖励和后续观察保持不变；建议单独存储，不冒充执行记录或 PPO 样本。老师只读取当时公开观察，不能使用敌方隐藏配置或未来结果。这是可选监督训练方法，尚无可靠胜率提升证据。
+v0.2.10提供 `sactl ai collect-feedback` 和 `sactl ai train-feedback`，用于在模型实际遇到的局面上学习规则老师建议。真实执行的动作、概率、价值、奖励和后续观察保持不变；建议单独存储，不冒充执行记录或 PPO 样本。老师只读取当时公开观察，不能使用敌方隐藏配置或未来结果。这是可选监督训练方法，尚无可靠胜率提升证据。
 
 先准备已验证可运行的 `environment.json`、冻结的 `experiment.json` 及该实验候选（或精确声明的父模型）。模型必须支持实验的人数、规则、平台与特征。采集只运行实验的 train 家族，完整保留双方原始轨迹；每场仅标注模型一方。
 
@@ -99,7 +99,7 @@ sactl ai train --environment ./environment.json --data-dir ./ai-data --resume --
 
 ### 父模型探索初始化
 
-开发版首次原生训练可指定 `--from-model ./parent.json --initial-policy-scale 0.5`。该选项适用于已声明同一父模型的单模式实验（1v1～5v5）或复合实验；默认 1 保留精确父权重及原来的序列化格式。参数须在 `(0,1]` 内且转换为 float32 后仍为正数。小于 1 时，只在第一场采集前将最终动作评分层 `score.1.w` / `score.1.b` 乘以该值，并使用新的 Adam；其他权重不变，父模型原件不变。单模式必须关闭模仿热身（继承父模型时默认关闭）。
+v0.2.10首次原生训练可指定 `--from-model ./parent.json --initial-policy-scale 0.5`。该选项适用于已声明同一父模型的单模式实验（1v1～5v5）或复合实验；默认 1 保留精确父权重及原来的序列化格式。参数须在 `(0,1]` 内且转换为 float32 后仍为正数。小于 1 时，只在第一场采集前将最终动作评分层 `score.1.w` / `score.1.b` 乘以该值，并使用新的 Adam；其他权重不变，父模型原件不变。单模式必须关闭模仿热身（继承父模型时默认关闭）。
 
 ```sh
 sactl ai train --environment ./environment.json --experiment ./next-experiment.json \
@@ -113,7 +113,7 @@ sactl ai train --environment ./environment.json --data-dir ./exploration-trainin
 
 ### 独立成员的离线训练对照
 
-开发版 `train --plan-scope team|member` 默认 `team`，保持原指挥官架构与旧模型摘要。`member` 用于检验团队联合计划的作用：成员共享同样的完整公共观察、己方共享信息、历史编码及网络权重，但每个成员仅保留自己的人物→宠物计划记忆，不读取队友本回合尚未执行的选择。相同输入的历史编码可以复用计算，数值上等价于各成员用相同权重独立重算；共享价值头与整队 PPO 目标保持不变。因此这是“独立成员执行、共享参数和集中式训练”的对照，不是每个成员各训练一个不同网络，也不是独立 Q-learning。
+v0.2.10 `train --plan-scope team|member` 默认 `team`，保持原指挥官架构与旧模型摘要。`member` 用于检验团队联合计划的作用：成员共享同样的完整公共观察、己方共享信息、历史编码及网络权重，但每个成员仅保留自己的人物→宠物计划记忆，不读取队友本回合尚未执行的选择。相同输入的历史编码可以复用计算，数值上等价于各成员用相同权重独立重算；共享价值头与整队 PPO 目标保持不变。因此这是“独立成员执行、共享参数和集中式训练”的对照，不是每个成员各训练一个不同网络，也不是独立 Q-learning。
 
 ```sh
 sactl ai train --environment ./environment.json --data-dir ./member-baseline \
@@ -129,7 +129,7 @@ sactl ai train --environment ./environment.json --data-dir ./member-baseline --r
 
 `--entropy-weight` 默认 .01，控制 PPO 的条件动作熵奖励，接受有限非负数。0 只移除这项损失，不关闭训练采样、不改变胜负奖励，也不把实战从条件贪心改为随机动作。提高它倾向保留更多探索，但可能损害已有行为；降低它也可能导致过早收敛，必须用独立对战衡量。参数保存在原有 `ppo.entropy_weight` 中；只有新训练可设置，恢复严格沿用保存值，旧 SQLite 入口不接受。
 
-默认原生 CLI 训练仍使用上述 GAE 和原来的单次采样调度。开发版新增实验参数 `--opening-rollouts 2..64`：对同一完整开局/引擎 seed/阵营/行为模型/对手实际重复运行，使用不同动作随机种子；次数必须整除 `--batch-matches`。默认值 1 禁用重复采样，不改变旧格式和训练结果。`games`、`--batch-matches` 仍按实际比赛计数，例如 32 场、每开局重复 4 次，包含 8 个逻辑开局。不同开局即使偶然配置完全相同也不会合并。热身采样不受影响。
+默认原生 CLI 训练仍使用上述 GAE 和原来的单次采样调度。v0.2.10新增实验参数 `--opening-rollouts 2..64`：对同一完整开局/引擎 seed/阵营/行为模型/对手实际重复运行，使用不同动作随机种子；次数必须整除 `--batch-matches`。默认值 1 禁用重复采样，不改变旧格式和训练结果。`games`、`--batch-matches` 仍按实际比赛计数，例如 32 场、每开局重复 4 次，包含 8 个逻辑开局。不同开局即使偶然配置完全相同也不会合并。热身采样不受影响。
 
 `--policy-advantage gae`（默认）可作为相同重复采样调度的对照；`--policy-advantage opening-loo` 要求至少重复两次，用同组其他对局的终局回报均值作为策略基线，并保留原 GAE 价值目标、递归 PPO、按回合归一化和 KL 回退。留一估计要求 gamma=1。两种重复采样模式都要求完整终局，拒绝截断、不完整分组、重复采样 seed 及与保存采样流不符的动作，不把截断改成失败；截止批次会保存在原目录且恢复时继续明确拒绝，需在新目录设置更长采集上限重做实验。普通单次 GAE 仍正常使用截断 bootstrap。
 
@@ -169,7 +169,7 @@ PPO 学习方与热身教师也在八局周期内接触两套阵容；批次可�
 
 ## 旧战斗记录
 
-开发版 `sactl ai export-data` 直接读取已有 `metadata.json`、`events.jsonl`（或 `.gz`）、`result.json`，无需 Python、Docker、账号登录或游戏后台。输入可以是整个记录根目录，也可以是一场比赛目录；只读原文件。
+v0.2.10 `sactl ai export-data` 直接读取已有 `metadata.json`、`events.jsonl`（或 `.gz`）、`result.json`，无需 Python、Docker、账号登录或游戏后台。输入可以是整个记录根目录，也可以是一场比赛目录；只读原文件。
 
 ```sh
 sactl ai export-data --records ./battle-records --format builds --output ./builds.jsonl
@@ -191,7 +191,7 @@ sactl ai export-data --records ./battle-records --mode pve --output ./pve-transi
 
 ## 本地比赛示范导入
 
-开发版 `import-demonstrations` 从已经停止并完成 WAL checkpoint 的本地指挥官数据库重建完整队伍决策。不要用 Mac SQLite 打开仍在 Linux 容器中写入的数据库；先停止采集。命令以 `mode=ro&immutable=1` 读取，拒绝非空 WAL/journal、检查数据库完整性与导入前后文件摘要；这些检查不代替调用者确认采集已停止。
+v0.2.10 `import-demonstrations` 从已经停止并完成 WAL checkpoint 的本地指挥官数据库重建完整队伍决策。不要用 Mac SQLite 打开仍在 Linux 容器中写入的数据库；先停止采集。命令以 `mode=ro&immutable=1` 读取，拒绝非空 WAL/journal、检查数据库完整性与导入前后文件摘要；这些检查不代替调用者确认采集已停止。
 
 ```sh
 sactl ai import-demonstrations --database ./team/state/arena.sqlite3 --output ./demonstrations.jsonl
@@ -208,7 +208,7 @@ sactl ai import-demonstrations --database ./team/state/arena.sqlite3 --output ./
 
 当前已实现 `battletrain.ImitateDemonstrations` 训练内核，与原规则模仿共用连续历史/计划的梯度更新；保留完整比赛顺序、分批确定性更新、整轮失败/取消回滚及优化器恢复。它学习记录中的动作，不以胜负作为动作正确性或价值头标签，不补造行为概率。已用真实 5v5 记录验证更新与恢复。
 
-开发版可直接训练这些示范，不启动游戏服务器、Docker 或 Python：
+v0.2.10可直接训练这些示范，不启动游戏服务器、Docker 或 Python：
 
 ```sh
 sactl ai train --demonstrations ./demonstrations.jsonl --data-dir ./demo-training \
@@ -255,7 +255,7 @@ PPO 从父模型的精确权重和新 Adam 状态开始，之后只使用新引�
 
 新训练默认 `--opponent-sampling weakness-v1`：规则、历史模型、同代冻结模型三类的采样比例为 30%/50%/20%；没有历史模型时，该部分使用同代模型。在规则和历史模型类别内，按最近八个已提交批次的训练胜负调整权重，难以击败的对手权重更高，容易的对手仍保留探索机会。采集截断单独计数，不影响难度。整个采集批次固定权重，训练成功提交后才更新。
 
-开发版 `train --opponent-mix 80,10,10` 可固定三类占比，依次为规则、历史、同代自我对战，均为 0..100 的整数百分比，总和必须是 100。它控制类别选择，`--opponent-sampling` 仍控制类别内部的对手权重；uniform 也可使用该比例。历史池为空时其份额转给同代模型。百分比是每局抽样概率，不是每批精确配额；不会把规则对手的动作轨迹加入 PPO。默认和显式 `30,50,20` 保持旧随机赛程及训练数值，旧 checkpoint 不补写新字段。`league` 输出 `opponent_mix` 便于核对。提高规则占比可能减少自我对战探索，不保证更强，应冻结其他条件后独立评估。
+v0.2.10 `train --opponent-mix 80,10,10` 可固定三类占比，依次为规则、历史、同代自我对战，均为 0..100 的整数百分比，总和必须是 100。它控制类别选择，`--opponent-sampling` 仍控制类别内部的对手权重；uniform 也可使用该比例。历史池为空时其份额转给同代模型。百分比是每局抽样概率，不是每批精确配额；不会把规则对手的动作轨迹加入 PPO。默认和显式 `30,50,20` 保持旧随机赛程及训练数值，旧 checkpoint 不补写新字段。`league` 输出 `opponent_mix` 便于核对。提高规则占比可能减少自我对战探索，不保证更强，应冻结其他条件后独立评估。
 
 历史池至多保留 32 个学习状态，其中最近 16 个保留，其余优先保留较难的旧对手；同难度优先较新的状态。淘汰只影响采样池，不删除已有模型或原始证据。对手按学习状态摘要识别，报告同时保存实际网络摘要。
 
@@ -273,9 +273,9 @@ sactl ai train --environment ./environment.json --data-dir ./uniform-data --oppo
 
 ## 独立评估的原始证据
 
-开发版新增 [本地冠军晋级与回退](learned-champion.md)：`sactl ai champion init/challenge/status/rollback/abandon` 冻结门槛、执行独立最终测试并保留审计记录。受控原生成绩与完整线上认证仍分别验收。
+v0.2.10新增 [本地冠军晋级与回退](learned-champion.md)：`sactl ai champion init/challenge/status/rollback/abandon` 冻结门槛、执行独立最终测试并保留审计记录。受控原生成绩与完整线上认证仍分别验收。
 
-开发版原生 `evaluate --output ./validation.json` 同时保存 `./validation.json.data/`：`spec.json` 在首局前冻结配置、实验划分和对手集合，`models/` 保存参与模型的不可变副本，`shards/` 保存每场双方完整轨迹。报告中的 evidence 与每局 shard 摘要关联这些对象。在线 SQLite 预测评估保持原输入与输出。
+v0.2.10原生 `evaluate --output ./validation.json` 同时保存 `./validation.json.data/`：`spec.json` 在首局前冻结配置、实验划分和对手集合，`models/` 保存参与模型的不可变副本，`shards/` 保存每场双方完整轨迹。报告中的 evidence 与每局 shard 摘要关联这些对象。在线 SQLite 预测评估保持原输入与输出。
 
 ```sh
 sactl ai verify-evaluation --report ./validation.json
@@ -287,7 +287,7 @@ sactl ai verify-evaluation --report ./validation.json
 
 旧的汇总报告仍可阅读，但 `verify-evaluation` 明确拒绝缺少原始证据的报告，不能补写一个 evidence 字段冒充新格式。完整性核验也不是服务端数字签名或 C 引擎结算重放，不对人为重造整套数据作真实性担保。强度门槛、多人线上时限和规则一致性仍需各自验收。
 
-开发版增加配对比较入口，无需编写临时分析程序：
+v0.2.10增加配对比较入口，无需编写临时分析程序：
 
 ```sh
 sactl ai compare-evaluations --baseline ./parent-validation.json --candidate ./candidate-validation.json
@@ -334,19 +334,19 @@ sactl ai experiment --environment ./environment.json --from-model ./model-1v1.js
 sactl ai train --environment ./environment.json --experiment ./experiment-2v2.json --from-model ./model-1v1.json --data-dir ./training-2v2 --warmup-matches 128 --warmup-teacher sustain --warmup-teacher control --batches 10
 ```
 
-子模型仅声明新训练的目标人数，仍是未经完整竞技场认证的 candidate；它不自动继承父模型的适用人数或成绩。1v1 父模型仍不能直接用于 2v2 实战/评估，不允许改其 modes 字段冒充多人模型。多人强度和执行链路必须分别评估。已有同人数训练和恢复语义不变；旧客户端可能拒绝跨人数初始化，应使用支持该功能的开发版。
+子模型仅声明新训练的目标人数，仍是未经完整竞技场认证的 candidate；它不自动继承父模型的适用人数或成绩。1v1 父模型仍不能直接用于 2v2 实战/评估，不允许改其 modes 字段冒充多人模型。多人强度和执行链路必须分别评估。已有同人数训练和恢复语义不变；旧客户端可能拒绝跨人数初始化，应使用支持该功能的v0.2.10。
 
 ## 环境文件
 
-开发版新增 `sactl ai environment init/check` 与独立 `ai-training` 镜像构建目标。该镜像尚未发布，下面的镜像变量必须换成实际已发布并安装的版本；旧 `legacy-runtime` 或任意基础镜像不能冒充训练镜像。初始化不会自动下载，发布流水线须先完成 amd64/arm64 实际引擎与采集训练测试。
+v0.2.10新增 `sactl ai environment init/check` 与独立 `ai-training` 镜像构建目标。从 v0.2.10 发布该镜像，须先显式下载；旧 `legacy-runtime` 或任意基础镜像不能冒充训练镜像。初始化不会自动下载，发布流水线须先完成 amd64/arm64 实际引擎与采集训练测试。
 
 发布流程为 amd64 和 arm64 分别使用原生 Linux 托管 runner，检查匿名下载、镜像与 CLI 版本、镜像内 skill、volume 恢复与导出模型评估；两种架构都通过后才发布 Release。构建时的短训练检查不代替这些镜像发布后的验证。另行比较 ai-training 与 legacy-runtime 的 amd64 默认规则摘要。原生编译时间固定为源码提交时间，避免同源码因 `__DATE__` / `__TIME__` 不同而产生不同二进制摘要。此比较不覆盖生产自行修改的配置和表；上线时仍以游戏服返回的实际规则元数据为准。
 
 Mac 原生 Go 训练、Docker 仅运行 Linux 引擎：
 
 ```sh
-# 先显式安装选定版本的 ai-training 镜像，并设置其引用。
-# SA_TRAINING_IMAGE=ghcr.io/k0ngk0ng/stoneage/ai-training:<已发布版本>
+SA_TRAINING_IMAGE=ghcr.io/k0ngk0ng/stoneage/ai-training:v0.2.10
+docker pull "$SA_TRAINING_IMAGE"
 sactl ai environment init --image "$SA_TRAINING_IMAGE" --directory ./ai-runtime
 sactl ai environment check --environment ./ai-runtime/environment.json
 sactl ai experiment --environment ./ai-runtime/environment.json --output ./experiment.json
@@ -401,7 +401,7 @@ docker rm "$SA_EXPORT_CONTAINER"
 
 `command` 是直接执行的 argv，不是拼接后交给 shell 的字符串。必须输出受支持的逐回合协议及有效规则/平台元数据；直接启动不带规则摘要的裸引擎只适用于低层调试，会被训练器拒绝。当前工具包装入口为 `server/legacy/modern/run-battle-environment.sh --config setup.cf`：从准备好的 GMSV 工作目录启动，先通过 `prepare-battle-rules.sh` 归档程序/选定战斗表/数值配置摘要，再启动专用 C CLI。`STONEAGE_BATTLE_RECORD_DIR` 指向可写的规则档案目录。
 
-Mac 可原生运行 Go 训练器，以 Docker argv 启动 Linux worker。容器建议 `--pull never --network none --read-only`，将原生程序和数据只读挂载，仅规则档案目录可写。训练不需要账号服、游戏账号或生产网关。正式镜像中的包装脚本路径为 `/opt/stoneage/bin/run-battle-environment.sh`，工作目录为 `/opt/stoneage/defaults/gmsv`；需要包含本次改动的镜像版本，当前已发布旧镜像并不具有此入口。
+Mac 可原生运行 Go 训练器，以 Docker argv 启动 Linux worker。容器建议 `--pull never --network none --read-only`，将原生程序和数据只读挂载，仅规则档案目录可写。训练不需要账号服、游戏账号或生产网关。正式镜像中的包装脚本路径为 `/opt/stoneage/bin/run-battle-environment.sh`，工作目录为 `/opt/stoneage/defaults/gmsv`；需要包含本次改动的镜像版本，v0.2.9 及以前镜像没有此入口。
 
 规则摘要现在由原生 `--battle-rules` 导出的实际配置和编译选中的表生成；主机覆盖、默认值及 getter 限制与引擎一致，归档复用会核验内容。规则格式升级后须新建实验，不能改旧 checkpoint 的摘要来恢复。热重载会清除线上兼容元数据。覆盖清单和未验证边界见 [规则来源契约](learned-rules-contract.md)。
 
@@ -419,11 +419,11 @@ v4 增加受控治疗装备：新建 train、experiment、evaluate 或 build-sea
 
 魔法身份与耗气、名称来自同一条原生 J 报文的可选 `id=` 扩展，投影为 `Magic.ID/IDKnown` 和候选 `MagicID/MagicIDKnown/MPCost`；旧服务器缺少 ID 时保留普通客户端操作，但 learned 不猜测治疗语义。卸下装备清空旧魔法。动作词表升级后需要新建训练，不得把 v3 模型改标签复用。规则热身现可使用 sustain 主动治疗、使用小块肉并替换濒死出战宠物，PPO 采样也已覆盖治疗；复杂道具和其他魔法仍未覆盖。
 
-`--data-dir` 是运行 Go 训练器的进程所见路径。原生 Mac 路径与 Docker volume 名不是同一事物；将训练器本身运行在挂载 volume 的容器中时，才可直接使用该 volume 的挂载路径。无需仓库的训练镜像与初始化入口已加入开发版，实际发布产物仍待 CI 构建与下载验收，不把本地基础镜像挂载测试当成已发布镜像验证。
+`--data-dir` 是运行 Go 训练器的进程所见路径。原生 Mac 路径与 Docker volume 名不是同一事物；将训练器本身运行在挂载 volume 的容器中时，才可直接使用该 volume 的挂载路径。无需仓库的训练镜像与初始化入口已加入v0.2.10，实际发布产物仍待 CI 构建与下载验收，不把本地基础镜像挂载测试当成已发布镜像验证。
 
 ## 恢复与数据
 
-开发版 `export-model` 可从已提交的历史 checkpoint 导出候选，适合比较模仿结束与 PPO 之后的实际对战效果：
+v0.2.10 `export-model` 可从已提交的历史 checkpoint 导出候选，适合比较模仿结束与 PPO 之后的实际对战效果：
 
 ```sh
 sactl ai export-model --data-dir ./ai-data --checkpoint <checkpoint摘要>
@@ -433,7 +433,7 @@ sactl ai export-model --data-dir ./ai-data --checkpoint <checkpoint摘要>
 
 原生 `export-model` 及训练结束后的自动导出支持在历史来源核验时 Ctrl+C；取消核验不会发布候选，也不会修改已有训练指针或比赛分片。再次导出使用原目录即可，不需要重新训练。重复开局的历史采样核验可能较长，不能仅因暂时没有输出就启动第二个训练进程。
 
-导出不修改 `latest.json`、优化器或正在进行的训练，不晋级模型；只能选择同一训练目录内按摘要保存的 checkpoint。产物仍是 candidate，验证使用原实验的 validation，不能借导出绕过测试集隔离。旧 CLI 会拒绝 `--checkpoint`，需要包含该入口的开发版。
+导出不修改 `latest.json`、优化器或正在进行的训练，不晋级模型；只能选择同一训练目录内按摘要保存的 checkpoint。产物仍是 candidate，验证使用原实验的 validation，不能借导出绕过测试集隔离。旧 CLI 会拒绝 `--checkpoint`，需要包含该入口的v0.2.10。
 
 每场结束先发布不可变 gzip JSONL 与 manifest，再提交进度。模型/优化器按批次存储，小 checkpoint 引用大文件，避免每局重复保存权重。`latest.json` 以原子替换选择已提交 checkpoint；残留但未被 checkpoint 引用的临时产物不自动加入训练。进程级锁随退出释放，不依赖手动删除旧 PID 文件。
 
@@ -457,7 +457,7 @@ sactl ai evaluate --environment ./environment.json --model ./ai-data/models/<摘
 
 `experiment --pool-train-groups N --train-groups T --build-pool ...` 可显式混合 N 个池内训练家族和 T−N 个新生成家族，要求 0 < N < T；省略时保持纯池训练。新建清单均匀交错两类训练家族，每个家族的八场配对保持完整；旧清单/恢复保持原顺序。清单独立保留验证/测试来源并采用新 schema，旧版本拒绝。该比例是家族数量，不是梯度权重，也不证明强度收益；与跨人数 `experiment-mix` 的区别及完整示例见配点搜索说明。
 
-开发版 `build-validate init/run/verify/compare` 可在同一补充清单中比较父子模型使用均衡和已选配点的效果。先冻结清单再观察子模型成绩，保留源搜索及双方报告的 `.data`；统计按完整对手阵容聚合，有截断不估计收益，小于二十个阵容不给区间。该报告不替代原实验的 validation/test，不自动晋级；详见 [配点与决策收益](learned-build-search.md#分开验证配点收益与决策收益)。
+v0.2.10 `build-validate init/run/verify/compare` 可在同一补充清单中比较父子模型使用均衡和已选配点的效果。先冻结清单再观察子模型成绩，保留源搜索及双方报告的 `.data`；统计按完整对手阵容聚合，有截断不估计收益，小于二十个阵容不给区间。该报告不替代原实验的 validation/test，不自动晋级；详见 [配点与决策收益](learned-build-search.md#分开验证配点收益与决策收益)。
 
 ## 治疗与换宠教师
 
@@ -465,7 +465,7 @@ sactl ai evaluate --environment ./environment.json --model ./ai-data/models/<摘
 
 新实验默认五种热身教师和规则对手；可用 `--warmup-teacher sustain` 明确选择教师，并用重复的 `--rule-opponent sustain --rule-opponent focus` 选择 PPO 的规则对手池。这些参数随 checkpoint 固定，恢复时不能覆盖。历史 checkpoint 没有 rule_opponents 字段时继续原四种对手调度，旧教师身份和决策不变。评估与配点搜索通过 `--opponent sustain` 使用该对手，或 `--policy sustain` 固定搜索控制器；默认评估/搜索也包含第五种对手。已锁定的旧最终测试必须沿用原对手集合，不能用新的默认集合改写。
 
-示例（开发版，使用新的实验目录）：
+示例（v0.2.10，使用新的实验目录）：
 
 ```sh
 sactl ai train --environment ./environment.json --data-dir ./sustain-training --reserve-pets 2 --healing-magic 20 --healing-items 6 --warmup-teacher sustain --rule-opponent sustain --rule-opponent focus --batches 10
