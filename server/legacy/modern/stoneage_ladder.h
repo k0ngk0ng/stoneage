@@ -4,6 +4,7 @@
 
 /* Integration boundary for the preserved native server. */
 void StoneAge_LadderTick(void);
+int StoneAge_LadderAdminSnapshot(char *out,size_t capacity,int offset);
 int StoneAge_LadderRequest(int fd,const char *category);
 /* A live rule reload invalidates the startup digest until a verified restart. */
 void StoneAge_BattleRulesChanged(void);

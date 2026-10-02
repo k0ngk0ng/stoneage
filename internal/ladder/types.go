@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 const Version = 1
@@ -319,11 +317,7 @@ func Decode(wire string) (Envelope, error) {
 		if contact.NameHex == "" {
 			continue
 		}
-		b, err := hex.DecodeString(contact.NameHex)
-		if err != nil {
-			return Envelope{}, fmt.Errorf("invalid ladder contact name encoding: %w", err)
-		}
-		decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(b)
+		decoded, err := decodeName(contact.NameHex)
 		if err != nil {
 			return Envelope{}, err
 		}
@@ -353,11 +347,7 @@ func Decode(wire string) (Envelope, error) {
 		if p.NameHex == "" {
 			continue
 		}
-		b, err := hex.DecodeString(p.NameHex)
-		if err != nil {
-			return Envelope{}, fmt.Errorf("invalid ladder name encoding: %w", err)
-		}
-		decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(b)
+		decoded, err := decodeName(p.NameHex)
 		if err != nil {
 			return Envelope{}, err
 		}

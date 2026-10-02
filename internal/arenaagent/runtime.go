@@ -7,24 +7,28 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type Runner struct {
-	config         Config
-	store          *Store
-	members        []*member
-	strategy       Strategy
-	selection      *modelSelection
-	selectionSaved bool
-	loadChampion   championLoader
-	ids            map[string]string
-	completed      map[string]bool
-	Stop           atomic.Bool
-	Output         io.Writer
-	outputMu       sync.Mutex
+	config                        Config
+	store                         *Store
+	members                       []*member
+	strategy                      Strategy
+	selection                     *modelSelection
+	selectionSaved                bool
+	loadChampion                  championLoader
+	ids                           map[string]string
+	completed                     map[string]bool
+	Stop                          atomic.Bool
+	Output                        io.Writer
+	outputMu                      sync.Mutex
+	HumanOutput                   bool
+	livePhase, liveTurn, livePlan string
+	liveSince, liveLast           time.Time
 }
 
 func NewRunner(c Config) (*Runner, error) {
@@ -63,10 +67,17 @@ func (r *Runner) Close() {
 	r.store.DB.Close()
 }
 func (r *Runner) report(state string, fields Object) {
+	if r.Output == nil {
+		return
+	}
 	fields["state"] = state
 	r.outputMu.Lock()
 	defer r.outputMu.Unlock()
-	_, _ = r.Output.Write(append(enc(fields), '\n'))
+	if r.HumanOutput {
+		_, _ = fmt.Fprintf(r.Output, "[%s] %s\n", time.Now().Format("15:04:05"), strings.Join(sanitizedLines(liveLine(state, fields)), "\n"))
+	} else {
+		_, _ = r.Output.Write(append(enc(fields), '\n'))
+	}
 }
 func (r *Runner) expected() map[string]bool {
 	out := map[string]bool{}
@@ -232,6 +243,9 @@ func (r *Runner) collect(ctx context.Context, m *member) (Object, error) {
 	}
 	batch := obj(reply["data"])
 	r.store.Ingest(m.cfg.ID, batch)
+	if r.store.Err() == nil {
+		r.reportEvents(m.cfg.ID, batch, cursor)
+	}
 	v := obj(batch["observation"])
 	if v == nil {
 		return nil, fmt.Errorf("missing battle observation")
@@ -266,11 +280,17 @@ func (r *Runner) acknowledge(ctx context.Context, statuses map[string]Object) er
 			return e
 		}
 		r.store.Ingest(m.cfg.ID, obj(reply["data"]))
+		if r.store.Err() == nil {
+			r.reportEvents(m.cfg.ID, obj(reply["data"]), cursor)
+		}
 		r.store.Result(result)
 		if _, e = m.mutate(ctx, "ack"); e != nil {
 			return e
 		}
 		id := str(result["id"])
+		if r.completed[id] {
+			continue
+		}
 		r.completed[id] = true
 		r.report("result", Object{"match_id": id, "winner_side": result["winner_side"], "rated": result["rated"]})
 	}
@@ -370,6 +390,12 @@ func (r *Runner) battle(ctx context.Context, statuses map[string]Object) (return
 		return e
 	}
 	timing.next("decision")
+	turnKey := fmt.Sprintf("%s:%d", matchID, newest)
+	if r.liveTurn != turnKey {
+		r.liveTurn = turnKey
+		r.report("observing", Object{"turn": newest, "match_id": matchID, "strategy": r.strategy.ID()})
+	}
+	decisionStarted := time.Now()
 	decision, e := r.decideForTurn(ctx, decisionCtx, team, history)
 	timing.DecisionDeadlineExceeded = time.Now().After(deadline)
 	if e != nil {
@@ -395,6 +421,7 @@ func (r *Runner) battle(ctx context.Context, statuses map[string]Object) (return
 	if e = r.store.Err(); e != nil {
 		return e
 	}
+	r.reportDecision(team, decision, time.Since(decisionStarted))
 	timing.next("dispatch")
 	var wg sync.WaitGroup
 	for _, m := range r.members {
@@ -457,6 +484,7 @@ func (r *Runner) decideForTurn(ctx, decisionCtx context.Context, team Object, hi
 	if stop := ctx.Err(); stop != nil {
 		return Decision{}, stop
 	}
+	r.report("strategy_fallback", Object{"strategy": r.strategy.ID(), "kind": kind})
 	r.store.Record("strategy_fallback", Object{"strategy": r.strategy.ID(), "kind": kind}, str(team["match_id"]), "")
 	if stored := r.store.Err(); stored != nil {
 		return Decision{}, stored
@@ -498,6 +526,18 @@ func (r *Runner) dispatch(ctx context.Context, m *member, t Object, p Plan) {
 				response = Object{"ok": false, "kind": "unknown"}
 			}
 			r.store.Finish(m.cfg.ID, selection, actor, response)
+			outcome := "提交结果不确定，保留记录，避免重复指令"
+			status := r.store.Intent(m.cfg.ID, p.Match, p.Turn, actor)
+			if r.store.Err() != nil {
+				status = "storage_error"
+				outcome = "提交记录保存失败，停止后须核对实际状态"
+			} else if status == "written" {
+				outcome = "指令已发送，等待服务器战报"
+			} else if status == "" {
+				status = "rejected"
+				outcome = "指令未接受：" + str(obj(response["data"])["code"])
+			}
+			r.report("submission", Object{"match_id": p.Match, "turn": p.Turn, "member": m.cfg.ID, "actor": actor, "outcome": outcome, "outcome_code": status})
 		}
 	}
 }
@@ -745,7 +785,7 @@ func (r *Runner) Run(ctx context.Context, matches int) error {
 	if e := r.initialize(ctx); e != nil {
 		return e
 	}
-	r.report("running", Object{"mode": r.config.Mode, "strategy": r.strategy.ID(), "state_dir": r.config.StateDir})
+	r.report("running", Object{"mode": r.config.Mode, "strategy": r.strategy.ID(), "state_dir": r.config.StateDir, "model": r.config.Model})
 	for {
 		if e := ctx.Err(); e != nil {
 			return e
@@ -757,6 +797,7 @@ func (r *Runner) Run(ctx context.Context, matches int) error {
 		if e != nil {
 			return e
 		}
+		r.reportPhase(statuses)
 		active, pending := false, false
 		for _, s := range statuses {
 			phase := str(s["phase"])

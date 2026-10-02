@@ -1,0 +1,14 @@
+{{define "content"}}
+<section class="panel" id="arena-monitor">
+  <h1>竞技场实时状态</h1>
+  <p>来自游戏服务器的实时快照，每 3 秒刷新。仅查看，不影响匹配和战斗。</p>
+  <p id="arena-status" role="status">正在读取…</p>
+  <p id="arena-counts"></p>
+  <h2>正在匹配</h2>
+  <div class="table-wrap"><table><thead><tr><th>队伍</th><th>模式</th><th>等待时间</th><th>成员</th></tr></thead><tbody id="arena-queues"></tbody></table></div>
+  <h2>进行中的对局</h2>
+  <div class="table-wrap"><table><thead><tr><th>对局</th><th>模式</th><th>状态 / 回合</th><th>时间</th><th>双方队伍</th></tr></thead><tbody id="arena-matches"></tbody></table></div>
+  <p><button type="button" id="arena-prev" disabled>上一页</button> <span id="arena-page">第 1 页</span> <button type="button" id="arena-next" disabled>下一页</button></p>
+</section>
+<script src="/static/arena.js" defer></script>
+{{end}}

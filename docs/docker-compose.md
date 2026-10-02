@@ -291,8 +291,11 @@ disabled = false
 
 每次更新 Web 程序前，先从已成功发布的部署包更新 `bin/`，使用该版本上传器发布对应的内容哈希脚本目录及 gzip 索引，然后执行正常的镜像发布流程：
 
+**CDN 资源就位是切换镜像的前置条件。** 必须按目标 tag 和生产 CDN 配置核对生成的 `web/<hash>/`，从玩家实际 CDN 域名 GET 全部目标 CSS、JavaScript、worker、Web Manifest 和目录清单，检查响应内容类型和摘要。资源缺失、返回错误页面或清单不一致时立即中止；旧目录存在、上传器退出成功、容器 healthy 和首页 HTML 200 均不能替代该检查。任务以 sactl 为主也必须检查实际 Web 源码差异。
+
 ```sh
 ./bin/stoneage sync-assets --web-only
+# 验证目标 tag 对应的 CDN 资源全部可获取且内容摘要一致，通过后才部署。
 # 独立上传完整游戏资源 ZIP 和百科下载目录：
 ./bin/stoneage sync-assets --resource-packs /path/to/resource-packs
 # 如同时发布旧格式地图包，改用：
@@ -301,7 +304,10 @@ disabled = false
 ./bin/stoneage pull
 ./bin/stoneage deploy --no-image-update
 ./bin/stoneage status
+# 用独立、无历史页面缓存的浏览器验证实际首页及全部必需资源。
 ```
+
+若本地索引与 CDN 已发布清单不一致，先查清差异、保留原件并核验准确输入，不得忽略错误或强行全量覆盖。发布后必须确认登录界面完整显示，资源无加载失败、脚本无阻断功能的错误；只更新下载区的发布也须核验线上游戏首页。保留当前版本及回退版本的 CDN 目录。`bin/deploy.sh` 的容器健康检查目前不能代替上述 CDN 和浏览器验收；每次发布须保存这些证据。[2026-10-02 故障记录](incidents/2026-10-02-web-cdn.md)说明了遗漏此步骤的实际后果。
 
 `--web-only` 校验本地 JSON 与已发布清单一致，只新增 `web/<hash>/`、`indexes/` 和可选 `packs/<资源版本>/` 对象，不重发图片、不改资源版本。普通全量 `sync-assets` 也会发布脚本和压缩索引。CDN 须透传这些对象的 `Cache-Control: public, max-age=31536000, immutable`，允许跨域 GET/HEAD，并正确返回 JS MIME 类型。gzip 对象是 `application/gzip`，不设置 `Content-Encoding`；浏览器解压后验证大小和 SHA-256，沿用既有本地索引缓存。缓存命中不下载；不支持解压 API 的旧浏览器使用 CDN 原始 JSON。
 # 战斗训练数据

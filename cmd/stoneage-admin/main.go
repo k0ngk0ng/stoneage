@@ -115,6 +115,7 @@ func serve(arguments []string) error {
 	}
 	control, err := admin.NewServer(store, admin.Options{
 		Players:             players,
+		Arena:               playerbridge.GMSV{Queue: queue("gmsv")},
 		PlayerCatalogLoader: catalogLoader.Load,
 		PlayerAssets:        &playerassets.Handler{Root: *assetsRoot},
 		CookieSecure:        *cookieSecure,

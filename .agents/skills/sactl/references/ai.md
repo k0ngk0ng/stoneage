@@ -25,7 +25,7 @@ sactl ai run --profile bot --strategy learned --model /absolute/path/model.safet
 
 `--model` 是用户本地的外部模型文件，安装包不带模型。v0.2.15 起，推理在本机 Go 客户端运行，检查观察 schema、规则接口版本、特征/动作和人数契约；不要求训练引擎与游戏服 CPU 或程序摘要相同。训练来源原样保留，服务器实际摘要和平台另存于战斗记录；离线训练恢复和受控评估仍核对原环境。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
 
-省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic，learned/hybrid 必须指定模型。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
+省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic；v0.2.17 learned/hybrid 可自动查找本地模型，存在多个时需显式选择。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
 
 同一组 profile 默认复用 `~/.local/state/sactl/ai/<队伍摘要>/arena.sqlite3`（尊重 XDG_STATE_HOME），可以通过 `--state-dir` 指定。启动会输出实际数据目录。旧目录绑定原服务器、账号和角色，换角色时须使用另一 profile 或新的数据目录，不能混用未完成的指令状态。显式 `--state-dir` 不应由两个队伍共用。
 
@@ -477,3 +477,12 @@ sactl ai train --environment ./environment.json --data-dir ./control-training --
 v0.2.13 train、experiment、evaluate、build-search 可用 `--pet-skills 1,2,3,60,80,110,20` 指定双方主宠技能集合，最多七项且不重复。20 为忠犬，攻击目标并保护自己的主人，名义攻击力 -20%；不是选中队友保护。支持的其他 ID 为 1 攻击、2 防御、3 破防、60 毒、80 石化、90 混乱、110 催眠。默认省略保留原七技能。备用宠物带攻击、防御及从所选集合抽取的一个专长，没有专长时仅带攻击、防御。
 
 显式技能集要求 `controlled-battle-v8` 工作程序，实际槽位按固定词表压紧，不扩大原生七槽容量。新训练为 `commander-observed-v8` / `attack-guard-switch-guardian-v7`；原 v6/v7 恢复仍使用原输入/动作及匹配的程序和规则，不自动升级。技能集合随实验、配点池和 checkpoint 固定，绑定实验或 resume 不允许覆盖。旧客户端会拒绝新参数，未发布的本地工作区能力不能当成下载区现有能力。此配置只作用于本地受控训练，不修改线上宠物技能。
+
+
+## 模型查找与实时输出（v0.2.17）
+
+已进入角色的当前会话可用 `sactl ai run --strategy learned --matches 1`，无需 profile 或模型参数（存在唯一可用本地模型时）。查找顺序为当前目录、当前目录下 `runtime/ai-models/`、`$XDG_DATA_HOME/sactl/models/`（默认 `~/.local/share/sactl/models/`）。自动索引只查各目录直接包含的 safetensors，并校验人数兼容性；同一策略身份副本去重，第一层有多个模型时停止并列出路径，不擅自选择。旧 JSON 仍可显式指定。`--model filename` 沿上述目录查找，含目录的显式路径只读取该路径；配置文件中的模型路径仍相对配置文件。
+
+默认 `ai run` 输出可读的匹配、回合决策、模型评分、动作目标、提交状态和服务器战报；脚本必须使用 `sactl ai run ... --json` 获取 JSON Lines，不能再假定默认输出是 JSON。`ai check` 仍输出 JSON。预期回报不是胜率，“指令已发送”不是技能生效证明；以随后服务器战报为准。多人显示首个受控成员的战报，各成员训练记录照常保存。显示信息不会改变决策、历史、预留或重试规则。
+
+“已加入竞技场匹配” / `state=queued` 表示已自动排队，不再发起第二次匹配。等待时每 15 秒提示；不因暂未找到对手而重启 daemon、删除状态或另起一个指挥官。

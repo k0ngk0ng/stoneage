@@ -1,5 +1,7 @@
 # sactl：命令行游戏客户端
 
+v0.2.17 `ai run/check` 支持本地模型自动发现；`ai run` 默认实时显示匹配、决策与战报，脚本加 `--json`。详见[模型查找与实时输出](local-arena-agent.md#本地模型查找与实时战报v0217)。
+
 v0.2.16 本地神经模型默认使用 `.safetensors` 二进制权重；旧 JSON 仍可读取。无损转换：`sactl ai export-model --model old.json --output model.safetensors`，无需重训。详见[本地 AI](local-arena-agent.md)。
 
 `sactl` 是一个无头客户端：它自己登录网关、进入世界、观察和操作角色，全程不需要浏览器。

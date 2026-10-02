@@ -30,6 +30,7 @@
 #include "pet.h"
 #include "pet_skill.h"
 #include "stoneage_character_identity.h"
+#include "stoneage_ladder.h"
 
 /* char_base.c owns the table and does not expose it from char_base.h.  Keep
  * the declaration local to this modern bridge, just like family.c and the
@@ -38,7 +39,7 @@ extern tagRidePetTable ridePetTable[296];
 
 #define STONEAGE_PA_VERSION 1
 #define STONEAGE_PA_MAX_REQUEST 65535
-#define STONEAGE_PA_MAX_RESPONSE 65535
+#define STONEAGE_PA_MAX_RESPONSE (256 * 1024)
 #define STONEAGE_PA_MAX_FIELDS 128
 #define STONEAGE_PA_MAX_ID 64
 #define STONEAGE_PA_MAX_VALUE 8192
@@ -588,6 +589,11 @@ static int StoneAgePA_parseRequest( char *data, size_t length,
         if( !StoneAgePA_parseInt(encoded, &request->protocol) ) return FALSE;
     }
     if( request->protocol != STONEAGE_PA_VERSION ) return FALSE;
+    if( strcmp(request->action, "arena_status") == 0 ) {
+        if(!StoneAgePA_getField(request,"value",encoded,sizeof(encoded)) ||
+           !StoneAgePA_parseInt(encoded,&request->value) || request->value<0 || request->value>256)return FALSE;
+        return TRUE;
+    }
     if( strcmp(request->action, "export_item") == 0 ||
         strcmp(request->action, "export_pet") == 0 ) {
         if( !StoneAgePA_getField(request, "template_id", encoded, sizeof(encoded)) ||
@@ -2506,6 +2512,15 @@ static int StoneAgePA_execute( StoneAgePAResponse *response,
     int index;
     int mutate;
     int ok = FALSE;
+    if( strcmp(request->action, "arena_status") == 0 ) {
+        char *snapshot=(char *)malloc(60000);
+        if(!snapshot || !StoneAge_LadderAdminSnapshot(snapshot,60000,request->value)) {
+            free(snapshot);StoneAgePA_responseError(response,"unavailable","arena status unavailable");return FALSE;
+        }
+        StoneAgePA_writeInt(response,"ok",1);
+        StoneAgePA_writeEncoded(response,"snapshot",snapshot);
+        free(snapshot);return !response->failed;
+    }
     if( strcmp(request->action, "export_item") == 0 ||
         strcmp(request->action, "export_pet") == 0 ) {
         return StoneAgePA_exportTemplate(response, request);

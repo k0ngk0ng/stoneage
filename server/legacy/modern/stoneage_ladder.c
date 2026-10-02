@@ -931,3 +931,11 @@ void StoneAge_LadderHPChanged(int c,int before,int after)
         Ladder_Stats(m->battle,source_owner,&delta);
     }
 }
+
+static int admin_battle_turn(int battle)
+{ return native_battle(battle) && BATTLE_CHECKINDEX(battle)?BattleArray[battle].turn:-1; }
+int StoneAge_LadderAdminSnapshot(char *out,size_t capacity,int offset)
+{
+    initialize();
+    return enabled && Ladder_AdminSnapshot(out,capacity,offset,admin_battle_turn);
+}

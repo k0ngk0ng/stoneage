@@ -80,11 +80,13 @@ sactl login --profile bot
 sactl --profile bot enter '角色名'
 sactl ai run --profile bot --strategy basic --matches 1
 # 使用外部模型：
-sactl ai run --profile bot --strategy learned --model /absolute/path/model.safetensors --matches 1
+sactl ai run --profile bot --strategy learned --matches 1
 # 持续匹配：把 --matches 1 换为 --forever。
 ```
 
 神经模型从 v0.2.16 起默认使用 **safetensors 二进制权重**，结构和训练来源保留为文件内 JSON 元数据。旧 JSON 可用 `sactl ai export-model --model ./model.json --output ./model.safetensors` 无损转换，无需重新训练。
+
+v0.2.17 可自动查找当前目录、`./runtime/ai-models/`、`~/.local/share/sactl/models/`（尊重 XDG_DATA_HOME）的 safetensors；第一层只有一个可用模型即使用，多个则列出并要求 `--model` 选择。默认实时显示匹配、决策、出招和战报；脚本使用 `ai run ... --json`。排队后无需再开终端匹配。
 
 **模型作为本地外部文件加载，不随客户端安装包、Release 附件或 Docker 镜像分发，也不部署到生产。** 使用 `--model` 指定模型路径，也兼容旧 `team.json` 的 `model` 字段；`learned` / `hybrid` 要求模型覆盖对应人数及观察/动作接口版本；训练引擎的 CPU 平台和程序摘要只是来源记录，不限制本地推理。安装或升级客户端不会自动生成强模型。模型权重、训练数据、检查点和评估证据保留在本地目录或本机 Docker volume。
 
@@ -134,3 +136,5 @@ bin/stoneage status
 推送 `v*` tag 触发 [Release workflow](.github/workflows/release.yml)：测试、跨平台客户端构建、镜像构建与训练工具包验证通过后发布 Release，再更新百科下载资源及包管理器清单。发布产物包括 sactl、配套 skill/安装入口、部署包及 GHCR 程序和训练工具镜像。
 
 旧 Wine、Godot 和 legacy 客户端资料仅供历史协议与资源核查；它们不是当前玩家安装流程或开发目标。开发入口见 [开发文档](docs/development.md)。
+
+管理后台的 **竞技场** 页面（`/arena`）每 3 秒读取游戏进程状态：匹配队伍、等待时间、开战倒计时、双方成员和当前回合。接口仅对已登录管理员开放；不可用时明确显示旧快照，不影响玩家匹配，也不承载本地 AI 控制。

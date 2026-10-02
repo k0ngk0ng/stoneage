@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/k0ngk0ng/stoneage/internal/ladder"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/k0ngk0ng/stoneage/internal/playerdata"
@@ -63,4 +65,12 @@ func (g GMSV) Call(ctx context.Context, values map[string]string) (map[string]st
 		return nil, bridgeError(fields["code"])
 	}
 	return fields, nil
+}
+
+func (g GMSV) ArenaStatus(ctx context.Context, offset int) (ladder.AdminSnapshot, error) {
+	fields, err := g.Call(ctx, map[string]string{"action": "arena_status", "value": strconv.Itoa(offset)})
+	if err != nil {
+		return ladder.AdminSnapshot{}, err
+	}
+	return ladder.DecodeAdminSnapshot([]byte(fields["snapshot"]))
 }

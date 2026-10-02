@@ -493,6 +493,46 @@ class Coordinator(unittest.TestCase):
         self.assertNotIn("match", result["snapshot"])
         self.assertLess(len(json.dumps(result)), 24000)
 
+    def admin_snapshot(self, offset=0):
+        buf = C.create_string_buffer(60000)
+        turn = C.CFUNCTYPE(C.c_int, C.c_int)(lambda battle: 7)
+        self.assertEqual(LIB.Ladder_AdminSnapshot(buf, len(buf), offset, turn), 1)
+        return json.loads(buf.value)
+
+    def test_admin_snapshot_is_read_only_and_tracks_match_lifecycle(self):
+        self.assertEqual(self.admin_snapshot()["queued_total"], 0)
+        self.team([0]); self.queue([0]); self.clock += 1234
+        before = self.snapshot(0)
+        snap = self.admin_snapshot()
+        self.assertEqual(snap["queued_total"], 1)
+        self.assertEqual(snap["queues"][0]["wait_ms"], 1234)
+        self.assertEqual(snap["queues"][0]["members"][0]["name_hex"], self.profiles[0].name_hex.decode())
+        self.assertEqual(self.snapshot(0), before)
+        self.team([1]); self.queue([1]); LIB.Ladder_Tick()
+        snap = self.admin_snapshot()
+        self.assertEqual(snap["queued_total"], 0)
+        self.assertEqual(snap["active_total"], 1)
+        self.assertEqual(snap["matches"][0]["phase"], "countdown")
+        self.clock += 10001; LIB.Ladder_Tick()
+        snap = self.admin_snapshot()
+        self.assertEqual(snap["matches"][0]["phase"], "battle")
+        self.assertEqual(snap["matches"][0]["turn"], 7)
+        self.assertEqual(len(snap["matches"][0]["teams"]), 2)
+        self.assertEqual(self.admin_snapshot(8)["matches"], [])
+        LIB.Ladder_End(1, 0, 7, b"defeat", 1); LIB.Ladder_Tick()
+        self.assertEqual(self.admin_snapshot()["active_total"], 0)
+        buf = C.create_string_buffer(8)
+        self.assertEqual(LIB.Ladder_AdminSnapshot(buf, len(buf), 0, None), 0)
+
+    def test_admin_snapshot_pages_queues_without_truncating_totals(self):
+        for n in range(12):
+            self.team([n]); self.queue([n])
+        first, second = self.admin_snapshot(), self.admin_snapshot(8)
+        self.assertEqual(first["queued_total"], 12)
+        self.assertEqual(len(first["queues"]), 8)
+        self.assertEqual(len(second["queues"]), 4)
+        self.assertEqual(len({q["id"] for q in first["queues"] + second["queues"]}), 12)
+
     def test_matching_deadline_all_modes_and_no_fillers(self):
         for n in range(1, 6):
             if n > 1:

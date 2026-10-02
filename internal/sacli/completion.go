@@ -148,7 +148,7 @@ func Complete(words []string) []string {
 			return completePrefix("--directory --help "+options[positional[2]], prefix)
 		}
 		flags := map[string]string{
-			"init": "--directory --mode", "check": "--config --profile --strategy --model --mode --state-dir --pet-mask --llm-endpoint --llm-model --llm-api-key-env --llm-response-format --llm-timeout --llm-context-bytes", "run": "--config --profile --strategy --model --mode --state-dir --pet-mask --llm-endpoint --llm-model --llm-api-key-env --llm-response-format --llm-timeout --llm-context-bytes --matches --forever",
+			"init": "--directory --mode", "check": "--config --profile --strategy --model --mode --state-dir --pet-mask --llm-endpoint --llm-model --llm-api-key-env --llm-response-format --llm-timeout --llm-context-bytes", "run": "--config --profile --strategy --model --mode --state-dir --pet-mask --llm-endpoint --llm-model --llm-api-key-env --llm-response-format --llm-timeout --llm-context-bytes --matches --forever --json",
 			"experiment":            "--environment --output --build-pool --pool-train-groups --from-model --seed --mode --points --pet-points --reserve-pets --pet-skills --healing-items --healing-magic --level --max-turns --train-groups --validation-groups --test-groups",
 			"build-pool":            "--search-dir --output",
 			"experiment-compare":    "--left-experiment --right-experiment --output",

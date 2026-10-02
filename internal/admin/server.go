@@ -29,6 +29,7 @@ import (
 var webFiles embed.FS
 
 type Options struct {
+	Arena               ArenaReader
 	Players             playerdata.Manager
 	PlayerCatalog       *gamecatalog.Catalog
 	PlayerCatalogLoader func() (*gamecatalog.Catalog, error)
@@ -43,6 +44,7 @@ type Options struct {
 }
 
 type Server struct {
+	arena               ArenaReader
 	players             playerdata.Manager
 	playerCatalog       *gamecatalog.Catalog
 	playerCatalogLoader func() (*gamecatalog.Catalog, error)
@@ -135,10 +137,11 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 		"login": "login.html", "setup": "setup.html", "accounts": "accounts.html",
 		"account_new": "account_new.html", "account_detail": "account_detail.html",
 		"audit": "audit.html", "server": "server.html", "notification": "notification.html",
-		"assets":    "assets.html",
-		"players":   "players.html",
-		"gifts":     "gifts.html",
-		"config":    "config.html", "error": "error.html",
+		"assets":  "assets.html",
+		"arena":   "arena.html",
+		"players": "players.html",
+		"gifts":   "gifts.html",
+		"config":  "config.html", "error": "error.html",
 	} {
 		parsed, parseErr := template.ParseFS(webFiles, "templates/layout.html", "templates/"+file)
 		if parseErr != nil {
@@ -148,6 +151,7 @@ func NewServer(store *auth.Store, options Options) (*Server, error) {
 	}
 	server := &Server{
 		players:             options.Players,
+		arena:               options.Arena,
 		playerCatalog:       options.PlayerCatalog,
 		playerCatalogLoader: options.PlayerCatalogLoader,
 		playerAssets:        options.PlayerAssets,
@@ -215,6 +219,10 @@ func (server *Server) route(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	data := &pageData{Session: session, CSRF: server.csrfToken(token), SourceIP: server.requestSourceIP(request)}
+	if request.URL.Path == "/arena" || request.URL.Path == "/api/arena" {
+		server.arenaPage(response, request, data)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/api/gift-") {
 		server.giftAPI(response, request, data)
 		return

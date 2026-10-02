@@ -90,12 +90,6 @@ func (o *onlineFlags) config(path string, f *flag.FlagSet) (Config, error) {
 	if set["model"] {
 		c.Model = o.model
 		c.ChampionDirectory = ""
-		if c.Model != "" {
-			c.Model, err = filepath.Abs(c.Model)
-			if err != nil {
-				return c, err
-			}
-		}
 	}
 	if set["mode"] {
 		c.Mode = o.mode
@@ -132,6 +126,16 @@ func (o *onlineFlags) config(path string, f *flag.FlagSet) (Config, error) {
 	} {
 		if set[flagName] {
 			c.LLM[v.key] = v.value
+		}
+	}
+	if (c.Strategy == "learned" || c.Strategy == "hybrid") && c.ChampionDirectory == "" && (set["model"] || c.Model == "") {
+		dirs, e := localModelDirectories()
+		if e != nil {
+			return c, e
+		}
+		c.Model, err = resolveLocalModel(c.Model, c.Mode, dirs)
+		if err != nil {
+			return c, err
 		}
 	}
 	if err = c.validateModelSource(); err != nil {

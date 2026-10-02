@@ -138,6 +138,7 @@ func Main(ctx context.Context, args []string, version string, out io.Writer) err
 	config := f.String("config", "", "team JSON")
 	matches := f.Int("matches", 1, "number of matches")
 	forever := f.Bool("forever", false, "continuous matchmaking")
+	jsonOutput := f.Bool("json", false, "print structured live events")
 	online := onlineFlags{}
 	online.bind(f)
 	if e := f.Parse(args[1:]); e != nil {
@@ -171,7 +172,7 @@ func Main(ctx context.Context, args []string, version string, out io.Writer) err
 			for _, m := range c.Members {
 				ids = append(ids, m.ID)
 			}
-			fields := Object{"ok": true, "mode": c.Mode, "strategy": s.ID(), "members": ids}
+			fields := Object{"ok": true, "mode": c.Mode, "strategy": s.ID(), "members": ids, "model": c.Model}
 			if selection != nil {
 				fields["selection"] = selection
 			}
@@ -185,6 +186,7 @@ func Main(ctx context.Context, args []string, version string, out io.Writer) err
 			return e
 		}
 		r.Output = out
+		r.HumanOutput = !*jsonOutput
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		signals := make(chan os.Signal, 2)

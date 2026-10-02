@@ -39,7 +39,7 @@ sactl ai run --profile bot --strategy learned --model /absolute/path/model.safet
 
 `--model` 是用户本地的外部模型文件，安装包不带模型。v0.2.15 起，推理在本机 Go 客户端运行，检查观察 schema、规则接口版本、特征/动作和人数契约；不要求训练引擎与游戏服 CPU 或程序摘要相同。训练来源原样保留，服务器实际摘要和平台另存于战斗记录；离线训练恢复和受控评估仍核对原环境。`check` 校验模型及配置，不登录或排队；`run` 才读取现有会话、核对身份与服务端规则，然后自动建队、准备、匹配和出招。
 
-省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic，learned/hybrid 必须指定模型。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
+省略 `--profile` 使用当前选中的会话；多人队伍重复传入 `--profile first --profile second`，每队只有一个指挥官。省略 `--mode` 按 profile 数量推断；显式模式必须与成员数一致。默认策略为 basic；v0.2.17 learned/hybrid 可自动查找本地模型，存在多个时需显式选择。可用 `--pet-mask 1` 登记第一个宠物槽，人物/宠物实际出战状态仍由正常游戏操作设置。
 
 同一组 profile 默认复用 `~/.local/state/sactl/ai/<队伍摘要>/arena.sqlite3`（尊重 XDG_STATE_HOME），可以通过 `--state-dir` 指定。启动会输出实际数据目录。旧目录绑定原服务器、账号和角色，换角色时须使用另一 profile 或新的数据目录，不能混用未完成的指令状态。显式 `--state-dir` 不应由两个队伍共用。
 
@@ -301,3 +301,24 @@ Go 单元测试覆盖未知写入恢复、队伍计划校验、身份锁、规�
 Chat Completions HTTP、重定向拒绝、超时、混合回退及插件取消。
 外部真实大模型供应商仍需用户自行配置；目前 HTTP 协议通过本机兼容服务验证。
 小样本对局不作为胜率提升证据。
+
+## 本地模型查找与实时战报（v0.2.17）
+
+已登录并进入角色后，可以直接运行：
+
+```sh
+sactl ai check --strategy learned
+sactl ai run --strategy learned --matches 1
+# 明确选择同名模型（先查当前目录，再查下述本地目录）
+sactl ai run --strategy learned --model learned-commander.safetensors --matches 1
+# 脚本需要 JSON Lines 时
+sactl ai run --strategy learned --matches 1 --json
+```
+
+`run` / `check` 按以下目录逐层查找，不递归扫描磁盘：当前工作目录、当前目录下的 `runtime/ai-models/`、`$XDG_DATA_HOME/sactl/models/`（未设置时为 `~/.local/share/sactl/models/`）。省略 `--model` 时，仅自动索引 `.safetensors`，过滤损坏或人数不兼容的模型；在第一层有可用模型的目录中，只有一个策略身份就自动使用，同身份副本去重，多个则列出完整路径并要求通过 `--model` 选择，不自动判断哪个更强。旧 JSON 必须显式指定，避免与转换后的二进制重复选取。
+
+含目录的显式路径（包括 `./model.safetensors`）只按该路径读取，不回退其他文件；`team.json` 已声明的模型路径仍相对该配置文件。模型文件不会被自动下载、移动或打进安装包。若要在任意目录发现模型，可自行将已训练文件放到上述用户模型目录。启动时显示实际模型路径。
+
+默认输出匹配等待、开战倒计时、每回合场上 HP、候选动作与目标、推理耗时、真实模型评分、指令提交状态及服务器战报。learned 的预期回报不是胜率；hybrid 说明最终指令是否调整本地建议；不会编造模型的内心推理。每 15 秒提示仍在匹配，重复轮询不重复打印同一计划，多人战报以首个受控成员为显示视角，各成员数据仍完整采集。`--json` 保留结构化事件，供脚本读取。
+
+出现“已加入竞技场匹配”表示已经在队列中，无需另开终端再次执行 `arena queue`。另一个账号在 Web 选择同人数竞技场并匹配即可；是否立即配对仍由服务端匹配条件决定。

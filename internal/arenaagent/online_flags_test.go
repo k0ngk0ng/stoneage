@@ -52,6 +52,7 @@ func TestOnlineFlagsNeedNoConfigurationOrCredentials(t *testing.T) {
 	}
 }
 func TestOnlineFlagsRejectInvalidOrIgnoredOptions(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	for _, args := range [][]string{

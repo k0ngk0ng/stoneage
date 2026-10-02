@@ -1,5 +1,6 @@
 #ifndef STONEAGE_LADDER_CORE_H
 #define STONEAGE_LADDER_CORE_H
+#include <stddef.h>
 
 /* All entry points run on the GMSV main thread. No client supplies player
  * identity, combat statistics, ratings, or a battle participant list. */
@@ -54,6 +55,7 @@ typedef struct {
 
 int Ladder_Init(const char *database, const LadderHooks *hooks);
 void Ladder_Shutdown(void);
+int Ladder_AdminSnapshot(char *out,size_t capacity,int offset,int (*battle_turn)(int));
 void Ladder_Request(int character, const char *wire);
 void Ladder_Tick(void);
 void Ladder_Disconnected(int character);

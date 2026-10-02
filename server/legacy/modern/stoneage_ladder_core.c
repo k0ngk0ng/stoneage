@@ -1110,3 +1110,48 @@ void Ladder_Stats(int battle,int character,const LadderStats *delta)
         }
     }
 }
+
+/* Read-only admin view, taken on the same main thread as matchmaking. A
+ * bounded page keeps the private bridge response below its protocol limit. */
+static void admin_member(JSON *j,int p,const LadderProfile *saved)
+{
+    Player *v=&players[p];const LadderProfile *f=saved?saved:&v->profile;
+    append(j,"{\"id\":\"%s\",\"name_hex\":\"%s\",\"strategy\":\"%s\",\"online\":%s}",
+           f->id,f->name_hex,v->strategy,v->profile.online?"true":"false");
+}
+int Ladder_AdminSnapshot(char *out,size_t capacity,int offset,int (*battle_turn)(int))
+{
+    JSON j={out,capacity,0,0};int i,k,s,queued=0,active=0,seen=0,written=0;
+    LadderTime now;
+    if(!db || !hooks.now || offset<0 || offset>LADDER_ROOM_MAX)return 0;
+    now=hooks.now();
+    for(i=0;i<LADDER_ROOM_MAX;i++)if(rooms[i].used && rooms[i].queued_at)queued++;
+    for(i=0;i<LADDER_MATCH_MAX;i++)if(matches[i].used && matches[i].phase!=4)active++;
+    append(&j,"{\"schema_version\":1,\"at_ms\":%lld,\"offset\":%d,\"page_size\":8,\"queued_total\":%d,\"active_total\":%d,\"queues\":[",now,offset,queued,active);
+    for(i=0;i<LADDER_ROOM_MAX;i++) {
+        Room *r=&rooms[i];
+        if(!r->used || !r->queued_at)continue;
+        if(seen++<offset || written>=8)continue;
+        if(written++)append(&j,",");
+        append(&j,"{\"id\":\"%s\",\"mode\":%d,\"wait_ms\":%lld,\"members\":[",r->id,r->mode,now>r->queued_at?now-r->queued_at:0);
+        for(k=0;k<r->count;k++){if(k)append(&j,",");admin_member(&j,r->members[k],NULL);}
+        append(&j,"]}");
+    }
+    append(&j,"],\"matches\":[");seen=written=0;
+    for(i=0;i<LADDER_MATCH_MAX;i++) {
+        Match *m=&matches[i];int turn=-1;
+        if(!m->used || m->phase==4)continue;
+        if(seen++<offset || written>=8)continue;
+        if(written++)append(&j,",");
+        if(m->phase==2 && battle_turn)turn=battle_turn(m->battle);
+        append(&j,"{\"id\":\"%s\",\"mode\":%d,\"phase\":\"%s\",\"turn\":%d,\"elapsed_ms\":%lld,\"countdown_ms\":%lld,\"teams\":[",m->id,m->mode,m->phase==1?"countdown":m->phase==2?"battle":"settling",turn,m->started_at && now>m->started_at?now-m->started_at:0,m->phase==1 && m->start_at>now?m->start_at-now:0);
+        for(s=0;s<2;s++) {
+            if(s)append(&j,",");
+            append(&j,"{\"members\":[");
+            for(k=0;k<m->mode;k++){int n=s*m->mode+k;if(k)append(&j,",");admin_member(&j,m->members[n],&m->profiles[n]);}
+            append(&j,"]}");
+        }
+        append(&j,"]}");
+    }
+    append(&j,"]}");return !j.failed;
+}
