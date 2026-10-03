@@ -7,6 +7,26 @@ v0.2.16 本地神经模型默认使用 `.safetensors` 二进制权重；旧 JSON
 `sactl` 是一个无头客户端：它自己登录网关、进入世界、观察和操作角色，全程不需要浏览器。
 可在终端中手工调试和执行游戏操作。
 
+## 自动任务（v0.2.18）
+
+已登录 HTTP 会话可通过 `sactl quest` 复用 Web 的自动任务执行器：
+
+```sh
+sactl quest list
+sactl quest preview <task-id> --include-dependencies
+sactl quest start <task-id> --include-dependencies
+sactl quest status --json
+sactl quest pause
+sactl quest resume
+sactl quest cancel
+```
+
+任务 ID 从列表选择，预览会核验前置条件、预算和审核状态；未核验任务仍不可执行。启动不会绕过审核，也不代表已经完成。`status` 给出步骤/阶段进度、结果和原因；最终结果会在当前会话内保留至下一次自动化启动。断线后重新登录同角色，查看恢复提示，再显式恢复或取消。
+
+`quest --help` 列出全部参数：总时限默认 1800 秒，允许死亡、最大支出及保留金币默认均为 0；选择任务宠物使用 `--pet <stable-id>`。这些参数放在 task-id 后。单次命令退出不停止任务，游戏会话断开会中断任务。当前直连 TCP 不支持此入口，CLI 自动练级入口仍待补齐。此能力是人类玩家的确定性任务自动化，独立于本地 `sactl ai` 策略。
+
+萨姆吉尔、加加、卡鲁它那宠物委托 A 目前仍为未审核执行的草稿，不能启动。其准备等级、商店交互点与安全路线已修正；只通过静态预检不代表任务实跑成功，进度见 [自动任务实现记录](auto-quests-25-progress.md)。
+
 ## 为什么使用命令行
 
 每条命令只执行一步并立即返回真实结果，便于观察、操作和核对。
@@ -16,6 +36,8 @@ v0.2.16 本地神经模型默认使用 `.safetensors` 二进制权重；旧 JSON
 - `slot` / JSON `Inventory[].Index`、`Pets[].Slot`：当前操作槽位，会变化。
 - `template_id` / `TemplateID`：物品种类编号；`TemplateIDKnown=false` 时未知。v0.2.3 的原始字段位于 `AI.Items`，v0.2.4 并入普通背包列表。
 - `stable_id` / `StableID`：宠物已确认的稳定身份，须同时检查 `IdentityKnown`。
+- `species_id` / `SpeciesID`（v0.2.18）：服务端 `CHAR_PETID` 宠物种类编号，须同时检查 `SpeciesIDKnown`；0 可以是有效编号。旧服务端不提供时为 unknown，不能从图片编号或宠物名称猜测，也不能代替稳定实例身份。
+- JSON `EventFlag` / `EventFlagKnown`（v0.2.18）：原版交宠条件使用的宠物事件标记，0 是普通宠物的有效值；没有 Known 时不可推断。此字段不在普通 Web 宠物界面展示。
 - `graphic` / `Graphic`：图片资源编号，不是物品或宠物实例 ID。当前背包协议没有物品唯一实例 ID。
 
 v0.2.8 起在进入角色后自动获取扩展状态，装备/背包变化及宠物更换后自动刷新；`status` / `observe` 会有界等待尚未返回的编号。未返回或服务端确实未知时仍显示 `unknown`。`sactl query AI` 仅是手动请求扩展状态的诊断指令，不调用大模型；通常无需手动执行。装备和背包编号覆盖槽位 0–19，装备编号需要服务端也更新到支持该范围的版本。
@@ -203,6 +225,10 @@ socket 路径也可用 `--socket` 或 `STONEAGE_SACTL_SOCKET` 覆盖。
 使用高级导航时，`map_directory` 指向一份 2.5 服务端数据目录的副本（含 `map/`）。`goto`、`warp`、
 `exits`、`encounters` 都在本地读这份数据；只做观察和对话可以不配它。
 
+敌群表与百科、Web 自动导航共用加载规则：读取数据目录同级 `setup.cf` 的
+`groupfile`，未配置时使用 `group.txt`；指定的表不存在则报错，不静默换表。
+复制本地导航资料时须保留正确的表选择，无需复制账号或密码等服务端配置。
+
 ## 开始使用
 
 从 **v0.2.3** 起，无配置即可登录，默认连接 `https://sa.ichenj.com`：
@@ -300,12 +326,14 @@ sactl status                                           # 另开一个终端
 | `talk <名字> [文本]` / `choose <行号>` / `reply <ok\|cancel\|…> [文本]` | NPC 对话：发起、选选项、答消息窗口 |
 | `battle <指令>` / `battle-end` / `battle-help <0\|1>` | 战斗回合（`H\|FF` 攻击、`W\|FF\|FF` 宠物、`T\|FF` 防御、`S\|01\|FF` 技能、`E` 逃跑、`N` 等待、`G` 放弃、`HELP`）；一个回合需要玩家和宠物各自提交一次，动画结束后用 `battle-end`（EO）确认 |
 | `auto-battle on [walk\|stay]\|off\|status` | 托管战斗循环：每回合自动加血或攻击，直到 `off`；`walk` 还会原地来回走找架打（详见下文） |
-| `item use\|drop\|drop-gold\|move\|magic\|pickup …` | 背包与地面物品 |
+| `item use <slot> [target]` | 使用物品；默认目标 0 为自己，1–5 为宠物槽位 0–4，6–10 为队伍槽位 0–4 |
+| `item drop\|drop-gold\|move\|magic\|pickup …` | 丢弃、移动、物品魔法与拾取 |
 | `mail list\|add\|send\|remove-contact …` | 名片簿与邮件 |
 | `pet status\|standby\|battle\|rename\|drop …` | 宠物 |
 | `party invite\|leave` / `duel` | 组队与决斗 |
 | `trade request\|offer-item\|offer-gold\|offer-pet\|lock\|confirm\|cancel` | 玩家交易全流程（服务端会再次校验对手朝向、报价与余额） |
-| `logout` | 离开世界并关闭会话；守护进程在下一条命令时重连并重新进入 |
+| `logout` | 默认原地登出并清除凭据；之后不会自动重登。回记录点须显式 `--record-point` |
+| `reconnect`（v0.2.18） | 使用后台内存凭据恢复同一账号/角色；不回记录点、不重发未知操作；活动中的战斗/交易/竞技场/自动战斗拒绝主动断开 |
 | `alloc <0-3>` / `social <设置> <0\|1>` | 加点 / 社交开关（party、duel、party-chat、trade-card、trade） |
 | `ride <槽位>\|off` / `title equip\|text` | 骑乘 / 称号 |
 | `click <对象id>` / `probe <procget\|playernumget\|echo>` | 点击地图对象 / 空闲探测包 |
@@ -493,6 +521,8 @@ sactl ai run --profile bot --strategy learned --model /absolute/path/model.json 
 | `t` | 称号列表；目前通过 `log` 查看返回事件，未投影到 `observe` |
 | `AI` | 扩展自身状态，包括物品/装备模板编号、宠物稳定编号和事件标记；不是大模型调用 |
 | `BTIME` | 竞技场战斗回合时钟；不是游戏时间，非竞技场战斗时可能没有有效截止时间 |
+| `BTRULES` | 战斗规则摘要与引擎平台，供本地模型检查兼容性 |
+| `BCAP` | v0.2.18 新增：当前 PvE 捕获目标、静态资格，以及捕获成功时会消耗的自身物品槽位；需要服务端支持 |
 
 ```sh
 sactl query i
@@ -507,3 +537,7 @@ sactl log 10
 成功只表示请求已发送，即时返回的快照可能仍是旧数据；`wait` 收到的是任意事件，不能据此断言该查询完成。v0.2.8 起编号通常会自动获取和刷新，无需手动 `query AI`。高级调用可用 `AI:<16位小写十六进制请求ID>` 关联响应。
 
 旧帮助中的 `g`、不带槽位的 `w/j/n` 和 `k5..k9` 在当前服务端没有对应有效返回，新版在发送前拒绝并提示正确范围。
+
+开发版 `BCAP:<16位小写十六进制请求ID>` 可关联捕获观察，结果位于 `observe` 的 `Capture`。必须核对 RequestID、Turn、Self 和刷新版本；战斗或自身物品/宠物状态变化会撤销旧观察。Eligible 仅代表静态资格，捕获仍由服务端随机判定；Consumption 列出可能删除的全部匹配槽位，不能当作仅消耗一件物品。此查询不执行捕获，也不代表委托任务已支持自动搜集宠物。
+
+开发版 `AI` 观察增加 `GoldLimit/GoldLimitKnown`，由服务端报告当前人物的实际随身金币上限；旧服务端缺失时为未知。自动任务据此检查金币奖励容量，普通 Web 背包与宠物展示保持原样。任务引擎已在本地完成一条四宠委托的全流程验收；源码新增 `marinas-pet-commission-a` 及配套可配置目录，需服务端显式启用。使用 `sactl quest preview marinas-pet-commission-a --maximum-spend 146` 检查条件，启动时用 `start` 并再次传预算；该任务自动采集新宠，不用 `--pet`。详见 [自动任务进度](auto-quests-25-progress.md)。

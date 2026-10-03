@@ -74,6 +74,11 @@ func findDataDir(root string) (string, error) {
 
 func isDataDir(directory string) bool {
 	for _, name := range coreDataFiles {
+		// The effective group table is resolved and checked by load. A server
+		// using a different table need not also install the unused group.txt.
+		if name == "group.txt" {
+			continue
+		}
 		info, err := os.Stat(filepath.Join(directory, name))
 		if err != nil || info.IsDir() {
 			return false
@@ -83,14 +88,11 @@ func isDataDir(directory string) bool {
 }
 
 func load(ctx context.Context, dataDir string, options Options) (*Knowledge, error) {
-	groupFile := options.GroupFile
-	if groupFile == "" {
-		groupFile = "group.txt"
+	groupFile, err := effectiveGroupFile(dataDir, options.GroupFile)
+	if err != nil {
+		return nil, err
 	}
-	if filepath.Base(groupFile) != groupFile || strings.ContainsAny(groupFile, `/\\`) || !strings.HasSuffix(groupFile, ".txt") {
-		return nil, fmt.Errorf("aiknowledge: invalid group table filename")
-	}
-	k := &Knowledge{Version: "stoneage-2.5", DataDir: dataDir, Files: make([]FileDigest, 0, len(coreDataFiles)), Issues: make([]Issue, 0)}
+	k := &Knowledge{Version: "stoneage-2.5", DataDir: dataDir, GroupFile: groupFile, Files: make([]FileDigest, 0, len(coreDataFiles)), Issues: make([]Issue, 0)}
 	contents := make(map[string][]byte)
 
 	for _, name := range coreDataFiles {

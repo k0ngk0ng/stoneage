@@ -317,6 +317,9 @@ type AIInventoryItem struct {
 // and inventory fields carry separate Known markers so an older response
 // cannot imply a zero mask or an empty backpack.
 type AIObservation struct {
+	GoldLimit           int32
+	GoldLimitKnown      bool
+	EncounterPolicy     string
 	StandbyPetMask      int32
 	StandbyPetMaskKnown bool
 	SummonPetMask       int32
@@ -352,6 +355,14 @@ type AIObservation struct {
 // after a slot is emptied/reused or a full K replacement is observed. A
 // visible PME actor may additionally have a transient server object ID.
 type PetSnapshot struct {
+	// SpeciesID is native CHAR_PETID, not a graphic or instance identity.
+	// Only an own-character AI observation may establish it.
+	SpeciesID      int32 `json:",omitempty"`
+	SpeciesIDKnown bool  `json:",omitempty"`
+	// EventFlag is native CHAR_ENDEVENT, used by ExChangeMan pet selection.
+	// It is independent of both species and the unique pet identity.
+	EventFlag        int32 `json:",omitempty"`
+	EventFlagKnown   bool  `json:",omitempty"`
 	CombatStatsKnown bool
 	// SkillSlots is native CHAR_SLOT, not the owned-pet Slot (0..4).
 	SkillSlots          int32
@@ -446,6 +457,7 @@ type ActorSnapshot struct {
 	Y                     int32
 	Direction             int32
 	Graphic               int32
+	GraphicKnown          bool `json:",omitempty"`
 	Level                 int32
 	Name                  string
 	FreeName              string
@@ -573,6 +585,7 @@ type Snapshot struct {
 	AddressBook      []AddressBookEntry
 	Chat             []ChatMessage
 	Battle           BattleSnapshot
+	Capture          *CaptureObservation `json:",omitempty"`
 	Ladder           *ladder.Envelope
 	// AddressBookRevision advances only when a complete AB table has been
 	// parsed. ABI incremental packets never advance it. It is scoped to this

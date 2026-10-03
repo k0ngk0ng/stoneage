@@ -49,7 +49,7 @@ func TestCompletionContexts(t *testing.T) {
 		{[]string{"completion", "z"}, []string{"zsh"}},
 		{[]string{"logout", "--in"}, []string{"--in-place"}},
 		{[]string{"query", "k"}, []string{"k0", "k1", "k2", "k3", "k4"}},
-		{[]string{"query", "B"}, []string{"BTIME", "BTRULES"}},
+		{[]string{"query", "B"}, []string{"BCAP", "BTIME", "BTRULES"}},
 		{[]string{"ai", "train", "--epochs", ""}, nil},
 		{[]string{"ai", "train", "--stop-at"}, []string{"--stop-at-data-bytes"}},
 		{[]string{"ai", "train", "--stop-at-data-bytes", ""}, nil},

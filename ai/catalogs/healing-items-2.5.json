@@ -1,7 +1,7 @@
 {
   "version": 1,
   "itemset_sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d",
-  "knowledge_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
+  "knowledge_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
   "items": [
     {"alias": "small-meat", "template_id": 2344, "base_hp": 20, "verified": true},
     {"alias": "loot-small-meat", "template_id": 1234, "base_hp": 20, "verified": true},

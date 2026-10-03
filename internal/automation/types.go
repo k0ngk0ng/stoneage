@@ -10,40 +10,50 @@ import (
 )
 
 type Entity struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name,omitempty"`
-	Level   int      `json:"level"`
-	HP      int      `json:"hp"`
-	MaxHP   int      `json:"max_hp"`
-	Alive   bool     `json:"alive,omitempty"`
-	Skills  []string `json:"skills,omitempty"`
-	UseFlag int      `json:"use_flag,omitempty"`
+	SpeciesID      int      `json:"species_id,omitempty"`
+	SpeciesIDKnown bool     `json:"species_id_known,omitempty"`
+	EventFlag      int      `json:"event_flag,omitempty"`
+	EventFlagKnown bool     `json:"event_flag_known,omitempty"`
+	Slot           *int     `json:"slot,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name,omitempty"`
+	Level          int      `json:"level"`
+	HP             int      `json:"hp"`
+	MaxHP          int      `json:"max_hp"`
+	Alive          bool     `json:"alive,omitempty"`
+	Skills         []string `json:"skills,omitempty"`
+	UseFlag        int      `json:"use_flag,omitempty"`
 }
 
 type Observation struct {
-	Revision    uint64   `json:"revision"`
-	CharacterID string   `json:"character_id"`
-	Connected   bool     `json:"connected"`
-	Ready       bool     `json:"ready"`
-	Character   Entity   `json:"character"`
-	Pets        []Entity `json:"pets"`
-	Floor       int      `json:"floor"`
-	X           int      `json:"x"`
-	Y           int      `json:"y"`
-	Gold        int64    `json:"gold"`
+	// StepPets is derived by Engine from durable, confirmed collection outputs
+	// intersected with this observation's owned stable identities.
+	StepPets       map[string][]string `json:"step_pets,omitempty"`
+	ConfirmedSteps map[string]bool     `json:"confirmed_steps,omitempty"`
+	Revision       uint64              `json:"revision"`
+	CharacterID    string              `json:"character_id"`
+	Connected      bool                `json:"connected"`
+	Ready          bool                `json:"ready"`
+	Character      Entity              `json:"character"`
+	Pets           []Entity            `json:"pets"`
+	Floor          int                 `json:"floor"`
+	X              int                 `json:"x"`
+	Y              int                 `json:"y"`
+	Gold           int64               `json:"gold"`
 	// UnlimitedFunds comes only from the authenticated server capability.
 	UnlimitedFunds bool `json:"unlimited_funds"`
 	// Spent is a monotonically increasing, server-observed expenditure counter.
 	// Gold balance deltas alone are not a reliable expense ledger.
-	Spent         int64           `json:"spent"`
-	SpendingKnown bool            `json:"spending_known"`
-	Battle        bool            `json:"battle"`
-	Dead          bool            `json:"dead"`
-	Inventory     map[string]int  `json:"inventory"`
-	Flags         map[string]bool `json:"flags"`
-	Skills        map[string]int  `json:"skills,omitempty"`
-	OwnProgress   map[string]int  `json:"own_progress,omitempty"`
-	Windows       map[string]int  `json:"windows,omitempty"`
+	Spent           int64           `json:"spent"`
+	SpendingKnown   bool            `json:"spending_known"`
+	Battle          bool            `json:"battle"`
+	Dead            bool            `json:"dead"`
+	Inventory       map[string]int  `json:"inventory"`
+	Flags           map[string]bool `json:"flags"`
+	Skills          map[string]int  `json:"skills,omitempty"`
+	OwnProgress     map[string]int  `json:"own_progress,omitempty"`
+	EncounterPolicy string          `json:"encounter_policy,omitempty"`
+	Windows         map[string]int  `json:"windows,omitempty"`
 	// SubmittedWindows records local successful writes, never server acknowledgements.
 	SubmittedWindows map[string]int `json:"submitted_windows,omitempty"`
 }
@@ -79,6 +89,26 @@ type Condition struct {
 
 func (c Condition) Validate() error {
 	switch c.Kind {
+	case "pet_collection":
+		if c.ID == "" || c.Value < 1 || c.Value > 5 {
+			return errors.New("pet collection requires a step identity and count 1..5")
+		}
+	case "step_confirmed":
+		if c.ID == "" || c.Value != 0 {
+			return errors.New("confirmed step requires an identity and zero value")
+		}
+	case "pet_species_absent":
+		if c.Value < 0 {
+			return errors.New("pet species must be nonnegative")
+		}
+	case "pet_free_slots":
+		if c.Value < 0 || c.Value > 5 {
+			return errors.New("pet free slots must be 0..5")
+		}
+	case "gold_reward_capacity":
+		if c.Value < 1 {
+			return errors.New("gold reward must be positive")
+		}
 	case "backpack_free_slots":
 		if c.Value < 0 || c.Value > 15 {
 			return errors.New("backpack free slots must be 0..15")
@@ -87,7 +117,7 @@ func (c Condition) Validate() error {
 		if c.Value < 1 || c.Value > 100 {
 			return errors.New("health percentage must be 1..100")
 		}
-	case "character_level", "character_hp_full", "gold_at_least", "not_battle", "alive", "position":
+	case "character_level", "character_hp_full", "gold_at_least", "battle", "not_battle", "alive", "position":
 		if c.Kind == "character_level" && c.Value < 1 {
 			return errors.New("character level must be at least 1")
 		}
@@ -112,6 +142,28 @@ func (c Condition) Validate() error {
 
 func (c Condition) Match(o Observation) bool {
 	switch c.Kind {
+	case "pet_species_absent":
+		if c.Value < 0 || !o.Connected || !o.Ready || !o.Flags["pets:known"] {
+			return false
+		}
+		for _, pet := range o.Pets {
+			if !pet.SpeciesIDKnown || int64(pet.SpeciesID) == c.Value {
+				return false
+			}
+		}
+		return true
+	case "pet_free_slots":
+		return c.Value >= 0 && c.Value <= 5 && o.Connected && o.Ready && o.Flags["pets:known"] && len(o.Pets) <= 5 && int64(5-len(o.Pets)) >= c.Value
+	case "gold_reward_capacity":
+		limit, known := o.OwnProgress["gold_limit"]
+		return c.Value > 0 && o.Connected && o.Ready && o.Flags["gold_limit:known"] && known && limit > 0 && o.Gold >= 0 && o.Gold < int64(limit) && c.Value < int64(limit)-o.Gold
+
+	case "pet_collection":
+		return o.Connected && o.Ready && !o.Battle && c.ID != "" && c.Value > 0 && int64(len(o.StepPets[c.ID])) >= c.Value
+	case "step_confirmed":
+		return o.Connected && o.Ready && c.ID != "" && o.ConfirmedSteps[c.ID]
+	case "battle":
+		return o.Connected && o.Battle
 	case "backpack_free_slots":
 		used, known := o.OwnProgress["backpack_used_slots"]
 		return c.Value >= 0 && c.Value <= 15 && o.Flags["inventory:known"] && known && used >= 0 && used <= 15 && int64(15-used) >= c.Value
@@ -244,6 +296,7 @@ const (
 )
 
 type Checkpoint struct {
+	StepProgress map[string]StepProgress `json:"step_progress,omitempty"`
 	// OwnerContext is opaque server-owned recovery metadata. Engines preserve it
 	// without interpreting it; clients and models do not supply this field.
 	OwnerContext json.RawMessage `json:"owner_context,omitempty"`

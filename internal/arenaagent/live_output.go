@@ -22,6 +22,12 @@ func liveLine(state string, f Object) string {
 		if model := str(f["model"]); model != "" {
 			line += "\n模型：" + terminalText(model)
 		}
+		if status := str(f["model_status"]); status != "" {
+			line += "\n模型状态：" + terminalText(status)
+			if status == "candidate" {
+				line += "（候选模型，强度以独立对战评估为准）"
+			}
+		}
 		return line + "\n数据目录：" + terminalText(str(f["state_dir"]))
 	case "queued":
 		return "已加入竞技场匹配，等待对手；无需再开终端匹配。"
@@ -32,10 +38,10 @@ func liveLine(state string, f Object) string {
 	case "battle":
 		return fmt.Sprintf("战斗开始 · 对局 %s", str(f["match_id"]))
 	case "observing":
-		return fmt.Sprintf("第 %d 回合 · %s 正在根据战场状态决策", integer(f["turn"]), str(f["strategy"]))
+		return fmt.Sprintf("第 %d 回合 · %s 正在根据战场状态决策", integer(f["turn"])+1, str(f["strategy"]))
 	case "decision":
 		var b strings.Builder
-		fmt.Fprintf(&b, "第 %d 回合 · %s 决策 · 耗时 %d ms", integer(f["turn"]), str(f["strategy"]), integer(f["elapsed_ms"]))
+		fmt.Fprintf(&b, "第 %d 回合 · %s 决策 · 耗时 %d ms", integer(f["turn"])+1, str(f["strategy"]), integer(f["elapsed_ms"]))
 		d := obj(f["diagnostics"])
 		score := d
 		if local := obj(d["local"]); local != nil {
@@ -68,9 +74,16 @@ func liveLine(state string, f Object) string {
 		}
 		return b.String()
 	case "submission":
-		return fmt.Sprintf("第 %d 回合 · %s/%s · %s", integer(f["turn"]), str(f["member"]), str(f["actor"]), str(f["outcome"]))
+		return fmt.Sprintf("第 %d 回合 · %s/%s · %s", integer(f["turn"])+1, str(f["member"]), str(f["actor"]), str(f["outcome"]))
 	case "effect":
-		return fmt.Sprintf("第 %d 回合 · 战报：%s", integer(f["turn"]), terminalText(str(obj(f["effect"])["text"])))
+		effect := obj(f["effect"])
+		// Journal effects already carry the resolved, one-based round. The
+		// enclosing event may instead reflect the next menu (or battle exit).
+		turn := integer(effect["turn"])
+		if turn <= 0 {
+			turn = integer(f["turn"]) + 1
+		}
+		return fmt.Sprintf("第 %d 回合 · 战报：%s", turn, terminalText(str(effect["text"])))
 	case "event_gap":
 		return "战报存在缺口，当前观察仍以服务器状态为准。"
 	case "strategy_fallback":

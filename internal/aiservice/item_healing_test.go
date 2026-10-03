@@ -145,7 +145,12 @@ func TestItemHealingDoesNotConsumeFromUncorrelatedInventory(t *testing.T) {
 	game.staleRequest = true
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
-	if err := s.Execute(ctx, a); !errors.Is(err, context.DeadlineExceeded) || game.uses != 0 || len(game.actions) != 1 {
+	if err := s.Execute(ctx, a); !errors.Is(err, errIdentityReplySuperseded) || game.uses != 0 || len(game.actions) != 3 {
 		t.Fatalf("err=%v uses=%d actions=%d", err, game.uses, len(game.actions))
+	}
+	for _, action := range game.actions {
+		if action.Kind != aigame.ActionStatus {
+			t.Fatal("uncorrelated inventory caused mutation", action)
+		}
 	}
 }

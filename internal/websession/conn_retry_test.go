@@ -34,7 +34,7 @@ func TestReliablePollRetryAndReplay(t *testing.T) {
 		if n >= 3 {
 			events = append(events, eventResponse{Seq: 2, Packet: base64.StdEncoding.EncodeToString([]byte("two\n"))})
 		}
-		_ = json.NewEncoder(w).Encode(eventsResponse{Events: events, Acknowledged: true})
+		_ = json.NewEncoder(w).Encode(eventsResponse{Events: events, Acknowledged: true, Control: json.RawMessage(`{"control":{"mode":"manual","generation":4}}`)})
 	}))
 	defer server.Close()
 	client, err := New(Config{BaseURL: server.URL})
@@ -49,6 +49,9 @@ func TestReliablePollRetryAndReplay(t *testing.T) {
 		if _, err := io.ReadFull(conn, packet); err != nil || string(packet) != want {
 			t.Fatalf("got %q, err=%v", packet, err)
 		}
+	}
+	if conn.generation != 4 {
+		t.Fatal("event poll did not retain control generation", conn.generation)
 	}
 	if calls.Load() != 3 {
 		t.Fatal("unexpected retries")

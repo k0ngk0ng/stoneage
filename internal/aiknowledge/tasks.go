@@ -398,7 +398,7 @@ func validTaskID(value string) bool {
 
 func allowedStepKind(kind string) bool {
 	switch kind {
-	case "move", "talk", "select", "confirm", "heal", "heal_item", "stock", "recover", "battle", "give_item", "observe":
+	case "move", "talk", "select", "confirm", "heal", "heal_item", "stock", "recover", "battle", "give_item", "observe", "collect_pet", "deliver_pet":
 		return true
 	default:
 		return false
@@ -530,12 +530,39 @@ func validateAction(step TaskStep) error {
 			}
 		}
 		return nil
-	case "select", "confirm":
-		if skill != "window" && skill != "npc.window" {
-			return fmt.Errorf("%s step must use window or npc.window skill", step.Kind)
+	case "select", "confirm", "deliver_pet":
+		if step.Kind == "deliver_pet" && skill != "pet.deliver" {
+			return fmt.Errorf("deliver_pet must use pet.deliver")
 		}
-		if err := rejectUnknown("npc", "window_sequence", "choice", "window_type", "window_object_id"); err != nil {
+		if step.Kind != "deliver_pet" && skill != "window" && skill != "npc.window" && skill != "npc.dialogue" {
+			return fmt.Errorf("%s step must use window, npc.window or npc.dialogue skill", step.Kind)
+		}
+		if err := rejectUnknown("npc", "window_sequence", "choice", "window_type", "window_object_id", "pet_ids", "pet_collection"); err != nil {
 			return err
+		}
+		if _, present := arguments["pet_collection"]; present {
+			if skill == "window" {
+				return fmt.Errorf("pet_collection requires a guarded NPC skill")
+			}
+			if _, both := arguments["pet_ids"]; both {
+				return fmt.Errorf("pet_collection and pet_ids cannot be combined")
+			}
+			if err := textArgument("pet_collection"); err != nil {
+				return err
+			}
+		}
+		if raw, present := arguments["pet_ids"]; present {
+			var ids []string
+			if skill == "window" || json.Unmarshal(raw, &ids) != nil || len(ids) < 1 || len(ids) > 5 {
+				return fmt.Errorf("pet_ids requires one to five stable IDs on a guarded NPC skill")
+			}
+			seen := map[string]bool{}
+			for _, id := range ids {
+				if strings.TrimSpace(id) == "" || seen[id] {
+					return fmt.Errorf("pet_ids has an empty or duplicate identity")
+				}
+				seen[id] = true
+			}
 		}
 		if err := textArgument("npc"); err != nil {
 			return err
@@ -544,6 +571,14 @@ func validateAction(step TaskStep) error {
 			return err
 		}
 		return require("choice")
+	case "collect_pet":
+		if skill != "pet.collect" {
+			return fmt.Errorf("collect_pet must use pet.collect")
+		}
+		if err := rejectUnknown("targets", "max_encounters", "max_moves", "max_attempts", "max_turns"); err != nil {
+			return err
+		}
+		return require("targets", "max_encounters", "max_moves", "max_attempts", "max_turns")
 	case "battle", "give_item", "observe":
 		// These skills still need an explicit JSON object, but their schemas are
 		// installed with the executor and are intentionally not guessed here.
@@ -559,6 +594,9 @@ func npcNameKnown(name string, npc NPCKnowledge) bool {
 		}
 	}
 	for _, create := range npc.Creates {
+		if create.Name == name {
+			return true
+		}
 		for _, enemy := range create.Enemies {
 			if enemy.Template == name {
 				return true

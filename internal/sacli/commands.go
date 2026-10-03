@@ -54,6 +54,7 @@ const CommandHelp = `commands:
   reply <ok|cancel|yes|no|prev|next> [text]  answer a message window
   look <direction>                    turn without moving
   auto-battle on [walk|stay]|off|status  heal the most hurt, otherwise attack in order; walk also looks for fights
+  quest list|preview|start|status|pause|resume|cancel  automatic quest lifecycle; quest --help for options
   battle <command>                    battle turn (H|FF attack, W|FF|FF pet, G guard, T|FF capture, S|01 change pet, E escape, N wait, HELP)
   battle-end                          acknowledge the battle animation and leave the battle (EO)
   battle-log                         readable battle history (structured data with --json)
@@ -70,6 +71,7 @@ const CommandHelp = `commands:
   arena invite <slot> <character_id> invite the exact card selected from arena contacts
   trade request|offer-item|offer-gold|offer-pet|lock|confirm|cancel
   login                               interactively log in (credentials stay in memory)
+  reconnect                           reconnect the same account/character using in-memory credentials
   logout [--record-point|--in-place]   log out in place (default), or return to record point; clear credentials
   alloc <0-3>                         spend one stat point
   social <setting> <0|1>              toggle party/duel/trade switches
@@ -106,6 +108,8 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return Response{OK: true, Text: CommandHelp}
 	case "login":
 		return s.commandLogin(ctx, request)
+	case "reconnect":
+		return s.commandReconnect(ctx, request)
 	case "status":
 		return s.commandStatus(ctx, request)
 	case "observe":
@@ -138,6 +142,8 @@ func (s *Server) Dispatch(ctx context.Context, request Request) Response {
 		return s.commandBattle(ctx, request)
 	case "auto-battle":
 		return s.commandAutoBattle(ctx, request)
+	case "quest":
+		return s.commandQuest(ctx, request)
 	case "battle-end":
 		return s.commandBattleEnd(ctx, request)
 	case "battle-help":
@@ -213,9 +219,14 @@ func (s *Server) commandStatus(ctx context.Context, request Request) (response R
 	s.mu.Lock()
 	game := s.game
 	endpoint, account, character, lastError := s.config.Endpoint(), s.config.Account, s.character, s.lastError
+	canReconnect := s.config.Account != "" && s.config.Password != ""
 	s.mu.Unlock()
 	if game == nil {
-		return Response{OK: true, Text: s.statusReport() + "\nnot logged in; run sactl login", Data: replyJSON(map[string]any{"Connected": false, "Phase": "logged_out", "Endpoint": endpoint, "Account": account, "Character": character, "LastError": lastError})}
+		phase, hint := "logged_out", "not logged in; run sactl login"
+		if canReconnect {
+			phase, hint = "disconnected", "session disconnected; run sactl reconnect (credentials retained in memory)"
+		}
+		return Response{OK: true, Text: s.statusReport() + "\n" + hint, Data: replyJSON(map[string]any{"Connected": false, "Phase": phase, "Endpoint": endpoint, "Account": account, "Character": character, "LastError": lastError, "CanReconnect": canReconnect})}
 	}
 	snapshot, err := game.Observe(ctx)
 	lines := []string{s.statusReport()}

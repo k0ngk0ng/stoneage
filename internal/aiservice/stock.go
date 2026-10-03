@@ -196,7 +196,9 @@ func (s *StockSkill) Execute(ctx context.Context, a automation.Action) error {
 			if err := unchanged(now); err != nil {
 				return false, err
 			}
-			return now.ActiveWindow != nil && now.ActiveWindow.Open && now.ActiveWindow.Sequence == sequence, nil
+			// Shop sequence numbers are reused. A submitted window from an
+			// earlier visit is not an acknowledgement of this interaction.
+			return now.ActiveWindow != nil && now.ActiveWindow.Open && !now.ActiveWindow.Submitted && now.ActiveWindow.Sequence == sequence, nil
 		})
 		if err != nil {
 			return err

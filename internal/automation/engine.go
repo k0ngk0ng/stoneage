@@ -210,7 +210,7 @@ func (p Plan) Validate() error {
 			return err
 		}
 	}
-	return nil
+	return validateOutputReferences(p)
 }
 
 func (p Plan) Complete(o Observation) bool {
@@ -316,6 +316,7 @@ func EvaluatePreflight(ctx context.Context, p Plan, o Observation, validator Ski
 	if err := ctx.Err(); err != nil {
 		return Preflight{}, err
 	}
+	o = projectStepProgress(o, Checkpoint{Plan: p})
 	r := Preflight{Budget: p.Budget, Problems: []string{}, AlreadyComplete: p.Complete(o)}
 	if !o.Connected || !o.Ready {
 		r.Problems = append(r.Problems, "游戏状态尚未同步")
@@ -394,6 +395,7 @@ func (e *Engine) Start(ctx context.Context, p Plan) (Checkpoint, error) {
 	if !o.Connected || !o.Ready || o.CharacterID != p.CharacterID {
 		return Checkpoint{}, errors.New("game changed during preflight")
 	}
+	o = projectStepProgress(o, Checkpoint{Plan: p})
 	entry := p.EntryPreconditions(o)
 	if problems := taskLevelProblems(entry, o); len(problems) > 0 {
 		return Checkpoint{}, errors.New(taskLevelReason(problems))
@@ -457,6 +459,7 @@ func (e *Engine) Tick(ctx context.Context, id string) (Checkpoint, error) {
 	if err != nil {
 		return c, err
 	}
+	o = projectStepProgress(o, c)
 	if len(c.Plan.Stages) > 0 {
 		return e.tickStaged(ctx, &c, o)
 	}
@@ -570,7 +573,7 @@ func (e *Engine) Tick(ctx context.Context, id string) (Checkpoint, error) {
 	a := s.Action
 	a.ExpectedRevision = o.Revision
 	a.MaximumCost = s.MaximumCost
-	if err = e.Game.Execute(ctx, a); err != nil {
+	if err = e.executeStep(ctx, &c, a); err != nil {
 		// Persist uncertainty even when takeover cancels the call context.
 		persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
@@ -829,7 +832,7 @@ func (e *Engine) tickStaged(ctx context.Context, c *Checkpoint, o Observation) (
 	a := s.Action
 	a.ExpectedRevision = o.Revision
 	a.MaximumCost = s.MaximumCost
-	if err := e.Game.Execute(ctx, a); err != nil {
+	if err := e.executeStep(ctx, c, a); err != nil {
 		persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		saveErr := e.pause(persist, c, "操作结果需要核验："+s.Description)
@@ -875,10 +878,14 @@ func (e *Engine) Resume(ctx context.Context, id string) (Checkpoint, error) {
 	if c.Status != Paused {
 		return c, errors.New("plan is not paused")
 	}
+	if c.Phase == "cancelled" {
+		return c, errors.New("plan was cancelled and cannot be resumed")
+	}
 	o, err := e.Game.Observe(ctx)
 	if err != nil {
 		return c, err
 	}
+	o = projectStepProgress(o, c)
 	if !o.Connected || !o.Ready || o.CharacterID != c.Plan.CharacterID {
 		return c, errors.New("game state is not synchronized")
 	}
@@ -894,10 +901,11 @@ func (e *Engine) Resume(ctx context.Context, id string) (Checkpoint, error) {
 	}
 	reconciled := false
 	if (c.Phase == "prepared" || c.Phase == "submitted") && c.Step < len(c.Plan.Steps) {
-		if !conditionsMatch(c.Plan.Steps[c.Step].Success, o) {
+		if conditionsMatch(c.Plan.Steps[c.Step].Success, o) {
+			c.Step++
+		} else if !e.canResumeStep(ctx, &c) {
 			return c, errors.New("上次操作结果尚未确认，不能重复提交")
 		}
-		c.Step++
 		c.Phase = "ready"
 		c.StepStartedAt = time.Time{}
 		reconciled = true
@@ -961,6 +969,10 @@ func (e *Engine) resumeStaged(ctx context.Context, c *Checkpoint, o Observation)
 			}
 			if conditionsMatch(p.Steps[c.Step].Success, o) {
 				c.Step++
+				c.Phase = "ready"
+				c.StepStartedAt = time.Time{}
+				reconciled = true
+			} else if e.canResumeStep(ctx, c) {
 				c.Phase = "ready"
 				c.StepStartedAt = time.Time{}
 				reconciled = true
@@ -1063,6 +1075,20 @@ func (e *Engine) Pause(ctx context.Context, id, reason string) (Checkpoint, erro
 		return c, nil
 	}
 	err = e.pause(ctx, &c, reason)
+	return c, err
+}
+
+// Cancel is an explicit terminal choice. The caller must first stop and drain
+// its runner. Preserve the checkpoint for audit, but never offer it as resumable.
+func (e *Engine) Cancel(ctx context.Context, id, reason string) (Checkpoint, error) {
+	c, err := e.Store.Load(ctx, id)
+	if err != nil || c.Status == Completed || c.Phase == "cancelled" {
+		return c, err
+	}
+	c.Status = Paused
+	c.Phase = "cancelled"
+	c.Reason = reason
+	err = e.save(ctx, &c)
 	return c, err
 }
 

@@ -1,0 +1,564 @@
+{
+  "version": 1,
+  "knowledge_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+  "npcs": [
+    {
+      "alias": "samgil-meat-shop",
+      "floor": 1004,
+      "x": 17,
+      "y": 13,
+      "name": "萨姆吉尔的肉店",
+      "talk_range": 2,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 12
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "marinas-meat-shop",
+      "floor": 2004,
+      "x": 17,
+      "y": 13,
+      "name": "玛丽那丝的肉店",
+      "talk_range": 2,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 12
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "marinas-commission-shop",
+      "name": "委托书贩售员",
+      "floor": 2009,
+      "x": 20,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 50
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "marinas-commission-manager",
+      "name": "委托管理员",
+      "floor": 2009,
+      "x": 18,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 235,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "maximum_cost": 0
+            },
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 430,
+          "window_object_from_actor": true,
+          "choices": {
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "1": {
+              "button": 1,
+              "maximum_cost": 0,
+              "pet_delivery": {
+                "confirmation_button": 1,
+                "gold_reward": 500,
+                "predicates": [
+                  "PET>0-1*1",
+                  "PET>0-3*1",
+                  "PET>0-212*1",
+                  "PET>0-213*1"
+                ],
+                "accept_text": "恭喜你完成任务！！！这是你应得的酬劳！",
+                "required_items": {
+                  "20031": 1
+                },
+                "forbidden_items": [
+                  20032,
+                  20033,
+                  20034,
+                  20035,
+                  20036,
+                  20051,
+                  20052,
+                  20053,
+                  20054,
+                  20055,
+                  20056
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "samgil-commission-shop",
+      "name": "委托书贩售员",
+      "floor": 1009,
+      "x": 20,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 40
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "samgil-commission-manager",
+      "name": "委托管理员",
+      "floor": 1009,
+      "x": 18,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 235,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "maximum_cost": 0
+            },
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 430,
+          "window_object_from_actor": true,
+          "choices": {
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "1": {
+              "button": 1,
+              "maximum_cost": 0,
+              "pet_delivery": {
+                "confirmation_button": 1,
+                "gold_reward": 400,
+                "predicates": [
+                  "PET>0-113*2",
+                  "PET>0-114*2"
+                ],
+                "accept_text": "恭喜你完成任务！！！这是你应得的酬劳！",
+                "required_items": {
+                  "20001": 1
+                },
+                "forbidden_items": [
+                  20002,
+                  20003,
+                  20004,
+                  20005,
+                  20006,
+                  20021,
+                  20022,
+                  20023,
+                  20024,
+                  20025,
+                  20026
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "jaja-commission-shop",
+      "name": "委托书贩售员",
+      "floor": 3009,
+      "x": 20,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 40
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "jaja-commission-manager",
+      "name": "委托管理员",
+      "floor": 3009,
+      "x": 18,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 235,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "maximum_cost": 0
+            },
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 430,
+          "window_object_from_actor": true,
+          "choices": {
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "1": {
+              "button": 1,
+              "maximum_cost": 0,
+              "pet_delivery": {
+                "confirmation_button": 1,
+                "gold_reward": 400,
+                "predicates": [
+                  "PET>0-31*2",
+                  "PET>0-32*2"
+                ],
+                "accept_text": "恭喜你完成任务！！！这是你应得的酬劳！",
+                "required_items": {
+                  "20061": 1
+                },
+                "forbidden_items": [
+                  20062,
+                  20063,
+                  20064,
+                  20065,
+                  20066,
+                  20081,
+                  20082,
+                  20083,
+                  20084,
+                  20085,
+                  20086
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "jaja-meat-shop",
+      "floor": 3004,
+      "x": 18,
+      "y": 16,
+      "name": "加加的肉店",
+      "talk_range": 2,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 12
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "karutana-commission-shop",
+      "name": "委托书贩售员",
+      "floor": 4009,
+      "x": 20,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 40
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "karutana-commission-manager",
+      "name": "委托管理员",
+      "floor": 4009,
+      "x": 18,
+      "y": 12,
+      "talk_range": 1,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 235,
+          "window_object_from_actor": true,
+          "choices": {
+            "4": {
+              "button": 4,
+              "maximum_cost": 0
+            },
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 0,
+          "sequence": 430,
+          "window_object_from_actor": true,
+          "choices": {
+            "32": {
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "1": {
+              "button": 1,
+              "maximum_cost": 0,
+              "pet_delivery": {
+                "confirmation_button": 1,
+                "gold_reward": 400,
+                "predicates": [
+                  "PET>0-101*2",
+                  "PET>0-104*2"
+                ],
+                "accept_text": "恭喜你完成任务！！！这是你应得的酬劳！",
+                "required_items": {
+                  "20091": 1
+                },
+                "forbidden_items": [
+                  20092,
+                  20093,
+                  20094,
+                  20095,
+                  20096,
+                  20111,
+                  20112,
+                  20113,
+                  20114,
+                  20115,
+                  20116
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "alias": "karutana-meat-shop",
+      "floor": 4004,
+      "x": 16,
+      "y": 13,
+      "name": "卡鲁它那的肉店",
+      "talk_range": 2,
+      "verified": true,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "windows": [
+        {
+          "type": 6,
+          "sequence": 240,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1",
+              "maximum_cost": 0
+            }
+          }
+        },
+        {
+          "type": 7,
+          "sequence": 242,
+          "window_object_from_actor": true,
+          "choices": {
+            "1": {
+              "button": 1,
+              "data": "1|1",
+              "maximum_cost": 12
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

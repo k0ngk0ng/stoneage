@@ -124,6 +124,7 @@ func applyEventLocked(state *gameState, event Event) {
 			state.snapshot.Phase = PhaseCharacterList
 		}
 	case "CharLogin":
+		state.snapshot.Capture = nil
 		if strings.EqualFold(eventText(event, 0), "successful") {
 			state.identityDirty++
 			state.snapshot.Ladder = nil
@@ -150,6 +151,7 @@ func applyEventLocked(state *gameState, event Event) {
 			state.snapshot.Player.SocialFlagsKnown = false
 		}
 	case "CharLogout":
+		state.snapshot.Capture = nil
 		if strings.EqualFold(eventText(event, 0), "successful") {
 			state.snapshot.Ladder = nil
 			state.ladderReplies = nil
@@ -261,6 +263,7 @@ func applyEventLocked(state *gameState, event Event) {
 	case "B":
 		state.applyBattlePacket(eventText(event, 0))
 	case "RS", "RD":
+		state.snapshot.Capture = nil
 		battle := &state.snapshot.Battle
 		battle.Result = eventText(event, 0)
 		// Result packets terminate command input before the later EO/BU
@@ -374,6 +377,10 @@ func parseCharacterList(value string) []Character {
 }
 
 func (state *gameState) applySystem(value string) {
+	if strings.HasPrefix(value, "BCAP|") {
+		state.applyCaptureObservation(value)
+		return
+	}
 	if strings.HasPrefix(value, "BTRULES|") {
 		state.applyBattleRules(value)
 		return
@@ -504,6 +511,7 @@ func (state *gameState) applyAIObservation(parts []string) {
 	if state == nil || len(parts) < 1 || parts[0] != "AI" {
 		return
 	}
+	state.snapshot.Capture = nil
 	observation, ok := parseAIObservation(parts[1:])
 	if !ok {
 		return
@@ -554,6 +562,8 @@ func (state *gameState) mergeAIObservation(observation AIObservation) {
 	for slot := int32(0); slot < 5; slot++ {
 		current, exists := state.petForSlot(slot)
 		pet, present := incoming[slot]
+		current.SpeciesID, current.SpeciesIDKnown = pet.SpeciesID, pet.SpeciesIDKnown
+		current.EventFlag, current.EventFlagKnown = pet.EventFlag, pet.EventFlagKnown
 		if !present {
 			// A complete AI response enumerates every owned slot. Remove an
 			// omitted slot from the consumable projection, while retaining the
@@ -574,7 +584,7 @@ func (state *gameState) mergeAIObservation(observation AIObservation) {
 			} else {
 				// An unknown response cannot safely confirm a prior stable
 				// identity. Start a new identity and discard old details.
-				state.replacePet(slot, PetSnapshot{Slot: slot, Level: pet.Level, Alive: true})
+				state.replacePet(slot, PetSnapshot{Slot: slot, Level: pet.Level, Alive: true, SpeciesID: pet.SpeciesID, SpeciesIDKnown: pet.SpeciesIDKnown, EventFlag: pet.EventFlag, EventFlagKnown: pet.EventFlagKnown})
 			}
 			continue
 		}
@@ -583,7 +593,7 @@ func (state *gameState) mergeAIObservation(observation AIObservation) {
 			// A slot is reusable. A changed stable ID proves this is a new
 			// pet, so do not carry HP, skills, names or other mutable fields.
 			state.replacePet(slot, PetSnapshot{Slot: slot, StableID: pet.StableID,
-				IdentityKnown: true, Level: pet.Level, Alive: true})
+				IdentityKnown: true, Level: pet.Level, Alive: true, SpeciesID: pet.SpeciesID, SpeciesIDKnown: pet.SpeciesIDKnown, EventFlag: pet.EventFlag, EventFlagKnown: pet.EventFlagKnown})
 			continue
 		}
 		if exists {
@@ -597,7 +607,7 @@ func (state *gameState) mergeAIObservation(observation AIObservation) {
 			continue
 		}
 		state.replacePet(slot, PetSnapshot{Slot: slot, StableID: pet.StableID,
-			IdentityKnown: true, Level: pet.Level, Alive: true})
+			IdentityKnown: true, Level: pet.Level, Alive: true, SpeciesID: pet.SpeciesID, SpeciesIDKnown: pet.SpeciesIDKnown, EventFlag: pet.EventFlag, EventFlagKnown: pet.EventFlagKnown})
 	}
 }
 
@@ -607,6 +617,8 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 	seenEnd, seenNow := false, false
 	seenRide, seenVersion, seenChara := false, false, false
 	petBySlot := make(map[int32]PetSnapshot, 5)
+	speciesBySlot := make(map[int32]int32, 5)
+	eventBySlot := make(map[int32]int32, 5)
 	for _, field := range fields {
 		separator := strings.IndexByte(field, '=')
 		if separator <= 0 || separator == len(field)-1 {
@@ -620,6 +632,40 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 			seen[key] = true
 		}
 		switch key {
+		case "pet_species", "pet_event":
+			values := speciesBySlot
+			if key == "pet_event" {
+				values = eventBySlot
+			}
+			if value == "-" {
+				continue
+			}
+			entries := strings.Split(value, ";")
+			if len(entries) > 5 {
+				return AIObservation{}, false
+			}
+			for _, entry := range entries {
+				parts := strings.Split(entry, ",")
+				if len(parts) != 2 {
+					return AIObservation{}, false
+				}
+				slot, slotOK := parseSignedDecimal(parts[0])
+				species, speciesOK := parseSignedDecimal(parts[1])
+				if !slotOK || slot < 0 || slot >= 5 || !speciesOK || species < 0 {
+					return AIObservation{}, false
+				}
+				if _, duplicate := values[slot]; duplicate {
+					return AIObservation{}, false
+				}
+				values[slot] = species
+			}
+		case "encounter_policy":
+			// Future policies stay observable, but consumers must match an exact
+			// supported token before changing encounter behavior.
+			if len(value) > 16383 || strings.ContainsAny(value, " \t\r\n") {
+				return AIObservation{}, false
+			}
+			observation.EncounterPolicy = value
 		case "character_id":
 			if !ValidPersistentCharacterID(value) {
 				return AIObservation{}, false
@@ -630,6 +676,12 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 				return AIObservation{}, false
 			}
 			observation.RequestID = value
+		case "gold_limit":
+			parsed, ok := parseSignedDecimal(value)
+			if !ok || parsed <= 0 {
+				return AIObservation{}, false
+			}
+			observation.GoldLimit, observation.GoldLimitKnown = parsed, true
 		case "stat_points":
 			parsed, ok := parseSignedDecimal(value)
 			if !ok || parsed < 0 {
@@ -739,8 +791,20 @@ func parseAIObservation(fields []string) (AIObservation, bool) {
 	}
 	sort.Slice(observation.Items, func(i, j int) bool { return observation.Items[i].Slot < observation.Items[j].Slot })
 	observation.Pets = make([]PetSnapshot, 0, len(petBySlot))
+	for slot := range speciesBySlot {
+		if _, exists := petBySlot[slot]; !exists {
+			return AIObservation{}, false
+		}
+	}
+	for slot := range eventBySlot {
+		if _, exists := petBySlot[slot]; !exists {
+			return AIObservation{}, false
+		}
+	}
 	for slot, pet := range petBySlot {
 		pet.Slot = slot
+		pet.SpeciesID, pet.SpeciesIDKnown = speciesBySlot[slot]
+		pet.EventFlag, pet.EventFlagKnown = eventBySlot[slot]
 		observation.Pets = append(observation.Pets, pet)
 	}
 	sort.Slice(observation.Pets, func(i, j int) bool { return observation.Pets[i].Slot < observation.Pets[j].Slot })
@@ -834,6 +898,7 @@ func parseSignedDecimal(value string) (int32, bool) {
 }
 
 func (state *gameState) applyPlayerStatus(parts []string) {
+	state.snapshot.Capture = nil
 	if len(parts) == 0 {
 		return
 	}
@@ -1009,6 +1074,7 @@ func (state *gameState) applyRidePet(raw string) {
 }
 
 func (state *gameState) applyPetStatus(parts []string) {
+	state.snapshot.Capture = nil
 	if len(parts) == 0 {
 		return
 	}
@@ -1138,6 +1204,8 @@ func (state *gameState) applyPetStatus(parts []string) {
 		current.IdentityEpoch = 0
 		current.IdentityKnown = false
 		current.StableID = ""
+		current.SpeciesID, current.SpeciesIDKnown = 0, false
+		current.EventFlag, current.EventFlagKnown = 0, false
 		state.replacePet(slot, current)
 	} else {
 		state.upsertPet(slot, current)
@@ -1215,6 +1283,7 @@ func (state *gameState) applyPartyStatus(parts []string) {
 }
 
 func (state *gameState) applyUnindexedInventory(value string) {
+	state.snapshot.Capture = nil
 	tokens := splitPipe(value)
 	clear(state.inventory)
 	state.invalidateAIInventory()
@@ -1225,6 +1294,7 @@ func (state *gameState) applyUnindexedInventory(value string) {
 }
 
 func (state *gameState) applyIndexedInventory(value string) {
+	state.snapshot.Capture = nil
 	tokens := splitPipe(value)
 	for offset := 0; offset+10 <= len(tokens); offset += 10 {
 		index := base62Int(tokens[offset], -1)
@@ -1281,7 +1351,11 @@ func parseActorRecord(record string) (ActorSnapshot, bool) {
 		if err != nil || charType < 0 || charType >= 128 {
 			return ActorSnapshot{}, false
 		}
-		graphic := base62Int(parts[5], 0)
+		graphic := base62Int(parts[5], -1)
+		graphicKnown := graphic >= 0
+		if !graphicKnown {
+			graphic = 0
+		}
 		if graphic == 9999 {
 			return ActorSnapshot{}, false
 		}
@@ -1289,7 +1363,7 @@ func parseActorRecord(record string) (ActorSnapshot, bool) {
 		return ActorSnapshot{
 			ID: wireBase62Int(parts[1], 0), Kind: "character", CharType: int32(charType),
 			X: base62Int(parts[2], 0), Y: base62Int(parts[3], 0), Direction: wireDirection,
-			Graphic: graphic, Level: base62Int(parts[6], 0), Name: legacyText(parts[8]), FreeName: legacyText(parts[9]),
+			Graphic: graphic, GraphicKnown: graphicKnown, Level: base62Int(parts[6], 0), Name: legacyText(parts[8]), FreeName: legacyText(parts[9]),
 			PetName: legacyText(parts[14]), PetLevel: base62Int(parts[15], 0),
 		}, true
 	}
@@ -1347,6 +1421,7 @@ func (state *gameState) removeActors(value string) {
 }
 
 func (state *gameState) applyPetEvent(event Event) {
+	state.snapshot.Capture = nil
 	id := eventInt(event, 0, 0)
 	pet := PetSnapshot{ID: id, Slot: eventInt(event, 6, -1), Graphic: eventInt(event, 1, 0),
 		HP: 0, MaxHP: 0, Alive: true}
@@ -1418,6 +1493,7 @@ func (state *gameState) appendChat(message ChatMessage) {
 }
 
 func (state *gameState) swapInventory(from, to int32) {
+	state.snapshot.Capture = nil
 	if from < 0 || from >= 20 || to < 0 || to >= 20 {
 		return
 	}
@@ -1456,6 +1532,7 @@ func (state *gameState) beginBattle(event Event) {
 		return
 	}
 	state.snapshot.Phase = PhaseBattle
+	state.snapshot.Capture = nil
 	state.snapshot.Battle = BattleSnapshot{Active: true, Type: typeValue, Field: field}
 	if e := state.snapshot.Ladder; e != nil && e.Snapshot.Match != nil &&
 		(e.Snapshot.Phase == "battle" || e.Snapshot.Phase == "countdown") {
@@ -1464,6 +1541,7 @@ func (state *gameState) beginBattle(event Event) {
 }
 
 func (state *gameState) applyBattlePacket(value string) {
+	state.snapshot.Capture = nil
 	if value == "" {
 		return
 	}
@@ -1541,6 +1619,7 @@ func (state *gameState) applyBattlePacket(value string) {
 }
 
 func (state *gameState) applyBattleRoster(value string) {
+	state.snapshot.Capture = nil
 	if state.snapshot.Battle.Ended || state.snapshot.Battle.Result == "escaped" {
 		return
 	}
@@ -1608,6 +1687,7 @@ func (state *gameState) applyBattleRoster(value string) {
 }
 
 func (state *gameState) endBattle() {
+	state.snapshot.Capture = nil
 	battle := &state.snapshot.Battle
 	battle.Active = false
 	battle.Ended = true
@@ -1702,6 +1782,8 @@ func (state *gameState) upsertVisiblePet(actor ActorSnapshot) {
 	}
 	pet.IdentityKnown = false
 	pet.StableID = ""
+	pet.SpeciesID, pet.SpeciesIDKnown = 0, false
+	pet.EventFlag, pet.EventFlagKnown = 0, false
 	state.pets[identity] = pet
 }
 

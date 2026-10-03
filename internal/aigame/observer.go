@@ -36,10 +36,11 @@ func (session *Session) applyServerPacket(packet []byte, ladderView bool) (*Ladd
 	return session.applyEventWithLadderView(event, ladderView), nil
 }
 
-// ApplyClientPacket records the identity fields from one already framed
-// client packet.  A Web bridge owns the client write and the server reader, so
-// this small hook lets its shared observer bind the authenticated account and
-// selected character without opening a second login connection.  It does not
+// ApplyClientPacket records identity and local submission state from one
+// successfully written client packet. A Web bridge owns the client write and
+// the server reader, so this hook keeps its shared observer in sync without
+// opening a second login connection. Terminal EO uses the same exit guard as
+// typed actions; it cannot establish an unobserved battle result. It does not
 // advance the observation revision: only server packets are authoritative
 // observations.
 func (session *Session) ApplyClientPacket(packet []byte) error {
@@ -55,6 +56,24 @@ func (session *Session) ApplyClientPacket(packet []byte) error {
 		return fmt.Errorf("apply client packet: parse packet: %w", err)
 	}
 	switch message.Function {
+	case "EO":
+		if len(message.Fields) != 1 {
+			return fmt.Errorf("apply client packet: malformed EO")
+		}
+		value, err := namedproto.DecodeInt(message.Fields[0])
+		if err != nil || value != 0 {
+			return fmt.Errorf("apply client packet: malformed EO")
+		}
+		session.stateMu.Lock()
+		defer session.stateMu.Unlock()
+		// EO has no dedicated server acknowledgement. Share the typed
+		// action's terminal-state guard and exit transition, so Web observes
+		// the same completed battle as the CLI that sent this packet.
+		action := Action{Kind: ActionBattleEnd}
+		if _, function, err := validateActionLocked(&session.state, action); err == nil {
+			applyActionLocked(&session.state, action, function, session.state.snapshot.Revision)
+		}
+		return nil
 	case "TD", "FS", "SKUP", "PR":
 		session.stateMu.Lock()
 		switch message.Function {

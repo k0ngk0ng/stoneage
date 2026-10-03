@@ -330,7 +330,13 @@ func parseEncounters(raw []byte, path string, strict bool) ([]EncounterArea, []I
 			continue
 		}
 		for i := 10; i < encountFields; i++ {
-			value, err := optionalInt(fields, i, -1)
+			// Native group slots retain -1 when blank; the three event fields
+			// are assigned atoi(token) unconditionally, so blanks become zero.
+			fallback := -1
+			if i >= 30 {
+				fallback = 0
+			}
+			value, err := optionalInt(fields, i, fallback)
 			if err != nil {
 				if parseErr := recordParseIssue(&issues, strict, path, line.Number, "encount_number", fmt.Sprintf("field %d: %v", i, err)); parseErr != nil {
 					return nil, issues, parseErr

@@ -22,7 +22,7 @@ func TestLevelingMovesInsideEncounterArea(t *testing.T) {
 	n := &LevelingNavigator{Knowledge: k, Tiles: tiles}
 	s := aigame.Snapshot{Position: aigame.Point{Floor: 12, X: 1, Y: 1}, Player: aigame.PlayerSnapshot{Level: 1}}
 	r, err := n.Next(context.Background(), s, aileveling.NavigationRequest{})
-	if err != nil || r.InArea || r.Route != "c" || r.Destination.X != 2 || r.MaximumCost != 0 {
+	if err != nil || r.InArea || len(r.Route) != 1 || (r.Destination.X == s.Position.X && r.Destination.Y == s.Position.Y) || r.MaximumCost != 0 {
 		t.Fatalf("did not walk to trigger encounters: %+v %v", r, err)
 	}
 	k.Leveling[0].Verified = false
@@ -33,6 +33,45 @@ func TestLevelingMovesInsideEncounterArea(t *testing.T) {
 	k.Leveling[0].Levels.Max = 10
 	if _, err = n.Next(context.Background(), s, aileveling.NavigationRequest{}); err == nil {
 		t.Fatal("auto selected excessive enemy level")
+	}
+}
+
+func TestLevelingAvoidsActorsOnIntermediatePacketEndpoint(t *testing.T) {
+	// The fourth tile of the shortest route is occupied, while the final
+	// encounter target is free. Previously only the final target was checked,
+	// so every replan selected the same impossible four-step movement.
+	grid := ainavigation.FloorMap{ID: 12, Width: 8, Height: 3, Tiles: make([]uint16, 24), Objects: make([]uint16, 24)}
+	tiles, err := ainavigation.New(ainavigation.ImageTable{Images: map[uint16]ainavigation.ImageRule{0: {Walkable: 1}}}, []ainavigation.FloorMap{grid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &aiknowledge.Knowledge{Leveling: []aiknowledge.LevelingArea{{ID: 1, Floor: 12, Verified: true, EnemyIDs: []int{1}, Levels: aiknowledge.Range{Min: 1, Max: 1}, Bounds: aiknowledge.Rectangle{X: 7, Y: 1, X2: 7, Y2: 1}}}}
+	n := &LevelingNavigator{Knowledge: k, Tiles: tiles}
+	s := aigame.Snapshot{Position: aigame.Point{Floor: 12, X: 0, Y: 1}, Player: aigame.PlayerSnapshot{Level: 1}}
+	baseline, err := n.Next(context.Background(), s, aileveling.NavigationRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked := baseline.Destination
+	s.Actors = []aigame.ActorSnapshot{{ID: 9, Kind: "character", X: blocked.X, Y: blocked.Y}}
+	r, err := n.Next(context.Background(), s, aileveling.NavigationRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := ainavigation.Point{X: 0, Y: 1}
+	for _, d := range []byte(r.Route) {
+		delta := travelDirections[d-'a']
+		p.X += delta[0]
+		p.Y += delta[1]
+		if p.X == int(blocked.X) && p.Y == int(blocked.Y) {
+			t.Fatal("path still enters occupied tile", r)
+		}
+	}
+	// Occupancy is rebuilt from each observation, never cached after leaving.
+	s.Actors = nil
+	r, err = n.Next(context.Background(), s, aileveling.NavigationRequest{})
+	if err != nil || r.Route != baseline.Route {
+		t.Fatal("stale occupancy retained", r, err)
 	}
 }
 
@@ -133,7 +172,7 @@ func TestLevelingRejectsDangerAfterFirstPacketPrefix(t *testing.T) {
 			{ID: 28, Floor: 100, Verified: true, EnemyIDs: []int{140}, Levels: aiknowledge.Range{Min: 1, Max: 2}, Bounds: targetBounds},
 			{ID: 99, Floor: 100, Verified: true, EnemyIDs: []int{900}, Levels: aiknowledge.Range{Min: 4, Max: 6}, Bounds: dangerBounds},
 		},
-		Encounters: []aiknowledge.EncounterArea{{ID: 99, Floor: 100, Bounds: dangerBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 20}},
+		Encounters: []aiknowledge.EncounterArea{{ID: 99, Floor: 100, Bounds: dangerBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 20}, {ID: 28, Floor: 100, Bounds: targetBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 1}},
 	}
 	n := &LevelingNavigator{Knowledge: k, Tiles: crossMapNavigator{}}
 	route, err := n.Tiles.RouteContext(context.Background(), 100, ainavigation.Point{X: 10, Y: 0}, ainavigation.Point{X: 16, Y: 0})
@@ -165,7 +204,7 @@ func TestLevelingUsesSafeDetourWhenAvailable(t *testing.T) {
 			{ID: 28, Floor: 100, Verified: true, EnemyIDs: []int{140}, Levels: aiknowledge.Range{Min: 1, Max: 2}, Bounds: targetBounds},
 			{ID: 99, Floor: 100, Verified: true, EnemyIDs: []int{900}, Levels: aiknowledge.Range{Min: 4, Max: 6}, Bounds: dangerBounds},
 		},
-		Encounters: []aiknowledge.EncounterArea{{ID: 99, Floor: 100, Bounds: dangerBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 20}},
+		Encounters: []aiknowledge.EncounterArea{{ID: 99, Floor: 100, Bounds: dangerBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 20}, {ID: 28, Floor: 100, Bounds: targetBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 1}},
 	}
 	n := &LevelingNavigator{Knowledge: k, Tiles: tiles}
 	route, err := n.routeLeveling(context.Background(), 100, ainavigation.Point{X: 0, Y: 1}, ainavigation.Point{X: 6, Y: 1}, 1)
@@ -189,7 +228,7 @@ func TestLevelingAllowsZeroProbabilityAreaWithoutEnemies(t *testing.T) {
 	k := &aiknowledge.Knowledge{
 		Leveling: []aiknowledge.LevelingArea{{ID: 28, Floor: 100, Verified: true, EnemyIDs: []int{140}, Levels: aiknowledge.Range{Min: 1, Max: 2}, Bounds: aiknowledge.Rectangle{X: 5, Y: 0, X2: 5, Y2: 0}}},
 		// This row intentionally has no derived leveling area or enemy IDs.
-		Encounters: []aiknowledge.EncounterArea{{ID: 1230, Floor: 100, Bounds: zeroBounds, EncounterProbability: aiknowledge.Range{Min: 0, Max: 0}, ZOrder: 20}},
+		Encounters: []aiknowledge.EncounterArea{{ID: 1230, Floor: 100, Bounds: zeroBounds, EncounterProbability: aiknowledge.Range{Min: 0, Max: 0}, ZOrder: 20}, {ID: 28, Floor: 100, Bounds: aiknowledge.Rectangle{X: 5, Y: 0, X2: 5, Y2: 0}, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 1}},
 	}
 	n := &LevelingNavigator{Knowledge: k, Tiles: crossMapNavigator{}}
 	navigation, err := n.Next(context.Background(), aigame.Snapshot{Position: aigame.Point{Floor: 100, X: 0, Y: 0}, Player: aigame.PlayerSnapshot{Level: 1}}, aileveling.NavigationRequest{AreaID: 28})
@@ -206,7 +245,7 @@ func TestLevelingRejectsUnsafeWarpDestination(t *testing.T) {
 			{ID: 28, Floor: 100, Verified: true, EnemyIDs: []int{140}, Levels: aiknowledge.Range{Min: 1, Max: 2}, Bounds: targetBounds},
 			{ID: 99, Floor: 100, Verified: true, EnemyIDs: []int{900}, Levels: aiknowledge.Range{Min: 4, Max: 6}, Bounds: dangerBounds},
 		},
-		Encounters: []aiknowledge.EncounterArea{{ID: 99, Floor: 100, Bounds: dangerBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 20}},
+		Encounters: []aiknowledge.EncounterArea{{ID: 99, Floor: 100, Bounds: dangerBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 20}, {ID: 28, Floor: 100, Bounds: targetBounds, EncounterProbability: aiknowledge.Range{Min: 1, Max: 5}, ZOrder: 1}},
 		Warps:      []aiknowledge.MapWarp{{Type: "NONE", Time: "NULL", From: aiknowledge.Point{Floor: 1, X: 1, Y: 0}, To: aiknowledge.Point{Floor: 100, X: 2, Y: 0}, Attribute: "NULL"}},
 	}
 	n := &LevelingNavigator{Knowledge: k, Tiles: crossMapNavigator{}}

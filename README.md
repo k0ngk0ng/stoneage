@@ -12,6 +12,8 @@
 
 Web 支持人物、地图、NPC、物品、宠物、战斗及竞技场，并保留面向玩家的自动任务、自动练级和自动战斗。竞技场支持 **1v1、2v2、3v3、4v4、5v5**；多人比赛由队长组织队伍，各成员准备后匹配。规则和流程见 [竞技场玩家说明](docs/arena-player-flow.md)。
 
+v0.2.18 提供 HTTP `sactl quest` 入口。`marinas-pet-commission-a` 已通过 CLI → Web HTTP → 原版服务的完整验收，自动购买、捕获四只新宠、交付并核验 500 石币奖励。服务端需配置匹配的 [任务目录](ai/catalogs/README.md)，启动预算为 `--maximum-spend 146`。现有 11 个定义中，仅该委托已验证，其余保持未启用；全部 2.5 任务尚未完成。当前暂停交接与证据见 [自动任务进度](docs/auto-quests-25-progress.md)。
+
 ## sactl：命令行客户端
 
 `sactl` 自己连接游戏并保持会话，不依赖浏览器。macOS 安装或升级：
@@ -37,6 +39,8 @@ sactl logout                # 默认原地登出
 ```
 
 普通登录无需创建配置文件，也无需手工执行 `serve`；默认连接正式游戏入口。交互登录的密码只保存在进程内存。`sactl init` 可保存连接偏好，`sactl --help` 查看命令和参数。
+
+v0.2.18 提供 `sactl reconnect`：在后台仍保留登录凭据时恢复同一角色；`status` 会提示是否可恢复，无需把密码写入配置。已安装的旧后台须升级后才能使用。
 
 多角色用命名会话隔离，名字由你自定：
 
@@ -99,6 +103,8 @@ v0.2.17 可自动查找当前目录、`./runtime/ai-models/`、`~/.local/share/s
 - [采集、训练、恢复与评估](docs/learned-training.md)
 - [模型验收与逐场选模](docs/learned-champion.md)
 - [供 Agent 使用的 sactl skill](.agents/skills/sactl/SKILL.md)
+
+v0.2.18 同步修复合击/宠物不服从战报、回合编号、用药默认目标和商店窗口等待；learned 显示模型实际候选状态。模型权重未更改，这些修复不代表策略已证明强于 basic。
 
 ## 部署与升级
 

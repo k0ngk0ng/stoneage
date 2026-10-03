@@ -116,7 +116,7 @@ func TestPackagedCatalogsMatchEffectiveKnowledge(t *testing.T) {
 	if _, err := LoadStockItems(filepath.Join(dir, "stock-items-2.5.json"), fingerprint, npcs, healing); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"riding-2.5.json", "adult-ceremony-2.5.json"} {
+	for _, name := range []string{"riding-2.5.json", "adult-ceremony-2.5.json", "axe-2.5.json"} {
 		if _, err := LoadNPCRegistry(filepath.Join(dir, "drafts", name), fingerprint); !errors.Is(err, ErrNPCUnverified) {
 			t.Fatalf("%s must be bound but disabled: %v", name, err)
 		}

@@ -91,7 +91,7 @@ func TestGameplayBuilderLoadsRecoveryFromNPCHealerMetadata(t *testing.T) {
 }
 
 func TestGameplayBuilderLoadsHealingItemsAndFreezesCatalog(t *testing.T) {
-	const digest = "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba"
+	const digest = "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f"
 	items, err := LoadHealingItems(filepath.Join("..", "..", "ai", "catalogs", "healing-items-2.5.json"), digest)
 	if err != nil {
 		t.Fatal(err)

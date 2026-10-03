@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
+	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
 	"github.com/k0ngk0ng/stoneage/internal/ainavigation"
 	"github.com/k0ngk0ng/stoneage/internal/aiplanner"
@@ -16,6 +17,8 @@ import (
 type TileNavigator interface {
 	RouteContext(context.Context, int, ainavigation.Point, ainavigation.Point) (ainavigation.Route, error)
 }
+
+var ErrMovementStartStale = errors.New("movement initial observation changed before execution")
 
 // MovementSkill executes short native W segments, obtaining fresh S:c
 // position samples after each segment. Stock W does not echo its owner's
@@ -29,6 +32,7 @@ type MovementSkill struct {
 	WarpConfirmationTimeout time.Duration
 	MaxWarpEdges            int
 	BattleRecovery          MovementBattleRecovery
+	NPCs                    NPCRegistry
 	HealthRecovery          MovementHealthRecovery
 	// SafeTravel is set by gameplay wiring for human and AI task movement.
 	// It cannot be overridden by action arguments.
@@ -58,12 +62,22 @@ func (s *MovementSkill) ValidateSkill(ctx context.Context, a automation.Action) 
 	return ctx.Err()
 }
 func (s *MovementSkill) Execute(ctx context.Context, a automation.Action) error {
-	battles, healingAttempts := 0, 0
+	battles, healingAttempts, passages := 0, 0, 0
+	encountersAt := make(map[aiknowledge.Point]int)
 	resuming := false
 	for {
 		err := s.executeOnce(ctx, a, resuming)
 		var petHealing *travelPetHealingRequired
+		var blockage *movementBlockage
 		switch {
+		case errors.As(err, &blockage) && len(s.NPCs) > 0:
+			if passages >= 8 {
+				return fmt.Errorf("%w: passage recovery limit reached", ErrMovementOccupied)
+			}
+			if recoverErr := s.openPassage(ctx, blockage); recoverErr != nil {
+				return recoverErr
+			}
+			passages++
 		case errors.As(err, &petHealing):
 			if healingAttempts >= 15 {
 				return ErrTravelHealingLimit
@@ -81,17 +95,26 @@ func (s *MovementSkill) Execute(ctx context.Context, a automation.Action) error 
 				return fmt.Errorf("travel item recovery: %w", err)
 			}
 		case errors.Is(err, ErrMovementBattle) && s.BattleRecovery != nil:
-			if battles >= 8 {
-				return ErrTravelBattleLimit
+			// A long, progressing trip can encounter more than eight battles.
+			// Preserve the eight-at-one-location bound and a separate total
+			// bound; only server-observed locations establish travel progress.
+			observed, observeErr := s.Backend.Observe(ctx, s.Backend.Binding)
+			if observeErr != nil {
+				return observeErr
+			}
+			point := observationPoint(observed)
+			if battles >= 64 || encountersAt[point] >= 8 {
+				return fmt.Errorf("%w: total=%d at=%d floor=%d x=%d y=%d", ErrTravelBattleLimit, battles, encountersAt[point], point.Floor, point.X, point.Y)
 			}
 			battles++
+			encountersAt[point]++
 			if err := s.BattleRecovery.Escape(ctx); err != nil {
 				return err
 			}
 		default:
 			return err
 		}
-		// Only explicit battle or health interruptions may resume after
+		// Only explicit battle, passage or health interruptions may resume after
 		// recovery. Uncertain writes and position timeouts never enter here.
 		resuming = true
 	}
@@ -113,14 +136,14 @@ func (s *MovementSkill) executeOnce(ctx context.Context, a automation.Action, re
 	// recovery may we plan from a fresh observation. Sampling twice across
 	// that boundary spuriously rejected ordinary post-battle status packets.
 	if !resuming && o.Revision != a.ExpectedRevision {
-		return fmt.Errorf("movement initial observation: %w", aigame.ErrStaleRevision)
+		return fmt.Errorf("%w: %w", ErrMovementStartStale, aigame.ErrStaleRevision)
 	}
 	if err := movementObservationReady(o); err != nil {
 		return err
 	}
 	if s.SafeTravel {
 		guarded := *s
-		navigator, err := s.travelNavigator(o.Character.Level)
+		navigator, err := s.travelNavigator(o.Character.Level, o.EncounterPolicy)
 		if err != nil {
 			return err
 		}
@@ -143,6 +166,10 @@ func (s *MovementSkill) executeOnce(ctx context.Context, a automation.Action, re
 	}
 	for offset := 0; offset < len(route.Directions); {
 		if err := movementObservationReady(o); err != nil {
+			return err
+		}
+		route, offset, err = s.avoidOccupiedSegment(ctx, o, route, offset, ainavigation.Point{X: args.X, Y: args.Y})
+		if err != nil {
 			return err
 		}
 		end := s.segmentEnd(o, route, offset)
@@ -198,6 +225,7 @@ func (s *MovementSkill) submitMove(ctx context.Context, observed aimcp.Observati
 	if action.Kind != aigame.ActionMove {
 		return observed, errors.New("movement retry requires a move action")
 	}
+	checks = append(checks, func(current aimcp.Observation) error { return checkMovementOccupancy(current, action) })
 	if s.SafeTravel {
 		checks = append(checks, func(current aimcp.Observation) error { return s.checkTravelEncounters(current, action) })
 	}

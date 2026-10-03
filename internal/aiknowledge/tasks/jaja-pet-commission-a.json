@@ -1,0 +1,1464 @@
+{
+  "id": "jaja-pet-commission-a",
+  "name": "加加村宠物委托A",
+  "description": "购买委托书和补给，捕获四只任务宠物，返回交付并核验400石币奖励。只使用本次任务捕获的宠物。",
+  "status": "unverified",
+  "preconditions": [
+    {
+      "kind": "alive",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "not_battle",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "character_level",
+      "value": 5,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "flag_set",
+      "id": "party:solo",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "backpack_free_slots",
+      "value": 9,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "pet_free_slots",
+      "value": 4,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "gold_at_least",
+      "value": 136,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "gold_reward_capacity",
+      "value": 400,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "pet_species_absent",
+      "value": 31,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "pet_species_absent",
+      "value": 32,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20062",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20063",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20064",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20065",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20066",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20081",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20082",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20083",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20084",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20085",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "kind": "item_absent",
+      "id": "item:20086",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "purchase",
+      "kind": "stock",
+      "description": "购买委托书",
+      "action": {
+        "skill": "item.stock",
+        "arguments": {
+          "item": "jaja-pet-commission-a",
+          "target_count": 1
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "item_count",
+          "id": "item:20061",
+          "value": 1
+        }
+      ],
+      "timeout_seconds": 120,
+      "cost_known": true,
+      "maximum_cost": 40,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "id": "supplies",
+      "kind": "stock",
+      "description": "补足八份小的肉",
+      "action": {
+        "skill": "item.stock",
+        "arguments": {
+          "item": "hometown-2-small-meat",
+          "target_count": 8
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "item_count",
+          "id": "item:2344",
+          "value": 8
+        }
+      ],
+      "timeout_seconds": 120,
+      "cost_known": true,
+      "maximum_cost": 96,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "id": "collect",
+      "kind": "collect_pet",
+      "description": "保留原有宠物，捕获四只任务材料宠物",
+      "action": {
+        "skill": "pet.collect",
+        "arguments": {
+          "targets": [
+            {
+              "species_id": 31,
+              "minimum_level": 1,
+              "maximum_level": 6,
+              "count": 2
+            },
+            {
+              "species_id": 32,
+              "minimum_level": 1,
+              "maximum_level": 6,
+              "count": 2
+            }
+          ],
+          "max_encounters": 64,
+          "max_moves": 1024,
+          "max_attempts": 20,
+          "max_turns": 50
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "pet_collection",
+          "id": "collect",
+          "value": 4
+        }
+      ],
+      "timeout_seconds": 900,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "id": "return",
+      "kind": "move",
+      "description": "返回委托管理员",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 3009,
+          "x": 18,
+          "y": 13
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "position",
+          "value": 3009,
+          "x": 18,
+          "y": 13
+        }
+      ],
+      "timeout_seconds": 300,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "id": "talk",
+      "kind": "talk",
+      "description": "核验委托对话",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "npc": "jaja-commission-manager",
+          "floor": 3009,
+          "x": 18,
+          "y": 12
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "jaja-commission-manager",
+          "value": 235
+        }
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "id": "accept",
+      "kind": "confirm",
+      "description": "打开交付确认窗口",
+      "action": {
+        "skill": "npc.dialogue",
+        "arguments": {
+          "npc": "jaja-commission-manager",
+          "window_sequence": 235,
+          "choice": 4
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "jaja-commission-manager",
+          "value": 430
+        }
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    },
+    {
+      "id": "deliver",
+      "kind": "deliver_pet",
+      "description": "只交付本次捕获宠物并核验400石币奖励与委托书消耗",
+      "action": {
+        "skill": "pet.deliver",
+        "arguments": {
+          "npc": "jaja-commission-manager",
+          "window_sequence": 430,
+          "choice": 1,
+          "pet_collection": "collect"
+        }
+      },
+      "success_conditions": [
+        {
+          "kind": "step_confirmed",
+          "id": "deliver"
+        }
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    }
+  ],
+  "success": [
+    {
+      "kind": "step_confirmed",
+      "id": "deliver",
+      "description": "持久化回执确认四只指定宠物及一张委托书被消耗，原有宠物保留，准确获得400石币。",
+      "evidence": [
+        {
+          "path": "itemset.txt",
+          "line": 1,
+          "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+        },
+        {
+          "path": "npc/extra/event/M_3000",
+          "line": 1,
+          "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+        },
+        {
+          "path": "npc/extra/event/mission.create",
+          "line": 1,
+          "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+        },
+        {
+          "path": "npc/genout/mission.create",
+          "line": 1,
+          "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+        },
+        {
+          "path": "npc/genout/ss_3009_20_12",
+          "line": 1,
+          "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+        },
+        {
+          "path": "npc/genout/shop_m2.create",
+          "line": 1,
+          "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+        },
+        {
+          "path": "npc/genout/ss_3004_18_16",
+          "line": 1,
+          "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "gold_min": 136,
+    "gold_expected": 136,
+    "gold_max": 136,
+    "notes": "一张委托书40，八份小的肉96；已有库存减少实际购买。捕获仅限原版确认不消耗道具的目标。",
+    "evidence": [
+      {
+        "path": "itemset.txt",
+        "line": 1,
+        "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+      },
+      {
+        "path": "npc/extra/event/M_3000",
+        "line": 1,
+        "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+      },
+      {
+        "path": "npc/extra/event/mission.create",
+        "line": 1,
+        "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+      },
+      {
+        "path": "npc/genout/mission.create",
+        "line": 1,
+        "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+      },
+      {
+        "path": "npc/genout/ss_3009_20_12",
+        "line": 1,
+        "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+      },
+      {
+        "path": "npc/genout/shop_m2.create",
+        "line": 1,
+        "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+      },
+      {
+        "path": "npc/genout/ss_3004_18_16",
+        "line": 1,
+        "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "source": {
+        "path": "itemset.txt",
+        "line": 1,
+        "sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    },
+    {
+      "source": {
+        "path": "npc/extra/event/M_3000",
+        "line": 1,
+        "sha256": "891be0b062be90e1b4c183b8a662a91bef6abdb6a55413ccdb093e94c3a9eb48"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    },
+    {
+      "source": {
+        "path": "npc/extra/event/mission.create",
+        "line": 1,
+        "sha256": "877eecbd808c0a7b560bc340ae0e43b9f08a0abb793c801c2e0bb593a1f0e086"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    },
+    {
+      "source": {
+        "path": "npc/genout/mission.create",
+        "line": 1,
+        "sha256": "8a299268d92ace9e6db602447f56d399e17540f92804c7147490bdfe20d62c1e"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    },
+    {
+      "source": {
+        "path": "npc/genout/ss_3009_20_12",
+        "line": 1,
+        "sha256": "dbb2ad0523a03d0dd719c86087824a38330a8289da481efde653dc1a93ab6372"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    },
+    {
+      "source": {
+        "path": "npc/genout/shop_m2.create",
+        "line": 1,
+        "sha256": "bf74faf9e2d0acf183482a91cc093ba8a2e797f5006594fb53a8bde88d7ef164"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    },
+    {
+      "source": {
+        "path": "npc/genout/ss_3004_18_16",
+        "line": 1,
+        "sha256": "a867524dfbdc5b2182bfec89eae236db0c759a760e11aca0c246c451ee9630c5"
+      },
+      "claim": "原版委托A交付条件、奖励、实际NPC创建位置和出售物品价格",
+      "verified": true
+    }
+  ],
+  "source": {
+    "path": "tasks/jaja-pet-commission-a.json"
+  },
+  "preparation_reviewed": true,
+  "preparation_notes": "人物至少5级，才能按当前遇敌表和安全路线采集目标宠物。独行、存活、4个空宠位、9个空背包格、136石币及400奖励容量；已有同种宠物先存银行，其他本村委托书不可携带。遵守安全路线、捕获及补给上限，失败保留进度，不自动丢弃或购买额外物品。",
+  "data_fingerprint": "64fbb4f539a11f75e59c80f0599ca83b26f361f0bdc89198dd87bde21c1a743d",
+  "evidence_verified": true,
+  "execution_verified": false
+}

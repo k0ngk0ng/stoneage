@@ -39,6 +39,7 @@ def harness_source(source: str) -> str:
     return f"""\
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -82,6 +83,18 @@ static BOOL ENEMY_CHECKINDEX(int index)
 
 {check_enemy}
 
+#define ENCOUNT_GROUPMAXNUM 10
+typedef struct {{ int x, y, width, height; }} RECT;
+typedef struct {{
+    int index, floor, encountprob_min, encountprob_max, enemymaxnum, zorder;
+    int groupid[10], createprob[10], event_now, event_end, enemy_group;
+    RECT rect;
+}} ENCOUNT_Table;
+static ENCOUNT_Table encounter_rows[5000];
+ENCOUNT_Table *ENCOUNT_table = encounter_rows;
+int ENCOUNT_encountnum;
+#include "stoneage_encounter_policy_impl.h"
+
 static int expect(int condition, const char *message)
 {{
     if (condition) return 0;
@@ -93,6 +106,9 @@ int main(void)
 {{
     int group_array = -99;
     int errors = 0;
+    int i, j;
+    const char *token;
+    char before[64];
 
     errors += expect(ENEMY_resolveGroupArray(77, &group_array) && group_array == 0,
                      "valid group must resolve");
@@ -119,6 +135,38 @@ int main(void)
     errors += expect(!ENEMY_checkGroupEnemyArray(0, 0, 99),
                      "out of range enemy array must fail");
 
+    errors += expect(StoneAge_EncounterPolicy() == NULL, "no table must omit policy");
+    ENCOUNT_encountnum = 2;
+    for (i = 0; i < 2; i++) {{
+        encounter_rows[i].index = 21; /* Real data can repeat IDs. */
+        encounter_rows[i].floor = 100;
+        encounter_rows[i].rect.width = 10;
+        encounter_rows[i].rect.height = 10;
+        encounter_rows[i].zorder = i + 1;
+        for (j = 0; j < 10; j++) encounter_rows[i].groupid[j] = -1;
+        encounter_rows[i].groupid[0] = i ? 1230 : 77;
+    }}
+    token = StoneAge_EncounterPolicy();
+    errors += expect(token && strstr(token, "missing-group-abort-v1:") == token &&
+                     strcmp(token + strlen(token) - 2, ":1") == 0,
+                     "missing group at zero probability reports ordinal, not repeated ID");
+    if (!token) return 1;
+    strcpy(before, token);
+    group_data[1][GROUP_ID] = 1230;
+    token = StoneAge_EncounterPolicy();
+    errors += expect(token && strncmp(token, before, 38) == 0 &&
+                     strcmp(token + strlen(token) - 2, ":-") == 0,
+                     "group reload immediately revokes missing-group exemption");
+    encounter_rows[1].enemy_group = 999;
+    encounter_rows[1].event_now = 5;
+    token = StoneAge_EncounterPolicy();
+    errors += expect(token && strcmp(token + strlen(token) - 2, ":-") == 0,
+                     "event-only missing group does not qualify");
+    group_data[1][GROUP_ID] = 88;
+    ENCOUNT_encountnum = 5000;
+    for (i = 0; i < ENCOUNT_encountnum; i++) encounter_rows[i].groupid[0] = 1230;
+    errors += expect(StoneAge_EncounterPolicy() == NULL,
+                     "oversized response must be omitted, never partially trusted");
     return errors != 0;
 }}
 """
@@ -147,7 +195,7 @@ def main() -> None:
         binary = temp_path / "enemy-bounds"
         harness.write_text(harness_source(patched))
         subprocess.run(
-            [compiler, "-std=gnu89", "-Wall", "-Wextra", "-Werror", "-o", str(binary), str(harness)],
+            [compiler, "-std=gnu89", "-Wall", "-Wextra", "-Werror", "-I"+str(ROOT / "server/legacy/modern"), "-o", str(binary), str(harness)],
             cwd=ROOT,
             check=True,
         )

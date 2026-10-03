@@ -785,7 +785,7 @@ func (r *Runner) Run(ctx context.Context, matches int) error {
 	if e := r.initialize(ctx); e != nil {
 		return e
 	}
-	r.report("running", Object{"mode": r.config.Mode, "strategy": r.strategy.ID(), "state_dir": r.config.StateDir, "model": r.config.Model})
+	r.report("running", Object{"mode": r.config.Mode, "strategy": r.strategy.ID(), "state_dir": r.config.StateDir, "model": r.config.Model, "model_status": learnedModelStatus(r.strategy)})
 	for {
 		if e := ctx.Err(); e != nil {
 			return e

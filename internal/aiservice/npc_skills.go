@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
@@ -56,15 +58,18 @@ type NPCWindowContract = NPCWindowSpec
 // contract; an automation request can select one of them but cannot provide
 // or replace any of them.
 type NPCSpec struct {
-	Alias          string
-	Floor          int
-	X              int
-	Y              int
-	Name           string
-	Template       string
-	ActorID        int
-	ActorIDKnown   bool
-	TalkRange      int
+	Alias        string
+	Floor        int
+	X            int
+	Y            int
+	Name         string
+	Template     string
+	ActorID      int
+	ActorIDKnown bool
+	TalkRange    int
+	// TalkText is a reviewed, fixed quest keyword including the P| channel.
+	// Empty keeps ordinary P|hi dialogue. Requests cannot replace this text.
+	TalkText       string
 	WindowType     int
 	WindowSequence int
 	WindowObjectID int
@@ -77,6 +82,7 @@ type NPCSpec struct {
 	SourceFingerprint     string
 	Verified              bool
 	Healer                *HealerRates
+	Passage               *NPCPassage
 }
 
 // NPCChoice is the server-verified meaning of one window selection.  The map
@@ -86,6 +92,7 @@ type NPCSpec struct {
 // are compatibility aliases for MaximumCost; if more than one is supplied,
 // they must agree.
 type NPCChoice struct {
+	PetDelivery *NPCPetDelivery
 	Button      int
 	MaximumCost int64
 	Price       int64
@@ -325,6 +332,8 @@ type npcTalkArguments struct {
 }
 
 type npcWindowArguments struct {
+	PetCollection  string          `json:"pet_collection,omitempty"`
+	PetIDs         []string        `json:"pet_ids,omitempty"`
 	NPC            string          `json:"npc"`
 	WindowType     json.RawMessage `json:"window_type,omitempty"`
 	WindowSequence json.RawMessage `json:"window_sequence"`
@@ -339,7 +348,7 @@ func (s *NPCSkill) ValidateSkill(ctx context.Context, action automation.Action) 
 	if s == nil || s.Backend == nil || s.Backend.Gate == nil || s.Backend.Session == nil {
 		return aimcp.ErrBackend
 	}
-	if action.Skill != "npc.talk" && action.Skill != "npc.window" {
+	if action.Skill != "npc.talk" && action.Skill != "npc.window" && action.Skill != "npc.dialogue" {
 		return fmt.Errorf("%w: unsupported NPC skill %q", aimcp.ErrInvalidParams, action.Skill)
 	}
 	if action.MaximumCost < 0 {
@@ -361,7 +370,7 @@ func (s *NPCSkill) ValidateSkill(ctx context.Context, action automation.Action) 
 		if err := validateTalkArguments(spec, args); err != nil {
 			return err
 		}
-	case "npc.window":
+	case "npc.window", "npc.dialogue":
 		args, err := decodeNPCWindow(action.Arguments)
 		if err != nil {
 			return err
@@ -374,6 +383,17 @@ func (s *NPCSkill) ValidateSkill(ctx context.Context, action automation.Action) 
 		if err != nil {
 			return err
 		}
+		if choice.PetDelivery != nil {
+			if args.PetCollection != "" {
+				if len(args.PetCollection) > 256 || len(args.PetIDs) > 0 {
+					return npcInvalid("pet collection and explicit pet IDs cannot be combined")
+				}
+			} else if err := validatePetDeliveryIDs(args.PetIDs); err != nil {
+				return err
+			}
+		} else if len(args.PetIDs) > 0 || args.PetCollection != "" {
+			return npcInvalid("this NPC choice has no reviewed pet delivery")
+		}
 		quote, err := verifiedNPCQuote(choice)
 		if err != nil {
 			return err
@@ -383,6 +403,11 @@ func (s *NPCSkill) ValidateSkill(ctx context.Context, action automation.Action) 
 		}
 		if err := validateWindowArguments(spec, args); err != nil {
 			return err
+		}
+		if action.Skill == "npc.dialogue" {
+			if err := validateDialogueChoices(window, choice); err != nil {
+				return err
+			}
 		}
 	}
 	return ctx.Err()
@@ -394,6 +419,15 @@ func (s *NPCSkill) Execute(ctx context.Context, action automation.Action) error 
 	}
 	if err := s.ValidateSkill(ctx, action); err != nil {
 		return err
+	}
+	if action.Skill != "npc.talk" {
+		args, err := decodeNPCWindow(action.Arguments)
+		if err != nil {
+			return err
+		}
+		if args.PetCollection != "" {
+			return npcInvalid("pet collection must be resolved from the current task checkpoint")
+		}
 	}
 	if action.ExpectedRevision == 0 {
 		return npcInvalid("expected revision is required")
@@ -415,6 +449,12 @@ func (s *NPCSkill) Execute(ctx context.Context, action automation.Action) error 
 			return err
 		}
 		return s.executeWindow(ctx, action.ExpectedRevision, action.MaximumCost, spec, args)
+	case "npc.dialogue":
+		args, err := decodeNPCWindow(action.Arguments)
+		if err != nil {
+			return err
+		}
+		return s.executeDialogue(ctx, action, spec, args)
 	default:
 		return fmt.Errorf("%w: unsupported NPC skill %q", aimcp.ErrInvalidParams, action.Skill)
 	}
@@ -457,7 +497,7 @@ func (s *NPCSkill) executeTalk(ctx context.Context, expected uint64, spec NPCSpe
 		if snapshot.Position.Direction != currentDirection {
 			return aigame.Action{}, npcInvalidWith(ErrNPCWrongFacing, "authoritative facing changed before TK")
 		}
-		return aigame.Talk(snapshot.Position.X, snapshot.Position.Y, "P|hi", 0, 3), nil
+		return aigame.Talk(snapshot.Position.X, snapshot.Position.Y, npcTalkText(spec), 0, 3), nil
 	})
 }
 
@@ -487,9 +527,21 @@ func (s *NPCSkill) executeWindow(ctx context.Context, expected uint64, maximumCo
 	if err := validateWindowSnapshot(spec, args, initial); err != nil {
 		return err
 	}
+	if choice.PetDelivery != nil {
+		fresh, err := refreshInventoryIdentity(ctx, s)
+		if err != nil {
+			return err
+		}
+		expected = fresh.Revision
+	}
 	return s.submit(ctx, expected, func(snapshot aigame.Snapshot) (aigame.Action, error) {
 		if err := validateWindowSnapshot(spec, args, snapshot); err != nil {
 			return aigame.Action{}, err
+		}
+		if choice.PetDelivery != nil {
+			if err := choice.PetDelivery.validate(snapshot, args.PetIDs); err != nil {
+				return aigame.Action{}, err
+			}
 		}
 		window := snapshot.ActiveWindow
 		if window == nil {
@@ -639,10 +691,14 @@ func decodeNPCTalk(raw json.RawMessage) (npcTalkArguments, error) {
 	if normalizeAlias(args.NPC) == "" {
 		return npcTalkArguments{}, npcInvalidWith(ErrNPCUnknown, "NPC alias is required")
 	}
-	if args.Command != "" && args.Command != "talk" && args.Command != "hi" && args.Command != "P|hi" {
-		return npcTalkArguments{}, npcInvalid("npc.talk command is fixed to P|hi")
-	}
 	return args, nil
+}
+
+func npcTalkText(spec NPCSpec) string {
+	if spec.TalkText != "" {
+		return spec.TalkText
+	}
+	return "P|hi"
 }
 
 func decodeNPCWindow(raw json.RawMessage) (npcWindowArguments, error) {
@@ -662,6 +718,9 @@ func decodeNPCWindow(raw json.RawMessage) (npcWindowArguments, error) {
 func validateTalkArguments(spec NPCSpec, args npcTalkArguments) error {
 	if normalizeAlias(args.NPC) != normalizeAlias(spec.Alias) {
 		return npcInvalidWith(ErrNPCUnknown, "NPC alias does not match the registry entry")
+	}
+	if args.Command != "" && args.Command != "talk" && args.Command != npcTalkText(spec) && !(args.Command == "hi" && npcTalkText(spec) == "P|hi") {
+		return npcInvalid("npc.talk command must match the reviewed NPC talk text")
 	}
 	for _, field := range []struct {
 		name     string
@@ -756,6 +815,11 @@ func validateWindowSnapshot(spec NPCSpec, args npcWindowArguments, snapshot aiga
 	}
 	if window.ObjectID != objectID {
 		return npcInvalidWith(ErrNPCWindowInactive, "active sequence/object is not the verified NPC window")
+	}
+	if spec.Passage != nil && window.Sequence == int32(spec.Passage.WindowSequence) {
+		if _, err := validatePassageSnapshot(spec, snapshot); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -896,6 +960,16 @@ func normalizeChoice(id int, choice NPCChoice) (NPCChoice, error) {
 	if _, err := verifiedNPCQuote(choice); err != nil {
 		return NPCChoice{}, err
 	}
+	if choice.PetDelivery != nil {
+		quote, _ := verifiedNPCQuote(choice)
+		if choice.Button != choice.PetDelivery.button() || choice.Data != "" || quote != 0 {
+			return NPCChoice{}, npcInvalid("pet delivery must match its reviewed free confirmation button")
+		}
+		if _, err := choice.PetDelivery.predicates(); err != nil {
+			return NPCChoice{}, err
+		}
+		choice.PetDelivery = choice.PetDelivery.clone()
+	}
 	return choice, nil
 }
 
@@ -921,6 +995,9 @@ func verifiedNPCQuote(choice NPCChoice) (int64, error) {
 }
 
 func normalizeNPCSpec(source NPCSpec) (NPCSpec, string, error) {
+	if source.TalkText != "" && (!utf8.ValidString(source.TalkText) || !strings.HasPrefix(source.TalkText, "P|") || len(source.TalkText) <= 2 || len(source.TalkText) > 256 || strings.ContainsAny(source.TalkText[2:], "\x00\r\n|")) {
+		return NPCSpec{}, "", fmt.Errorf("%w: invalid fixed NPC talk text", ErrNPCRegistry)
+	}
 	if source.Healer != nil {
 		rates := *source.Healer
 		if err := rates.validate(); err != nil {
@@ -988,6 +1065,13 @@ func normalizeNPCSpec(source NPCSpec) (NPCSpec, string, error) {
 	source.Template = strings.TrimSpace(source.Template)
 	source.SourceFingerprint = strings.TrimSpace(source.SourceFingerprint)
 	source.Windows = windows
+	if source.Passage != nil {
+		passage := *source.Passage
+		source.Passage = &passage
+		if err := validatePassageContract(source); err != nil {
+			return NPCSpec{}, "", err
+		}
+	}
 	if legacyWindowPresent {
 		for _, window := range windows {
 			if window.Sequence == source.WindowSequence {
@@ -1027,12 +1111,29 @@ func normalizeNPCWindow(source NPCWindowSpec) (NPCWindowSpec, error) {
 		return NPCWindowSpec{}, errors.New("window has no verified choices")
 	}
 	choices := cloneNPCChoices(source.Choices)
+	petDeliveries := 0
 	for id, choice := range choices {
+		if choice.PetDelivery != nil && typ != 0 {
+			return NPCWindowSpec{}, errors.New("pet delivery requires a MESSAGE confirmation window")
+		}
 		normalized, err := normalizeChoice(id, choice)
 		if err != nil {
 			return NPCWindowSpec{}, fmt.Errorf("choice %d: %v", id, err)
 		}
 		choices[id] = normalized
+		if normalized.PetDelivery != nil {
+			petDeliveries++
+		}
+	}
+	if petDeliveries > 0 {
+		if petDeliveries != 1 {
+			return NPCWindowSpec{}, errors.New("pet delivery window must identify one guarded branch")
+		}
+		for _, choice := range choices {
+			if choice.PetDelivery == nil && choice.Button != 8 && choice.Button != npcNextPage {
+				return NPCWindowSpec{}, errors.New("pet delivery window contains an unguarded confirmation")
+			}
+		}
 	}
 	return NPCWindowSpec{Type: typ, Sequence: sequence, ObjectID: objectID, Choices: choices,
 		WindowObjectFromActor: source.WindowObjectFromActor,
@@ -1055,6 +1156,7 @@ func cloneNPCChoices(source map[int]NPCChoice) map[int]NPCChoice {
 	}
 	clone := make(map[int]NPCChoice, len(source))
 	for id, choice := range source {
+		choice.PetDelivery = choice.PetDelivery.clone()
 		clone[id] = choice
 	}
 	return clone
@@ -1065,7 +1167,7 @@ func sameNPCChoices(left, right map[int]NPCChoice) bool {
 		return false
 	}
 	for id, choice := range left {
-		if other, ok := right[id]; !ok || other != choice {
+		if other, ok := right[id]; !ok || !reflect.DeepEqual(other, choice) {
 			return false
 		}
 	}

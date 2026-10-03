@@ -355,6 +355,10 @@ func (s *MovementSkill) moveToWarpSource(ctx context.Context, observed aimcp.Obs
 		if err := s.checkTravelHealthAt(observed, edge.To.Floor, edge.To.X, edge.To.Y); err != nil {
 			return observed, false, err
 		}
+		route, offset, err = s.avoidOccupiedSegment(ctx, observed, route, offset, target)
+		if err != nil {
+			return observed, false, err
+		}
 		end := s.segmentEnd(observed, route, offset)
 		segmentTarget := route.Points[end-1]
 		if end == len(route.Directions) {
@@ -603,6 +607,10 @@ func (s *MovementSkill) moveWithinFloor(ctx context.Context, observed aimcp.Obse
 			return observed, err
 		}
 		if err := movementObservationReady(observed); err != nil {
+			return observed, err
+		}
+		route, offset, err = s.avoidOccupiedSegment(ctx, observed, route, offset, target)
+		if err != nil {
 			return observed, err
 		}
 		end := s.segmentEnd(observed, route, offset)

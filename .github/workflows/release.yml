@@ -85,6 +85,8 @@ jobs:
           python3 server/legacy/modern/tests/test-gmsv-idle-netloop.py
           python3 server/legacy/modern/tests/test-ai-funding.py
           python3 server/legacy/modern/tests/test-ai-observation.py
+          python3 server/legacy/modern/tests/test-capture-observation.py
+          python3 server/legacy/modern/tests/test-counted-event-items.py
           python3 server/legacy/modern/tests/test-ai-initialize.py
           python3 server/legacy/modern/tests/test-character-identity.py
           python3 server/legacy/modern/tests/test-character-store.py

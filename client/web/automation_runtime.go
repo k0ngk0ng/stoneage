@@ -60,7 +60,7 @@ func configureAutomationRuntime(config Config) (Automation, func() error, error)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load AI healing item contracts: %w", err)
 	}
-	stockItems, err := aiservice.LoadStockItems(config.AutomationStockItems, knowledge.Fingerprint(), npcs, healingItems)
+	stockItems, err := aiservice.LoadStockItemsForData(config.AutomationStockItems, knowledge.Fingerprint(), npcs, healingItems, filepath.Join(config.AutomationKnowledgeDataDir, "itemset.txt"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("load AI stock contracts: %w", err)
 	}

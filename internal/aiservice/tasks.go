@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -78,8 +79,16 @@ func (t *Tasks) launchLocked(id string) {
 		err := t.Engine.Run(runCtx, id)
 		cancel()
 		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				log.Printf("automatic quest stopped: %v", err)
+			}
 			persist, stop := context.WithTimeout(context.Background(), 3*time.Second)
-			_, _ = t.Engine.Pause(persist, id, "执行中断，需要重新核验游戏状态")
+			// Engine may already have persisted the precise failed step. Do not
+			// overwrite that reason with a generic runner shutdown message.
+			saved, loadErr := t.Engine.Store.Load(persist, id)
+			if loadErr != nil || saved.Status == automation.Running {
+				_, _ = t.Engine.Pause(persist, id, "执行中断，需要重新核验游戏状态")
+			}
 			stop()
 		}
 		t.mu.Lock()
@@ -172,7 +181,7 @@ func (t *Tasks) Cancel(ctx context.Context, q aimcp.CancelRequest) (aimcp.TaskRe
 			return aimcp.TaskReceipt{}, ctx.Err()
 		}
 	}
-	c, err := t.Engine.Pause(ctx, q.Handle, "任务已取消；已提交的游戏操作仍需核验")
+	c, err := t.Engine.Cancel(ctx, q.Handle, "任务已取消；已提交的游戏操作仍需核验")
 	if err != nil {
 		return aimcp.TaskReceipt{}, err
 	}
@@ -197,6 +206,7 @@ func (t *Tasks) Close() {
 
 func taskReceipt(c automation.Checkpoint) aimcp.TaskReceipt {
 	r := aimcp.TaskReceipt{Handle: c.Plan.ID, Status: aimcp.ReceiptRunning, State: string(c.Status), Reason: c.Reason}
+	r.Progress = &aimcp.TaskProgress{Step: c.Step, Steps: len(c.Plan.Steps), Stage: c.Stage, Stages: len(c.Plan.Stages), Deaths: c.Deaths}
 	switch c.Status {
 	case automation.Completed:
 		if c.Confirmation == nil || !c.Plan.Complete(*c.Confirmation) {
@@ -205,9 +215,16 @@ func taskReceipt(c automation.Checkpoint) aimcp.TaskReceipt {
 			return r
 		}
 		r.Status = aimcp.ReceiptConfirmed
+		// A terminal observation may confirm the task before Tick advances
+		// the last zero-based step index. Report completed work, not that cursor.
+		r.Progress.Step = r.Progress.Steps
+		r.Progress.Stage = r.Progress.Stages
 		r.Evidence, _ = json.Marshal(map[string]any{"character_id": c.Plan.CharacterID, "knowledge_revision": c.Plan.KnowledgeRevision, "checkpoint_revision": c.Revision, "observation": c.Confirmation, "confirmed_at": c.UpdatedAt})
 	case automation.Paused:
 		r.Status = aimcp.ReceiptFailed
+		if c.Phase == "cancelled" {
+			r.Status = aimcp.ReceiptCancelled
+		}
 	}
 	return r
 }

@@ -708,7 +708,8 @@ func levelingTargetsComplete(snapshot aigame.Snapshot, characterID string, targe
 // serialized so a simultaneous pause/takeover/resume cannot launch a second
 // run or replay an uncertain game action.
 type webAutomationHandle struct {
-	mu sync.Mutex
+	mu     sync.Mutex
+	stopMu sync.Mutex
 
 	executor   *AutomationExecutor
 	session    *AutomationSession
@@ -732,6 +733,7 @@ type webAutomationHandle struct {
 	watchDone        chan struct{}
 	levelDone        chan struct{}
 	stopped          bool
+	stopReceipt      *aimcp.TaskReceipt
 	detached         bool
 	backendCloseOnce sync.Once
 }
@@ -845,6 +847,11 @@ func (handle *webAutomationHandle) startWatcher() {
 
 func (handle *webAutomationHandle) status(ctx context.Context) (aimcp.TaskReceipt, error) {
 	handle.mu.Lock()
+	if handle.stopReceipt != nil {
+		receipt := *handle.stopReceipt
+		handle.mu.Unlock()
+		return receipt, nil
+	}
 	mode, id := handle.mode, handle.taskHandle
 	quest, level := handle.questTasks, handle.leveling
 	handle.mu.Unlock()
@@ -886,6 +893,7 @@ func (handle *webAutomationHandle) finishReceipt(receipt aimcp.TaskReceipt) {
 		return
 	}
 	state := handle.session.State()
+	handle.session.session.rememberTaskReceipt(handle, receipt)
 	if receipt.Status == aimcp.ReceiptConfirmed {
 		if state.Generation == generation && state.Mode == mode {
 			_, _, _ = handle.session.session.gate.Switch(generation, aicontrol.Manual, "自动化已完成")
@@ -908,8 +916,10 @@ func (handle *webAutomationHandle) Stop(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	handle.stopMu.Lock()
+	defer handle.stopMu.Unlock()
 	handle.mu.Lock()
-	if handle.stopped {
+	if handle.stopReceipt != nil {
 		executor, id := handle.executor, handle.taskHandle
 		handle.mu.Unlock()
 		if executor != nil {
@@ -923,15 +933,28 @@ func (handle *webAutomationHandle) Stop(ctx context.Context) error {
 	quest, level := handle.questTasks, handle.leveling
 	handle.mu.Unlock()
 	var err error
+	var receipt aimcp.TaskReceipt
 	switch mode {
 	case aicontrol.Quest:
 		if quest != nil {
-			_, err = quest.Cancel(ctx, aimcp.CancelRequest{Handle: id, Reason: "自动化已停止"})
+			receipt, err = quest.Cancel(ctx, aimcp.CancelRequest{Handle: id, Reason: "自动化已停止"})
 		}
 	case aicontrol.Leveling:
 		if level != nil {
-			_, err = level.Cancel(ctx, id, "自动化已停止")
+			receipt, err = level.Cancel(ctx, id, "自动化已停止")
 		}
+	}
+	if err != nil {
+		return err
+	}
+	if receipt.Handle == "" {
+		return errors.New("automation cancellation has no durable receipt")
+	}
+	handle.mu.Lock()
+	handle.stopReceipt = &receipt
+	handle.mu.Unlock()
+	if handle.session != nil && handle.session.session != nil {
+		handle.session.session.rememberTaskReceipt(handle, receipt)
 	}
 	handle.closeBackend()
 	if executor != nil {

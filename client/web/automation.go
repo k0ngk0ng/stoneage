@@ -216,6 +216,44 @@ func (s *AutomationSession) Observe(ctx context.Context) (aigame.Snapshot, error
 	return s.session.observeAuthoritative(ctx)
 }
 
+// WaitForMapEvent reuses the shared parser's correlated EV acknowledgements.
+// Browser event polling must not consume the automation runner's acknowledgement.
+func (s *AutomationSession) WaitForMapEvent(ctx context.Context, sequence int32) (aigame.Event, error) {
+	if s == nil || s.session == nil || s.session.gate == nil {
+		return aigame.Event{}, errors.New("automation session is unavailable")
+	}
+	check := func() error {
+		state := s.session.gate.State()
+		if s.generation == 0 || state.Generation != s.generation {
+			return aicontrol.ErrStale
+		}
+		if state.Mode != s.mode {
+			return aicontrol.ErrOwner
+		}
+		return nil
+	}
+	if err := check(); err != nil {
+		return aigame.Event{}, err
+	}
+	s.session.authoritativeMu.RLock()
+	observer, observerErr := s.session.authoritative, s.session.authoritativeErr
+	s.session.authoritativeMu.RUnlock()
+	if observerErr != nil {
+		return aigame.Event{}, observerErr
+	}
+	if observer == nil {
+		return aigame.Event{}, errors.New("authoritative observer is unavailable")
+	}
+	event, err := observer.WaitForMapEvent(ctx, sequence)
+	if err != nil {
+		return aigame.Event{}, err
+	}
+	if err := check(); err != nil {
+		return aigame.Event{}, err
+	}
+	return event, nil
+}
+
 // ExecuteExpected validates and encodes a typed action with aigame, then
 // writes it through the existing generation-fenced Web session. The owner
 // and generation are the immutable lease captured by this session; an old
@@ -280,6 +318,7 @@ func (s *tcpSession) setAutomation(handle AutomationHandle, mode aicontrol.Mode,
 		return false
 	}
 	s.automationHandle = handle
+	s.automationReceipt = nil
 	s.automationMode = mode
 	s.automationGen = generation
 	s.automationNote = ""

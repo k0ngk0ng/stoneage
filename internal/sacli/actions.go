@@ -108,7 +108,7 @@ func (s *Server) commandItem(ctx context.Context, request Request) Response {
 		if index >= len(request.Args) {
 			return 0, fmt.Errorf("%s requires a number", label)
 		}
-		value, err := strconv.Atoi(request.Args[index])
+		value, err := strconv.ParseInt(request.Args[index], 10, 32)
 		if err != nil {
 			return 0, fmt.Errorf("%s must be a number, got %q", label, request.Args[index])
 		}
@@ -118,15 +118,22 @@ func (s *Server) commandItem(ctx context.Context, request Request) Response {
 	var describe string
 	switch request.Args[0] {
 	case "use":
+		if len(request.Args) < 2 || len(request.Args) > 3 {
+			return failure(KindUsage, "usage: sactl item use <slot> [target] (default 0=self; 1..5=pet slots 0..4; 6..10=party slots 0..4)")
+		}
 		slot, err := number(1, "item use <slot>")
 		if err != nil {
 			return failure(KindUsage, "%v", err)
 		}
-		target := int32(-1)
+		// Native ID uses 0 for self, just like Web and shared recovery.
+		target := int32(0)
 		if len(request.Args) > 2 {
 			if target, err = number(2, "target"); err != nil {
 				return failure(KindUsage, "%v", err)
 			}
+		}
+		if slot < 0 || slot >= 20 || target < 0 || target > 10 {
+			return failure(KindUsage, "item use requires slot 0..19 and target 0..10 (0=self, 1..5=pets, 6..10=party)")
 		}
 		action, describe = aigame.UseItem(x, y, slot, target), fmt.Sprintf("used item in slot %d", slot)
 	case "drop":

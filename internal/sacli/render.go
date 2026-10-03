@@ -85,7 +85,11 @@ func renderSnapshot(snapshot aigame.Snapshot, floorName string) string {
 		if pet.IdentityKnown && pet.StableID != "" {
 			id = pet.StableID
 		}
-		fmt.Fprintf(&builder, "pet slot=%d %q stable_id=%q graphic=%d hp=%d/%d level=%d\n", pet.Slot, pet.Name, id, pet.Graphic, pet.HP, pet.MaxHP, pet.Level)
+		species := "unknown"
+		if pet.SpeciesIDKnown {
+			species = fmt.Sprint(pet.SpeciesID)
+		}
+		fmt.Fprintf(&builder, "pet slot=%d %q stable_id=%q species_id=%s graphic=%d hp=%d/%d level=%d\n", pet.Slot, pet.Name, id, species, pet.Graphic, pet.HP, pet.MaxHP, pet.Level)
 	}
 	if len(snapshot.Skills) > 0 {
 		parts := make([]string, 0, len(snapshot.Skills))

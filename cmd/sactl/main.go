@@ -173,6 +173,10 @@ func run(args []string) error {
 				fmt.Println(sacli.QueryHelp)
 				return nil
 			}
+			if command == "quest" {
+				fmt.Println(sacli.QuestHelp)
+				return nil
+			}
 			if command == "arena" || command == "ladder" {
 				if err := sacli.ValidateArenaCommand(commandArgs); err != nil {
 					return err
@@ -241,6 +245,10 @@ func run(args []string) error {
 			printResponse(sacli.Response{Kind: sacli.KindUsage, Error: err.Error()}, options.json)
 			os.Exit(exitUsage)
 		}
+	}
+	if command == "quest" && (len(commandArgs) == 0 || len(commandArgs) == 1 && commandArgs[0] == "help") {
+		printResponse(sacli.Response{OK: true, Text: sacli.QuestHelp}, options.json)
+		return nil
 	}
 	if command == "serve" || command == "init" {
 		localArgs := append([]string{}, commandArgs...)

@@ -26,6 +26,7 @@
 #define STONEAGE_AI_OBSERVATION_EVENT_GROUPS 6
 
 static char StoneAge_AIObservationBuffer[STONEAGE_AI_OBSERVATION_BUFFER_SIZE];
+extern const char *StoneAge_EncounterPolicy(void);
 
 void StoneAge_MagicObservationAppend(int charaindex, int slot, char *buffer, size_t size)
 {
@@ -173,6 +174,36 @@ static int StoneAge_AIObservationAppendItems( int charaindex,
     return TRUE;
 }
 
+static int StoneAge_AIObservationAppendPetSpecies(int charaindex, char **cursor, size_t *remaining)
+{
+    int slot, petindex, species, count = 0;
+    if (!StoneAge_AIObservationAppend(cursor, remaining, "|pet_species=")) return FALSE;
+    for (slot = 0; slot < STONEAGE_AI_OBSERVATION_PET_SLOTS; slot++) {
+        petindex = CHAR_getCharPet(charaindex, slot);
+        if (!CHAR_CHECKINDEX(petindex)) continue;
+        species = CHAR_getInt(petindex, CHAR_PETID);
+        if (species < 0) continue;
+        if (!StoneAge_AIObservationAppend(cursor, remaining, "%s%d,%d", count ? ";" : "", slot, species)) return FALSE;
+        count++;
+    }
+    return count || StoneAge_AIObservationAppend(cursor, remaining, "-");
+}
+
+static int StoneAge_AIObservationAppendPetEvent(int charaindex, char **cursor, size_t *remaining)
+{
+    int slot, petindex, flag, count = 0;
+    if (!StoneAge_AIObservationAppend(cursor, remaining, "|pet_event=")) return FALSE;
+    for (slot = 0; slot < STONEAGE_AI_OBSERVATION_PET_SLOTS; slot++) {
+        petindex = CHAR_getCharPet(charaindex, slot);
+        if (!CHAR_CHECKINDEX(petindex)) continue;
+        flag = CHAR_getInt(petindex, CHAR_ENDEVENT);
+        if (flag < 0) continue;
+        if (!StoneAge_AIObservationAppend(cursor, remaining, "%s%d,%d", count ? ";" : "", slot, flag)) return FALSE;
+        count++;
+    }
+    return count || StoneAge_AIObservationAppend(cursor, remaining, "-");
+}
+
 char *StoneAge_AIObservationMake( int charaindex )
 {
     return StoneAge_AIObservationMakeWithRequest(charaindex, NULL);
@@ -188,6 +219,7 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
     int petindex;
     int group, summon_mask = 0;
     const char *persistent_id;
+    const char *encounter_policy;
 
     if( request != NULL ) {
         size_t i;
@@ -207,6 +239,9 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
         return NULL;
     }
     persistent_id = StoneAge_CharacterIdentityGetLoadedByIndex(charaindex);
+    encounter_policy = StoneAge_EncounterPolicy();
+    if( encounter_policy != NULL && !StoneAge_AIObservationAppend(
+            &cursor, &remaining, "|encounter_policy=%s", encounter_policy) ) return NULL;
     if( persistent_id != NULL && !StoneAge_AIObservationAppend(
             &cursor, &remaining, "|character_id=%s", persistent_id) ) return NULL;
     if( request != NULL && !StoneAge_AIObservationAppend(
@@ -223,6 +258,10 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
                                                sizeof(escaped_unique) ),
                 CHAR_getInt( petindex, CHAR_LV ) ) ) return NULL;
     }
+    /* Separate optional token preserves the existing three-column pet field
+       for older clients. This reads only pets owned by the caller. */
+    if (!StoneAge_AIObservationAppendPetSpecies(charaindex, &cursor, &remaining)) return NULL;
+    if (!StoneAge_AIObservationAppendPetEvent(charaindex, &cursor, &remaining)) return NULL;
 
     if( !StoneAge_AIObservationAppend( &cursor, &remaining, "|end=" ) ) {
         return NULL;
@@ -257,6 +296,9 @@ char *StoneAge_AIObservationMakeWithRequest( int charaindex, const char *request
     if( !StoneAge_AIObservationAppend(
             &cursor, &remaining, "|stat_points=%d",
             CHAR_getInt( charaindex, CHAR_SKILLUPPOINT ) ) ) return NULL;
+    if( !StoneAge_AIObservationAppend(
+            &cursor, &remaining, "|gold_limit=%d",
+            CHAR_getMaxHaveGold( charaindex ) ) ) return NULL;
     if( !StoneAge_AIObservationAppend(
             &cursor, &remaining, "|party_mode=%d",
             CHAR_getWorkInt( charaindex, CHAR_WORKPARTYMODE ) ) ) return NULL;

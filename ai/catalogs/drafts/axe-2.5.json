@@ -1,0 +1,145 @@
+{
+  "knowledge_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+  "npcs": [
+    {
+      "alias": "axe-ganzo",
+      "floor": 100,
+      "x": 472,
+      "y": 297,
+      "name": "坏心眼的愿藏",
+      "talk_range": 1,
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "verified": false,
+      "passage": {
+        "window_sequence": 281,
+        "choice": 4,
+        "max_turns": 64,
+        "minimum_level": 40,
+        "minimum_hp_percent": 75
+      },
+      "windows": [
+        {
+          "type": 0,
+          "sequence": 281,
+          "window_object_from_actor": true,
+          "choices": {"4": {"button": 4, "maximum_cost": 0}}
+        }
+      ]
+    },
+    {
+      "alias": "axe-yam",
+      "floor": 1400,
+      "name": "亚姆亚姆",
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "talk_range": 1,
+      "verified": false,
+      "windows": [
+        {
+          "choices": {
+            "32": {
+              "alias": "next",
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "4": {
+              "maximum_cost": 0
+            }
+          },
+          "sequence": 234,
+          "type": 0,
+          "window_object_from_actor": true
+        },
+        {
+          "choices": {
+            "32": {
+              "alias": "next",
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "4": {
+              "maximum_cost": 0
+            }
+          },
+          "sequence": 235,
+          "type": 0,
+          "window_object_from_actor": true
+        },
+        {
+          "choices": {
+            "1": {
+              "maximum_cost": 0
+            },
+            "32": {
+              "alias": "next",
+              "button": 32,
+              "maximum_cost": 0
+            }
+          },
+          "sequence": 430,
+          "type": 0,
+          "window_object_from_actor": true
+        }
+      ],
+      "x": 69,
+      "y": 89
+    },
+    {
+      "alias": "axe-mati",
+      "floor": 1300,
+      "name": "马提",
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+      "talk_range": 1,
+      "verified": false,
+      "windows": [
+        {
+          "choices": {
+            "32": {
+              "alias": "next",
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "4": {
+              "maximum_cost": 0
+            }
+          },
+          "sequence": 234,
+          "type": 0,
+          "window_object_from_actor": true
+        },
+        {
+          "choices": {
+            "32": {
+              "alias": "next",
+              "button": 32,
+              "maximum_cost": 0
+            },
+            "4": {
+              "maximum_cost": 0
+            }
+          },
+          "sequence": 235,
+          "type": 0,
+          "window_object_from_actor": true
+        },
+        {
+          "choices": {
+            "1": {
+              "maximum_cost": 0
+            },
+            "32": {
+              "alias": "next",
+              "button": 32,
+              "maximum_cost": 0
+            }
+          },
+          "sequence": 430,
+          "type": 0,
+          "window_object_from_actor": true
+        }
+      ],
+      "x": 18,
+      "y": 42
+    }
+  ],
+  "version": 1
+}

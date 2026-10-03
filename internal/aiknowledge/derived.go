@@ -167,6 +167,9 @@ func uniqueSources(input []SourceRef) []SourceRef {
 func makeCoverage(k *Knowledge) Coverage {
 	coverage := Coverage{CoreTables: map[string]bool{}}
 	for _, file := range coreDataFiles {
+		if file == "group.txt" && k.GroupFile != "" {
+			file = k.GroupFile
+		}
 		coverage.CoreTables[file] = false
 	}
 	for _, file := range k.Files {

@@ -21,6 +21,23 @@ type stockSession struct {
 	quantity                               int
 	funded, uncertain, noItems, wrongActor bool
 	fillReservedBeforeBuy                  bool
+	delayedMenuObservations                int
+	menuPending                            bool
+}
+
+func (s *stockSession) Observe(ctx context.Context) (aigame.Snapshot, error) {
+	s.mu.Lock()
+	if s.menuPending {
+		if s.delayedMenuObservations == 0 {
+			s.snapshot.ActiveWindow = &aigame.WindowSnapshot{Type: 6, Sequence: 240, ObjectID: 42, Open: true, ButtonType: 1}
+			s.snapshot.Revision++
+			s.menuPending = false
+		} else {
+			s.delayedMenuObservations--
+		}
+	}
+	s.mu.Unlock()
+	return s.npcSkillSession.Observe(ctx)
 }
 
 func (s *stockSession) ExecuteExpected(ctx context.Context, rev uint64, a aigame.Action) error {
@@ -34,6 +51,10 @@ func (s *stockSession) ExecuteExpected(ctx context.Context, rev uint64, a aigame
 		s.snapshot.AI = aigame.AIObservation{Received: true, ItemsKnown: true, RequestID: strings.TrimPrefix(a.Command, "AI:"), Items: append([]aigame.AIInventoryItem(nil), s.bag...)}
 		s.snapshot.AIObservationRevision = s.snapshot.Revision
 	case a.Kind == aigame.ActionTalk:
+		if s.delayedMenuObservations > 0 {
+			s.menuPending = true
+			break
+		}
 		s.snapshot.ActiveWindow = &aigame.WindowSnapshot{Type: 6, Sequence: 240, ObjectID: 42, Open: true, ButtonType: 1}
 	case a.Kind == aigame.ActionWindow && a.WindowSequence == 240:
 		s.snapshot.ActiveWindow = &aigame.WindowSnapshot{Type: 7, Sequence: 242, ObjectID: 42, Open: true, ButtonType: 1}
@@ -80,6 +101,18 @@ func stockFixture(t *testing.T) (*StockSkill, *stockSession, automation.Action) 
 	npc.Backend.Session = session
 	stock := &StockSkill{Backend: npc.Backend, Contracts: map[string]StockContract{"meat": {NPC: spec, TemplateID: 2344, ShopIndex: 1, UnitPrice: 12, X: int(base.snapshot.Position.X), Y: int(base.snapshot.Position.Y)}}}
 	return stock, session, automation.Action{Skill: "item.stock", ExpectedRevision: 12, MaximumCost: 24, Arguments: json.RawMessage(`{"item":"meat","target_count":2}`)}
+}
+
+func TestStockWaitsForFreshMenuAfterLeavingAnotherShop(t *testing.T) {
+	s, g, a := stockFixture(t)
+	g.snapshot.ActiveWindow = &aigame.WindowSnapshot{Type: 6, Sequence: 240, ObjectID: 99, Open: true, Submitted: true}
+	g.delayedMenuObservations = 3
+	if err := s.Execute(context.Background(), a); err != nil {
+		t.Fatal("previous submitted menu was mistaken for new shop response:", err)
+	}
+	if g.menuPending || g.purchases != 1 || g.quantity != 2 {
+		t.Fatalf("pending=%v purchases=%d quantity=%d", g.menuPending, g.purchases, g.quantity)
+	}
 }
 func TestStockPurchasesOnlyShortfallAndRequiresConfirmation(t *testing.T) {
 	for _, mode := range []string{"empty", "one-existing", "enough", "funded", "uncertain", "no-items", "wrong-actor", "budget", "capacity", "cash"} {

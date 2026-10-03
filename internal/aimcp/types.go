@@ -91,14 +91,19 @@ func (UnavailableBackend) GameAction(context.Context, Binding, TypedAction) (Act
 }
 
 type Entity struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name,omitempty"`
-	Level   int      `json:"level"`
-	HP      int      `json:"hp"`
-	MaxHP   int      `json:"max_hp"`
-	Alive   bool     `json:"alive"`
-	Skills  []string `json:"skills,omitempty"`
-	UseFlag int      `json:"use_flag,omitempty"`
+	SpeciesID      int      `json:"species_id,omitempty"`
+	SpeciesIDKnown bool     `json:"species_id_known,omitempty"`
+	EventFlag      int      `json:"event_flag,omitempty"`
+	EventFlagKnown bool     `json:"event_flag_known,omitempty"`
+	Slot           *int     `json:"slot,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name,omitempty"`
+	Level          int      `json:"level"`
+	HP             int      `json:"hp"`
+	MaxHP          int      `json:"max_hp"`
+	Alive          bool     `json:"alive"`
+	Skills         []string `json:"skills,omitempty"`
+	UseFlag        int      `json:"use_flag,omitempty"`
 }
 
 // Observation contains only server-observed game state useful for planning.
@@ -153,8 +158,9 @@ type Observation struct {
 	// Skills and OwnProgress are populated only when the corresponding
 	// server-owned status stream has been observed. Numeric skill IDs use
 	// their decimal text as keys; progress keys identify end/now event groups.
-	Skills      map[string]int `json:"skills,omitempty"`
-	OwnProgress map[string]int `json:"own_progress,omitempty"`
+	Skills          map[string]int `json:"skills,omitempty"`
+	OwnProgress     map[string]int `json:"own_progress,omitempty"`
+	EncounterPolicy string         `json:"encounter_policy,omitempty"`
 }
 
 // TradeState separates locally submitted offers from peer observations.
@@ -205,6 +211,7 @@ type VisibleActor struct {
 	ID                    int    `json:"id"`
 	Kind                  string `json:"kind,omitempty"`
 	CharType              int    `json:"char_type,omitempty"`
+	Graphic               *int   `json:"graphic,omitempty"`
 	Name                  string `json:"name,omitempty"`
 	FreeName              string `json:"free_name,omitempty"`
 	Title                 string `json:"title,omitempty"`
@@ -353,6 +360,16 @@ type TaskReceipt struct {
 	State    string          `json:"state,omitempty"`
 	Reason   string          `json:"reason,omitempty"`
 	Evidence json.RawMessage `json:"evidence,omitempty"`
+	Progress *TaskProgress   `json:"progress,omitempty"`
+}
+
+// TaskProgress is public execution progress, without the compiled action plan.
+type TaskProgress struct {
+	Step   int `json:"step"`
+	Steps  int `json:"steps"`
+	Stage  int `json:"stage"`
+	Stages int `json:"stages"`
+	Deaths int `json:"deaths"`
 }
 
 type ActionReceipt = TaskReceipt

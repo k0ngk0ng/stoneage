@@ -102,6 +102,7 @@ type npcRegistryEntry struct {
 	ActorID               int                       `json:"actor_id"`
 	ActorIDKnown          bool                      `json:"actor_id_known"`
 	TalkRange             int                       `json:"talk_range"`
+	TalkText              string                    `json:"talk_text,omitempty"`
 	WindowType            int                       `json:"window_type"`
 	WindowSequence        int                       `json:"window_sequence"`
 	WindowObjectID        int                       `json:"window_object_id"`
@@ -111,6 +112,7 @@ type npcRegistryEntry struct {
 	SourceFingerprint     string                    `json:"source_fingerprint"`
 	Verified              bool                      `json:"verified"`
 	Healer                *HealerRates              `json:"healer,omitempty"`
+	Passage               *NPCPassage               `json:"passage,omitempty"`
 }
 
 type npcRegistryWindow struct {
@@ -122,15 +124,16 @@ type npcRegistryWindow struct {
 }
 
 type npcRegistryChoice struct {
-	Button      int    `json:"button"`
-	MaximumCost int64  `json:"maximum_cost"`
-	Price       int64  `json:"price"`
-	Quote       int64  `json:"quote"`
-	Alias       string `json:"alias"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Data        string `json:"data"`
+	PetDelivery *NPCPetDelivery `json:"pet_delivery,omitempty"`
+	Button      int             `json:"button"`
+	MaximumCost int64           `json:"maximum_cost"`
+	Price       int64           `json:"price"`
+	Quote       int64           `json:"quote"`
+	Alias       string          `json:"alias"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Data        string          `json:"data"`
 }
 
 func decodeNPCRegistry(data []byte, expectedFingerprint string) (NPCRegistry, error) {
@@ -200,6 +203,7 @@ func (entry npcRegistryEntry) toNPCSpec() NPCSpec {
 		ActorID:               entry.ActorID,
 		ActorIDKnown:          entry.ActorIDKnown,
 		TalkRange:             entry.TalkRange,
+		TalkText:              entry.TalkText,
 		WindowType:            entry.WindowType,
 		WindowSequence:        entry.WindowSequence,
 		WindowObjectID:        entry.WindowObjectID,
@@ -209,12 +213,14 @@ func (entry npcRegistryEntry) toNPCSpec() NPCSpec {
 		SourceFingerprint:     entry.SourceFingerprint,
 		Verified:              entry.Verified,
 		Healer:                entry.Healer,
+		Passage:               entry.Passage,
 	}
 }
 
 func (choice npcRegistryChoice) toNPCChoice() NPCChoice {
 	return NPCChoice{
-		Button: choice.Button, MaximumCost: choice.MaximumCost, Price: choice.Price,
+		PetDelivery: choice.PetDelivery.clone(),
+		Button:      choice.Button, MaximumCost: choice.MaximumCost, Price: choice.Price,
 		Quote: choice.Quote, Alias: choice.Alias, ID: choice.ID, Name: choice.Name,
 		Description: choice.Description, Data: choice.Data,
 	}

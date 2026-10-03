@@ -23,7 +23,7 @@ func (s *MovementSkill) ValidateDeparture(ctx context.Context, action automation
 	}
 	guarded := *s
 	if s.SafeTravel {
-		navigator, err := s.travelNavigator(o.Character.Level)
+		navigator, err := s.travelNavigator(o.Character.Level, o.EncounterPolicy)
 		if err != nil {
 			return err
 		}

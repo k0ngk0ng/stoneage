@@ -1,0 +1,13 @@
+--- a/npc/npc_exchangeman.c
++++ b/npc/npc_exchangeman.c
+@@ -1,6 +1,8 @@
+ 			kosuu = atoi( buf2);
+ 	 
+-			if( breakflg != 1 ){
+-      }else{
++			/* STONEAGE_COUNTED_EVENT_ITEMS: both hand-in and Break consume.
++			 * Invalid counts must never turn into an unbounded deletion. */
++			if (kosuu <= 0 || kosuu > CHAR_MAXITEMHAVE) return FALSE;
++			{
+ 			    for( i =0 ; i < CHAR_MAXITEMHAVE ; i++ ){
+ 				    itemindex = CHAR_getItemIndex( talker , i );

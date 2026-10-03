@@ -173,6 +173,9 @@ func Main(ctx context.Context, args []string, version string, out io.Writer) err
 				ids = append(ids, m.ID)
 			}
 			fields := Object{"ok": true, "mode": c.Mode, "strategy": s.ID(), "members": ids, "model": c.Model}
+			if status := learnedModelStatus(s); status != "" {
+				fields["model_status"] = status
+			}
 			if selection != nil {
 				fields["selection"] = selection
 			}

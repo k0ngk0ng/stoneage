@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aimcp"
 	"github.com/k0ngk0ng/stoneage/internal/aiplanner"
 	"github.com/k0ngk0ng/stoneage/internal/automation"
@@ -116,6 +117,7 @@ func ProjectAutomationObservation(o aimcp.Observation, npcs NPCRegistry) automat
 func projectAutomationObservation(observation aimcp.Observation) automation.Observation {
 	entity := func(source aimcp.Entity) automation.Entity {
 		return automation.Entity{
+			SpeciesID: source.SpeciesID, SpeciesIDKnown: source.SpeciesIDKnown, EventFlag: source.EventFlag, EventFlagKnown: source.EventFlagKnown, Slot: source.Slot,
 			ID: source.ID, Name: source.Name, Level: source.Level,
 			HP: source.HP, MaxHP: source.MaxHP, Alive: source.Alive,
 			Skills: slices.Clone(source.Skills), UseFlag: source.UseFlag,
@@ -131,6 +133,7 @@ func projectAutomationObservation(observation aimcp.Observation) automation.Obse
 		Dead: !observation.Character.Alive, Inventory: maps.Clone(observation.Inventory),
 		Flags: maps.Clone(observation.Flags), Skills: maps.Clone(observation.Skills),
 		OwnProgress: maps.Clone(observation.OwnProgress), Windows: make(map[string]int),
+		EncounterPolicy: observation.EncounterPolicy,
 	}
 	for _, pet := range observation.Pets {
 		if pet.ID != "" {
@@ -149,7 +152,33 @@ func (g *AutomationGame) Execute(ctx context.Context, a automation.Action) error
 	if err := g.Backend.check(g.Backend.Binding); err != nil {
 		return err
 	}
-	return g.Skills.Execute(ctx, a)
+	for attempt := 0; ; attempt++ {
+		err := g.Skills.Execute(ctx, a)
+		if !errors.Is(err, aigame.ErrStaleRevision) || attempt >= 2 {
+			return err
+		}
+		// Only the built-in NPC executor proves this retry safe: a stale
+		// revision is rejected before TK/WN is written. Earlier dialogue
+		// NEXT pages have already been acknowledged; Execute reads the
+		// current unanswered page rather than replaying those requests.
+		// Other skills can have partially completed mutations and may not
+		// inherit this retry merely by returning ErrStaleRevision.
+		skills, ok := g.Skills.(SkillSet)
+		if !ok {
+			return err
+		}
+		if _, ok := skills[a.Skill].(*NPCSkill); !ok {
+			return err
+		}
+		if a.Skill != "npc.talk" && a.Skill != "npc.window" && a.Skill != "npc.dialogue" {
+			return err
+		}
+		current, observeErr := g.Backend.Observe(ctx, g.Backend.Binding)
+		if observeErr != nil {
+			return observeErr
+		}
+		a.ExpectedRevision = current.Revision
+	}
 }
 
 func (g *AutomationGame) ValidateSkill(ctx context.Context, a automation.Action) error {

@@ -1,0 +1,190 @@
+{
+  "id": "axe-request",
+  "name": "开启送斧头事件",
+  "description": "斧头任务链（百科 b1）的一个可检查阶段；完整目标为 axe-return。窗口、跨图路线和断线恢复正在验收，尚未启用。",
+  "status": "unverified",
+  "preconditions": [
+    {
+      "kind": "backpack_free_slots",
+      "value": 1,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event03_2",
+          "line": 1
+        },
+        {
+          "path": "npc/sainasu/event/event03.create",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "approach",
+      "kind": "move",
+      "description": "前往NPC旁的交互格",
+      "action": {
+        "skill": "move",
+        "arguments": {
+          "floor": 1400,
+          "x": 69,
+          "y": 88
+        }
+      },
+      "npc": "亚姆亚姆",
+      "success_conditions": [
+        {
+          "kind": "position",
+          "value": 1400,
+          "x": 69,
+          "y": 88
+        }
+      ],
+      "timeout_seconds": 600,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event03_2",
+          "line": 1
+        },
+        {
+          "path": "npc/sainasu/event/event03.create",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "talk",
+      "kind": "talk",
+      "description": "打开任务对话",
+      "action": {
+        "skill": "npc.talk",
+        "arguments": {
+          "floor": 1400,
+          "npc": "axe-yam",
+          "x": 69,
+          "y": 89
+        }
+      },
+      "npc": "亚姆亚姆",
+      "success_conditions": [
+        {
+          "kind": "window_sequence",
+          "id": "axe-yam",
+          "value": 234
+        }
+      ],
+      "timeout_seconds": 30,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event03_2",
+          "line": 1
+        },
+        {
+          "path": "npc/sainasu/event/event03.create",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "request",
+      "kind": "confirm",
+      "description": "读完服务端分页后确认；提交不代表已完成交付",
+      "action": {
+        "skill": "npc.dialogue",
+        "arguments": {
+          "choice": 4,
+          "npc": "axe-yam",
+          "window_sequence": 234
+        }
+      },
+      "npc": "亚姆亚姆",
+      "success_conditions": [
+        {
+          "kind": "flag_set",
+          "id": "now:3"
+        },
+        {
+          "kind": "item_count",
+          "id": "item:2416",
+          "value": 1
+        }
+      ],
+      "timeout_seconds": 60,
+      "cost_known": true,
+      "maximum_cost": 0,
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event03_2",
+          "line": 1
+        },
+        {
+          "path": "npc/sainasu/event/event03.create",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "success": [
+    {
+      "kind": "flag_set",
+      "id": "event:3",
+      "description": "服务端确认该阶段事件状态",
+      "evidence": [
+        {
+          "path": "npc/sainasu/event/event03_2",
+          "line": 1
+        },
+        {
+          "path": "npc/sainasu/event/event03.create",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "gold_min": 0,
+    "gold_expected": 0,
+    "gold_max": 0,
+    "notes": "任务对话无金币费用；旅途补给尚未验收，不包含自动购买授权。",
+    "evidence": [
+      {
+        "path": "npc/sainasu/event/event03_2",
+        "line": 1
+      },
+      {
+        "path": "npc/sainasu/event/event03.create",
+        "line": 1
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "source": {
+        "path": "npc/sainasu/event/event03_2",
+        "line": 1
+      },
+      "claim": "原版 ExChangeMan 的领取/交付、道具与旗标字段",
+      "verified": false
+    },
+    {
+      "source": {
+        "path": "npc/sainasu/event/event03.create",
+        "line": 1
+      },
+      "claim": "实际NPC创建位置",
+      "verified": false
+    }
+  ],
+  "source": {
+    "path": "tasks/axe-request.json"
+  },
+  "preparation_reviewed": false,
+  "preparation_notes": "需空背包格与完整跨地图路线验收；不能仅凭静态脚本开启执行。",
+  "evidence_verified": false,
+  "execution_verified": false
+}

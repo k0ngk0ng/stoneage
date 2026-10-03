@@ -19,8 +19,16 @@ import (
 // from the reviewed mapwarp records, but the coordinator must observe the
 // resulting floor before the next segment is selected.
 type LevelingNavigator struct {
-	Knowledge *aiknowledge.Knowledge
-	Tiles     TileNavigator
+	Knowledge     *aiknowledge.Knowledge
+	Tiles         TileNavigator
+	nonSpawning   map[int]bool
+	occupiedFloor int
+	occupiedTiles map[ainavigation.Point]bool
+	// Scoped to one Next calculation. Never reuse across observations:
+	// level, encounter policy and visible occupancy can all change.
+	encounterRows map[int][]int
+	safeRows      map[int]bool
+	routes        map[levelingRouteKey]levelingRouteResult
 
 	// WarpGraph and MaxWarpEdges are optional test/operator overrides. When
 	// WarpGraph is nil, Knowledge.Warps is the only source of warp edges.
@@ -36,24 +44,82 @@ type tileRouteOptionsNavigator interface {
 	RouteContextWithOptions(context.Context, int, ainavigation.Point, ainavigation.Point, ainavigation.RouteOptions) (ainavigation.Route, error)
 }
 
+type tileRegionNavigator interface {
+	RouteToAny(context.Context, int, ainavigation.Point, func(ainavigation.Point) bool, ainavigation.RouteOptions) (ainavigation.Route, error)
+}
+
 var errUnsafeLevelingRoute = errors.New("leveling route enters an unsafe encounter area")
 
 func (n *LevelingNavigator) Next(ctx context.Context, s aigame.Snapshot, q aileveling.NavigationRequest) (aileveling.Navigation, error) {
+	return n.next(ctx, s, q, nil)
+}
+
+// NextForPets uses the same collision, effective encounter and route checks as
+// leveling, but selects areas containing an eligible requested native species.
+func (n *LevelingNavigator) NextForPets(ctx context.Context, s aigame.Snapshot, targets []PetCollectionTarget) (aileveling.Navigation, error) {
+	if n.Knowledge == nil {
+		return aileveling.Navigation{}, aileveling.ErrNoNavigation
+	}
+	wanted := map[int]bool{}
+	for _, enemy := range n.Knowledge.EnemiesTable {
+		for _, target := range targets {
+			if enemy.TemplateID == int(target.SpeciesID) && enemy.PetFlag != 0 && enemy.Levels.Min <= int(target.MaximumLevel) && enemy.Levels.Max >= int(target.MinimumLevel) {
+				wanted[enemy.ID] = true
+			}
+		}
+	}
+	return n.next(ctx, s, aileveling.NavigationRequest{}, func(a aiknowledge.LevelingArea) bool {
+		for _, id := range a.EnemyIDs {
+			if wanted[id] {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func (n *LevelingNavigator) next(ctx context.Context, s aigame.Snapshot, q aileveling.NavigationRequest, eligible func(aiknowledge.LevelingArea) bool) (aileveling.Navigation, error) {
 	if n.Knowledge == nil || n.Tiles == nil {
 		return aileveling.Navigation{}, aileveling.ErrNoNavigation
 	}
 	if err := ctx.Err(); err != nil {
 		return aileveling.Navigation{}, err
 	}
+	// Bind only this calculation to the current server observation. A table
+	// reload, missing extension, or mismatch revokes the previous exemption.
+	bound := *n
+	bound.nonSpawning = n.Knowledge.NonSpawningEncounters(s.AI.EncounterPolicy)
+	bound.encounterRows = make(map[int][]int)
+	bound.safeRows = make(map[int]bool)
+	bound.routes = make(map[levelingRouteKey]levelingRouteResult)
+	for index, row := range n.Knowledge.Encounters {
+		if row.ZOrder > 0 {
+			bound.encounterRows[row.Floor] = append(bound.encounterRows[row.Floor], index)
+			bound.safeRows[index] = bound.encounterRowSafe(index, int(s.Player.Level))
+		}
+	}
+	bound.occupiedFloor = int(s.Position.Floor)
+	bound.occupiedTiles = map[ainavigation.Point]bool{}
+	for _, actor := range s.Actors {
+		if actorBlocksMovement(actor.Kind, int(actor.CharType), actor.GraphicKnown, int(actor.Graphic)) && (actor.X != s.Position.X || actor.Y != s.Position.Y) {
+			bound.occupiedTiles[ainavigation.Point{X: int(actor.X), Y: int(actor.Y)}] = true
+		}
+	}
+	n = &bound
 
 	type candidate struct {
 		area  aiknowledge.LevelingArea
 		score int
+		hops  int
 	}
 	level := int(s.Player.Level)
 	currentFloor := int(s.Position.Floor)
+	floorHops, entrances := n.reachableLevelingFloors(currentFloor)
 	candidates := []candidate{}
 	for _, a := range n.Knowledge.Areas() {
+		if eligible != nil && !eligible(a) {
+			continue
+		}
 		if !a.Verified || (q.AreaID != 0 && a.ID != q.AreaID) {
 			continue
 		}
@@ -64,15 +130,32 @@ func (n *LevelingNavigator) Next(ctx context.Context, s aigame.Snapshot, q ailev
 		if len(a.EnemyIDs) == 0 || a.Levels.Max > level+1 || a.Levels.Min > level {
 			continue
 		}
+		hops, reachable := floorHops[a.Floor]
+		if !reachable {
+			continue
+		}
 		distance := 0
 		if a.Floor == currentFloor {
 			x := clamp(int(s.Position.X), a.Bounds.X, a.Bounds.X2)
 			y := clamp(int(s.Position.Y), a.Bounds.Y, a.Bounds.Y2)
 			distance = abs(x-int(s.Position.X)) + abs(y-int(s.Position.Y))
+		} else {
+			distance = int(^uint(0) >> 1)
+			for _, entrance := range entrances[a.Floor] {
+				d := abs(clamp(entrance.X, a.Bounds.X, a.Bounds.X2)-entrance.X) + abs(clamp(entrance.Y, a.Bounds.Y, a.Bounds.Y2)-entrance.Y)
+				if d < distance {
+					distance = d
+				}
+			}
 		}
-		candidates = append(candidates, candidate{area: a, score: (level-a.Levels.Max)*100 + distance})
+		candidates = append(candidates, candidate{area: a, score: (level-a.Levels.Max)*100 + distance, hops: hops})
 	}
-	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].score < candidates[j].score })
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].hops != candidates[j].hops {
+			return candidates[i].hops < candidates[j].hops
+		}
+		return candidates[i].score < candidates[j].score
+	})
 
 	from := ainavigation.Point{X: int(s.Position.X), Y: int(s.Position.Y)}
 	for _, c := range candidates {
@@ -98,12 +181,25 @@ func (n *LevelingNavigator) Next(ctx context.Context, s aigame.Snapshot, q ailev
 }
 
 func (n *LevelingNavigator) nextOnFloor(ctx context.Context, s aigame.Snapshot, a aiknowledge.LevelingArea, from ainavigation.Point) (aileveling.Navigation, bool, error) {
+	if _, ok := n.Tiles.(tileRegionNavigator); ok {
+		route, err := n.routeLevelingArea(ctx, a, from, int(s.Player.Level))
+		if err == nil {
+			return shortLevelingNavigation(route, a.Floor), true, nil
+		}
+		if ctx.Err() != nil {
+			return aileveling.Navigation{}, false, ctx.Err()
+		}
+		return aileveling.Navigation{}, false, nil
+	}
 	points := levelingApproachPoints(a, from)
 	for _, to := range points {
 		if err := ctx.Err(); err != nil {
 			return aileveling.Navigation{}, false, err
 		}
 		if occupied(s, to) {
+			continue
+		}
+		if !n.levelingAreaActiveAt(a, to) {
 			continue
 		}
 		route, err := n.routeLeveling(ctx, a.Floor, from, to, int(s.Player.Level))
@@ -126,9 +222,25 @@ func (n *LevelingNavigator) nextAcrossFloors(ctx context.Context, s aigame.Snaps
 	if graph == nil || len(graph.Edges()) == 0 {
 		return aileveling.Navigation{}, false, nil
 	}
+	if _, ok := n.Tiles.(tileRegionNavigator); ok {
+		edges, firstRoute, err := n.findSafeCrossMapRouteTo(ctx, graph, aiknowledge.Point{Floor: int(s.Position.Floor), X: from.X, Y: from.Y}, a.Floor, int(s.Player.Level), func(entry ainavigation.Point) error {
+			_, err := n.routeLevelingArea(ctx, a, entry, int(s.Player.Level))
+			return err
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				return aileveling.Navigation{}, false, ctx.Err()
+			}
+			return aileveling.Navigation{}, false, nil
+		}
+		return crossMapLevelingNavigation(edges, firstRoute), true, nil
+	}
 	for _, to := range levelingApproachPoints(a, from) {
 		if err := ctx.Err(); err != nil {
 			return aileveling.Navigation{}, false, err
+		}
+		if !n.levelingAreaActiveAt(a, to) {
+			continue
 		}
 		// Validate the requested final tile before traversing the static warp
 		// graph. Encounter rectangles often contain decorative or blocked
@@ -155,34 +267,61 @@ func (n *LevelingNavigator) nextAcrossFloors(ctx context.Context, s aigame.Snaps
 		if len(edges) == 0 {
 			continue
 		}
-		if firstRoute.Empty() {
-			// The preceding W segment has already been acknowledged at this
-			// exact source tile. A native EV is a separate client request; leave
-			// Route empty so the coordinator submits it on this tick and never
-			// treats W as an implicit floor transition.
-			return aileveling.Navigation{
-				Ready:                true,
-				Destination:          aigame.Point{Floor: int32(edges[0].From.Floor), X: int32(edges[0].From.X), Y: int32(edges[0].From.Y)},
-				WarpDestination:      aigame.Point{Floor: int32(edges[0].To.Floor), X: int32(edges[0].To.X), Y: int32(edges[0].To.Y)},
-				WarpDestinationKnown: true,
-				WarpEventType:        aigame.MapEventWarp,
-				CostKnown:            true,
-				Reason:               "verified map event source reached",
-			}, true, nil
-		}
-		navigation := shortLevelingNavigation(firstRoute, int(s.Position.Floor))
-		// Only the final packet needed to enter the first verified warp source
-		// can transition floors. If the server applies the warp before the next
-		// observation, the source tile will never be reported; carry the exact
-		// known destination for that packet. Longer routes must be acknowledged
-		// at their current-floor intermediate endpoint first.
-		if len(firstRoute.Directions) <= 4 {
-			navigation.WarpDestination = aigame.Point{Floor: int32(edges[0].To.Floor), X: int32(edges[0].To.X), Y: int32(edges[0].To.Y)}
-			navigation.WarpDestinationKnown = true
-		}
-		return navigation, true, nil
+		return crossMapLevelingNavigation(edges, firstRoute), true, nil
 	}
 	return aileveling.Navigation{}, false, nil
+}
+
+func crossMapLevelingNavigation(edges []aiplanner.WarpEdge, firstRoute ainavigation.Route) aileveling.Navigation {
+	if firstRoute.Empty() {
+		// The preceding W segment has already been acknowledged at this
+		// exact source tile. A native EV is a separate client request; leave
+		// Route empty so the coordinator submits it on this tick and never
+		// treats W as an implicit floor transition.
+		return aileveling.Navigation{
+			Ready:                true,
+			Destination:          aigame.Point{Floor: int32(edges[0].From.Floor), X: int32(edges[0].From.X), Y: int32(edges[0].From.Y)},
+			WarpDestination:      aigame.Point{Floor: int32(edges[0].To.Floor), X: int32(edges[0].To.X), Y: int32(edges[0].To.Y)},
+			WarpDestinationKnown: true,
+			WarpEventType:        aigame.MapEventWarp,
+			CostKnown:            true,
+			Reason:               "verified map event source reached",
+		}
+	}
+	navigation := shortLevelingNavigation(firstRoute, edges[0].From.Floor)
+	// Only the final packet needed to enter the first verified warp source
+	// can transition floors. If the server applies the warp before the next
+	// observation, the source tile will never be reported; carry the exact
+	// known destination for that packet. Longer routes must be acknowledged
+	// at their current-floor intermediate endpoint first.
+	if len(firstRoute.Directions) <= 4 {
+		navigation.WarpDestination = aigame.Point{Floor: int32(edges[0].To.Floor), X: int32(edges[0].To.X), Y: int32(edges[0].To.Y)}
+		navigation.WarpDestinationKnown = true
+	}
+	return navigation
+}
+
+func (n *LevelingNavigator) routeLevelingArea(ctx context.Context, a aiknowledge.LevelingArea, from ainavigation.Point, level int) (ainavigation.Route, error) {
+	return n.Tiles.(tileRegionNavigator).RouteToAny(ctx, a.Floor, from, func(p ainavigation.Point) bool {
+		return p != from && a.Bounds.Contains(p.X, p.Y) && n.levelingAreaActiveAt(a, p)
+	}, ainavigation.RouteOptions{Blocked: func(p ainavigation.Point) bool {
+		return n.pointOccupied(a.Floor, p) || !n.encounterPointSafe(a.Floor, p.X, p.Y, level)
+	}})
+}
+
+// Encounter rectangles overlap. The server rolls only the effective row at
+// the chosen tile; a lower-priority rectangle containing the desired species
+// is not sufficient evidence that those pets can actually spawn there.
+func (n *LevelingNavigator) levelingAreaActiveAt(a aiknowledge.LevelingArea, point ainavigation.Point) bool {
+	if len(n.Knowledge.Encounters) == 0 {
+		return true
+	} // Narrow synthetic navigation adapters.
+	index, ok := n.Knowledge.EncounterIndexAt(a.Floor, point.X, point.Y)
+	if !ok || n.nonSpawning[index] || n.Knowledge.Encounters[index].EncounterProbability.Max <= 0 {
+		return false
+	}
+	effective, ok := n.Knowledge.FindEncounterArea(index)
+	return ok && effective.ID == a.ID && effective.Floor == a.Floor && effective.Bounds == a.Bounds
 }
 
 type levelingCrossMapSearchState struct {
@@ -198,6 +337,13 @@ type levelingCrossMapSearchState struct {
 // hiding a later unsafe encounter area and allows another warp path to win
 // when the shortest static path is unsafe.
 func (n *LevelingNavigator) findSafeCrossMapRoute(ctx context.Context, graph *aiplanner.WarpGraph, from, to aiknowledge.Point, playerLevel int) ([]aiplanner.WarpEdge, ainavigation.Route, error) {
+	return n.findSafeCrossMapRouteTo(ctx, graph, from, to.Floor, playerLevel, func(entry ainavigation.Point) error {
+		_, err := n.routeLeveling(ctx, to.Floor, entry, ainavigation.Point{X: to.X, Y: to.Y}, playerLevel)
+		return err
+	})
+}
+
+func (n *LevelingNavigator) findSafeCrossMapRouteTo(ctx context.Context, graph *aiplanner.WarpGraph, from aiknowledge.Point, targetFloor, playerLevel int, finish func(ainavigation.Point) error) ([]aiplanner.WarpEdge, ainavigation.Route, error) {
 	if graph == nil {
 		return nil, ainavigation.Route{}, ErrCrossMapUnavailable
 	}
@@ -236,6 +382,12 @@ func (n *LevelingNavigator) findSafeCrossMapRoute(ctx context.Context, graph *ai
 				limitReached = true
 				continue
 			}
+			// A previously reached destination already had its final leg
+			// checked. Proving another path to the same point cannot improve
+			// this breadth-first search; avoid repeating large tile searches.
+			if previous, ok := visited[edge.To]; ok && previous <= pathLength {
+				continue
+			}
 			firstRoute, err := n.routeLeveling(ctx, state.point.Floor,
 				ainavigation.Point{X: state.point.X, Y: state.point.Y},
 				ainavigation.Point{X: edge.From.X, Y: edge.From.Y}, playerLevel)
@@ -255,17 +407,12 @@ func (n *LevelingNavigator) findSafeCrossMapRoute(ctx context.Context, graph *ai
 			if !n.encounterPointSafe(edge.To.Floor, edge.To.X, edge.To.Y, playerLevel) {
 				continue
 			}
-			if edge.To.Floor == to.Floor {
-				if _, err := n.routeLeveling(ctx, edge.To.Floor,
-					ainavigation.Point{X: edge.To.X, Y: edge.To.Y},
-					ainavigation.Point{X: to.X, Y: to.Y}, playerLevel); err == nil {
+			if edge.To.Floor == targetFloor {
+				if err := finish(ainavigation.Point{X: edge.To.X, Y: edge.To.Y}); err == nil {
 					return path, firstPath, nil
 				} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return nil, ainavigation.Route{}, err
 				}
-			}
-			if previous, ok := visited[edge.To]; ok && previous <= pathLength {
-				continue
 			}
 			visited[edge.To] = pathLength
 			queue = append(queue, levelingCrossMapSearchState{point: edge.To, edges: path, firstRoute: firstPath})
@@ -282,8 +429,35 @@ func (n *LevelingNavigator) findSafeCrossMapRoute(ctx context.Context, graph *ai
 // with unsafe encounter cells blocked when the shortest route is rejected.
 // The optional interface preserves compatibility with existing TileNavigator
 // adapters while enabling a real collision-aware detour where available.
+type levelingRouteKey struct {
+	floor, level int
+	from, to     ainavigation.Point
+}
+
+type levelingRouteResult struct {
+	route ainavigation.Route
+	err   error
+}
+
 func (n *LevelingNavigator) routeLeveling(ctx context.Context, floor int, from, to ainavigation.Point, playerLevel int) (ainavigation.Route, error) {
-	if !n.encounterPointSafe(floor, to.X, to.Y, playerLevel) {
+	if err := ctx.Err(); err != nil {
+		return ainavigation.Route{}, err
+	}
+	key := levelingRouteKey{floor: floor, level: playerLevel, from: from, to: to}
+	if cached, ok := n.routes[key]; ok {
+		return cached.route, cached.err
+	}
+	route, err := n.computeLevelingRoute(ctx, floor, from, to, playerLevel)
+	// Reuse only within this observation. Limit memory even on unusual
+	// warp graphs; reaching the cap affects speed, never route validity.
+	if n.routes != nil && len(n.routes) < 512 && len(route.Points) <= 4096 && ctx.Err() == nil {
+		n.routes[key] = levelingRouteResult{route: route, err: err}
+	}
+	return route, err
+}
+
+func (n *LevelingNavigator) computeLevelingRoute(ctx context.Context, floor int, from, to ainavigation.Point, playerLevel int) (ainavigation.Route, error) {
+	if n.pointOccupied(floor, to) || !n.encounterPointSafe(floor, to.X, to.Y, playerLevel) {
 		return ainavigation.Route{}, errUnsafeLevelingRoute
 	}
 	route, err := n.Tiles.RouteContext(ctx, floor, from, to)
@@ -303,7 +477,7 @@ func (n *LevelingNavigator) routeLeveling(ctx context.Context, floor int, from, 
 	}
 	safeRoute, err := optionsNavigator.RouteContextWithOptions(ctx, floor, from, to, ainavigation.RouteOptions{
 		Blocked: func(point ainavigation.Point) bool {
-			return !n.encounterPointSafe(floor, point.X, point.Y, playerLevel)
+			return n.pointOccupied(floor, point) || !n.encounterPointSafe(floor, point.X, point.Y, playerLevel)
 		},
 	})
 	if err != nil {
@@ -324,16 +498,41 @@ func (n *LevelingNavigator) routeLeveling(ctx context.Context, floor int, from, 
 // effective probability is zero is safe even when its group data is absent;
 // any positive-probability row still requires a verified leveling area.
 func (n *LevelingNavigator) encounterPointSafe(floor, x, y, playerLevel int) bool {
-	row, ok := n.Knowledge.EncounterAt(floor, x, y)
-	if !ok || row.EncounterProbability.Max <= 0 {
+	if n.encounterRows != nil {
+		selected := -1
+		for _, index := range n.encounterRows[floor] {
+			row := n.Knowledge.Encounters[index]
+			if row.Bounds.Contains(x, y) && (selected < 0 || row.ZOrder > n.Knowledge.Encounters[selected].ZOrder) {
+				selected = index
+			}
+		}
+		return selected < 0 || n.safeRows[selected]
+	}
+	index, ok := n.Knowledge.EncounterIndexAt(floor, x, y)
+	if !ok {
 		return true
 	}
-	area, ok := n.Knowledge.FindArea(row.ID)
+	return n.encounterRowSafe(index, playerLevel)
+}
+
+func (n *LevelingNavigator) encounterRowSafe(index, playerLevel int) bool {
+	row := n.Knowledge.Encounters[index]
+	if row.EncounterProbability.Max <= 0 {
+		return true
+	}
+	if n.nonSpawning[index] {
+		return true
+	}
+	area, ok := n.Knowledge.FindEncounterArea(index)
 	return ok && area.Verified && len(area.EnemyIDs) > 0 && area.Levels.Max > 0 && area.Levels.Min <= playerLevel && area.Levels.Max <= playerLevel+1
 }
 
 // routeEncounterSafe checks the complete ground route, rather than only the
 // packet prefix that will be submitted on the current tick.
+func (n *LevelingNavigator) pointOccupied(floor int, p ainavigation.Point) bool {
+	return floor == n.occupiedFloor && n.occupiedTiles[p]
+}
+
 func (n *LevelingNavigator) routeEncounterSafe(route ainavigation.Route, floor, steps, playerLevel int) bool {
 	if steps <= 0 {
 		return true
@@ -342,14 +541,14 @@ func (n *LevelingNavigator) routeEncounterSafe(route ainavigation.Route, floor, 
 		return false
 	}
 	for _, point := range route.Points[:steps] {
-		if !n.encounterPointSafe(floor, point.X, point.Y, playerLevel) {
+		if n.pointOccupied(floor, point) || !n.encounterPointSafe(floor, point.X, point.Y, playerLevel) {
 			return false
 		}
 	}
 	return true
 }
 
-func (n *LevelingNavigator) levelingWarpGraph(targetFloor int) *aiplanner.WarpGraph {
+func (n *LevelingNavigator) levelingWarpEdges() []aiplanner.WarpEdge {
 	var source []aiplanner.WarpEdge
 	if n.WarpGraph != nil {
 		source = n.WarpGraph.Edges()
@@ -366,6 +565,39 @@ func (n *LevelingNavigator) levelingWarpGraph(targetFloor int) *aiplanner.WarpGr
 			allowed = append(allowed, edge)
 		}
 	}
+	return allowed
+}
+
+// Rank reachable nearby floors before distant areas. This is only a search
+// heuristic: every selected ground segment and warp still needs the complete
+// collision, occupancy and encounter checks below.
+func (n *LevelingNavigator) reachableLevelingFloors(current int) (map[int]int, map[int][]aiknowledge.Point) {
+	byFloor := map[int][]aiplanner.WarpEdge{}
+	for _, edge := range n.levelingWarpEdges() {
+		byFloor[edge.From.Floor] = append(byFloor[edge.From.Floor], edge)
+	}
+	hops := map[int]int{current: 0}
+	entrances := map[int][]aiknowledge.Point{}
+	queue := []int{current}
+	for head := 0; head < len(queue); head++ {
+		floor := queue[head]
+		for _, edge := range byFloor[floor] {
+			next := hops[floor] + 1
+			previous, seen := hops[edge.To.Floor]
+			if !seen {
+				hops[edge.To.Floor] = next
+				queue = append(queue, edge.To.Floor)
+			}
+			if !seen || previous == next {
+				entrances[edge.To.Floor] = append(entrances[edge.To.Floor], edge.To)
+			}
+		}
+	}
+	return hops, entrances
+}
+
+func (n *LevelingNavigator) levelingWarpGraph(targetFloor int) *aiplanner.WarpGraph {
+	allowed := n.levelingWarpEdges()
 	if len(allowed) == 0 {
 		return nil
 	}

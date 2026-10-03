@@ -649,7 +649,7 @@ func validateActionLocked(state *gameState, action Action) ([]wireValue, string,
 		// Own-state identity refresh is read-only and the server supports it
 		// during battle. Keep world-only status commands restricted and still
 		// validate the correlated AI request ID below.
-		if !(battle && (action.Command == "BTIME" || action.Command == "BTRULES" || action.Command == "AI" || strings.HasPrefix(action.Command, "AI:"))) {
+		if !(battle && (action.Command == "BTIME" || action.Command == "BTRULES" || action.Command == "BCAP" || strings.HasPrefix(action.Command, "BCAP:") || action.Command == "AI" || strings.HasPrefix(action.Command, "AI:"))) {
 			if err := requireWorld(); err != nil {
 				return nil, "", err
 			}
@@ -757,6 +757,9 @@ func validBattleCommand(command string) (string, error) {
 }
 
 func validStatusRequest(value string) bool {
+	if strings.HasPrefix(value, "BCAP:") {
+		return validAIRequestID(strings.TrimPrefix(value, "BCAP:"))
+	}
 	if strings.HasPrefix(value, "AI:") {
 		return validAIRequestID(strings.TrimPrefix(value, "AI:"))
 	}

@@ -65,17 +65,30 @@ func TestInventoryRefreshRequiresReceivedOwnStateNotOutgoingRevision(t *testing.
 			if err != nil || got.AI.Items[0].TemplateID != 4 {
 				t.Fatalf("fresh: %+v %v", got.AI, err)
 			}
-		case "no-response", "stale-response":
+		case "no-response":
 			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("no-response err=%v", err)
+			}
+		case "stale-response":
+			if !errors.Is(err, errIdentityReplySuperseded) {
+				t.Fatalf("uncorrelated responses accepted: %v", err)
 			}
 		case "legacy":
 			if err == nil {
 				t.Fatal("accepted legacy response without item identity")
 			}
 		}
-		if len(s.actions) != 1 || s.actions[0].Kind != aigame.ActionStatus || !strings.HasPrefix(s.actions[0].Command, "AI:") {
+		want := 1
+		if kind == "stale-response" {
+			want = 3
+		}
+		if len(s.actions) != want {
 			t.Fatalf("requests=%v", s.actions)
+		}
+		for _, a := range s.actions {
+			if a.Kind != aigame.ActionStatus || !strings.HasPrefix(a.Command, "AI:") {
+				t.Fatal("unexpected mutation", a)
+			}
 		}
 	}
 }

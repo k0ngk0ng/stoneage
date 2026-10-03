@@ -1152,6 +1152,15 @@ func (c *Coordinator) Tick(ctx context.Context, handle string) (automation.Check
 		defer stop()
 		return checkpoint, c.pause(persist, &checkpoint, "达到无进度超时，任务已暂停")
 	}
+	// Navigation and recovery can take longer than a tick. Enforce both
+	// budgets inside those operations as well as between ticks; otherwise
+	// an expensive route search can run beyond the declared time limit.
+	remaining := time.Duration(checkpoint.Plan.MaximumSeconds)*time.Second - c.now().Sub(checkpoint.StartedAt)
+	if idleRemaining := noProgress - c.now().Sub(checkpoint.StepStartedAt); idleRemaining < remaining {
+		remaining = idleRemaining
+	}
+	workCtx, stopWork := context.WithTimeout(workCtx, remaining)
+	defer stopWork()
 	if submitted {
 		if state.pending.kind == "move" && snapshot.Phase == aigame.PhaseWorld && !snapshot.Battle.Active {
 			// Native W does not echo the player's final position. Request the

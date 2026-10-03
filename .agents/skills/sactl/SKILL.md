@@ -5,7 +5,7 @@ description: 使用 sactl 命令行客户端在石器时代游戏中观察角色
 
 # sactl 游戏会话
 
-配套客户端版本：v0.2.17。四种本地 AI 策略、完整大模型上下文、最终计划恢复与候选模型限制见 [本地 AI](references/ai.md)。升级时同时更新本 skill 和引用文档。
+配套客户端版本：v0.2.18。四种本地 AI 策略、完整大模型上下文、最终计划恢复与候选模型限制见 [本地 AI](references/ai.md)。升级时同时更新本 skill 和引用文档。
 
 通过已安装的 `sactl` 操作用户指定的角色。此 skill 是操作说明，不包含大模型、账号或自主运行服务。
 
@@ -28,6 +28,12 @@ v0.2.13 `train --plan-scope member` 可训练离线独立成员对照，默认 t
 v0.2.13 `train --plan-features target-counts-v1` 可显式训练带计划目标计数的新架构，默认 none 不变。它不是强制避开重复目标的规则，也未证明提高胜率；从旧父模型迁移或恢复时不能覆盖该配置，详见训练引用。
 
 v0.2.17 `ai run/check` 支持本地 safetensors 自动查找；`ai run` 默认实时可读战报，脚本须加 `--json`。目录优先级、歧义处理和提交状态解释见 [模型查找与实时输出](references/ai.md#模型查找与实时输出v0217)。
+
+## 当前源码修复（尚未发布）
+
+- `reconnect` 使用当前后台内存凭据恢复同一账号/角色，不写密码；详见连接引用。v0.2.17 已安装后台不支持此命令，不能将拒绝误当作成功，也不能退化为回记录点登出。
+- 共享战报补全合击 `BY` 和宠物不服从 `BX` 后续攻击；Web 面板、CLI 战报与本地 AI 使用同一解析。可读回合为 1 起算，指令及原始事件的协议回合仍为 0 起算。
+- `ai run/check` 展示模型真实 `model_status`；candidate 不是已证明优于 basic。修复历史解析不等于已经重新训练或提升模型胜率。
 
 ## 接入
 
@@ -75,7 +81,8 @@ v0.2.13原生评估中断后须显式使用 `evaluate --resume`，校验并复�
 - NPC：观察 `ActiveWindow`，使用 `talk`、`choose`、`reply`；选项、目标和坐标来自当前观察，不来自臆测。
 - 背包、宠物、邮件、队伍、交易：先查 `sactl --help`，再调用对应命令。出售/丢弃、转账/交易、删角色以及对外聊天/邮件必须处于用户授权范围；用户已有授权无需反复确认。
 - 原始 `send` 是诊断后备接口，不是缺少高层能力时的默认替代。不能仅凭 Web 按钮猜测原始包参数。
-- Web 与 sactl 的全部功能尚未证实对等。当前 CLI 有 `auto-battle`，不能假定它也有自动任务、自动练级等同名高层命令。缺少入口或结构化结果时明确说明差距，不宣称任务成功。
+- Web 与 sactl 的全部功能尚未证实对等。源码新增（未发布）HTTP 会话的 `quest list|preview|start|status|pause|resume|cancel`，复用 Web 自动任务执行器；使用前核对已安装版本的 `quest --help`。直连 TCP 和 CLI 自动练级入口仍有差距。任务目录有条目不等于可执行，未完成审核的任务仍拒绝启动。详见 [自动任务](references/quests.md)。
+- 源码中的多宠采集会保护原有宠物并持久化新捕获身份；交付须核对物品消耗、宠物去向及奖励，不能把 NPC 的恭喜窗口当作完成。缺药或金币容量不足时先处理明确的暂停原因；结果未知的已提交操作不得重复。源码新增 `marinas-pet-commission-a` 委托定义，需匹配的任务目录与新版原生服务；按服务端目录启用，不代表全部自动任务可用。参数及出发条件见 [自动任务](references/quests.md)。
 - 普通游戏接口不提供 AI 的长期记忆或任务调度；协议保活由客户端自动维护。本地 `sactl ai` 指挥程序另有已授权的模型策略入口。本地 Agent 可以在用户授权范围内管理这些能力，游戏操作仍通过 sactl 及服务端权限校验。
 - 本地模型训练与真实对战评估按需阅读 [本地 AI 训练](references/ai.md)。先核对安装版本的 `sactl ai train --help`；分组实验还需支持 `sactl ai experiment`，使用 validation 选模型、test 仅检验最终候选；`sactl ai build-search` 固定战斗策略搜索合法整数配点，只产出建议。交替训练使用 `build-pool`、`experiment --from-model` 和 `train --from-model`，旧 checkpoint 可用 `export-model` 重新导出，v0.2.13 `--reserve-pets 0..2` 为每人添加同预算备用宠物，绑定实验或恢复时不能另行覆盖；`sustain` 是训练/评估用的治疗换宠教师，可选 `--warmup-teacher`、`--rule-opponent` 或 `--opponent`，不是新的在线策略；具体来源/恢复限制见引用文档。新的原生 PPO 入口与旧 SQLite 线性训练的输入不同，不能混用，也不能把候选模型或训练 loss 当成已验证的竞技场胜率。
 - v0.2.13 `sactl ai league --data-dir` 核验训练对手矩阵，不能替代独立评测。原生评估保留报告及同名 `.data` 目录，用 `sactl ai verify-evaluation --report` 核对赛程、模型、轨迹和策略动作；核验成功不等于晋级或强度认证。`sactl ai champion` 管理固定门槛的受控原生晋级/回退，失败保留旧冠军，放弃和回退不重置测试曝光；它不自动切换线上队伍或授予完整竞技场认证。调度兼容、中断重跑与数据保留规则见 [本地 AI 训练](references/ai.md)。

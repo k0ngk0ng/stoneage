@@ -12,7 +12,7 @@ import (
 )
 
 func TestPackagedHometownStockOffers(t *testing.T) {
-	const fingerprint = "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba"
+	const fingerprint = "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f"
 	catalog := filepath.Join("..", "..", "ai", "catalogs")
 	healing, err := LoadHealingItems(filepath.Join(catalog, "healing-items-2.5.json"), fingerprint)
 	if err != nil {

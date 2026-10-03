@@ -119,6 +119,9 @@ func (s *Server) startBattleLoopLocked(walk, ladderOnly bool) (bool, error) {
 			return false, nil
 		}
 	}
+	if err := s.checkRemoteQuestControl(); err != nil {
+		return false, err
+	}
 	tables, err := s.recoveryTables()
 	if err != nil && !ladderOnly {
 		return false, err
@@ -254,6 +257,12 @@ func describeAutoState(state battleauto.State) string {
 		/* Every direction is refused: the character is standing somewhere it
 		   cannot step off, and no amount of waiting will change that. */
 		doing = "cannot walk (every direction is refused; step the character somewhere else)"
+	case state.Seeking && state.Blocked == "window":
+		doing = "waiting for the open dialog (finish or leave it before looking for fights)"
+	case state.Seeking && state.Blocked == "ladder":
+		doing = "waiting for arena preparation or matchmaking to finish"
+	case state.Seeking && state.Blocked != "":
+		doing = "waiting for game state: " + state.Blocked
 	case state.Seeking:
 		doing = "looking for a fight (walking in place)"
 	}

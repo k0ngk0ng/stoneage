@@ -1,0 +1,16 @@
+--- a/callfromcli.c
++++ b/callfromcli.c
+@@ -1,0 +2,1 @@
++extern char *StoneAge_CaptureObservation(int charaindex, const char *request);
+@@ -1,3 +1,11 @@
+     fd_charaindex = CONNECT_getCharaindex( fd );
++    if (category != NULL && (!strcmp(category, "BCAP") || !strncmp(category, "BCAP:", 5))) {
++        if (CONNECT_isCLI(fd) && CONNECT_isLOGIN(fd)) {
++            string = StoneAge_CaptureObservation(fd_charaindex,
++                category[4] == '\0' ? NULL : category + 5);
++            if (string != NULL) lssproto_S_send(fd, string);
++        }
++        return;
++    }
+     if( category != NULL && (strcmp(category, "AI") == 0 ||
+                              strncmp(category, "AI:", 3) == 0) ) {

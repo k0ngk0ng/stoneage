@@ -16,7 +16,7 @@ var QueryHelp = func() string {
 	out.WriteString(`
 槽位从 0 开始；k/w 是宠物槽位，j 是装备槽位，n 是队伍槽位。
 v0.2.8 起物品、装备和宠物编号会自动获取/刷新，通常无需手动 query AI。
-战斗中可查询 AI（含合法关联请求）、BTIME、BTRULES；其他代码需要在世界场景使用。
+战斗中可查询 AI、BCAP（含合法关联请求）、BTIME、BTRULES；其他代码需要在世界场景使用。
 
 示例：
   sactl query i            # 请求刷新装备和背包
@@ -30,7 +30,7 @@ v0.2.8 起物品、装备和宠物编号会自动获取/刷新，通常无需手
 query 的即时 data 可能仍是旧快照；稍后用 status/observe 核对。
 wait 等待任意事件，不能将一次唤醒当作本次查询完成。
 
-高级：AI:<16位小写十六进制请求ID> 可关联扩展状态响应，通常直接用 AI 即可。
+高级：AI:<16位小写十六进制请求ID> 和 BCAP:<同格式请求ID> 可关联各自响应。
 帮助无需登录：sactl query、sactl query --help、sactl query help。
 `)
 	return out.String()
@@ -43,7 +43,7 @@ func ValidateQueryCommand(args []string) error {
 		return fmt.Errorf("query 需要一个状态代码；运行 sactl query --help 查看用途和示例")
 	}
 	if !aigame.ValidStatusRequest(args[0]) {
-		return fmt.Errorf("不支持状态代码 %q；可用：c i k0..k4 w0..w4 j0..j4 n0..n4 t AI BTIME BTRULES。运行 sactl query --help 查看说明", args[0])
+		return fmt.Errorf("不支持状态代码 %q；可用：c i k0..k4 w0..w4 j0..j4 n0..n4 t AI BTIME BTRULES BCAP。运行 sactl query --help 查看说明", args[0])
 	}
 	return nil
 }

@@ -23,6 +23,7 @@ func StatusQueryGroups() []StatusQueryGroup {
 		{"AI", "扩展自身状态：物品/装备模板编号、宠物稳定编号、事件标记等；不调用大模型", []string{"AI"}},
 		{"BTIME", "竞技场战斗回合时钟；不是游戏时间，非竞技场战斗时可能无有效截止时间", []string{"BTIME"}},
 		{"BTRULES", "战斗规则摘要与引擎平台，用于本地 learned 模型兼容检查；需要支持此扩展的服务器", []string{"BTRULES"}},
+		{"BCAP", "当前 PvE 捕获目标、静态资格及成功时消耗的自身道具槽位；需要支持此扩展的服务器", []string{"BCAP"}},
 	}
 }
 

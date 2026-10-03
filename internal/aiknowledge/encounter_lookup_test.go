@@ -40,3 +40,21 @@ func TestEncounterAtIgnoresDisabledRows(t *testing.T) {
 		t.Fatal("nil knowledge selected an encounter")
 	}
 }
+
+func TestEncounterRiskBindsDuplicateIDsToExactRow(t *testing.T) {
+	b := Rectangle{X2: 10, Y2: 10}
+	a := SourceRef{Path: "encount.txt", Line: 1}
+	z := SourceRef{Path: "encount.txt", Line: 2}
+	k := &Knowledge{
+		Encounters: []EncounterArea{{ID: 7, Floor: 100, Bounds: b, Source: a}, {ID: 7, Floor: 100, Bounds: b, Source: z}},
+		Leveling:   []LevelingArea{{ID: 7, Floor: 100, Bounds: b, Levels: Range{Max: 2}, Evidence: []SourceRef{a}}, {ID: 7, Floor: 100, Bounds: b, Levels: Range{Max: 90}, Evidence: []SourceRef{z}}},
+	}
+	risk, ok := k.FindEncounterArea(1)
+	if !ok || risk.Levels.Max != 90 {
+		t.Fatal("borrowed first row risk", risk)
+	}
+	k.Leveling = append(k.Leveling, k.Leveling[1])
+	if _, ok := k.FindEncounterArea(1); ok {
+		t.Fatal("ambiguous evidence accepted")
+	}
+}

@@ -30,6 +30,8 @@ func Complete(words []string) []string {
 	if len(args) > 0 {
 		previous := args[len(args)-1]
 		switch previous {
+		case "--pet", "--maximum-seconds", "--maximum-deaths", "--maximum-spend", "--reserve":
+			return nil
 		case "--config", "-config", "--socket", "-socket", "--model", "--database", "--demonstrations", "--output", "--report", "--environment", "--manifest", "--experiment", "--mixed-experiment", "--validation-comparison", "--left-experiment", "--right-experiment", "--opponent-model", "--from-model", "--build-pool", "--baseline", "--candidate":
 			return []string{"@files"}
 		case "--directory", "--root", "--work", "--native-dir", "--data-dir", "--search-dir", "--records", "--collection", "--state-dir":
@@ -190,6 +192,7 @@ func Complete(words []string) []string {
 		return completePrefix("--config --profile --help", prefix)
 	}
 	subcommands := map[string]string{
+		"quest": "list preview start status pause resume cancel --help",
 		"query": strings.Join(QueryCodes(), " ") + " --help",
 		"arena": "status contacts create mode invite accept decline loadout ready unready queue cancel leave kick leader result ack wait strategy strategies",
 		"item":  "use drop drop-gold move magic pickup", "mail": "list add send remove-contact",
@@ -200,8 +203,10 @@ func Complete(words []string) []string {
 	}
 	choices := "--json --socket --config --profile --timeout"
 	choices += " " + map[string]string{
-		"logout": "--record-point --in-place --help",
-		"say":    "--color --range", "warp": "--time", "arena": "--request-id --revision",
+		"quest":     "--include-dependencies --pet --maximum-seconds --maximum-deaths --maximum-spend --reserve --help",
+		"logout":    "--record-point --in-place --help",
+		"reconnect": "--help",
+		"say":       "--color --range", "warp": "--time", "arena": "--request-id --revision",
 		"create-character": "--hometown --slot --image --face --vital --strength --toughness --dexterity --earth --water --fire --wind",
 	}[command]
 	if len(positional) == 1 {

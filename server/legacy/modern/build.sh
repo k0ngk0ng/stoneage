@@ -128,6 +128,11 @@ if ! grep -q 'STONEAGE_SAFE_ENEMY_GROUP_BOUNDS' /src/gmsv/char/enemy.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0014-safe-enemy-group-bounds.patch
 fi
 
+cp /modern/stoneage_encounter_policy_impl.h /src/gmsv/include/stoneage_encounter_policy_impl.h
+if ! grep -q 'stoneage_encounter_policy_impl.h' /src/gmsv/char/enemy.c; then
+  printf '\n#include "stoneage_encounter_policy_impl.h"\n' >> /src/gmsv/char/enemy.c
+fi
+
 # The authenticated web console writes one atomic, fixed-path notice file.
 # Let the GMSV consume it in its normal main loop and deliver it to online
 # players through the same red system-message path as the built-in announce
@@ -164,6 +169,22 @@ cp /modern/stoneage_ai_observation.c /src/gmsv/stoneage_ai_observation.c
 cp /modern/stoneage_ai_observation.h /src/gmsv/include/stoneage_ai_observation.h
 if ! grep -q 'StoneAge_AIObservationMake' /src/gmsv/callfromcli.c; then
   patch -d /src/gmsv -p1 < /modern/patches/0013-ai-observation.patch
+fi
+
+# Capture quotes use the native runtime item requirements, including data
+# reloads. Keep the observer in battle_event.c beside its static helpers.
+cp /modern/stoneage_capture_observation_impl.h /src/gmsv/include/stoneage_capture_observation_impl.h
+if ! grep -q 'stoneage_capture_observation_impl.h' /src/gmsv/battle/battle_event.c; then
+  printf '\n#include "stoneage_capture_observation_impl.h"\n' >> /src/gmsv/battle/battle_event.c
+fi
+if ! grep -q 'StoneAge_CaptureObservation' /src/gmsv/callfromcli.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0055-capture-observation.patch
+fi
+
+# Counted ordinary ExChangeMan hand-ins must consume their declared items.
+# The archive contains an empty non-Break branch, retaining quest vouchers.
+if ! grep -q 'STONEAGE_COUNTED_EVENT_ITEMS' /src/gmsv/npc/npc_exchangeman.c; then
+  patch -d /src/gmsv -p1 < /modern/patches/0056-counted-event-items.patch
 fi
 
 # Prepare shop inventory before charging, and publish it only after funding

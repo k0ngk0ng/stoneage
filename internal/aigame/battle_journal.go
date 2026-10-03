@@ -57,10 +57,11 @@ type BattleJournal struct {
 	Battles []BattleLog `json:"battles"`
 }
 type battleJournal struct {
-	battles []BattleLog
-	serial  int
-	pending []string
-	emitted []BattleLogEntry
+	battles        []BattleLog
+	serial         int
+	pending        []string
+	emitted        []BattleLogEntry
+	lastActionTurn int
 }
 
 func journalNumber(s string) int { n, _ := strconv.ParseInt(s, 16, 32); return int(n) }
@@ -98,11 +99,22 @@ func (s *Session) BattleJournal() BattleJournal {
 func (j *battleJournal) add(e BattleLogEntry) {
 	b := &j.battles[0]
 	e.Turn = b.Turn
+	if e.Kind != "start" && e.Kind != "end" {
+		j.lastActionTurn = b.Turn
+	}
 	j.emitted = append(j.emitted, e)
 	b.Logs = append(b.Logs, e)
 	if len(b.Logs) > 300 {
 		b.Logs = append([]BattleLogEntry(nil), b.Logs[len(b.Logs)-300:]...)
 		b.Trimmed = true
+	}
+}
+
+// The native server sends the next menu/BA before BU even on the final turn.
+// Finished journals report the last resolved turn, not that unused menu.
+func (j *battleJournal) finishTurn() {
+	if j.lastActionTurn > 0 {
+		j.battles[0].Turn = j.lastActionTurn
 	}
 }
 func (j *battleJournal) name(id int) string {
@@ -140,6 +152,7 @@ func (j *battleJournal) record(e Event) {
 	if e.Function == "EN" {
 		if eventInt(e, 0, 0) <= 0 {
 			if len(j.battles) > 0 {
+				j.finishTurn()
 				j.battles[0].Ended = true
 				if j.battles[0].Result == "进行中" {
 					j.battles[0].Result = "已结束"
@@ -149,6 +162,7 @@ func (j *battleJournal) record(e Event) {
 		}
 		j.serial++
 		if len(j.battles) > 0 && !j.battles[0].Ended {
+			j.finishTurn()
 			j.battles[0].Ended = true
 			j.battles[0].Result = "已离开"
 		}
@@ -157,6 +171,7 @@ func (j *battleJournal) record(e Event) {
 			j.battles = j.battles[:20]
 		}
 		j.pending = nil
+		j.lastActionTurn = 0
 		j.add(BattleLogEntry{Kind: "start", Text: "战斗开始"})
 		return
 	}
@@ -165,6 +180,7 @@ func (j *battleJournal) record(e Event) {
 	}
 	b := &j.battles[0]
 	if e.Function == "RS" || e.Function == "RD" {
+		j.finishTurn()
 		b.Ended = true
 		b.Result = "已结算"
 		j.add(BattleLogEntry{Kind: "end", Text: "战斗结束，奖励请查看游戏结算窗口"})
@@ -180,6 +196,7 @@ func (j *battleJournal) record(e Event) {
 	n := journalNumber
 	switch p[0] {
 	case "BU":
+		j.finishTurn()
 		b.Ended = true
 		if b.Result == "进行中" {
 			b.Result = "已结束"
@@ -187,7 +204,9 @@ func (j *battleJournal) record(e Event) {
 		return
 	case "BA":
 		if len(p) > 2 {
-			b.Turn = max(1, n(p[2]))
+			if turn, err := strconv.ParseUint(p[2], 16, 31); err == nil {
+				b.Turn = int(turn) + 1
+			}
 		}
 		j.pending = nil
 		return
@@ -246,7 +265,7 @@ func (j *battleJournal) record(e Event) {
 			continue
 		}
 		start := i
-		fixed := map[string]int{"BD": 4, "BM": 2, "BG": 1, "bg": 1, "bn": 1}[m]
+		fixed := map[string]int{"BD": 4, "BM": 2, "BG": 1, "bg": 1, "bn": 1, "BX": 1}[m]
 		if m == "BS" && start+1 < len(p) {
 			if p[start+1] == "f0" {
 				fixed = 2
@@ -295,6 +314,24 @@ func (j *battleJournal) record(e Event) {
 	}
 }
 func (j *battleJournal) movie(m string, v []string, raw string) {
+	if m == "BY" {
+		if hits, ok := comboHits(v); ok {
+			for i, hit := range hits {
+				before := len(j.emitted)
+				j.movie("BH", hit, raw)
+				// One validated attacker group is one hit in a shared-target combo.
+				if len(j.emitted) == before+1 {
+					entry := &j.emitted[before]
+					entry.Hit, entry.Hits = i+1, len(hits)
+					entry.Text = strings.Replace(entry.Text, "：攻击，", fmt.Sprintf("：合击 · 第 %d/%d 段，", i+1, len(hits)), 1)
+					b := &j.battles[0]
+					b.Logs[len(b.Logs)-1] = *entry
+				}
+			}
+			return
+		}
+	}
+
 	n := journalNumber
 	field := func(key string) int {
 		for _, s := range v {
@@ -440,6 +477,12 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 	}
 	e := BattleLogEntry{Kind: m, Raw: raw, Actor: -1, Target: -1}
 	switch m {
+	case "BX":
+		if len(v) == 1 {
+			if actor, ok := journalSlot(v[0]); ok {
+				e.Kind, e.Actor, e.Text = "disobedience", actor, j.name(actor)+"：不服从指令"
+			}
+		}
 	case "bn":
 		if len(v) == 1 {
 			actor, err := strconv.ParseUint(v[0], 16, 8)
@@ -554,4 +597,51 @@ func (j *battleJournal) movie(m string, v []string, raw string) {
 		e.Text = "发生特殊战斗动作，暂未转换具体技能或效果"
 	}
 	j.add(e)
+}
+
+// BY is target-first: r<target>, then one a/f/d[/p][/g] group per attacker.
+// Validate the whole record before emitting anything; a malformed tail must
+// not fabricate partial damage. See native BATTLE_Combo in battle_event.c.
+func comboHits(v []string) ([][]string, bool) {
+	if len(v) < 4 || !strings.HasPrefix(v[0], "r") {
+		return nil, false
+	}
+	if _, ok := journalSlot(v[0][1:]); !ok {
+		return nil, false
+	}
+	var hits [][]string
+	for i := 1; i < len(v); {
+		start := i
+		if !strings.HasPrefix(v[i], "a") {
+			return nil, false
+		}
+		if _, ok := journalSlot(v[i][1:]); !ok {
+			return nil, false
+		}
+		i++
+		seen := map[byte]bool{}
+		for i < len(v) && !strings.HasPrefix(v[i], "a") {
+			value := v[i]
+			if len(value) < 2 || !strings.ContainsRune("fdpg", rune(value[0])) || seen[value[0]] {
+				return nil, false
+			}
+			if _, err := strconv.ParseUint(value[1:], 16, 31); err != nil {
+				return nil, false
+			}
+			if value[0] == 'g' {
+				if _, ok := journalSlot(value[1:]); !ok {
+					return nil, false
+				}
+			}
+			seen[value[0]] = true
+			i++
+		}
+		if !seen['f'] || !seen['d'] || len(hits) >= 20 {
+			return nil, false
+		}
+		hit := []string{v[start], v[0]}
+		hit = append(hit, v[start+1:i]...)
+		hits = append(hits, hit)
+	}
+	return hits, len(hits) > 0
 }

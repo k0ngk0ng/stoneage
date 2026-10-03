@@ -39,6 +39,7 @@ import (
 	"github.com/k0ngk0ng/stoneage/internal/aicontrol"
 	"github.com/k0ngk0ng/stoneage/internal/aigame"
 	"github.com/k0ngk0ng/stoneage/internal/aiknowledge"
+	"github.com/k0ngk0ng/stoneage/internal/aimcp"
 	"github.com/k0ngk0ng/stoneage/internal/battleauto"
 	"github.com/k0ngk0ng/stoneage/internal/characterbuild"
 	"github.com/k0ngk0ng/stoneage/internal/clientip"
@@ -504,6 +505,7 @@ type tcpSession struct {
 	gateCloseOnce        sync.Once
 	automationMu         sync.Mutex
 	automationHandle     AutomationHandle
+	automationReceipt    *aimcp.TaskReceipt
 	automationMode       aicontrol.Mode
 	automationGen        uint64
 	automationNote       string
@@ -1893,13 +1895,15 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		handler.listAutomationTasks(response, request)
 		return
 	}
-	if len(parts) == 3 && parts[1] == "automation" && (parts[2] == "start" || parts[2] == "preview") {
+	if len(parts) == 3 && parts[1] == "automation" && (parts[2] == "start" || parts[2] == "preview" || parts[2] == "cancel") {
 		if request.Method != http.MethodPost {
 			response.Header().Set("Allow", "POST")
 			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if parts[2] == "preview" {
+		if parts[2] == "cancel" {
+			handler.cancelTaskAutomation(response, request, session)
+		} else if parts[2] == "preview" {
 			handler.previewAutomation(response, request, session)
 		} else {
 			handler.startAutomation(response, request, session)
@@ -2271,6 +2275,7 @@ func newSessionID() (string, error) {
 }
 
 type controlResponse struct {
+	Task                *aimcp.TaskReceipt  `json:"automation_task,omitempty"`
 	Recovery            *AutomationRecovery `json:"automation_recovery"`
 	RecoveryUnavailable bool                `json:"automation_recovery_unavailable,omitempty"`
 	Control             aicontrol.State     `json:"control"`
@@ -2313,6 +2318,7 @@ func (handler *Handler) controlSnapshot(session *tcpSession) controlResponse {
 		}
 	}
 	return controlResponse{
+		Task:     session.taskReceiptSnapshot(),
 		Control:  state,
 		Recovery: recovery, RecoveryUnavailable: recoveryErr != nil,
 		AutomationAvailable: handler.automationExecutor() != nil,
@@ -2735,6 +2741,18 @@ func (handler *Handler) sendPacket(response http.ResponseWriter, request *http.R
 	packet, err := base64.StdEncoding.DecodeString(encoded.Packet)
 	if err != nil || len(packet) == 0 {
 		http.Error(response, "packet must be non-empty base64", http.StatusBadRequest)
+		return
+	}
+	// Heartbeats and strict read-only queries remain available while a task
+	// owns gameplay. Never classify arbitrary S commands as read-only: Arena
+	// queueing, loadouts and other mutations use the same protocol function.
+	if !closeAfter && aigame.ReadOnlyClientPacket(packet) {
+		if err := session.write(packet); err != nil {
+			session.finish(err.Error())
+			http.Error(response, "session observation write failed", http.StatusBadGateway)
+			return
+		}
+		response.WriteHeader(http.StatusAccepted)
 		return
 	}
 	generation := uint64(0)

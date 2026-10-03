@@ -22,6 +22,20 @@ sactl --config /path/to/sactl.toml --json observe
 
 `serve` 默认后台运行，只启动本地进程，不代表已经登录；`login` 才负责交互认证。`serve --foreground` 供排障和外部进程管理器使用，不能无边界等待其退出。尚未登录时请用户在终端执行 login，不索取明文密码。目标角色不明确时询问用户；已指定地址时沿用它，否则使用客户端默认地址。连接覆盖参数仅用于 login / serve。
 
+## 恢复会话（v0.2.18）
+
+```sh
+sactl --profile player1 status
+sactl --profile player1 reconnect
+sactl reconnect --help
+```
+
+`status` 不触发登录；断线但后台仍保留凭据时，JSON 返回 `CanReconnect=true`、`Phase="disconnected"`，文本提示 reconnect。已 logout 或停止后台导致凭据消失时仍需 login。reconnect 使用原账号和已选择的角色；在线世界会话先等待原地断开确认，绝不发送回记录点登出；战斗、交易、竞技场保留状态或自动战斗运行时拒绝主动重连。断线恢复不会重发之前结果未知的游戏操作，应重新观察并核对原请求。
+
+底层连接已确认关闭、后台尚在处理最后几条事件时，也可以 reconnect；观察超时或其他读取失败不等于已断线，不能据此替换可能仍在线的会话。
+
+新版后台在已识别竞技场能力的世界/战斗会话中，每 20 秒请求可关联的只读角色状态，等待最多 10 秒；只收到 Echo 不算角色会话仍有效。失败关闭失效连接并保留后台内存凭据。选角阶段及未提供竞技场能力的旧服务端沿用 Echo。后台进程升级不会热替换正在使用的旧版本；v0.2.17 后台会拒绝 reconnect，须按已授权的正常登出/登录流程切换新版。
+
 ## JSON 与退出码
 
 返回外层类似：
@@ -52,6 +66,10 @@ sactl --config /path/to/sactl.toml --json observe
 
 新版 `status` 文本区分客户端与后台版本；JSON 顶层提供 `client_version` / `daemon_version`（旧后台可能不返回后者）。编号自动刷新不需要模型配置；手动 `query AI` 仅用于扩展状态诊断。 开发版服务端还返回当前出战宠物选择，公共观察使用 `Player.BattlePetSlot` / `BattlePetSlotKnown`（战斗观察位于 `Own`）；未知时不能从技能列表或第一个宠物槽推断。旧服务端仍可通过原生 KS 回执确认选择，查询本身不切换宠物。
 
+v0.2.18 新增：宠物 `species_id` / JSON `SpeciesID` 是服务端种类编号（CHAR_PETID），不是 `StableID` 实例身份或 `Graphic` 图片编号。必须检查 `SpeciesIDKnown`；0 是有效种类，旧服务端缺失时保持 unknown。交付宠物仍需明确授权的稳定实例身份，不能因为种类符合就消耗玩家原有宠物。
+
+结构化宠物观察另有 `EventFlag` / `EventFlagKnown`，来自原版交宠条件使用的 `CHAR_ENDEVENT`。0 是已知的普通宠物标记，不能把它当作 unknown；缺少 Known 时不推断为普通宠物。该字段供共享自动任务判断，常规 Web 宠物界面不增加编号或标记。
+
 ## 手动状态查询
 
 优先使用正常 `observe` / `status`；v0.2.8 起编号会自动获取。`query` 是只读 S 状态请求，不是大模型调用。v0.2.9 起命令帮助（无参数 `query`、`query --help`）会离线列出用途、范围及示例；先核对安装版本是否支持。
@@ -59,6 +77,8 @@ sactl --config /path/to/sactl.toml --json observe
 可用代码：`c` 位置、`i` 全部装备/背包、`k0..k4` 宠物属性、`w0..w4` 宠物技能、`j0..j4` 装备精灵魔法、`n0..n4` 队伍成员、`t` 称号、`AI` 扩展自身状态、`BTIME` 竞技场回合时钟、`BTRULES` 战斗规则摘要与引擎平台（需客户端、服务端均支持）。`t` 当前只能通过返回事件查看，尚未投影到 observe。槽位从 0 开始且类型不同；不要将宠物槽位当作装备槽位。
 
 `BTRULES` 供本地 learned v2 模型核对兼容性，结果投影到战斗 `Clock.RulesDigest` / `Clock.EnginePlatform`；它与 `BTIME` 独立，不改变回合截止时间。没有元数据或与模型不匹配时，指挥程序在排队前拒绝，不把缺失信息当成兼容。摘要相同不代表模型已经通过胜率或完整竞技场认证。
+
+v0.2.18 的 `query BCAP` 只读查询当前 PvE 捕获资格和成功时消耗的自身物品，需对应服务端。结构化结果在 `observe.Capture`；可用 `BCAP:<16位小写十六进制请求ID>` 关联 RequestID，核对 Turn、Self 和 Revision。未知、过期或旧服无响应时不能推断捕获免费；Consumption 是全部将消耗的槽位，Eligible 不是成功保证。状态变化会清除旧结果，此查询不发送捕获动作。
 
 服务端热重载配置或战斗表会清除该摘要，并通知已连接客户端清除缓存；learned 不能继续使用旧摘要。遇到这种情况保留回退/缺失元数据记录，不能手工修改模型摘要绕过校验；由运营人员按发布流程恢复经过核验的服务端资源。
 

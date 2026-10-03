@@ -1,0 +1,814 @@
+{
+  "scope": "全部 2.5（包含 1.82、2.0）自动任务；此表是跟踪清单，不是可执行目录",
+  "catalog_source": "internal/gamewiki/quests.json",
+  "wiki_entries": 97,
+  "entries": [
+    {
+      "id": "n1",
+      "name": "解救老爷爷",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n2",
+      "name": "龙洞的任务",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n3",
+      "name": "伐木任务",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n4",
+      "name": "小猪的爱情故事",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n5",
+      "name": "伊布的母亲",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n6",
+      "name": "强恩一族洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n7",
+      "name": "逃走的呼拔拔",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n8",
+      "name": "红虎少女",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n9",
+      "name": "神奇的贝壳",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n10",
+      "name": "成人仪式",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "unverified_definition",
+      "execution_verified": false,
+      "task_ids": [
+        "adult-ceremony"
+      ]
+    },
+    {
+      "id": "n11",
+      "name": "SBC报导",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n12",
+      "name": "琉璃洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n13",
+      "name": "钓鱼",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "n14",
+      "name": "金布伊任务",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "南岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b1",
+      "name": "亚姆的斧头",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "four-stage-draft; full engine run with SafeTravel:true verified on isolated native services; reviewed catalog, ordinary-character preparation and recovery acceptance pending",
+      "task_root": "axe-return",
+      "execution_verified": false,
+      "native_flow_evidence": [
+        "build/quests-20261003/live-axe-passage.log",
+        "build/quests-20261003/live-axe-delivery-confirm.log",
+        "build/quests-20261003/live-axe-safe.log",
+        "build/quests-20261003/live-1182679358/plans.db"
+      ]
+    },
+    {
+      "id": "b2",
+      "name": "恐龙博士",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b3",
+      "name": "送贝壳的故事",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "partial_unverified_definition",
+      "execution_verified": false,
+      "task_ids": [
+        "hometown-0-gift-exchange"
+      ],
+      "note": "仅保存点 0 分支；不能代表全部送贝壳分支"
+    },
+    {
+      "id": "b4",
+      "name": "玄黄洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b5",
+      "name": "马祖武器与迷宫送信",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b6",
+      "name": "卡坦的愿望",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b7",
+      "name": "阿布洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b8",
+      "name": "强盗的洞穴",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b9",
+      "name": "梦德洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b10",
+      "name": "愿藏娃娃之谜",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "b11",
+      "name": "卡坦村迷幻洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "北岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "j1",
+      "name": "五兄弟的谜",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "吉鲁岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "j2",
+      "name": "矿工的比赛",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "吉鲁岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "j3",
+      "name": "黄金羚羊之谜",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "吉鲁岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "j4",
+      "name": "新小猪爱情故事",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "吉鲁岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "j5",
+      "name": "方位之祠",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "吉鲁岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "s1",
+      "name": "四宝玉之谜",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "沙姆岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "s2",
+      "name": "梦幻洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "沙姆岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "z1",
+      "name": "琉璃洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "转生四洞窟",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "z2",
+      "name": "玄黄洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "转生四洞窟",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "z3",
+      "name": "碧青洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "转生四洞窟",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "z4",
+      "name": "深红洞窟",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "转生四洞窟",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "z5",
+      "name": "漆黑洞窟(最后转生)",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "转生四洞窟",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "news_01",
+      "name": "英雄岛前传(红暴)",
+      "version": "17173原版2.0",
+      "group": "英雄岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "news_10",
+      "name": "五勾玉、红暴、萨姆吉尔首饰任务详解",
+      "version": "17173原版2.0",
+      "group": "英雄岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "news_02",
+      "name": "英雄岛后传(四圣石)",
+      "version": "17173原版2.0",
+      "group": "英雄岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "mining-certificate",
+      "name": "超特级采矿鉴定书",
+      "version": "17173原版2.0",
+      "group": "英雄岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "sa25_01",
+      "name": "精灵少女篇图文攻略(上篇)",
+      "version": "17173原版2.5",
+      "group": "精灵王传说",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "sa25_03",
+      "name": "精灵少女篇图文攻略(中篇)",
+      "version": "17173原版2.5",
+      "group": "精灵王传说",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "sa25_04",
+      "name": "黑暗精灵王任务全解",
+      "version": "17173原版2.5",
+      "group": "精灵王传说",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "faq01",
+      "name": "猜谜三兄弟全解(参考)",
+      "version": "17173原版2.0",
+      "group": "猜谜任务",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-pet-A",
+      "name": "萨村宠物委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "draft_static_checked",
+      "execution_verified": false,
+      "task_id": "samgil-pet-commission-a",
+      "remaining": "自然准备、采集、交付及恢复的完整原生入口验收；当前仍禁用"
+    },
+    {
+      "id": "wt01-food-A",
+      "name": "萨村料理委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-pet-B",
+      "name": "萨村宠物委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-food-B",
+      "name": "萨村料理委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-pet-C",
+      "name": "萨村宠物委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-food-C",
+      "name": "萨村料理委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-pet-D",
+      "name": "萨村宠物委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-food-D",
+      "name": "萨村料理委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-pet-E",
+      "name": "萨村宠物委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-food-E",
+      "name": "萨村料理委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-pet-F",
+      "name": "萨村宠物委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt01-food-F",
+      "name": "萨村料理委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-pet-A",
+      "name": "渔村宠物委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "verified_local_http",
+      "execution_verified": true,
+      "task_id": "marinas-pet-commission-a",
+      "notes": "内置七步定义经 sactl 分派器、真实 Web HTTP 及隔离原生服务完整执行；需匹配配置目录与新版原生模块，尚未发布。证据见 auto-quests-25-progress.md。"
+    },
+    {
+      "id": "wt02-food-A",
+      "name": "渔村料理委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-pet-B",
+      "name": "渔村宠物委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-food-B",
+      "name": "渔村料理委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-pet-C",
+      "name": "渔村宠物委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-food-C",
+      "name": "渔村料理委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-pet-D",
+      "name": "渔村宠物委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-food-D",
+      "name": "渔村料理委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-pet-E",
+      "name": "渔村宠物委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-food-E",
+      "name": "渔村料理委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-pet-F",
+      "name": "渔村宠物委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt02-food-F",
+      "name": "渔村料理委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-pet-A",
+      "name": "加加村宠物委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "draft_static_checked",
+      "execution_verified": false,
+      "task_id": "jaja-pet-commission-a",
+      "remaining": "自然准备、采集、交付及恢复的完整原生入口验收；当前仍禁用"
+    },
+    {
+      "id": "wt03-food-A",
+      "name": "加加村料理委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-pet-B",
+      "name": "加加村宠物委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-food-B",
+      "name": "加加村料理委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-pet-C",
+      "name": "加加村宠物委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-food-C",
+      "name": "加加村料理委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-pet-D",
+      "name": "加加村宠物委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-food-D",
+      "name": "加加村料理委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-pet-E",
+      "name": "加加村宠物委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-food-E",
+      "name": "加加村料理委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-pet-F",
+      "name": "加加村宠物委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt03-food-F",
+      "name": "加加村料理委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-pet-A",
+      "name": "卡村宠物委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "draft_static_checked",
+      "execution_verified": false,
+      "task_id": "karutana-pet-commission-a",
+      "remaining": "自然准备、采集、交付及恢复的完整原生入口验收；当前仍禁用"
+    },
+    {
+      "id": "wt04-food-A",
+      "name": "卡村料理委托书A",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-pet-B",
+      "name": "卡村宠物委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-food-B",
+      "name": "卡村料理委托书B",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-pet-C",
+      "name": "卡村宠物委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-food-C",
+      "name": "卡村料理委托书C",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-pet-D",
+      "name": "卡村宠物委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-food-D",
+      "name": "卡村料理委托书D",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-pet-E",
+      "name": "卡村宠物委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-food-E",
+      "name": "卡村料理委托书E",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-pet-F",
+      "name": "卡村宠物委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "wt04-food-F",
+      "name": "卡村料理委托书F",
+      "version": "17173 2.0任务栏目",
+      "group": "村庄委托",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "jot01",
+      "name": "JOT A 路线（南岛）",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "JOT 环岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "jot02",
+      "name": "JOT B 路线（南岛）",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "JOT 环岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "jot03",
+      "name": "SOT C 路线（北岛）",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "JOT 环岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "jot04",
+      "name": "SOT D 路线（北岛）",
+      "version": "17173原版2.5及以前任务索引；初次开放版本未逐项确认",
+      "group": "JOT 环岛",
+      "implementation": "pending",
+      "execution_verified": false
+    },
+    {
+      "id": "riding-basic",
+      "name": "骑乘教学",
+      "implementation": "unverified_definition",
+      "task_ids": [
+        "riding-basic"
+      ],
+      "execution_verified": false
+    }
+  ]
+}

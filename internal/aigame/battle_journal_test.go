@@ -38,7 +38,7 @@ func TestSharedBattleJournal(t *testing.T) {
 	record("B", "BA|0|2")
 	record("B", "BM|A|1|")
 	b = s.BattleJournal().Battles[0]
-	if b.Logs[len(b.Logs)-1].Text != "敌人：中毒" || b.Logs[len(b.Logs)-1].Turn != 2 {
+	if b.Logs[len(b.Logs)-1].Text != "敌人：中毒" || b.Logs[len(b.Logs)-1].Turn != 3 {
 		t.Fatal(b.Logs)
 	}
 	*b.Roster[0].MP = 999

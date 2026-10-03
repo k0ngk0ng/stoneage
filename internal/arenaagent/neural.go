@@ -47,6 +47,19 @@ func localModel(s Strategy) *Learned {
 	return nil
 }
 
+// Report the artifact's actual status without inferring strength from loading
+// successfully or from the strategy's name.
+func learnedModelStatus(s Strategy) string {
+	l := localModel(s)
+	if l == nil {
+		return ""
+	}
+	if l.neural != nil {
+		return l.neural.Status
+	}
+	return str(l.Model["status"])
+}
+
 // query only acknowledges sending a request. Wait for the shared projection
 // instead of treating one CLI invocation or one arbitrary event as the reply.
 func waitServerCapabilities(parent context.Context, requireRules bool, observe func(context.Context) (Object, error)) (Object, error) {

@@ -37,11 +37,10 @@ type Game interface {
 var _ Game = (*aigame.Session)(nil)
 
 // connect builds the game session for the configured transport, authenticates
-// with ClientLogin and enters the requested character. Both transports yield
-// the same *aigame.Session: the Web transport is the same protocol carried by
-// the site's normal HTTP session endpoints, so every command works the same.
-func connect(ctx context.Context, config Config, character string) (*aigame.Session, error) {
-	var session *aigame.Session
+// with ClientLogin and enters the requested character. HTTP also exposes the
+// existing Web task executor through this authenticated connection.
+func connect(ctx context.Context, config Config, character string) (Game, error) {
+	var session Game
 	var err error
 	switch config.Transport {
 	case "http":
@@ -66,7 +65,12 @@ func connect(ctx context.Context, config Config, character string) (*aigame.Sess
 }
 
 // connectWeb opens a session through the deployment's Web front end.
-func connectWeb(ctx context.Context, config Config) (*aigame.Session, error) {
+type webGame struct {
+	*aigame.Session
+	websession.AutomationClient
+}
+
+func connectWeb(ctx context.Context, config Config) (Game, error) {
 	client, err := websession.New(websession.Config{BaseURL: config.WebBaseURL, ServerID: config.ServerID})
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w", config.WebBaseURL, err)
@@ -87,7 +91,7 @@ func connectWeb(ctx context.Context, config Config) (*aigame.Session, error) {
 		_ = session.Close()
 		return nil, fmt.Errorf("authenticate over %s: %w", config.WebBaseURL, err)
 	}
-	return session, nil
+	return &webGame{Session: session, AutomationClient: connection.(websession.AutomationClient)}, nil
 }
 
 // firstWebServer asks the Web server directory for the first enabled line.

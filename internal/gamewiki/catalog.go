@@ -190,21 +190,7 @@ func (b *builder) skillNames(ids []int) (string, []string) {
 
 // Load reads only game tables and map headers below the configured native data root.
 func Load(ctx context.Context, root string) (*Catalog, error) {
-	group := "group.txt"
-	// The deployed native setup uses group1.txt. Read only this one setting;
-	// setup.cf itself (which can contain credentials) is never exposed.
-	if raw, err := os.ReadFile(filepath.Join(root, "..", "setup.cf")); err == nil {
-		for _, line := range strings.Split(string(raw), "\n") {
-			k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
-			if ok && k == "groupfile" {
-				name := filepath.Base(strings.TrimSpace(v))
-				if name == "group.txt" || name == "group1.txt" {
-					group = name
-				}
-			}
-		}
-	}
-	k, err := aiknowledge.Load(ctx, aiknowledge.Options{DataDir: root, GroupFile: group})
+	k, err := aiknowledge.Load(ctx, aiknowledge.Options{DataDir: root})
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +229,7 @@ func Load(ctx context.Context, root string) (*Catalog, error) {
 	b.addQuests()
 	b.addGameTasks()
 	b.addGuides()
-	b.c.Notes = []string{"游戏数据来自当前挂载的服务端资料；静态配置不等于已经实测可完成。", "血量为怪物创建时的满血基础理论范围，非当前剩余HP；攻防敏不含装备、技能等运行时修正。", "历史任务覆盖17173索引的2.0、2.5、早期各岛、转生洞窟及JOT/SOT栏目；攻略版本与本服验证状态分别标注。", "野外敌群表：" + group + "。NPC包括道场、宝物袋及任务战斗，不将它们全部称为Boss。"}
+	b.c.Notes = []string{"游戏数据来自当前挂载的服务端资料；静态配置不等于已经实测可完成。", "血量为怪物创建时的满血基础理论范围，非当前剩余HP；攻防敏不含装备、技能等运行时修正。", "历史任务覆盖17173索引的2.0、2.5、早期各岛、转生洞窟及JOT/SOT栏目；攻略版本与本服验证状态分别标注。", "野外敌群表：" + k.GroupFile + "。NPC包括道场、宝物袋及任务战斗，不将它们全部称为Boss。"}
 	for _, e := range b.c.Entries {
 		seen := map[string]bool{}
 		links := e.Links[:0]

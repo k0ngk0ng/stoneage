@@ -2,6 +2,13 @@ package aiknowledge
 
 import "testing"
 
+func TestBattleConditionCanReachAutomation(t *testing.T) {
+	c := MachineCondition{Kind: "battle"}
+	if err := c.Validate(); err != nil || !c.AutomationCompatible() {
+		t.Fatalf("battle condition cannot be compiled: %v", err)
+	}
+}
+
 func TestItemAbsentConditionValidationAndAutomationCompatibility(t *testing.T) {
 	for _, condition := range []MachineCondition{
 		{Kind: "item_absent", ID: "item:2417"},

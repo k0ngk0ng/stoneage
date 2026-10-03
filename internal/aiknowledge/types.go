@@ -22,7 +22,8 @@ import (
 // Options controls a knowledge load.
 type Options struct {
 	// GroupFile selects the deployed enemy-group table (for example group1.txt).
-	// Empty preserves the historical group.txt default. Only basenames are accepted.
+	// Empty uses the sibling setup.cf setting, falling back to group.txt when
+	// no setting exists. An explicit override accepts only a basename.
 	GroupFile string
 	// DataDir is the gmsv data directory.  A repository root, gmsv directory,
 	// or data directory is accepted.  An empty value searches the current
@@ -259,6 +260,7 @@ type NPCFile struct {
 	Encoding  string              `json:"encoding,omitempty"`
 	Supported bool                `json:"supported"`
 	Fields    map[string][]string `json:"fields,omitempty"`
+	Events    *NPCEventScript     `json:"events,omitempty"`
 	Issue     string              `json:"issue,omitempty"`
 	Source    SourceRef           `json:"source"`
 }
@@ -319,6 +321,26 @@ type TaskCondition = MachineCondition
 // separate condition kinds rather than being hidden in an expression.
 func (c MachineCondition) Validate() error {
 	switch c.Kind {
+	case "pet_collection":
+		if c.ID == "" || c.Value < 1 || c.Value > 5 {
+			return errors.New("pet collection requires step identity and count 1..5")
+		}
+	case "step_confirmed":
+		if c.ID == "" || c.Value != 0 {
+			return errors.New("confirmed step requires identity and zero value")
+		}
+	case "pet_species_absent":
+		if c.Value < 0 {
+			return errors.New("pet species must be nonnegative")
+		}
+	case "pet_free_slots":
+		if c.Value < 0 || c.Value > 5 {
+			return errors.New("pet free slots must be 0..5")
+		}
+	case "gold_reward_capacity":
+		if c.Value < 1 {
+			return errors.New("gold reward must be positive")
+		}
 	case "backpack_free_slots":
 		if c.Value < 0 || c.Value > 15 {
 			return errors.New("backpack free slots must be 0..15")
@@ -327,7 +349,7 @@ func (c MachineCondition) Validate() error {
 		if c.Value < 1 {
 			return errors.New("minimum character level must be positive")
 		}
-	case "gold_at_least", "not_battle", "alive":
+	case "gold_at_least", "battle", "not_battle", "alive":
 		// ID is ignored by the current automation.Condition implementation for
 		// these kinds. Keep it legal so adapters may retain a source identity.
 	case "position":
@@ -358,7 +380,7 @@ func (c MachineCondition) Validate() error {
 // adapter first.
 func (c MachineCondition) AutomationCompatible() bool {
 	switch c.Kind {
-	case "character_level", "gold_at_least", "not_battle", "alive", "position", "pet_level", "item_count", "item_absent", "flag_set", "flag_clear", "backpack_free_slots":
+	case "pet_species_absent", "pet_free_slots", "gold_reward_capacity", "character_level", "gold_at_least", "battle", "not_battle", "alive", "position", "pet_level", "item_count", "item_absent", "flag_set", "flag_clear", "backpack_free_slots", "pet_collection", "step_confirmed":
 		return true
 	default:
 		return false
@@ -496,6 +518,7 @@ type Knowledge struct {
 	Version         string               `json:"version"`
 	Digest          string               `json:"fingerprint"`
 	DataDir         string               `json:"data_dir"`
+	GroupFile       string               `json:"group_file"`
 	Files           []FileDigest         `json:"files"`
 	Experience      []ExperienceEntry    `json:"experience"`
 	Encounters      []EncounterArea      `json:"encounters"`

@@ -20,16 +20,17 @@ type travelTileNavigator struct {
 	tiles       TileNavigator
 	safety      *LevelingNavigator
 	level       int
+	policy      string
 	warpHazards map[aiknowledge.Point]bool
 }
 
-func (s *MovementSkill) travelNavigator(level int) (*travelTileNavigator, error) {
+func (s *MovementSkill) travelNavigator(level int, policy string) (*travelTileNavigator, error) {
 	if s.Backend == nil || s.Backend.Knowledge == nil || s.Navigator == nil {
 		return nil, ErrUnsafeTravelRoute
 	}
 	tiles := s.Navigator
 	if bound, ok := tiles.(*travelTileNavigator); ok {
-		if bound.level == level && bound.safety.Knowledge == s.Backend.Knowledge {
+		if bound.level == level && bound.policy == policy && bound.safety.Knowledge == s.Backend.Knowledge {
 			return bound, nil
 		}
 		tiles = bound.tiles
@@ -39,7 +40,7 @@ func (s *MovementSkill) travelNavigator(level int) (*travelTileNavigator, error)
 	if s.WarpGraph != nil {
 		warps = append(warps, s.WarpGraph.Edges()...)
 	}
-	n := &travelTileNavigator{tiles: tiles, safety: &LevelingNavigator{Knowledge: s.Backend.Knowledge}, level: level, warpHazards: make(map[aiknowledge.Point]bool)}
+	n := &travelTileNavigator{tiles: tiles, safety: &LevelingNavigator{Knowledge: s.Backend.Knowledge, nonSpawning: s.Backend.Knowledge.NonSpawningEncounters(policy)}, level: level, policy: policy, warpHazards: make(map[aiknowledge.Point]bool)}
 	for _, edge := range warps {
 		if !n.safety.encounterPointSafe(edge.To.Floor, edge.To.X, edge.To.Y, level) {
 			n.warpHazards[edge.From] = true
@@ -60,6 +61,28 @@ func (n *travelTileNavigator) blocked(floor int, p ainavigation.Point) bool {
 func (n *travelTileNavigator) Walkable(floor, x, y int) bool {
 	tiles, ok := n.tiles.(staticWalkabilityNavigator)
 	return ok && !n.blocked(floor, ainavigation.Point{X: x, Y: y}) && tiles.Walkable(floor, x, y)
+}
+
+// Combine live character occupancy with the existing encounter and warp
+// guards. A detour must not bypass the original safe-travel policy.
+func (n *travelTileNavigator) RouteContextWithOptions(ctx context.Context, floor int, from, to ainavigation.Point, options ainavigation.RouteOptions) (ainavigation.Route, error) {
+	tiles, ok := n.tiles.(tileRouteOptionsNavigator)
+	if !ok {
+		return ainavigation.Route{}, ErrMovementOccupied
+	}
+	extra := options.Blocked
+	options.Blocked = func(p ainavigation.Point) bool { return n.blocked(floor, p) || extra != nil && extra(p) }
+	route, err := tiles.RouteContextWithOptions(ctx, floor, from, to, options)
+	if err != nil {
+		return route, err
+	}
+	if err := validateLevelingRoute(route, from, to); err != nil {
+		return ainavigation.Route{}, err
+	}
+	if !n.safeRoute(floor, from, route) {
+		return ainavigation.Route{}, ErrUnsafeTravelRoute
+	}
+	return route, nil
 }
 
 func (n *travelTileNavigator) RouteContext(ctx context.Context, floor int, from, to ainavigation.Point) (ainavigation.Route, error) {
@@ -121,7 +144,7 @@ func (n *travelTileNavigator) safeRoute(floor int, from ainavigation.Point, rout
 // safe pre-write stale-revision retry. A prior route never grants permission
 // to cross stronger encounters after an authoritative state change.
 func (s *MovementSkill) checkTravelEncounters(o aimcp.Observation, action aigame.Action) error {
-	n, err := s.travelNavigator(o.Character.Level)
+	n, err := s.travelNavigator(o.Character.Level, o.EncounterPolicy)
 	if err != nil {
 		return err
 	}

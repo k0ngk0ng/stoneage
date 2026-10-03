@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,13 +25,14 @@ type httpConn struct {
 	sessionID string
 	serverID  string
 
-	mu       sync.Mutex
-	closed   bool
-	preserve bool
-	err      error
-	done     chan struct{}
-	ctx      context.Context
-	cancel   context.CancelFunc
+	mu         sync.Mutex
+	closed     bool
+	preserve   bool
+	err        error
+	generation uint64 // latest control token from automation responses and event polls
+	done       chan struct{}
+	ctx        context.Context
+	cancel     context.CancelFunc
 
 	readMu         sync.Mutex
 	writeMu        sync.Mutex
@@ -119,6 +121,7 @@ func (connection *httpConn) Write(source []byte) (int, error) {
 		return 0, err
 	}
 	deadline := connection.writeDeadline
+	generation := connection.generation
 	connection.mu.Unlock()
 
 	ctx, cancel := connection.requestContext(deadline)
@@ -130,6 +133,19 @@ func (connection *httpConn) Write(source []byte) (int, error) {
 	request.Body = io.NopCloser(bytes.NewReader(source))
 	request.ContentLength = int64(len(source))
 	request.Header.Set("Content-Type", "application/octet-stream")
+	if generation > 0 {
+		payload, err := json.Marshal(struct {
+			Packet     string `json:"packet"`
+			Generation uint64 `json:"generation"`
+		}{base64.StdEncoding.EncodeToString(source), generation})
+		if err != nil {
+			return 0, err
+		}
+		request.Body = io.NopCloser(bytes.NewReader(payload))
+		request.ContentLength = int64(len(payload))
+		request.Header.Set("Content-Type", "application/json")
+	}
+
 	response, err := connection.client.web.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -306,6 +322,7 @@ func (connection *httpConn) poll(deadline time.Time) ([][]byte, error) {
 	if err := decodeJSON(response.Body, &payload); err != nil {
 		return nil, err
 	}
+	connection.rememberControl(payload.Control)
 	packets := make([][]byte, 0, len(payload.Events))
 	ack := connection.ack
 	for _, event := range payload.Events {

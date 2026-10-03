@@ -88,11 +88,15 @@ func NewGameplayBuilder(config GameplayConfig) (BackendBuilder, error) {
 		backend.CharacterBuild = characterBuild.Clone()
 		backend.OwnStateRefresh = &OwnStateRefresher{}
 		backend.stockOffers = config.StockItems
-		move := &MovementSkill{Backend: backend, Navigator: config.Tiles, BattleRecovery: &TravelBattle{Backend: backend}, SafeTravel: true}
+		move := &MovementSkill{Backend: backend, Navigator: config.Tiles, BattleRecovery: &TravelBattle{Backend: backend}, NPCs: config.NPCs, SafeTravel: true}
 		var healthRecovery aileveling.HealthRecovery
 		var supplies aileveling.Supplies
 		npc := NewNPCSkill(backend, config.NPCs)
-		skills := SkillSet{"move": move, "npc.talk": npc, "npc.window": npc}
+		skills := SkillSet{"move": move, "npc.talk": npc, "npc.window": npc, "npc.dialogue": npc}
+		skills["battle.finish"] = &QuestBattleSkill{Backend: backend}
+		skills["pet.capture"] = &QuestCaptureSkill{Backend: backend}
+		skills["pet.collect"] = &QuestPetCollectionSkill{Backend: backend, Movement: move, Navigator: &LevelingNavigator{Knowledge: in.Knowledge, Tiles: config.Tiles}}
+		skills["pet.deliver"] = &QuestPetDeliverySkill{NPC: npc}
 		if len(config.HealingItems) > 0 {
 			healing := &ItemHealingSkill{Backend: backend, Contracts: config.HealingItems}
 			skills["item.heal"] = healing

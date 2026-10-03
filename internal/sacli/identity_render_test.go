@@ -10,11 +10,11 @@ import (
 func TestObservationIdentitiesAndChatPresentation(t *testing.T) {
 	snapshot := aigame.Snapshot{
 		Inventory: []aigame.InventoryItem{{Index: 5, Name: "same name", Graphic: 100, TemplateID: 2415, TemplateIDKnown: true}, {Index: 6, Name: "same name", Graphic: 100}},
-		Pets:      []aigame.PetSnapshot{{Slot: 0, Name: "pet", StableID: "pet-unique", IdentityKnown: true}, {Slot: 1, Name: "pet", StableID: "stale"}},
+		Pets:      []aigame.PetSnapshot{{Slot: 0, Name: "pet", StableID: "pet-unique", IdentityKnown: true, SpeciesIDKnown: true}, {Slot: 1, Name: "pet", StableID: "stale", SpeciesID: 113}},
 		Chat:      []aigame.ChatMessage{{Channel: "P", Text: "Welcome."}, {Channel: "P", SpeakerCharacterID: "internal-id", Text: "Player: hello"}},
 	}
 	text := renderSnapshot(snapshot, "")
-	for _, expected := range []string{`slot=5 "same name" template_id=2415`, `slot=6 "same name" template_id=unknown`, `stable_id="pet-unique"`, `stable_id="unknown"`, "  - Welcome.", "  - Player: hello"} {
+	for _, expected := range []string{`slot=5 "same name" template_id=2415`, `slot=6 "same name" template_id=unknown`, `stable_id="pet-unique" species_id=0`, `stable_id="unknown" species_id=unknown`, "  - Welcome.", "  - Player: hello"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("missing %q in %s", expected, text)
 		}

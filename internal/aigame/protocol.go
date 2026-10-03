@@ -332,8 +332,8 @@ func (session *Session) authenticate(ctx context.Context, credentials Credential
 }
 
 // The native server expires silent clients even while selecting a character.
-// Match the Web client's 20-second Echo cadence. request serializes heartbeat
-// replies with pre-world character operations and uses the reader in-world.
+// Keep the 20-second cadence; once Arena capability is observed, heartbeat
+// also proves the character session is responsive rather than trusting Echo.
 func (session *Session) startHeartbeat() {
 	session.wg.Add(1)
 	go func() {
@@ -346,7 +346,7 @@ func (session *Session) startHeartbeat() {
 				return
 			case <-ticker.C:
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				_, err := session.request(ctx, "Echo", []wireValue{{kind: wireString, text: []byte("sactl")}})
+				err := session.heartbeat(ctx)
 				cancel()
 				if err != nil {
 					session.finish(fmt.Errorf("session heartbeat: %w", err))
@@ -1026,6 +1026,7 @@ func (session *Session) finish(err error) {
 		}
 		session.stateMu.Lock()
 		session.state.snapshot.Connected = false
+		session.state.snapshot.Capture = nil
 		invalidateTradeForLifecycleLocked(&session.state)
 		clearAddressBookLocked(&session.state)
 		session.state.snapshot.Phase = PhaseDisconnected
@@ -1217,6 +1218,7 @@ func cloneEvent(event Event) Event {
 }
 
 func cloneSnapshot(snapshot Snapshot) Snapshot {
+	snapshot.Capture = cloneCaptureObservation(snapshot.Capture)
 	if snapshot.Ladder != nil {
 		e := snapshot.Ladder.Clone()
 		snapshot.Ladder = &e

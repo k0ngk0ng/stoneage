@@ -60,7 +60,7 @@ func TestStatusDoesNotLoginAndLogoutClearsCredentials(t *testing.T) {
 		Connected bool
 		Phase     string
 	}
-	if err := json.Unmarshal(response.Data, &state); err != nil || state.Connected || state.Phase != "logged_out" {
+	if err := json.Unmarshal(response.Data, &state); err != nil || state.Connected || state.Phase != "disconnected" {
 		t.Fatal("invalid disconnected status")
 	}
 	response = server.Dispatch(context.Background(), Request{Command: "logout"})

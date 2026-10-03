@@ -186,6 +186,26 @@ func ProjectObservation(binding aimcp.Binding, s aigame.Snapshot) aimcp.Observat
 		o.Flags["stat_points:known"] = true
 		o.OwnProgress["stat_points"] = int(s.Player.UnspentStatPoints)
 	}
+	if s.AI.Received && s.AI.GoldLimitKnown {
+		o.Flags["gold_limit:known"] = true
+		o.OwnProgress["gold_limit"] = int(s.AI.GoldLimit)
+	}
+	// Only a complete native identity observation establishes free pet slots.
+	// K updates can invalidate identities; stale AI.Pets alone is insufficient.
+	petsKnown := s.AI.Received && len(s.Pets) == len(s.AI.Pets) && len(s.Pets) <= 5
+	for _, pet := range s.Pets {
+		matched := false
+		for _, observed := range s.AI.Pets {
+			if pet.IdentityKnown && observed.IdentityKnown && pet.StableID != "" && pet.StableID == observed.StableID && pet.Slot == observed.Slot {
+				matched = true
+				break
+			}
+		}
+		petsKnown = petsKnown && matched
+	}
+	if petsKnown {
+		o.Flags["pets:known"] = true
+	}
 	o.Trade = projectTrade(s.Trade)
 	o.RidingPet = aimcp.PetSelection{Known: s.Player.RidePetKnown, Slot: int(s.Player.RidePet)}
 	o.BattlePet = aimcp.PetSelection{Known: s.Player.BattlePetSlotKnown, Slot: int(s.Player.BattlePetSlot)}
@@ -214,6 +234,7 @@ func ProjectObservation(binding aimcp.Binding, s aigame.Snapshot) aimcp.Observat
 	// character-scoped progress or riding permission; zero values are still
 	// meaningful and therefore retained when the response was received.
 	if s.AI.Received {
+		o.EncounterPolicy = s.AI.EncounterPolicy
 		if s.Connected && o.Ready && aigame.ValidPersistentCharacterID(s.AI.PersistentCharacterID) {
 			o.PersistentCharacterID = s.AI.PersistentCharacterID
 		}
@@ -236,6 +257,11 @@ func ProjectObservation(binding aimcp.Binding, s aigame.Snapshot) aimcp.Observat
 			o.Flags[key] = value != 0
 			for bit := 0; bit < 32; bit++ {
 				o.Flags[fmt.Sprintf("now:%d", index*32+bit)] = uint32(value)&(uint32(1)<<bit) != 0
+				// A request stage remains satisfied after its delivery clears
+				// NOWEV and sets ENDEV. Received guarantees both event tables
+				// passed the shared AI observation parser's validation.
+				started := uint32(value) | uint32(s.AI.EndEvents[index])
+				o.Flags[fmt.Sprintf("event:%d", index*32+bit)] = started&(uint32(1)<<bit) != 0
 			}
 		}
 		o.Skills["learn_ride"] = int(s.AI.LearnRide)
@@ -258,7 +284,8 @@ func ProjectObservation(binding aimcp.Binding, s aigame.Snapshot) aimcp.Observat
 		if p.IdentityKnown && strings.TrimSpace(p.StableID) != "" {
 			id = p.StableID
 		}
-		entity := aimcp.Entity{ID: id, Name: p.Name, Level: int(p.Level), HP: int(p.HP), MaxHP: int(p.MaxHP), Alive: p.Alive, UseFlag: int(p.UseFlag)}
+		slot := int(p.Slot)
+		entity := aimcp.Entity{ID: id, Name: p.Name, Level: int(p.Level), HP: int(p.HP), MaxHP: int(p.MaxHP), Alive: p.Alive, UseFlag: int(p.UseFlag), SpeciesID: int(p.SpeciesID), SpeciesIDKnown: p.SpeciesIDKnown, EventFlag: int(p.EventFlag), EventFlagKnown: p.EventFlagKnown, Slot: &slot}
 		for _, skill := range p.Skills {
 			if skill.ID != 0 {
 				entity.Skills = append(entity.Skills, strconv.Itoa(int(skill.ID)))
@@ -281,6 +308,10 @@ func ProjectObservation(binding aimcp.Binding, s aigame.Snapshot) aimcp.Observat
 	}
 	for _, a := range s.Actors {
 		o.Actors = append(o.Actors, aimcp.VisibleActor{PersistentCharacterID: a.PersistentCharacterID, ID: int(a.ID), Kind: a.Kind, CharType: int(a.CharType), Name: a.Name, FreeName: a.FreeName, Title: a.Title, X: int(a.X), Y: int(a.Y), Direction: int(a.Direction), Level: int(a.Level), PetName: a.PetName, PetLevel: int(a.PetLevel)})
+		if a.GraphicKnown {
+			graphic := int(a.Graphic)
+			o.Actors[len(o.Actors)-1].Graphic = &graphic
+		}
 	}
 	for _, i := range s.Inventory {
 		o.InventoryItems = append(o.InventoryItems, aimcp.InventoryItem{Index: int(i.Index), Name: i.Name, Name2: i.Name2, Memo: i.Memo, Graphic: int(i.Graphic), Count: 1})

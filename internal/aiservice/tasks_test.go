@@ -3,7 +3,9 @@ package aiservice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -116,5 +118,84 @@ func TestOldCompletionWithoutEvidenceRemainsUnknown(t *testing.T) {
 	r := taskReceipt(automation.Checkpoint{Plan: automation.Plan{ID: "old"}, Status: automation.Completed})
 	if r.Status != aimcp.ReceiptUnknown {
 		t.Fatal("fabricated evidence for older checkpoint")
+	}
+}
+
+func TestCancelledQuestRemainsCancelledAfterControllerRecreation(t *testing.T) {
+	tasks, g, _ := taskFixture(t)
+	receipt, err := tasks.StartTask(context.Background(), aimcp.TaskRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := tasks.Cancel(context.Background(), aimcp.CancelRequest{Handle: receipt.Handle})
+	if err != nil || cancelled.Status != aimcp.ReceiptCancelled {
+		t.Fatal(cancelled, err)
+	}
+	saved, err := tasks.Engine.Store.Load(context.Background(), receipt.Handle)
+	if err != nil || saved.Phase != "cancelled" {
+		t.Fatalf("checkpoint=%+v err=%v", saved, err)
+	}
+	fresh := &Tasks{Engine: tasks.Engine, CharacterID: tasks.CharacterID, Lease: context.Background()}
+	defer fresh.Close()
+	status, err := fresh.Status(context.Background(), receipt.Handle)
+	if err != nil || status.Status != aimcp.ReceiptCancelled {
+		t.Fatal(status, err)
+	}
+	g.mu.Lock()
+	writes := g.writes
+	g.mu.Unlock()
+	if _, err := fresh.Resume(context.Background(), receipt.Handle); err == nil {
+		t.Fatal("cancelled quest resumed")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.writes != writes {
+		t.Fatal("cancelled quest replayed action")
+	}
+}
+
+type failingTaskGame struct{ *taskGame }
+
+func (*failingTaskGame) Execute(context.Context, automation.Action) error {
+	return errors.New("specific native refusal")
+}
+
+func TestTaskRunnerPreservesFailedStepReason(t *testing.T) {
+	tasks, game, _ := taskFixture(t)
+	tasks.Engine.Game = &failingTaskGame{game}
+	b := tasks.Builder.(taskBuilder)
+	b.plan.Steps[0].Description = "购买委托书"
+	tasks.Builder = b
+	receipt, err := tasks.StartTask(context.Background(), aimcp.TaskRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Drain the goroutine before checking so its cleanup cannot overwrite later.
+	tasks.mu.Lock()
+	done := tasks.done
+	tasks.mu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("runner did not stop")
+	}
+	saved, err := tasks.Engine.Store.Load(context.Background(), receipt.Handle)
+	if err != nil || !strings.Contains(saved.Reason, "购买委托书") {
+		t.Fatal("failed step reason lost", saved.Reason, err)
+	}
+}
+
+func TestTaskReceiptCountsConfirmedFinalStep(t *testing.T) {
+	tasks, _, _ := taskFixture(t)
+	plan := tasks.Builder.(taskBuilder).plan
+	confirmed := automation.Observation{Connected: true, Ready: true, CharacterID: plan.CharacterID, Character: automation.Entity{Level: 2}}
+	r := taskReceipt(automation.Checkpoint{Plan: plan, Status: automation.Completed, Step: 0, Confirmation: &confirmed})
+	if r.Status != aimcp.ReceiptConfirmed || r.Progress.Step != 1 || r.Progress.Steps != 1 {
+		t.Fatal(r)
+	}
+	// A corrupted/old completed record must still show unknown, not finished work.
+	r = taskReceipt(automation.Checkpoint{Plan: plan, Status: automation.Completed, Step: 0})
+	if r.Status != aimcp.ReceiptUnknown || r.Progress.Step != 0 {
+		t.Fatal(r)
 	}
 }

@@ -2,6 +2,7 @@ package ainavigation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -139,6 +140,20 @@ func (n *Navigator) RouteWithOptions(floorID int, from, to Point, options RouteO
 // server collision rules and can therefore express temporary hazards such as
 // encounter areas without changing the underlying map data.
 func (n *Navigator) RouteContextWithOptions(ctx context.Context, floorID int, from, to Point, options RouteOptions) (Route, error) {
+	return n.routeContext(ctx, floorID, from, &to, nil, options)
+}
+
+// RouteToAny finds the nearest reachable matching tile, using the same native
+// collision and diagonal rules as point-to-point navigation. It performs one
+// search instead of guessing a few corners of an encounter rectangle.
+func (n *Navigator) RouteToAny(ctx context.Context, floorID int, from Point, goal func(Point) bool, options RouteOptions) (Route, error) {
+	if goal == nil {
+		return Route{}, errors.New("navigation goal is required")
+	}
+	return n.routeContext(ctx, floorID, from, nil, goal, options)
+}
+
+func (n *Navigator) routeContext(ctx context.Context, floorID int, from Point, destination *Point, matches func(Point) bool, options RouteOptions) (Route, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -153,21 +168,27 @@ func (n *Navigator) RouteContextWithOptions(ctx context.Context, floorID int, fr
 	if err != nil {
 		return Route{}, fmt.Errorf("%w: start %s: %v", ErrOutOfBounds, from, err)
 	}
-	goal, err := floor.index(to.X, to.Y)
-	if err != nil {
-		return Route{}, fmt.Errorf("%w: destination %s: %v", ErrOutOfBounds, to, err)
+	goal := -1
+	to := Point{}
+	if destination != nil {
+		to = *destination
+		goal, err = floor.index(to.X, to.Y)
+		if err != nil {
+			return Route{}, fmt.Errorf("%w: destination %s: %v", ErrOutOfBounds, to, err)
+		}
 	}
 	if !n.walkableAt(floor, start) {
 		return Route{}, fmt.Errorf("%w: start %s", ErrBlocked, from)
 	}
-	if !n.walkableAt(floor, goal) {
+	if destination != nil && !n.walkableAt(floor, goal) {
 		return Route{}, fmt.Errorf("%w: destination %s", ErrBlocked, to)
 	}
-	if options.Blocked != nil && options.Blocked(to) {
+	if destination != nil && options.Blocked != nil && options.Blocked(to) {
 		return Route{}, fmt.Errorf("%w: destination %s", ErrBlocked, to)
 	}
 	result := Route{Floor: floorID, From: from, To: to, Points: []Point{}, Directions: ""}
-	if start == goal {
+	if start == goal || matches != nil && matches(from) && (options.Blocked == nil || !options.Blocked(from)) {
+		result.To = from
 		return result, nil
 	}
 	// -2 means unseen, -1 is the root. A flat integer queue avoids allocating
@@ -188,7 +209,9 @@ func (n *Navigator) RouteContextWithOptions(ctx context.Context, floorID int, fr
 			}
 		}
 		current := queue[head]
-		if current == goal {
+		if current == goal || matches != nil && matches(Point{X: current % floor.Width, Y: current / floor.Width}) {
+			goal = current
+			result.To = Point{X: current % floor.Width, Y: current / floor.Width}
 			found = true
 			break
 		}
@@ -219,6 +242,9 @@ func (n *Navigator) RouteContextWithOptions(ctx context.Context, floorID int, fr
 		}
 	}
 	if !found {
+		if destination == nil {
+			return Route{}, fmt.Errorf("%w: floor %d from %s has no reachable target", ErrUnreachable, floorID, from)
+		}
 		return Route{}, fmt.Errorf("%w: floor %d from %s to %s", ErrUnreachable, floorID, from, to)
 	}
 	pathPoints := make([]Point, 0)

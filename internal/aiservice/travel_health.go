@@ -17,7 +17,7 @@ var ErrTravelHealingRequired = errors.New("travel requires healing before enteri
 // floor and coordinates identify the point being entered.
 func (s *MovementSkill) checkTravelHealthAt(o aimcp.Observation, floor, x, y int) error {
 	if s.SafeTravel {
-		n, err := s.travelNavigator(o.Character.Level)
+		n, err := s.travelNavigator(o.Character.Level, o.EncounterPolicy)
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,8 @@ HARNESS = r'''
 #define INDEX_MAX 16
 
 static int failures;
+const char *StoneAge_EncounterPolicy(void)
+{ return "missing-group-abort-v1:0123456789abcdef:21"; }
 static const char *loaded_identity;
 const char *StoneAge_CharacterIdentityGetLoadedByIndex(int index)
 { return index == 0 ? loaded_identity : NULL; }
@@ -45,6 +47,12 @@ static int item_slot_reads;
 static int item_id_reads;
 static int forbidden_cdkey_reads;
 static int other_role_reads;
+
+int CHAR_getMaxHaveGold(int index)
+{
+    if (index != 0) other_role_reads++;
+    return 2800000;
+}
 
 char *CHAR_getChar(int index, int element)
 {
@@ -163,6 +171,10 @@ static void configure(void)
     harness_pet[0][4] = 10;
     harness_level[10] = 37;
     harness_level[11] = 8;
+    harness_data[10][CHAR_PETID] = 113;
+    harness_data[10][CHAR_ENDEVENT] = 0;
+    harness_data[11][CHAR_ENDEVENT] = 1;
+    harness_data[11][CHAR_PETID] = 0;
     harness_savepoint[0] = 123;
     harness_item_index[0][3] = 22;
     harness_item_use[22] = 1;
@@ -221,13 +233,17 @@ int main(void)
         strncpy(first, observation, sizeof(first) - 1);
         first[sizeof(first) - 1] = '\0';
         expect_text(first, "AI|v=1|chara=0", "version and safe numeric role id");
+        expect_text(first, "|encounter_policy=missing-group-abort-v1:0123456789abcdef:21", "native encounter policy is exposed");
         expect_text(first, "|pet=0,pet\\c\\z\\yid,37", "legacy unique escaping");
         expect_text(first, "|pet=2,unknown,8", "missing unique is unknown");
+        expect_text(first, "|pet_species=0,113;2,0;4,113", "native species is separate from pet identity and graphic");
+        expect_text(first, "|pet_event=0,0;2,1;4,0", "native event flag is not inferred from pet species");
         expect_text(first, "|end=100,101,102,103,104,105", "six end flags");
         expect_text(first, "|now=200,201,202,203,204,205", "six now flags");
         expect_text(first, "|ride=120", "learn ride flag");
         expect_text(first, "|sp=123", "save point value");
         expect_text(first, "|stat_points=7", "caller unspent stat points");
+        expect_text(first, "|gold_limit=2800000", "actual server gold capacity");
         expect_text(first, "|party_mode=0", "caller solo mode");
         expect_text(first, "|active_pet=0", "caller battle pet selection");
         expect_text(first, "|standby_pet_mask=0", "known empty standby list");
@@ -391,6 +407,7 @@ enum {
     CHAR_DEFAULTPET = 18,
     CHAR_WORKSTANDBYPET = 19,
     CHAR_WORK_PET0_STAT = 20,
+    CHAR_PETID = 25,
     PET_STAT_SELECT = 1,
     CHAR_CDKEY = 90
 };
@@ -399,6 +416,7 @@ extern int harness_use[16];
 #define CHAR_CHECKINDEX(i) ((i) >= 0 && (i) < 16 && harness_use[(i)])
 char *CHAR_getChar(int, int);
 int CHAR_getInt(int, int);
+int CHAR_getMaxHaveGold(int);
 int CHAR_getWorkInt(int, int);
 int CHAR_getCharPet(int, int);
 int CHAR_getItemIndex(int, int);

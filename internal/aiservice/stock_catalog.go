@@ -2,6 +2,8 @@ package aiservice
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/k0ngk0ng/stoneage/internal/gamecatalog"
 	"github.com/k0ngk0ng/stoneage/internal/runtimepath"
 )
 
@@ -24,6 +27,16 @@ const maxStockCatalogBytes = 1 << 20
 // catalogs. This loader only composes references to those verified contracts;
 // it does not allow a stock catalog to describe a new item or NPC.
 func LoadStockItems(path, expectedFingerprint string, npcs NPCRegistry, healingItems map[string]HealingItemContract) (map[string]StockContract, error) {
+	return loadStockItems(path, expectedFingerprint, npcs, healingItems, "")
+}
+
+// LoadStockItemsForData additionally supports v2 reviewed quest materials.
+// Materials are bound to the actual item table and never become healing items.
+func LoadStockItemsForData(path, expectedFingerprint string, npcs NPCRegistry, healingItems map[string]HealingItemContract, itemsetPath string) (map[string]StockContract, error) {
+	return loadStockItems(path, expectedFingerprint, npcs, healingItems, itemsetPath)
+}
+
+func loadStockItems(path, expectedFingerprint string, npcs NPCRegistry, healingItems map[string]HealingItemContract, itemsetPath string) (map[string]StockContract, error) {
 	if strings.TrimSpace(path) == "" {
 		return map[string]StockContract{}, nil
 	}
@@ -78,10 +91,18 @@ func LoadStockItems(path, expectedFingerprint string, npcs NPCRegistry, healingI
 	if len(data) > maxStockCatalogBytes {
 		return nil, fmt.Errorf("stock catalog exceeds %d bytes", maxStockCatalogBytes)
 	}
-	return decodeStockItems(data, expectedFingerprint, npcs, healingItems)
+	return decodeStockItemsForData(data, expectedFingerprint, npcs, healingItems, itemsetPath)
+}
+
+type stockMaterial struct {
+	Alias      string `json:"alias"`
+	TemplateID int32  `json:"template_id"`
+	Verified   bool   `json:"verified"`
 }
 
 type stockCatalogDocument struct {
+	ItemsetSHA256        string              `json:"itemset_sha256,omitempty"`
+	Materials            []stockMaterial     `json:"materials,omitempty"`
 	Version              int                 `json:"version"`
 	KnowledgeFingerprint string              `json:"knowledge_fingerprint"`
 	Offers               []stockCatalogOffer `json:"offers"`
@@ -101,6 +122,10 @@ type stockCatalogOffer struct {
 }
 
 func decodeStockItems(data []byte, expectedFingerprint string, npcs NPCRegistry, healingItems map[string]HealingItemContract) (map[string]StockContract, error) {
+	return decodeStockItemsForData(data, expectedFingerprint, npcs, healingItems, "")
+}
+
+func decodeStockItemsForData(data []byte, expectedFingerprint string, npcs NPCRegistry, healingItems map[string]HealingItemContract, itemsetPath string) (map[string]StockContract, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document stockCatalogDocument
@@ -114,7 +139,7 @@ func decodeStockItems(data []byte, expectedFingerprint string, npcs NPCRegistry,
 		}
 		return nil, fmt.Errorf("decode stock catalog: trailing JSON: %w", err)
 	}
-	if document.Version != 1 {
+	if document.Version != 1 && document.Version != 2 {
 		return nil, fmt.Errorf("unsupported stock catalog version %d", document.Version)
 	}
 	if strings.TrimSpace(document.KnowledgeFingerprint) == "" || document.KnowledgeFingerprint != expectedFingerprint {
@@ -124,6 +149,50 @@ func decodeStockItems(data []byte, expectedFingerprint string, npcs NPCRegistry,
 		return nil, errors.New("stock catalog offers is required")
 	}
 
+	materials := map[string]int32{}
+	if document.Version == 1 && (document.Materials != nil || document.ItemsetSHA256 != "") {
+		return nil, errors.New("stock materials require catalog version 2")
+	}
+	if document.Version == 2 {
+		if strings.TrimSpace(itemsetPath) == "" {
+			return nil, errors.New("stock catalog version 2 requires the effective item table")
+		}
+		digest, err := hex.DecodeString(document.ItemsetSHA256)
+		if err != nil || len(digest) != sha256.Size {
+			return nil, errors.New("stock catalog itemset_sha256 is required")
+		}
+		raw, err := readStockItemTable(itemsetPath)
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(raw)
+		if !bytes.Equal(sum[:], digest) {
+			return nil, errors.New("stock catalog itemset fingerprint mismatch")
+		}
+		items, err := gamecatalog.ParseItems(bytes.NewReader(raw))
+		if err != nil {
+			return nil, fmt.Errorf("parse stock item table: %w", err)
+		}
+		present := map[int32]int{}
+		for _, item := range items {
+			id := int32(item.ID)
+			if item.ID > 0 && int64(id) == int64(item.ID) {
+				present[id]++
+			}
+		}
+		for _, entry := range document.Materials {
+			alias := normalizeAlias(entry.Alias)
+			if alias == "" || materials[alias] != 0 || !entry.Verified || present[entry.TemplateID] != 1 {
+				return nil, errors.New("stock material requires unique alias and verified existing template")
+			}
+			for existing := range healingItems {
+				if normalizeAlias(existing) == alias {
+					return nil, fmt.Errorf("stock material overlaps healing alias %q", alias)
+				}
+			}
+			materials[alias] = entry.TemplateID
+		}
+	}
 	contracts := make(map[string]StockContract, len(document.Offers))
 	for index, offer := range document.Offers {
 		alias := normalizeAlias(offer.Alias)
@@ -138,12 +207,19 @@ func decodeStockItems(data []byte, expectedFingerprint string, npcs NPCRegistry,
 		if itemAlias == "" {
 			return nil, fmt.Errorf("stock catalog offer %d item is required", index)
 		}
-		item, ok := lookupStockHealingItem(healingItems, itemAlias)
-		if !ok {
-			return nil, fmt.Errorf("stock catalog offer %d references unknown healing item %q", index, itemAlias)
-		}
-		if !item.Verified || item.SourceFingerprint != document.KnowledgeFingerprint || strings.TrimSpace(item.ItemsetSHA256) == "" {
-			return nil, fmt.Errorf("stock catalog offer %d references an unverified healing item %q", index, itemAlias)
+		templateID, material := materials[itemAlias]
+		if !material {
+			item, ok := lookupStockHealingItem(healingItems, itemAlias)
+			if !ok {
+				return nil, fmt.Errorf("stock catalog offer %d references unknown item %q", index, itemAlias)
+			}
+			if !item.Verified || item.SourceFingerprint != document.KnowledgeFingerprint || strings.TrimSpace(item.ItemsetSHA256) == "" {
+				return nil, fmt.Errorf("stock catalog offer %d references an unverified healing item %q", index, itemAlias)
+			}
+			if document.Version == 2 && !strings.EqualFold(item.ItemsetSHA256, document.ItemsetSHA256) {
+				return nil, errors.New("stock and healing item table fingerprints differ")
+			}
+			templateID = item.TemplateID
 		}
 
 		npcAlias := normalizeAlias(offer.NPC)
@@ -161,7 +237,7 @@ func decodeStockItems(data []byte, expectedFingerprint string, npcs NPCRegistry,
 		contract := StockContract{
 			Name:       strings.TrimSpace(offer.Name),
 			NPC:        npc,
-			TemplateID: item.TemplateID,
+			TemplateID: templateID,
 			ShopIndex:  offer.ShopIndex,
 			UnitPrice:  offer.UnitPrice,
 			X:          offer.X,
@@ -191,4 +267,45 @@ func lookupStockHealingItem(items map[string]HealingItemContract, alias string) 
 		foundCount++
 	}
 	return found, foundCount == 1
+}
+
+func readStockItemTable(path string) ([]byte, error) {
+	guard, err := runtimepath.NewGuard()
+	if err != nil {
+		return nil, err
+	}
+	if err := guard.Check(path); err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	const limit = 64 << 20
+	if !info.Mode().IsRegular() || info.Size() > limit {
+		return nil, errors.New("stock item table must be a bounded regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, opened) {
+		return nil, errors.New("stock item table changed while opening")
+	}
+	if err := guard.Check(path); err != nil {
+		return nil, err
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > limit {
+		return nil, errors.New("stock item table exceeds size limit")
+	}
+	return raw, nil
 }

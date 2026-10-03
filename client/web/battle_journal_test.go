@@ -61,4 +61,20 @@ func TestBattleJournalRequiresExistingSession(t *testing.T) {
 	if entry.Recipient == nil || *entry.Recipient != 0 || entry.Guardian == nil || *entry.Guardian != 15 {
 		t.Fatalf("recipient not exposed: %+v", entry)
 	}
+	// The Web panel reads the same combo and human-round projection as sactl.
+	session.applyAuthoritativePacket(webServerPacket(t, 4, "B", "BA|0|1|"))
+	session.applyAuthoritativePacket(webServerPacket(t, 5, "B", "BY|rA|a0|f2|d3|p0|a5|f2|d1|p0|FF|"))
+	r = httptest.NewRecorder()
+	handler.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/api/sessions/"+created.ID+"/battle-log", nil))
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &journal) != nil {
+		t.Fatal(r.Body.String())
+	}
+	logs = journal.Battles[0].Logs
+	for i, actor := range []int{0, 5} {
+		hit := logs[len(logs)-2+i]
+		if hit.Kind != "attack" || hit.Actor != actor || hit.Turn != 2 || hit.Hits != 2 || !strings.Contains(hit.Text, "合击") {
+			t.Fatal(hit)
+		}
+	}
+
 }

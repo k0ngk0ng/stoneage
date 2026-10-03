@@ -242,6 +242,12 @@ func catalogRequirement(condition aiknowledge.MachineCondition) string {
 			return fmt.Sprintf("所选宠物等级至少 %d", condition.Value)
 		}
 		return fmt.Sprintf("指定宠物等级至少 %d", condition.Value)
+	case "pet_free_slots":
+		return fmt.Sprintf("至少保留 %d 个空宠物位", condition.Value)
+	case "pet_species_absent":
+		return "已有宠物不能与交付目标同种，请先存放冲突宠物"
+	case "gold_reward_capacity":
+		return fmt.Sprintf("领取 %d 石币奖励后仍须低于持币上限", condition.Value)
 	case "backpack_free_slots":
 		return fmt.Sprintf("至少保留 %d 个空背包格", condition.Value)
 	case "gold_at_least":

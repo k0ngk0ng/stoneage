@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "knowledge_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
+  "knowledge_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
   "npcs": [
     {
       "alias": "adult-guard",
@@ -9,7 +9,7 @@
       "y": 13,
       "name": "仪的值班者",
       "talk_range": 1,
-      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
       "verified": false,
       "windows": [
         {
@@ -33,7 +33,7 @@
       "y": 6,
       "name": "仪式的审判",
       "talk_range": 1,
-      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
       "verified": false,
       "windows": [
         {
@@ -93,7 +93,7 @@
       "y": 13,
       "name": "仪式审判的差使",
       "talk_range": 1,
-      "source_fingerprint": "732242dadf14674ad2dfdfcada6224a86edbde4973a6a9c7df3989fd79f5fbba",
+      "source_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
       "verified": false,
       "windows": [
         {

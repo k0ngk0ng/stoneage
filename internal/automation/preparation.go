@@ -16,6 +16,20 @@ func preparationProblems(conditions []Condition, o Observation) []string {
 		}
 		problem := ""
 		switch c.Kind {
+		case "pet_species_absent":
+			problem = fmt.Sprintf("已有宠物种类 %d 与交付目标冲突，或种类资料尚未同步；请先将已有同种宠物存入银行", c.Value)
+		case "pet_free_slots":
+			if !o.Flags["pets:known"] {
+				problem = "宠物资料尚未同步"
+			} else {
+				problem = fmt.Sprintf("宠物空位不足：当前 %d，要求至少 %d；不会丢弃已有宠物", 5-len(o.Pets), c.Value)
+			}
+		case "gold_reward_capacity":
+			if !o.Flags["gold_limit:known"] {
+				problem = "石币容量尚未同步，不能确认可领取任务奖励"
+			} else {
+				problem = fmt.Sprintf("领取 %d 石币奖励后必须低于持币上限，请先存放多余石币", c.Value)
+			}
 		case "backpack_free_slots":
 			used, known := o.OwnProgress["backpack_used_slots"]
 			if !o.Flags["inventory:known"] || !known || used < 0 || used > 15 {

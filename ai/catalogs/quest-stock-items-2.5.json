@@ -1,0 +1,109 @@
+{
+  "version": 2,
+  "knowledge_fingerprint": "8a217cb19757b93ee9b3e58f77a6c1a2af64dceae0fd129817438069d762ab6f",
+  "offers": [
+    {
+      "alias": "small-meat",
+      "name": "小的肉（萨姆吉尔村）",
+      "item": "small-meat",
+      "npc": "samgil-meat-shop",
+      "shop_index": 1,
+      "unit_price": 12,
+      "x": 17,
+      "y": 15
+    },
+    {
+      "alias": "hometown-1-small-meat",
+      "name": "小的肉（玛丽娜丝村）",
+      "item": "small-meat",
+      "npc": "marinas-meat-shop",
+      "shop_index": 1,
+      "unit_price": 12,
+      "x": 17,
+      "y": 15
+    },
+    {
+      "alias": "marinas-pet-commission-a",
+      "name": "玛村宠物委托书Ａ",
+      "item": "marinas-pet-voucher-a",
+      "npc": "marinas-commission-shop",
+      "shop_index": 1,
+      "unit_price": 50,
+      "x": 20,
+      "y": 13
+    },
+    {
+      "alias": "samgil-pet-commission-a",
+      "name": "萨姆吉尔村宠物委托书Ａ",
+      "item": "samgil-pet-voucher-a",
+      "npc": "samgil-commission-shop",
+      "shop_index": 1,
+      "unit_price": 40,
+      "x": 20,
+      "y": 13
+    },
+    {
+      "alias": "jaja-pet-commission-a",
+      "name": "加加村宠物委托书Ａ",
+      "item": "jaja-pet-voucher-a",
+      "npc": "jaja-commission-shop",
+      "shop_index": 1,
+      "unit_price": 40,
+      "x": 20,
+      "y": 13
+    },
+    {
+      "alias": "hometown-2-small-meat",
+      "name": "小的肉（加加村）",
+      "item": "small-meat",
+      "npc": "jaja-meat-shop",
+      "shop_index": 1,
+      "unit_price": 12,
+      "x": 16,
+      "y": 16
+    },
+    {
+      "alias": "karutana-pet-commission-a",
+      "name": "卡鲁它那村宠物委托书Ａ",
+      "item": "karutana-pet-voucher-a",
+      "npc": "karutana-commission-shop",
+      "shop_index": 1,
+      "unit_price": 40,
+      "x": 20,
+      "y": 13
+    },
+    {
+      "alias": "hometown-3-small-meat",
+      "name": "小的肉（卡鲁它那村）",
+      "item": "small-meat",
+      "npc": "karutana-meat-shop",
+      "shop_index": 1,
+      "unit_price": 12,
+      "x": 16,
+      "y": 15
+    }
+  ],
+  "itemset_sha256": "c997393a4806f01833de102939830fc0000bb2a9d445eb214b8501c2b28c4f5d",
+  "materials": [
+    {
+      "alias": "marinas-pet-voucher-a",
+      "template_id": 20031,
+      "verified": true
+    },
+    {
+      "alias": "samgil-pet-voucher-a",
+      "template_id": 20001,
+      "verified": true
+    },
+    {
+      "alias": "jaja-pet-voucher-a",
+      "template_id": 20061,
+      "verified": true
+    },
+    {
+      "alias": "karutana-pet-voucher-a",
+      "template_id": 20091,
+      "verified": true
+    }
+  ]
+}

@@ -53,9 +53,17 @@ func loadNPC(ctx context.Context, dataDir string, files []FileDigest, issues []I
 		sourcePath := "npc/" + rel
 		digest := FileDigest{Path: sourcePath, SHA256: SHA256Hex(raw), Bytes: int64(len(raw)), Encoding: detectEncoding(raw), Supported: true}
 		kind := npcKind(rel)
+		if kind == "other" && isNPCEventScript(raw) {
+			kind = "event"
+		}
 		npcFile := NPCFile{Path: sourcePath, Kind: kind, SHA256: digest.SHA256, Bytes: digest.Bytes, Encoding: digest.Encoding, Supported: true, Source: SourceRef{Path: sourcePath, SHA256: digest.SHA256, Encoding: digest.Encoding, Extractor: "npc"}}
 		var parseIssues []Issue
 		switch kind {
+		case "event":
+			npcFile.Events, parseIssues, err = parseNPCEvents(raw, sourcePath)
+			if err == nil {
+				digest.Records = len(npcFile.Events.Rules)
+			}
 		case "template":
 			var values []NPCTemplate
 			values, parseIssues, err = parseNPCTemplates(raw, sourcePath, strict)

@@ -84,6 +84,7 @@ CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
   go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_TAG}" -o "$sactl_root/sactl$suffix" ./cmd/sactl
 cp config/sactl/sactl.toml.example "$sactl_root/sactl.toml.example"
 cp docs/sactl.md "$sactl_root/sactl.md"
+cp docs/auto-quests-25-progress.md docs/auto-quests-25-scope.json "$sactl_root/"
 cp scripts/install-sactl.sh "$sactl_root/install-sactl.sh"
 # Agent skills are source files shared across Codex, Claude Code and other
 # SKILL.md-compatible hosts; installation is explicitly selected by the user.
