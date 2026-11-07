@@ -71,11 +71,12 @@ Windows 下载 x64 包；Windows ARM64 通过系统的 x64 兼容能力运行。
 
 ```bash
 # macOS 与 Linux（Homebrew）
-brew install k0ngk0ng/tap/sactl
+brew tap k0ngk0ng/stoneage https://github.com/k0ngk0ng/stoneage
+brew install k0ngk0ng/stoneage/sactl
 
 # Windows（PowerShell）
-scoop bucket add k0ngk0ng https://github.com/k0ngk0ng/scoop-bucket
-scoop install k0ngk0ng/sactl
+scoop bucket add stoneage https://github.com/k0ngk0ng/stoneage
+scoop install stoneage/sactl
 
 # Debian / Ubuntu
 sudo dpkg -i sactl_<版本>_amd64.deb        # 或 _arm64.deb
@@ -87,10 +88,7 @@ sudo rpm -i sactl-<版本>-1.x86_64.rpm      # 或 .aarch64.rpm
 Linux 的 `.deb` 与 `.rpm`（amd64、arm64 各一份）随每个 Release 一起发布；Homebrew 在
 Linux 上同样可用（公式含 linux/amd64 与 linux/arm64）。
 
-两个渠道都由 Release workflow 里的 `packages` 作业自动更新：它按发布出来的 `SHA256SUMS`
-渲染公式与清单，推送到 `k0ngk0ng/homebrew-tap`（brew 里叫 `k0ngk0ng/tap`）和
-`k0ngk0ng/scoop-bucket`。该作业需要一个仓库 secret `TAP_GITHUB_TOKEN`（对两个仓库有
-`contents: write` 的 PAT）；未配置时它只打警告并跳过，不影响发版。
+两个渠道的定义都保存在当前 `stoneage` 仓库。Release workflow 的 `packages` 作业在安装包发布后，同时校验 GitHub 摘要和独立 `SHA256SUMS`；五个平台的实际归档与 Homebrew/Scoop 安装验证通过后，才提交更新后的定义。定时工作流每小时补同步，也支持手动运行。提交仅使用当前仓库的 `GITHUB_TOKEN`，无需跨仓库 PAT。
 
 用包管理器安装还顺带绕开了 macOS 的隔离问题：brew 与 scoop 都用 curl 下载，不会写入
 `com.apple.quarantine`。

@@ -1,0 +1,190 @@
+name: Verify and sync sactl catalogs
+on:
+  schedule:
+    - cron: '37 * * * *'
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        required: false
+        default: ''
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Published stable tag; empty selects latest'
+        type: string
+        required: false
+        default: ''
+      verify_current:
+        description: Verify native installation even when the release is unchanged
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths: ['Formula/sactl.rb', 'bucket/sactl.json', 'packaging/sactl-catalog/**', 'scripts/sync-sactl-catalog.py', 'scripts/test-sactl-catalog.py', 'scripts/test-sactl-archive.py', 'scripts/test-sactl-homebrew.sh', 'scripts/test-sactl-scoop.ps1', '.github/workflows/sync-sactl-catalog.yml']
+  pull_request:
+    paths: ['Formula/sactl.rb', 'bucket/sactl.json', 'packaging/sactl-catalog/**', 'scripts/sync-sactl-catalog.py', 'scripts/test-sactl-catalog.py', 'scripts/test-sactl-archive.py', 'scripts/test-sactl-homebrew.sh', 'scripts/test-sactl-scoop.ps1', '.github/workflows/sync-sactl-catalog.yml']
+env:
+  PYTHONUTF8: '1'
+permissions:
+  contents: read
+concurrency:
+  group: sactl-catalog-sync-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      verify: ${{ steps.sync.outputs.verify }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github
+            scripts
+            Formula
+            bucket
+            packaging
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify release validation failures and product scope
+        run: python3 scripts/test-sactl-catalog.py
+      - name: Check official GitHub digests and independent SHA256SUMS
+        id: sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_CURRENT: ${{ inputs.verify_current }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ -n "$RELEASE_TAG" ]]; then args+=(--version "$RELEASE_TAG"); fi
+          python3 scripts/sync-sactl-catalog.py "${args[@]}"
+          changed=false
+          if ! git diff --quiet -- Formula/sactl.rb bucket/sactl.json packaging/sactl-catalog/release-lock.json; then changed=true; fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          verify=false
+          if [[ "$changed" == true || "$GITHUB_EVENT_NAME" != schedule || "$VERIFY_CURRENT" == true ]]; then verify=true; fi
+          echo "verify=$verify" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.sync.outputs.verify == 'true'
+        with:
+          name: verified-sactl-catalogs
+          path: |
+            Formula/sactl.rb
+            bucket/sactl.json
+            packaging/sactl-catalog/release-lock.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sactl-validation-evidence
+          path: .cache/evidence/
+  native-install:
+    needs: prepare
+    if: needs.prepare.outputs.verify == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-15
+          - target: darwin-amd64
+            os: macos-15-intel
+          - target: linux-amd64
+            os: ubuntu-24.04
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: windows-amd64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github
+            scripts
+            Formula
+            bucket
+            packaging
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: Homebrew/actions/setup-homebrew@082c94ee19e776205cfa8e43802917d1425e2fe7
+        if: runner.os != 'Windows'
+        with:
+          stable: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-sactl-catalogs
+      - name: Verify staged catalog contents
+        run: python scripts/sync-sactl-catalog.py --offline --check
+      - name: Download, verify and execute the real native archive
+        run: python scripts/test-sactl-archive.py --target ${{ matrix.target }}
+      - name: Verify actual Homebrew install and replacement
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/test-sactl-homebrew.sh
+      - name: Verify actual Scoop install
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-sactl-scoop.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sactl-install-evidence-${{ matrix.target }}
+          path: .cache/evidence/
+          if-no-files-found: error
+  publish:
+    needs: [prepare, native-install]
+    if: needs.prepare.outputs.changed == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: |
+            .github
+            scripts
+            Formula
+            bucket
+            packaging
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-sactl-catalogs
+          path: .cache/catalog-promote
+      - name: Promote only the verified catalog without downgrading it
+        run: |
+          python3 - <<'PY'
+          import json,pathlib,shutil
+          root=pathlib.Path('.')
+          staged=root/'.cache/catalog-promote'
+          lock=pathlib.Path('packaging/sactl-catalog/release-lock.json')
+          incoming=json.loads((staged/lock).read_text())['version']
+          if (root/lock).exists():
+              current=json.loads((root/lock).read_text())['version']
+              if tuple(map(int,incoming.split('.'))) < tuple(map(int,current.split('.'))):
+                  raise SystemExit('refusing to downgrade sactl catalogs')
+          for name in ('Formula/sactl.rb','bucket/sactl.json',str(lock)):
+              target=root/name
+              target.parent.mkdir(parents=True,exist_ok=True)
+              shutil.copy2(staged/name,target)
+          PY
+      - name: Recheck the published release and commit only sactl definitions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("packaging/sactl-catalog/release-lock.json"))["version"])')"
+          python3 scripts/sync-sactl-catalog.py --check --version "$version"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/sactl.rb bucket/sactl.json packaging/sactl-catalog/release-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update verified sactl catalogs'
+            git push origin HEAD:main
+          fi

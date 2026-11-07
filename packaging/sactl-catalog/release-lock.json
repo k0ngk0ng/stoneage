@@ -1,0 +1,28 @@
+{
+  "assets": {
+    "darwin-amd64": {
+      "sha256": "199292337b4efa7f5de1e7b6263946febfc8064096dd3073d68464af704fad65",
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.2.18/stoneage-sactl-v0.2.18-darwin-amd64.tar.gz"
+    },
+    "darwin-arm64": {
+      "sha256": "adce07242840fbcadca773ae6cd28c54c653d32e05e14696ca01f1a7a510e7c0",
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.2.18/stoneage-sactl-v0.2.18-darwin-arm64.tar.gz"
+    },
+    "linux-amd64": {
+      "sha256": "6404008615d7d5766de57285b0342d1186993b37a0c6dbc94b5e25a4e462393a",
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.2.18/stoneage-sactl-v0.2.18-linux-amd64.tar.gz"
+    },
+    "linux-arm64": {
+      "sha256": "e303de16e11d4f6e75a5ea069c68bdae2f0a954381169d97a327b7531fce385d",
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.2.18/stoneage-sactl-v0.2.18-linux-arm64.tar.gz"
+    },
+    "windows-amd64": {
+      "sha256": "63c19493eb59bb5774798d0cd8ca41736a6a80ba482bfc6a95de8551895f27fc",
+      "url": "https://github.com/k0ngk0ng/stoneage/releases/download/v0.2.18/stoneage-sactl-v0.2.18-windows-amd64.zip"
+    }
+  },
+  "checksums_sha256": "3a1fb2a6a93e16d46b788dcddf8fd8e4a2bcce835c027d44d93f8f376a9879be",
+  "repository": "k0ngk0ng/stoneage",
+  "tag": "v0.2.18",
+  "version": "0.2.18"
+}

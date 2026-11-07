@@ -1,0 +1,16 @@
+[
+  {
+    "repository": "https://github.com/k0ngk0ng/homebrew-tap",
+    "commit": "001ffe739d4dee88cc9446a5b01550273a1a973b",
+    "path": "Formula/sactl.rb",
+    "upstream": "https://github.com/k0ngk0ng/stoneage",
+    "version": "0.2.18"
+  },
+  {
+    "repository": "https://github.com/k0ngk0ng/scoop-bucket",
+    "commit": "f15f21cabcf1c6627ea235eb2f48d4686db8f0f2",
+    "path": "bucket/sactl.json",
+    "upstream": "https://github.com/k0ngk0ng/stoneage",
+    "version": "0.2.18"
+  }
+]

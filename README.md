@@ -19,10 +19,11 @@ v0.2.18 提供 HTTP `sactl quest` 入口。`marinas-pet-commission-a` 已通过 
 `sactl` 自己连接游戏并保持会话，不依赖浏览器。macOS 安装或升级：
 
 ```sh
-brew install k0ngk0ng/tap/sactl
+brew tap k0ngk0ng/stoneage https://github.com/k0ngk0ng/stoneage
+brew install k0ngk0ng/stoneage/sactl
 # 已安装时：
 brew update
-brew upgrade sactl
+brew upgrade k0ngk0ng/stoneage/sactl
 sactl version
 ```
 
