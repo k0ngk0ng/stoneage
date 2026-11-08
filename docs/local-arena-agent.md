@@ -58,11 +58,11 @@ sactl ai run --profile bot --strategy llm \
 
 ## 配置文件方式（可选）
 
-Mac 也可以通过 Homebrew 安装（已有用户执行 `brew upgrade sactl`）：
+Mac 也可以通过 Homebrew 安装。旧 tap 用户先按 [迁移说明](sactl.md#从旧包仓库迁移) 切换安装来源；后续使用 `brew upgrade k0ngk0ng/stoneage/sactl` 升级。
 
 ```sh
-brew update
-brew install k0ngk0ng/tap/sactl
+brew tap k0ngk0ng/stoneage https://github.com/k0ngk0ng/stoneage
+brew install k0ngk0ng/stoneage/sactl
 sactl version
 sactl ai version
 ```

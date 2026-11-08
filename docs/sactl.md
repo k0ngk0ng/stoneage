@@ -90,6 +90,26 @@ Linux 上同样可用（公式含 linux/amd64 与 linux/arm64）。
 
 两个渠道的定义都保存在当前 `stoneage` 仓库。Release workflow 的 `packages` 作业在安装包发布后，同时校验 GitHub 摘要和独立 `SHA256SUMS`；五个平台的实际归档与 Homebrew/Scoop 安装验证通过后，才提交更新后的定义。定时工作流每小时补同步，也支持手动运行。提交仅使用当前仓库的 `GITHUB_TOKEN`，无需跨仓库 PAT。
 
+### 从旧包仓库迁移
+
+已经从旧 tap 或 bucket 安装的用户，需要重新指定安装来源。迁移前先按原有升级说明退出运行中的旧后台；卸载会保留用户目录中的配置与会话数据。
+
+```sh
+brew tap k0ngk0ng/stoneage https://github.com/k0ngk0ng/stoneage
+brew uninstall k0ngk0ng/tap/sactl
+brew install k0ngk0ng/stoneage/sactl
+```
+
+Windows：
+
+```powershell
+scoop bucket add stoneage https://github.com/k0ngk0ng/stoneage
+scoop uninstall sactl
+scoop install stoneage/sactl
+```
+
+后续分别使用 `brew upgrade k0ngk0ng/stoneage/sactl` 或 `scoop update sactl`。
+
 用包管理器安装还顺带绕开了 macOS 的隔离问题：brew 与 scoop 都用 curl 下载，不会写入
 `com.apple.quarantine`。
 

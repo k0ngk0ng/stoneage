@@ -57,7 +57,7 @@
 # 仓库公开状态与发版
 
 - 仓库当前为 **public**。公开仓库的 GitHub Actions 不消耗私有仓库额度，发版直接推送 `v*` tag 触发 Release workflow 即可，不再需要切换可见性，也不得为触发 Actions 擅自改回 private。
-- 保持仓库名称与公开状态不变。确需改回 private 时，必须先取得用户明确指示，并意识到代价：`brew install k0ngk0ng/tap/sactl`、`scoop install` 与 `install-sactl.sh --download` 都依赖匿名可下载的 Release 资产，改回 private 会让这些安装方式失效。
+- 保持仓库名称与公开状态不变。确需改回 private 时，必须先取得用户明确指示，并意识到代价：`brew install k0ngk0ng/stoneage/sactl`、`scoop install` 与 `install-sactl.sh --download` 都依赖匿名可下载的 Release 资产，改回 private 会让这些安装方式失效。
 - 公开状态下的每次推送都会立即公开：提交前必须确认代码、全部 Git 历史、Release 附件、Actions 日志与产物中没有账号、密钥、私有地址等敏感信息；通用配置地址和示例可以保留。
 - 不得擅自改用用户本机的自托管 runner，也不得在本机下载大型构建镜像或执行镜像构建，以免消耗用户流量。严格执行用户指定的发版方式；该方式受阻时报告具体原因，不得自行替换方案。
 - 后续部署仍严格遵守发版原则，通过 `bin/stoneage` 完成校验、拉取、部署和状态核验。
